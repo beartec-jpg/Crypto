@@ -4,6 +4,8 @@ import { IndicatorMenu } from '@/components/indicators/IndicatorMenu';
 import { ToolsMenu } from '@/components/tools/ToolsMenu';
 import { TradingSystemsMenu } from '@/components/tradingSystems/TradingSystemsMenu';
 import type { TradingSystemId } from '@/types/tradingSystems';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 interface ConfluenceSnapshot {
   score: number;
@@ -199,50 +201,59 @@ export function FullscreenChartActionToolbar({
 
       <div className="w-px h-6 bg-slate-700" />
 
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={onToggleDrawingMode}
-        className={`px-2 py-1 rounded-lg text-xs font-semibold transition-all ${
+        className={cn(
+          'px-2 py-1 text-xs font-semibold transition-all',
           activeTool
             ? 'bg-blue-500 text-white'
-            : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700'
-        }`}
+            : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700',
+        )}
         title={activeTool ? 'Drawing: ON (press D or click to disable)' : 'Drawing: OFF (press D or click to enable)'}
         data-testid="btn-drawing-toggle"
       >
         {activeTool ? 'Drawing: ON' : 'Drawing: OFF'}
-      </button>
+      </Button>
 
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={onUndo}
         disabled={!canUndo}
-        className={`p-2 rounded-lg transition-all ${
+        className={cn(
+          'p-2 transition-all',
           canUndo
             ? 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
-            : 'bg-slate-800/40 text-gray-600 cursor-not-allowed'
-        }`}
+            : 'bg-slate-800/40 text-gray-600 cursor-not-allowed',
+        )}
         title="Undo (Ctrl+Z)"
         data-testid="btn-undo"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
         </svg>
-      </button>
+      </Button>
 
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={onRedo}
         disabled={!canRedo}
-        className={`p-2 rounded-lg transition-all ${
+        className={cn(
+          'p-2 transition-all',
           canRedo
             ? 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
-            : 'bg-slate-800/40 text-gray-600 cursor-not-allowed'
-        }`}
+            : 'bg-slate-800/40 text-gray-600 cursor-not-allowed',
+        )}
         title="Redo (Ctrl+Y)"
         data-testid="btn-redo"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
         </svg>
-      </button>
+      </Button>
 
     </div>
   );
