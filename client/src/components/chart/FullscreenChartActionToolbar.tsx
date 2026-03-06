@@ -4,6 +4,7 @@ import { IndicatorMenu } from '@/components/indicators/IndicatorMenu';
 import { ToolsMenu } from '@/components/tools/ToolsMenu';
 import { TradingSystemsMenu } from '@/components/tradingSystems/TradingSystemsMenu';
 import type { TradingSystemId } from '@/types/tradingSystems';
+import { Button } from '@/components/ui/button';
 
 interface ConfluenceSnapshot {
   score: number;
