@@ -24,6 +24,7 @@ const OSCILLATORS = [
   { id: 'obv', name: 'OBV', description: 'On Balance Volume' },
   { id: 'mfi', name: 'MFI', description: 'Money Flow Index (14)' },
   { id: 'klinger', name: 'Klinger', description: 'Klinger Oscillator (34,55,13)' },
+  { id: 'smartMoney', name: 'Smart Money Tracker', description: 'Standalone SMC system score and debug panel' },
 ];
 
 export function OscillatorSelectorModal({

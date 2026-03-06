@@ -230,7 +230,7 @@ export interface ScoringInput {
   /** SMC Order Blocks for Smart Money scoring */
   orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean }>;
   /** Liquidity zones for Smart Money scoring */
-  liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean; sweptIndex?: number }>;
+  liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean; sweepIndex?: number; sweptIndex?: number }>;
   /** Current timeframe for dynamic lookback calculation */
   timeframe?: string;
   /** Volume profile data for Volume Profile scoring */
@@ -1087,14 +1087,15 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   ) {
     // We have detailed data for enhanced sweep analysis
     // Create enhanced sweeps from liquidity zones where data is available
-    const extendedLiqZones: Array<LiquidityZone & { sweptIndex?: number }> = 
-      liquidityZones.map(lz => ({ ...lz, sweptIndex: lz.sweptIndex })) as any;
+    const extendedLiqZones: Array<LiquidityZone & { sweepIndex?: number; sweptIndex?: number }> =
+      liquidityZones.map(lz => ({ ...lz, sweepIndex: lz.sweepIndex ?? lz.sweptIndex, sweptIndex: lz.sweptIndex })) as any;
 
     for (const lz of extendedLiqZones) {
-      if (lz.swept && lz.sweptIndex !== undefined && lz.sweptIndex < currentCandleIndex) {
+      const sweepIndex = lz.sweepIndex ?? lz.sweptIndex;
+      if (lz.swept && sweepIndex !== undefined && sweepIndex < currentCandleIndex) {
         // For enhanced scoring, we'll use a simplified approach based on available data
         // Score based on sweep strength (wick depth) and proximity
-        const fromSweep = currentCandleIndex - lz.sweptIndex;
+        const fromSweep = currentCandleIndex - sweepIndex;
         const timeDecay = Math.max(0.5, 1 - (fromSweep / 50)); // 50-candle decay
         
         // Simplified sweep score based on closeness to level
@@ -1109,7 +1110,7 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
             direction: lz.type === 'low' ? 'buy-side' : 'sell-side',
             sweptLevel: lz.price,
             sweepTime: lz.sweepTime ?? 0,
-            sweepIndex: lz.sweptIndex,
+            sweepIndex,
             wickSize: 0, // Not available in this context
             wickSizePct: 0,
             reversalStrength: 65, // Simplified

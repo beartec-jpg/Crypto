@@ -1,4 +1,6 @@
 import type { OscillatorData } from '@/hooks/useOscillatorData';
+import type { ScoringInput } from '@/lib/tradingSystemScoring';
+import type { SystemEvaluation } from '@/types/systemScoring';
 
 const VOLUME_UP_COLOR = '#26a69a';
 
@@ -6,6 +8,10 @@ interface MiniOscillatorSectionProps {
   miniOscillators: Set<string>;
   oscillatorData: OscillatorData;
   onCycleMode: (id: string) => void;
+  smartMoneyPanelData?: {
+    scoringInput: ScoringInput | null;
+    evaluation: SystemEvaluation | null;
+  };
 }
 
 // Helper to get RSI status
@@ -106,6 +112,7 @@ export function MiniOscillatorSection({
   miniOscillators,
   oscillatorData,
   onCycleMode,
+  smartMoneyPanelData,
 }: MiniOscillatorSectionProps) {
   if (miniOscillators.size === 0) return null;
 
@@ -209,6 +216,19 @@ export function MiniOscillatorSection({
     const lastSignal = signalLen > 0 ? oscillatorData.klinger.signal[signalLen - 1].value : lastKlinger;
     const s = getKlingerStatus(lastKlinger, lastSignal);
     newMiniItems.push({ id: 'klinger', label: s.label, value: s.value, color: s.color, zone: s.zone });
+  }
+
+  if (miniOscillators.has('smartMoney') && smartMoneyPanelData?.evaluation) {
+    const score = smartMoneyPanelData.evaluation.score ?? 0;
+    const zone = score >= 20 ? 'BULL' : score <= -20 ? 'BEAR' : 'NEU';
+    const color = score >= 20 ? 'text-green-400' : score <= -20 ? 'text-red-400' : 'text-yellow-400';
+    newMiniItems.push({
+      id: 'smartMoney',
+      label: 'SMC',
+      value: `${score > 0 ? '+' : ''}${Math.round(score)}`,
+      color,
+      zone,
+    });
   }
 
   return (

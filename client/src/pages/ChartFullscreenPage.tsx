@@ -783,7 +783,14 @@ export function ChartFullscreenPage({
       swingPoints,
       fvgs: fvgs.map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
       orderBlocks: orderBlocks.map(ob => ({ high: ob.top, low: ob.bottom, type: ob.type, mitigated: ob.mitigated })),
-      liquidityZones: liquidityZones.map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept })),
+      liquidityZones: liquidityZones.map(lz => ({
+        price: lz.price,
+        type: lz.type,
+        swept: lz.swept,
+        sweepIndex: lz.sweepIndex,
+        // Backward-compatible alias for older scoring paths.
+        sweptIndex: lz.sweepIndex,
+      })),
       volumeProfileData: volumeProfileData
         ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }
         : undefined,
@@ -827,6 +834,116 @@ export function ChartFullscreenPage({
     volumeProfileData,
     autoFibResult,
     timeframe,
+  ]);
+
+  const smartMoneyPanelData = useMemo(() => {
+    if (effectiveCandles.length < 2) {
+      return { scoringInput: null, evaluation: null };
+    }
+
+    const previousCandle = effectiveCandles[effectiveCandles.length - 2] as { open: number; close: number };
+    const latestCandle = effectiveCandles[effectiveCandles.length - 1] as { time: number; close: number; volume?: number };
+
+    const lastRsi = oscillatorData.rsi[oscillatorData.rsi.length - 1]?.value;
+    const prevRsi = oscillatorData.rsi[oscillatorData.rsi.length - 2]?.value;
+    const macdNow = oscillatorData.macd.macd[oscillatorData.macd.macd.length - 1]?.value;
+    const macdPrev = oscillatorData.macd.macd[oscillatorData.macd.macd.length - 2]?.value;
+    const sigNow = oscillatorData.macd.signal[oscillatorData.macd.signal.length - 1]?.value;
+    const sigPrev = oscillatorData.macd.signal[oscillatorData.macd.signal.length - 2]?.value;
+
+    const stLatest = superTrendData.standard[superTrendData.standard.length - 1];
+    const stTrend = stLatest?.trend;
+    const latestStructureBreak = structureBreaks[structureBreaks.length - 1];
+    const latestSqz = sqzData[sqzData.length - 1];
+    const avgVolume = calculateAverageVolume(effectiveCandles as Array<{ volume: number }>, effectiveCandles.length - 1, 20);
+    const shortTermMA = calculateSimpleMovingAverage(effectiveCandles as Array<{ close: number }>, effectiveCandles.length - 1, 9);
+    const longTermMA = calculateSimpleMovingAverage(effectiveCandles as Array<{ close: number }>, effectiveCandles.length - 1, 21);
+    const { supportLevel, resistanceLevel } = calculateSupportResistance(
+      effectiveCandles as Array<{ low: number; high: number }>,
+      effectiveCandles.length - 1,
+      20,
+    );
+
+    const htfBullish = htfBiasEntries.filter(e => e.bias === 'bullish').length;
+    const htfBearish = htfBiasEntries.filter(e => e.bias === 'bearish').length;
+
+    const divergenceHistoryLength = 51;
+    const priceHistory = effectiveCandles.slice(-divergenceHistoryLength).map(c => (c as { close: number }).close);
+    const rsiHistory = oscillatorData.rsi.slice(-divergenceHistoryLength).map(p => p.value);
+    const macdHistHistory = oscillatorData.macd.hist.slice(-divergenceHistoryLength).map(p => p.value);
+
+    const scoringInput: ScoringInput = {
+      lastRsi,
+      prevRsi,
+      macdNow,
+      macdPrev,
+      sigNow,
+      sigPrev,
+      stTrend,
+      latestStructureDirection: latestStructureBreak?.direction,
+      sqzOff: latestSqz?.sqzOff,
+      sqzValue: latestSqz?.value,
+      htfBullish,
+      htfBearish,
+      rsi: lastRsi,
+      currentPrice: latestCandle.close,
+      supportLevel,
+      resistanceLevel,
+      currentVolume: latestCandle.volume,
+      avgVolume,
+      shortTermMA,
+      longTermMA,
+      latestClose: latestCandle.close,
+      previousClose: previousCandle.close,
+      divergencePoints,
+      currentTime: Number(latestCandle.time),
+      currentCandleIndex: effectiveCandles.length - 1,
+      structureBreaks,
+      swingPoints,
+      fvgs: fvgs.map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
+      orderBlocks: orderBlocks.map(ob => ({ high: ob.top, low: ob.bottom, type: ob.type, mitigated: ob.mitigated })),
+      liquidityZones: liquidityZones.map(lz => ({
+        price: lz.price,
+        type: lz.type,
+        swept: lz.swept,
+        sweepIndex: lz.sweepIndex,
+        sweptIndex: lz.sweepIndex,
+      })),
+      volumeProfileData: volumeProfileData
+        ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }
+        : undefined,
+      priceHistory,
+      rsiHistory,
+      macdHistHistory,
+      autoFibResult,
+      timeframe,
+    };
+
+    const evaluation = scoreSystem('smart-money', scoringInput);
+
+    return {
+      scoringInput,
+      evaluation: {
+        ...evaluation,
+        timestamp: Date.now(),
+      },
+    };
+  }, [
+    effectiveCandles,
+    oscillatorData,
+    superTrendData,
+    structureBreaks,
+    swingPoints,
+    sqzData,
+    htfBiasEntries,
+    divergencePoints,
+    fvgs,
+    orderBlocks,
+    liquidityZones,
+    volumeProfileData,
+    autoFibResult,
+    timeframe,
+    conditionWeightsVersion,
   ]);
 
   const activeSystemSummary = useMemo(() => {
@@ -1594,6 +1711,7 @@ export function ChartFullscreenPage({
           miniOscillators={oscillatorPanel.miniOscillators}
           oscillatorData={oscillatorData}
           onCycleMiniMode={oscillatorPanel.cycleMode}
+          smartMoneyPanelData={smartMoneyPanelData}
           showHtfBiasPanel={htfBiasSettings.settings.enabled}
           htfBiasEntries={htfBiasEntries}
           isLoading={isLoading}
@@ -1716,6 +1834,7 @@ export function ChartFullscreenPage({
         mainChartVisibleRange={mainChartVisibleRange}
         sqzData={sqzData}
         sqzSettings={sqzSettings.settings}
+        smartMoneyPanelData={smartMoneyPanelData}
       />
       
       <FullscreenChartModals

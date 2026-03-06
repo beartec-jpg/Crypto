@@ -4,6 +4,8 @@ import { HTFBiasPanel } from '@/components/indicators/HTFBiasPanel';
 import { ChartLoadingOverlay } from '@/components/chart/ChartLoadingOverlay';
 import { TOP_TOOLBAR_HEIGHT } from '@/lib/constants/layout';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
+import type { ScoringInput } from '@/lib/tradingSystemScoring';
+import type { SystemEvaluation } from '@/types/systemScoring';
 
 interface FullscreenChartViewportLayerProps {
   miniOscillators: Set<string>;
@@ -16,6 +18,10 @@ interface FullscreenChartViewportLayerProps {
   chartContainerRef: RefObject<HTMLDivElement>;
   chartPercentage: number;
   onChartBackgroundClick?: () => void;
+  smartMoneyPanelData?: {
+    scoringInput: ScoringInput | null;
+    evaluation: SystemEvaluation | null;
+  };
 }
 
 export function FullscreenChartViewportLayer({
@@ -29,6 +35,7 @@ export function FullscreenChartViewportLayer({
   chartContainerRef,
   chartPercentage,
   onChartBackgroundClick,
+  smartMoneyPanelData,
 }: FullscreenChartViewportLayerProps) {
   return (
     <>
@@ -36,6 +43,7 @@ export function FullscreenChartViewportLayer({
         miniOscillators={miniOscillators}
         oscillatorData={oscillatorData}
         onCycleMode={onCycleMiniMode}
+        smartMoneyPanelData={smartMoneyPanelData}
       />
 
       {showHtfBiasPanel && <HTFBiasPanel entries={htfBiasEntries} />}

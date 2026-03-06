@@ -2,6 +2,8 @@ import { DockedOscillatorSection } from '@/components/oscillators/DockedOscillat
 import { PoppedOutOscillators } from '@/components/oscillators/PoppedOutOscillators';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
 import type { SqueezeMomentumValue, SqueezeMomentumSettings } from '@/types/squeezeMomentum';
+import type { ScoringInput } from '@/lib/tradingSystemScoring';
+import type { SystemEvaluation } from '@/types/systemScoring';
 
 interface FullscreenOscillatorLayoutProps {
   selectedOscillators: Set<string>;
@@ -17,6 +19,10 @@ interface FullscreenOscillatorLayoutProps {
   mainChartVisibleRange: any;
   sqzData: SqueezeMomentumValue[];
   sqzSettings: SqueezeMomentumSettings;
+  smartMoneyPanelData?: {
+    scoringInput: ScoringInput | null;
+    evaluation: SystemEvaluation | null;
+  };
 }
 
 export function FullscreenOscillatorLayout({
@@ -33,6 +39,7 @@ export function FullscreenOscillatorLayout({
   mainChartVisibleRange,
   sqzData,
   sqzSettings,
+  smartMoneyPanelData,
 }: FullscreenOscillatorLayoutProps) {
   return (
     <>
@@ -52,6 +59,7 @@ export function FullscreenOscillatorLayout({
         mainChartVisibleRange={mainChartVisibleRange}
         sqzData={sqzData}
         sqzSettings={sqzSettings}
+        smartMoneyPanelData={smartMoneyPanelData}
       />
 
       <PoppedOutOscillators
@@ -62,6 +70,7 @@ export function FullscreenOscillatorLayout({
         onPopout={onPopout}
         onCycleMode={onCycleMode}
         mainChartVisibleRange={mainChartVisibleRange}
+        smartMoneyPanelData={smartMoneyPanelData}
       />
     </>
   );

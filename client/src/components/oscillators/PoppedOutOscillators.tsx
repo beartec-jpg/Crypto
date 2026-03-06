@@ -12,7 +12,10 @@ import { WaddahExplosionPanel } from '@/components/indicators/oscillators/Waddah
 import { CMFPanel } from '@/components/indicators/oscillators/CMFPanel';
 import { TSIPanel } from '@/components/indicators/oscillators/TSIPanel';
 import { KlingerPanel } from '@/components/indicators/oscillators/KlingerPanel';
+import { SMCDebugTable } from '@/components/tradingSystems/SMCDebugTable';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
+import type { ScoringInput } from '@/lib/tradingSystemScoring';
+import type { SystemEvaluation } from '@/types/systemScoring';
 
 interface CandleData {
   time: number;
@@ -31,6 +34,18 @@ interface PoppedOutOscillatorsProps {
   onPopout: (id: string) => void;
   onCycleMode?: (id: string) => void;
   mainChartVisibleRange?: any;
+  smartMoneyPanelData?: {
+    scoringInput: ScoringInput | null;
+    evaluation: SystemEvaluation | null;
+  };
+}
+
+function getSmartMoneyScoreColor(score: number): string {
+  if (score >= 60) return 'text-green-400';
+  if (score >= 20) return 'text-lime-400';
+  if (score > -20) return 'text-slate-300';
+  if (score > -60) return 'text-orange-400';
+  return 'text-red-400';
 }
 
 const OSCILLATOR_CONFIG = [
@@ -47,6 +62,7 @@ const OSCILLATOR_CONFIG = [
   { id: 'obv', title: 'OBV', storageKey: 'oscillator-obv', defaultPos: { x: 220, y: 360 } },
   { id: 'mfi', title: 'MFI (14)', storageKey: 'oscillator-mfi', defaultPos: { x: 220, y: 500 } },
   { id: 'klinger', title: 'Klinger (34,55,13)', storageKey: 'oscillator-klinger', defaultPos: { x: 220, y: 640 } },
+  { id: 'smartMoney', title: 'Smart Money Tracker', storageKey: 'oscillator-smart-money', defaultPos: { x: 440, y: 80 } },
 ];
 
 export function PoppedOutOscillators({
@@ -57,6 +73,7 @@ export function PoppedOutOscillators({
   onPopout,
   onCycleMode,
   mainChartVisibleRange,
+  smartMoneyPanelData,
 }: PoppedOutOscillatorsProps) {
   const renderOscillatorContent = (id: string) => {
     switch (id) {
@@ -113,6 +130,55 @@ export function PoppedOutOscillators({
             signalData={oscillatorData.klinger.signal}
             mainChartVisibleRange={mainChartVisibleRange}
           />
+        );
+      case 'smartMoney':
+        if (!smartMoneyPanelData?.evaluation || !smartMoneyPanelData.scoringInput) {
+          return <div className="h-full w-full rounded border border-slate-700 bg-slate-900/70 p-3 text-xs text-slate-400">Waiting for SMC data...</div>;
+        }
+
+        return (
+          <div className="h-full w-full overflow-y-auto rounded border border-slate-700 bg-slate-900/70 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-xs font-semibold text-slate-200">Smart Money Tracker</div>
+              <div className={`text-sm font-bold ${getSmartMoneyScoreColor(smartMoneyPanelData.evaluation.score ?? 0)}`}>
+                {(smartMoneyPanelData.evaluation.score ?? 0) > 0 ? '+' : ''}{(smartMoneyPanelData.evaluation.score ?? 0).toFixed(0)}
+              </div>
+            </div>
+
+            <div className="mb-2 h-2 overflow-hidden rounded bg-slate-800">
+              <div
+                className={`h-full transition-all ${(smartMoneyPanelData.evaluation.score ?? 0) >= 20 ? 'bg-green-500' : (smartMoneyPanelData.evaluation.score ?? 0) <= -20 ? 'bg-red-500' : 'bg-slate-500'}`}
+                style={{ width: `${Math.max(0, Math.min(100, ((smartMoneyPanelData.evaluation.score ?? 0) + 100) / 2))}%` }}
+              />
+            </div>
+
+            <div className="mb-3 text-[11px] text-slate-400">
+              {smartMoneyPanelData.evaluation.signalLabel} • Confidence {Math.round(smartMoneyPanelData.evaluation.confidence)}%
+            </div>
+
+            <div className="space-y-1">
+              {[...(smartMoneyPanelData.evaluation.conditions ?? [])]
+                .sort((a, b) => Math.abs((b.score ?? b.weightedScore ?? 0)) - Math.abs((a.score ?? a.weightedScore ?? 0)))
+                .slice(0, 5)
+                .map((condition, idx) => {
+                  const conditionScore = condition.score ?? condition.weightedScore ?? 0;
+                  const conditionColor = conditionScore === 0 ? 'text-slate-400' : conditionScore > 0 ? 'text-green-400' : 'text-red-400';
+                  return (
+                    <div key={`${condition.name}-${idx}`} className="flex items-center justify-between text-[11px]">
+                      <span className="truncate pr-2 text-slate-300">{condition.name}</span>
+                      <span className={`font-mono ${conditionColor}`}>
+                        {conditionScore > 0 ? '+' : ''}{Math.round(conditionScore)}
+                      </span>
+                    </div>
+                  );
+                })}
+            </div>
+
+            <SMCDebugTable
+              evaluation={smartMoneyPanelData.evaluation}
+              scoringInput={smartMoneyPanelData.scoringInput}
+            />
+          </div>
         );
       default:
         return null;
