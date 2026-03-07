@@ -161,8 +161,8 @@ function detectSweep(
       if (type === 'high' && confirmCandle.close < level) {
         return {
           swept: true,
-          // Use the wick candle as the sweep anchor for rendering and scoring.
-          sweepTime: c.time,
+          // sweepTime is the first confirmation candle that closes back below/above the level.
+          sweepTime: confirmCandle.time,
           sweepPrice: c.high,
           sweepIndex: i,
         };
@@ -171,8 +171,8 @@ function detectSweep(
       if (type === 'low' && confirmCandle.close > level) {
         return {
           swept: true,
-          // Use the wick candle as the sweep anchor for rendering and scoring.
-          sweepTime: c.time,
+          // sweepTime is the first confirmation candle that closes back above/below the level.
+          sweepTime: confirmCandle.time,
           sweepPrice: c.low,
           sweepIndex: i,
         };
