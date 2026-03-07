@@ -715,8 +715,11 @@ function scoreBreakerBlockProximity(
 }
 
 /**
- * Returns 0-100 based on distance and recency.
+ * Returns a signed score based on distance, recency, and sweep direction.
  * Checks both explicit liquidityZones and structure breaks where swept === true.
+ *
+ * High sweep (resistance liquidity grab) → negative score (bearish reversal expected).
+ * Low sweep (support liquidity grab) → positive score (bullish reversal expected).
  */
 function scoreLiquiditySweepProximity(
   price: number,
@@ -725,7 +728,7 @@ function scoreLiquiditySweepProximity(
   lookbackCandles: number = 50,
   structureBreaks?: Array<{ breakTime: number; breakIndex?: number; direction: 'bullish' | 'bearish'; swept?: boolean; brokenLevel?: number }>,
 ): number {
-  const scores: number[] = [];
+  let bestScore = 0;
 
   // Check explicit liquidity zones
   if (liquidityZones && liquidityZones.length > 0 && currentCandleIndex !== undefined) {
@@ -741,7 +744,12 @@ function scoreLiquiditySweepProximity(
       const proximityScore = 100 * (1 - (distancePct / 5.0));
       const candlesSinceSweep = currentCandleIndex - (lz.sweptIndex || currentCandleIndex);
       const timeDecay = Math.max(0.5, 1 - (candlesSinceSweep / lookbackCandles));
-      scores.push(Math.round(proximityScore * timeDecay));
+      // High sweep (resistance grab) = bearish (negative); low sweep (support grab) = bullish (positive)
+      const directionalScore = lz.type === 'high' ? -proximityScore : proximityScore;
+      const finalScore = Math.round(directionalScore * timeDecay);
+      if (Math.abs(finalScore) > Math.abs(bestScore)) {
+        bestScore = finalScore;
+      }
     }
   }
 
@@ -760,11 +768,16 @@ function scoreLiquiditySweepProximity(
         ? currentCandleIndex - (sweep.breakIndex ?? currentCandleIndex)
         : 0;
       const timeDecay = Math.max(0.5, 1 - (candlesSinceSweep / lookbackCandles));
-      scores.push(Math.round(proximityScore * timeDecay));
+      // Swept bullish break (support grab) = bullish (positive); swept bearish break = bearish (negative)
+      const directionalScore = sweep.direction === 'bullish' ? proximityScore : -proximityScore;
+      const finalScore = Math.round(directionalScore * timeDecay);
+      if (Math.abs(finalScore) > Math.abs(bestScore)) {
+        bestScore = finalScore;
+      }
     }
   }
 
-  return scores.length > 0 ? Math.max(...scores) : 0;
+  return bestScore;
 }
 
 /**
@@ -1289,9 +1302,17 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       id: 'liquiditySweep',
       name: 'Liquidity Sweep',
       score: liquidityScore,
-      value: liquidityScore > 0 ? `${liquidityScore}/100` : undefined,
-      description: enhancedSweeps.length > 0
-        ? `Institutional sweep detection: ${enhancedSweeps.length} active sweep${enhancedSweeps.length > 1 ? 's' : ''} (avg validation ${Math.round(enhancedSweeps.reduce((sum, s) => sum + s.validationScore, 0) / enhancedSweeps.length)}/100).`
+      value: liquidityScore !== 0
+        ? `${Math.abs(liquidityScore).toFixed(0)}/100 (${liquidityScore > 0 ? 'Low Sweep' : 'High Sweep'})`
+        : undefined,
+      description: liquidityScore > 0
+        ? (enhancedSweeps.length > 0
+          ? `Institutional sweep detection: ${enhancedSweeps.length} active sweep${enhancedSweeps.length > 1 ? 's' : ''} (avg validation ${Math.round(enhancedSweeps.reduce((sum, s) => sum + s.validationScore, 0) / enhancedSweeps.length)}/100). Proximity to swept low (support liquidity grab - bullish reversal expected).`
+          : 'Proximity to swept low (support liquidity grab - bullish reversal expected).')
+        : liquidityScore < 0
+        ? (enhancedSweeps.length > 0
+          ? `Institutional sweep detection: ${enhancedSweeps.length} active sweep${enhancedSweeps.length > 1 ? 's' : ''} (avg validation ${Math.round(enhancedSweeps.reduce((sum, s) => sum + s.validationScore, 0) / enhancedSweeps.length)}/100). Proximity to swept high (resistance liquidity grab - bearish reversal expected).`
+          : 'Proximity to swept high (resistance liquidity grab - bearish reversal expected).')
         : 'Active liquidity grab (invalidates when price moves >10% away or level is confirmed broken).',
     },
     {
