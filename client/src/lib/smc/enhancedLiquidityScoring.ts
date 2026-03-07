@@ -386,22 +386,33 @@ export function scoreSweepProximityEnhanced(
   
   if (activeSweeps.length === 0) return 0;
   
-  const scores = activeSweeps.map(sweep => {
+  let bestScore = 0;
+
+  for (const sweep of activeSweeps) {
     const distancePct = Math.abs(currentPrice - sweep.sweptLevel) / currentPrice;
-    
+
     // Too far away
-    if (distancePct > proximityThreshold) return 0;
-    
+    if (distancePct > proximityThreshold) continue;
+
     // Proximity score: closer = higher
     const proximityScore = 100 * (1 - (distancePct / proximityThreshold));
-    
+
     // Adjust by sweep validation quality and age decay
     const weightedScore = proximityScore * sweep.validationScore / 100 * sweep.ageDecayFactor;
-    
-    return Math.round(weightedScore);
-  });
-  
-  return Math.max(...scores, 0);
+
+    // Apply directional scoring:
+    // sell-side sweep (high grabbed) = bearish = negative
+    // buy-side sweep (low grabbed) = bullish = positive
+    const directionalScore = sweep.direction === 'sell-side'
+      ? -Math.round(weightedScore)
+      : Math.round(weightedScore);
+
+    if (Math.abs(directionalScore) > Math.abs(bestScore)) {
+      bestScore = directionalScore;
+    }
+  }
+
+  return bestScore;
 }
 
 /**
