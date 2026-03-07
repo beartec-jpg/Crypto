@@ -318,11 +318,11 @@ function getLiquiditySweepDetails(input: ScoringInput) {
   const sbSweeps = input.structureBreaks?.filter(sb => sb.swept === true) ?? [];
   for (const sb of sbSweeps) {
     if (sb.brokenLevel === undefined) continue;
+    if (sb.breakIndex === undefined || input.currentCandleIndex === undefined) continue;
+    if (sb.breakIndex < input.currentCandleIndex - lookbackCandles) continue;
     const dist = Math.abs(currentPrice - sb.brokenLevel);
     const distPct = currentPrice > 0 ? (dist / currentPrice) * 100 : 0;
-    const age = input.currentCandleIndex !== undefined && sb.breakIndex !== undefined
-      ? input.currentCandleIndex - sb.breakIndex
-      : 0;
+    const age = input.currentCandleIndex - sb.breakIndex;
     // Bullish structure break = low was swept; bearish = high was swept
     const sweepType: 'high' | 'low' = sb.direction === 'bullish' ? 'low' : 'high';
     candidates.push({ level: sb.brokenLevel, sweepType, dist, distPct, age, source: 'structureBreak' });
@@ -334,7 +334,7 @@ function getLiquiditySweepDetails(input: ScoringInput) {
 
   const nearest = candidates.sort((a, b) => a.dist - b.dist)[0];
   const isActive = nearest.distPct <= 10;
-  const timeDecay = Math.max(0.5, 1 - (nearest.age / lookbackCandles));
+  const timeDecay = Math.max(0, 1 - (nearest.age / lookbackCandles));
   const proximityScore = nearest.distPct < 5.0
     ? Math.round(100 * (1 - (nearest.distPct / 5.0)) * timeDecay)
     : 0;

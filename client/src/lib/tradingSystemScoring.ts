@@ -743,7 +743,8 @@ function scoreLiquiditySweepProximity(
       if (distancePct >= 5.0) continue;
       const proximityScore = 100 * (1 - (distancePct / 5.0));
       const candlesSinceSweep = currentCandleIndex - (lz.sweptIndex || currentCandleIndex);
-      const timeDecay = Math.max(0.5, 1 - (candlesSinceSweep / lookbackCandles));
+      if (candlesSinceSweep > lookbackCandles) continue;
+      const timeDecay = Math.max(0, 1 - (candlesSinceSweep / lookbackCandles));
       // High sweep (resistance grab) = bearish (negative); low sweep (support grab) = bullish (positive)
       const directionalScore = lz.type === 'high' ? -proximityScore : proximityScore;
       const finalScore = Math.round(directionalScore * timeDecay);
@@ -767,7 +768,8 @@ function scoreLiquiditySweepProximity(
       const candlesSinceSweep = currentCandleIndex !== undefined
         ? currentCandleIndex - (sweep.breakIndex ?? currentCandleIndex)
         : 0;
-      const timeDecay = Math.max(0.5, 1 - (candlesSinceSweep / lookbackCandles));
+      if (candlesSinceSweep > lookbackCandles) continue;
+      const timeDecay = Math.max(0, 1 - (candlesSinceSweep / lookbackCandles));
       // Swept bullish break (support grab) = bullish (positive); swept bearish break = bearish (negative)
       const directionalScore = sweep.direction === 'bullish' ? proximityScore : -proximityScore;
       const finalScore = Math.round(directionalScore * timeDecay);
