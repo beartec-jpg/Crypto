@@ -161,6 +161,17 @@ class OBRenderer implements IPrimitivePaneRenderer {
           ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
           ctx.fillText(label, rectX + 2 + padding, rectY + 2 + textHeight);
         }
+
+        // Sweep marker ⚡ (blue) when the zone was wicked through but closed back inside
+        if (ob.swept && ob.sweepTime) {
+          const xSweep = timeScale.timeToCoordinate(ob.sweepTime as Time);
+          if (xSweep !== null) {
+            ctx.fillStyle = '#3b82f6'; // blue
+            ctx.font = '13px sans-serif';
+            const sweepY = ob.type === 'bullish' ? yBottom + 14 : yTop - 6;
+            ctx.fillText('⚡', xSweep - 6, sweepY);
+          }
+        }
       }
     });
   }

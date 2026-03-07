@@ -194,8 +194,8 @@ export function validateSweepQuality(
   sweepIndex: number,
   currentIndex: number,
   data: CandleData[],
-  fvgs?: Array<{ high: number; low: number; direction: 'bullish' | 'bearish' }>,
-  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish' }>,
+  fvgs?: Array<{ high: number; low: number; direction: 'bullish' | 'bearish'; swept?: boolean; sweepIndex?: number; sweepPrice?: number }>,
+  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; swept?: boolean; sweepIndex?: number; sweepPrice?: number }>,
 ): {
   isValid: boolean;
   validationScore: number;
@@ -244,9 +244,8 @@ export function validateSweepQuality(
     volumeScore = Math.min(100, 50 + volumeRatio * 25);
   }
 
-  // Check confluence with FVG/OB
+  // Check confluence with FVG/OB (price zone overlap and sweep alignment)
   let confluenceScore = 30; // Base score
-  const proximityThreshold = 0.01; // 1%
 
   if (fvgs) {
     for (const fvg of fvgs) {
@@ -254,6 +253,16 @@ export function validateSweepQuality(
         const alignment = (direction === 'buy-side' && fvg.direction === 'bullish') ||
                          (direction === 'sell-side' && fvg.direction === 'bearish');
         confluenceScore += alignment ? 25 : 10;
+      }
+      // Boost score when FVG sweep is temporally aligned with this liquidity sweep
+      if (fvg.swept && fvg.sweepIndex !== undefined && fvg.sweepPrice !== undefined) {
+        const timeDiff = Math.abs(sweepIndex - fvg.sweepIndex);
+        const priceDiff = Math.abs(sweptZone.price - fvg.sweepPrice) / sweptZone.price;
+        if (timeDiff <= 5 && priceDiff <= 0.01) {
+          const alignment = (direction === 'buy-side' && fvg.direction === 'bullish') ||
+                           (direction === 'sell-side' && fvg.direction === 'bearish');
+          confluenceScore += alignment ? 25 : 10;
+        }
       }
     }
   }
@@ -264,6 +273,16 @@ export function validateSweepQuality(
         const alignment = (direction === 'buy-side' && ob.type === 'bullish') ||
                          (direction === 'sell-side' && ob.type === 'bearish');
         confluenceScore += alignment ? 20 : 8;
+      }
+      // Boost score when OB sweep is temporally aligned with this liquidity sweep
+      if (ob.swept && ob.sweepIndex !== undefined && ob.sweepPrice !== undefined) {
+        const timeDiff = Math.abs(sweepIndex - ob.sweepIndex);
+        const priceDiff = Math.abs(sweptZone.price - ob.sweepPrice) / sweptZone.price;
+        if (timeDiff <= 5 && priceDiff <= 0.01) {
+          const alignment = (direction === 'buy-side' && ob.type === 'bullish') ||
+                           (direction === 'sell-side' && ob.type === 'bearish');
+          confluenceScore += alignment ? 30 : 15;
+        }
       }
     }
   }

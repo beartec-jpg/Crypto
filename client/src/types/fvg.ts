@@ -19,6 +19,12 @@ export interface FVGDetection {
   mitigationTime?: number; // When it was mitigated
   age: number;             // Candles since formation
   isInverse: boolean;      // IFVG - flipped from S to R or R to S
+
+  // Sweep tracking (wick-through without close-through)
+  swept?: boolean;         // Was the zone wicked through but closed back inside?
+  sweepTime?: number;      // Timestamp of the sweep candle
+  sweepPrice?: number;     // Wick extreme that swept through the gap
+  sweepIndex?: number;     // Candle index of the sweep
 }
 
 export interface FVGSettings {
