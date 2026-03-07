@@ -84,12 +84,17 @@ export function useFVGDetection({ candles, settings }: UseFVGDetectionOptions): 
         mitigationTime: undefined,
         age: 0,
         isInverse: false,
+        swept: false,
+        sweepTime: undefined,
+        sweepPrice: undefined,
+        sweepIndex: undefined,
       });
     }
 
-    // Phase 2: mitigation tracking and age
+    // Phase 2: sweep detection, mitigation tracking and age
     const totalCandles = candles.length;
     const result: FVGDetection[] = [];
+    const confirmationWindow = 3;
 
     for (const fvg of raw) {
       const startIdx = candles.findIndex(c => c.time === fvg.endTime);
@@ -99,6 +104,10 @@ export function useFVGDetection({ candles, settings }: UseFVGDetectionOptions): 
       let mitigationPercent = 0;
       let mitigationTime: number | undefined;
       let isInverse = false;
+      let swept = false;
+      let sweepTime: number | undefined;
+      let sweepPrice: number | undefined;
+      let sweepIndex: number | undefined;
 
       // Track lowest/highest price entry into the gap
       let lowestLowInGap = fvg.top;
@@ -108,40 +117,74 @@ export function useFVGDetection({ candles, settings }: UseFVGDetectionOptions): 
         const c = candles[j];
 
         if (fvg.type === 'bullish') {
+          // Track partial mitigation
           if (c.low < fvg.top) {
             lowestLowInGap = Math.min(lowestLowInGap, c.low);
             mitigationPercent = Math.max(0, Math.min(100,
               (fvg.top - lowestLowInGap) / (fvg.top - fvg.bottom) * 100
             ));
           }
-          // Fully mitigated when price closes below the bottom
-          if (c.close <= fvg.bottom) {
-            mitigated = true;
-            mitigationPercent = 100;
-            mitigationTime = c.time;
-            // IFVG: former support becomes resistance
-            if (settings.detectIFVG) {
-              isInverse = true;
+
+          // Check if wick went below the gap
+          if (c.low < fvg.bottom && !swept && !mitigated) {
+            // Look ahead for confirmation candles
+            let closeBackInside = false;
+            for (let k = j + 1; k <= Math.min(j + confirmationWindow, candles.length - 1); k++) {
+              if (candles[k].close >= fvg.bottom) {
+                swept = true;
+                sweepTime = c.time;
+                sweepPrice = c.low;
+                sweepIndex = j;
+                closeBackInside = true;
+                break;
+              }
             }
-            break;
+
+            // Fully mitigated when price closes below the bottom without returning
+            if (c.close <= fvg.bottom) {
+              mitigated = true;
+              mitigationPercent = 100;
+              mitigationTime = c.time;
+              if (settings.detectIFVG) {
+                isInverse = true;
+              }
+              break;
+            }
           }
         } else {
+          // Track partial mitigation
           if (c.high > fvg.bottom) {
             highestHighInGap = Math.max(highestHighInGap, c.high);
             mitigationPercent = Math.max(0, Math.min(100,
               (highestHighInGap - fvg.bottom) / (fvg.top - fvg.bottom) * 100
             ));
           }
-          // Fully mitigated when price closes above the top
-          if (c.close >= fvg.top) {
-            mitigated = true;
-            mitigationPercent = 100;
-            mitigationTime = c.time;
-            // IFVG: former resistance becomes support
-            if (settings.detectIFVG) {
-              isInverse = true;
+
+          // Check if wick went above the gap
+          if (c.high > fvg.top && !swept && !mitigated) {
+            // Look ahead for confirmation candles
+            let closeBackInside = false;
+            for (let k = j + 1; k <= Math.min(j + confirmationWindow, candles.length - 1); k++) {
+              if (candles[k].close <= fvg.top) {
+                swept = true;
+                sweepTime = c.time;
+                sweepPrice = c.high;
+                sweepIndex = j;
+                closeBackInside = true;
+                break;
+              }
             }
-            break;
+
+            // Fully mitigated when price closes above the top without returning
+            if (c.close >= fvg.top) {
+              mitigated = true;
+              mitigationPercent = 100;
+              mitigationTime = c.time;
+              if (settings.detectIFVG) {
+                isInverse = true;
+              }
+              break;
+            }
           }
         }
       }
@@ -158,6 +201,10 @@ export function useFVGDetection({ candles, settings }: UseFVGDetectionOptions): 
         mitigationTime,
         age,
         isInverse,
+        swept,
+        sweepTime,
+        sweepPrice,
+        sweepIndex,
       });
     }
 

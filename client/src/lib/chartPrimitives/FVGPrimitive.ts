@@ -150,6 +150,17 @@ class FVGRenderer implements IPrimitivePaneRenderer {
           ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
           ctx.fillText(label, rectX + 2 + padding, rectY + 2 + textHeight);
         }
+
+        // Sweep marker ⚡ (purple) when the gap was wicked through but closed back inside
+        if (fvg.swept && fvg.sweepTime) {
+          const xSweep = timeScale.timeToCoordinate(fvg.sweepTime as Time);
+          if (xSweep !== null) {
+            ctx.fillStyle = '#a855f7'; // purple
+            ctx.font = '13px sans-serif';
+            const sweepY = fvg.type === 'bullish' ? yBottom + 14 : yTop - 6;
+            ctx.fillText('⚡', xSweep - 6, sweepY);
+          }
+        }
       }
     });
   }

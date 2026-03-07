@@ -142,6 +142,10 @@ export function useOrderBlockDetection({
           mitigated: false,
           mitigationPercent: 0,
           mitigationTime: undefined,
+          swept: false,
+          sweepTime: undefined,
+          sweepPrice: undefined,
+          sweepIndex: undefined,
           hasFVGConfluence: false,
           confluenceFVGId: undefined,
           volume: current.volume,
@@ -171,6 +175,10 @@ export function useOrderBlockDetection({
           mitigated: false,
           mitigationPercent: 0,
           mitigationTime: undefined,
+          swept: false,
+          sweepTime: undefined,
+          sweepPrice: undefined,
+          sweepIndex: undefined,
           hasFVGConfluence: false,
           confluenceFVGId: undefined,
           volume: current.volume,
@@ -179,9 +187,10 @@ export function useOrderBlockDetection({
       }
     }
 
-    // Phase 2: mitigation tracking, age, and confluence
+    // Phase 2: sweep detection, mitigation tracking, age, and confluence
     const totalCandles = candles.length;
     const result: OrderBlock[] = [];
+    const confirmationWindow = 3;
 
     for (const ob of raw) {
       const startIdx = candles.findIndex(c => c.time === ob.time);
@@ -193,33 +202,73 @@ export function useOrderBlockDetection({
       let mitigated = false;
       let mitigationPercent = 0;
       let mitigationTime: number | undefined;
+      let swept = false;
+      let sweepTime: number | undefined;
+      let sweepPrice: number | undefined;
+      let sweepIndex: number | undefined;
 
       for (let j = startIdx + 1; j < candles.length; j++) {
         const c = candles[j];
 
         if (ob.type === 'bullish') {
-          // Only mitigated if price dips into the zone (low must be within zone bounds)
-          if (c.low <= ob.top && c.low >= ob.bottom) {
+          // Check if wick went below the zone
+          if (c.low < ob.bottom && !swept && !mitigated) {
+            // Look ahead for confirmation candles
+            let closeBackInside = false;
+            for (let k = j + 1; k <= Math.min(j + confirmationWindow, candles.length - 1); k++) {
+              if (candles[k].close >= ob.bottom) {
+                swept = true;
+                sweepTime = c.time;
+                sweepPrice = c.low;
+                sweepIndex = j;
+                closeBackInside = true;
+                break;
+              }
+            }
+
+            // If no close back inside, mark as mitigated
+            if (c.close < ob.bottom) {
+              mitigated = true;
+              mitigationPercent = 100;
+              mitigationTime = c.time;
+              break;
+            }
+          }
+
+          // Track partial mitigation (price entering the zone)
+          if (c.low <= ob.top && c.low >= ob.bottom && !mitigated) {
             const penetration = (ob.top - c.low) / (ob.top - ob.bottom);
             mitigationPercent = Math.min(100, Math.max(mitigationPercent, penetration * 100));
           }
-          if (c.close < ob.bottom) {
-            mitigated = true;
-            mitigationPercent = 100;
-            mitigationTime = c.time;
-            break;
-          }
         } else {
-          // Only mitigated if price rises into the zone (high must be within zone bounds)
-          if (c.high >= ob.bottom && c.high <= ob.top) {
+          // Check if wick went above the zone
+          if (c.high > ob.top && !swept && !mitigated) {
+            // Look ahead for confirmation candles
+            let closeBackInside = false;
+            for (let k = j + 1; k <= Math.min(j + confirmationWindow, candles.length - 1); k++) {
+              if (candles[k].close <= ob.top) {
+                swept = true;
+                sweepTime = c.time;
+                sweepPrice = c.high;
+                sweepIndex = j;
+                closeBackInside = true;
+                break;
+              }
+            }
+
+            // If no close back inside, mark as mitigated
+            if (c.close > ob.top) {
+              mitigated = true;
+              mitigationPercent = 100;
+              mitigationTime = c.time;
+              break;
+            }
+          }
+
+          // Track partial mitigation (price entering the zone)
+          if (c.high >= ob.bottom && c.high <= ob.top && !mitigated) {
             const penetration = (c.high - ob.bottom) / (ob.top - ob.bottom);
             mitigationPercent = Math.min(100, Math.max(mitigationPercent, penetration * 100));
-          }
-          if (c.close > ob.top) {
-            mitigated = true;
-            mitigationPercent = 100;
-            mitigationTime = c.time;
-            break;
           }
         }
       }
@@ -245,6 +294,10 @@ export function useOrderBlockDetection({
         mitigated,
         mitigationPercent,
         mitigationTime,
+        swept,
+        sweepTime,
+        sweepPrice,
+        sweepIndex,
         hasFVGConfluence,
         confluenceFVGId,
       });

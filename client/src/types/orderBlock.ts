@@ -29,6 +29,12 @@ export interface OrderBlock {
   mitigationPercent: number; // How much was filled (0-100)
   mitigationTime?: number;  // When it was mitigated
 
+  // Sweep tracking (wick-through without close-through)
+  swept?: boolean;          // Was the zone wicked through but closed back inside?
+  sweepTime?: number;       // Timestamp of the sweep candle
+  sweepPrice?: number;      // Wick extreme that swept through the zone
+  sweepIndex?: number;      // Candle index of the sweep
+
   // Confluence
   hasFVGConfluence: boolean; // Overlaps with an FVG?
   confluenceFVGId?: string;  // ID of overlapping FVG
