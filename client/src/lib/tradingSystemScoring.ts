@@ -228,7 +228,7 @@ export interface ScoringInput {
   /** SMC Fair Value Gaps for Smart Money scoring */
   fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish' }>;
   /** SMC Order Blocks for Smart Money scoring */
-  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean }>;
+  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean; breaker?: boolean; breakerType?: 'bullish' | 'bearish'; conversionTime?: number; conversionIndex?: number; conversionPrice?: number }>;
   /** Liquidity zones for Smart Money scoring */
   liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean; sweepIndex?: number; sweptIndex?: number }>;
   /** Current timeframe for dynamic lookback calculation */
@@ -678,7 +678,43 @@ function scoreOrderBlockProximity(currentPrice: number, previousPrice: number, o
 }
 
 /**
- * Score liquidity sweep proximity with time decay.
+ * Score breaker block proximity with distance scaling.
+ * Breakers are failed OBs that flipped polarity (support→resistance or vice versa).
+ * Returns +100 for bullish breaker proximity, -100 for bearish, scaled by distance.
+ */
+function scoreBreakerBlockProximity(
+  price: number,
+  orderBlocks?: Array<{
+    high: number;
+    low: number;
+    breaker?: boolean;
+    breakerType?: 'bullish' | 'bearish';
+    mitigated?: boolean;
+  }>
+): number {
+  if (!orderBlocks || orderBlocks.length === 0) return 0;
+
+  // Only consider active (unmitigated) breakers
+  const breakers = orderBlocks.filter(ob =>
+    ob.breaker === true &&
+    ob.mitigated !== true
+  );
+
+  if (breakers.length === 0) return 0;
+
+  // Score each breaker by proximity (3% max distance, same as regular OBs)
+  const scores = breakers.map(breaker => {
+    const proximityScore = scoreZoneProximity(price, breaker.high, breaker.low, 3.0);
+    return breaker.breakerType === 'bullish' ? proximityScore : -proximityScore;
+  });
+
+  // Return score with highest absolute value
+  return scores.reduce((best, curr) =>
+    Math.abs(curr) > Math.abs(best) ? curr : best
+  , 0);
+}
+
+/**
  * Returns 0-100 based on distance and recency.
  * Checks both explicit liquidityZones and structure breaks where swept === true.
  */
@@ -1070,6 +1106,7 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   // Distance-scaled proximity scores (-100 to +100, signed by zone type)
   const fvgScore = scoreFVGProximity(currentPrice, input.previousClose, fvgs);
   const obScore = scoreOrderBlockProximity(currentPrice, input.previousClose, orderBlocks);
+  const breakerScore = scoreBreakerBlockProximity(currentPrice, orderBlocks);
 
   // Enhanced liquidity sweep scoring
   // If we have full liquidity zone data with sweep details, use enhanced validation logic
@@ -1220,6 +1257,15 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       name: 'SMC Structure Shift',
       score: structureShiftScore,
       description: 'Direction of active MSS (invalidates when price breaks prior pivot or opposite MSS forms).',
+    },
+    {
+      id: 'breakerBlockProximity',
+      name: 'Breaker Block Proximity',
+      score: breakerScore,
+      value: breakerScore !== 0
+        ? `${Math.abs(breakerScore).toFixed(0)}/100 (${breakerScore > 0 ? 'Bullish' : 'Bearish'})`
+        : undefined,
+      description: 'Proximity to converted breaker blocks (failed OBs that flipped polarity).',
     },
     {
       id: 'fvgProximity',

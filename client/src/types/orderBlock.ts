@@ -35,6 +35,13 @@ export interface OrderBlock {
   sweepPrice?: number;      // Wick extreme that swept through the zone
   sweepIndex?: number;      // Candle index of the sweep
 
+  // Breaker block tracking (OB invalidated by full body pass-through that flipped polarity)
+  breaker?: boolean;                   // Is this a breaker block?
+  breakerType?: 'bullish' | 'bearish'; // Flipped polarity
+  conversionTime?: number;             // Timestamp when it converted
+  conversionIndex?: number;            // Candle index of conversion
+  conversionPrice?: number;            // Close price that broke through
+
   // Confluence
   hasFVGConfluence: boolean; // Overlaps with an FVG?
   confluenceFVGId?: string;  // ID of overlapping FVG
