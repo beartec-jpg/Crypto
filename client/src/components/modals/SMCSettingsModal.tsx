@@ -697,6 +697,9 @@ export function SMCSettingsModal({
                 displayValue={`${liquiditySettings.confirmationCandles}`}
                 onChange={(v) => updateLiquidity('confirmationCandles', v)}
               />
+              <p className="text-xs text-slate-400 mt-1">
+                Number of candles required to confirm liquidity sweeps and breaker block conversions.
+              </p>
             </div>
 
             <div className="border-t border-slate-700 pt-2">

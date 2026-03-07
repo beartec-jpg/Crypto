@@ -187,7 +187,7 @@ export function useOrderBlockDetection({
       }
     }
 
-    // Phase 2: sweep detection, mitigation tracking, age, and confluence
+    // Phase 2: sweep detection, breaker conversion, mitigation tracking, age, and confluence
     const totalCandles = candles.length;
     const result: OrderBlock[] = [];
     const confirmationWindow = 3;
@@ -206,67 +206,79 @@ export function useOrderBlockDetection({
       let sweepTime: number | undefined;
       let sweepPrice: number | undefined;
       let sweepIndex: number | undefined;
+      let breaker = false;
+      let breakerType: 'bullish' | 'bearish' | undefined;
+      let conversionTime: number | undefined;
+      let conversionIndex: number | undefined;
+      let conversionPrice: number | undefined;
 
       for (let j = startIdx + 1; j < candles.length; j++) {
         const c = candles[j];
 
-        if (ob.type === 'bullish') {
-          // Check if wick went below the zone
-          if (c.low < ob.bottom && !swept && !mitigated) {
-            // Look ahead for confirmation candles
-            let closeBackInside = false;
-            for (let k = j + 1; k <= Math.min(j + confirmationWindow, candles.length - 1); k++) {
-              if (candles[k].close >= ob.bottom) {
-                swept = true;
-                sweepTime = c.time;
-                sweepPrice = c.low;
-                sweepIndex = j;
-                closeBackInside = true;
+        // Check for body pass-through (single candle body completely traverses the OB zone)
+        const passedThrough =
+          (ob.type === 'bullish' && c.open > ob.bottom && c.close < ob.bottom) ||
+          (ob.type === 'bearish' && c.open < ob.top && c.close > ob.top);
+
+        if (passedThrough && !swept && !breaker && !mitigated) {
+          let closedBackInside = false;
+
+          // Check next N candles for confirmation
+          for (let k = j + 1; k <= Math.min(j + confirmationWindow, candles.length - 1); k++) {
+            const confirmCandle = candles[k];
+
+            if (ob.type === 'bullish') {
+              if (confirmCandle.close >= ob.bottom) {
+                closedBackInside = true;
+                break;
+              }
+            } else {
+              if (confirmCandle.close <= ob.top) {
+                closedBackInside = true;
                 break;
               }
             }
-
-            // If no close back inside, mark as mitigated
-            if (c.close < ob.bottom) {
-              mitigated = true;
-              mitigationPercent = 100;
-              mitigationTime = c.time;
-              break;
-            }
           }
 
-          // Track partial mitigation (price entering the zone)
-          if (c.low <= ob.top && c.low >= ob.bottom && !mitigated) {
+          if (closedBackInside) {
+            // SWEEP: Price came back inside, OB stays valid
+            swept = true;
+            sweepTime = c.time;
+            sweepPrice = ob.type === 'bullish' ? c.low : c.high;
+            sweepIndex = j;
+          } else {
+            // BREAKER: All confirmation candles stayed on opposite side, OB converts
+            breaker = true;
+            breakerType = ob.type === 'bullish' ? 'bearish' : 'bullish';
+            conversionTime = c.time;
+            conversionIndex = j;
+            conversionPrice = c.close;
+            break;
+          }
+        }
+
+        // Check breaker mitigation (price closes through the breaker zone again)
+        if (breaker && !mitigated) {
+          if (breakerType === 'bullish' && c.close < ob.bottom) {
+            mitigated = true;
+            mitigationPercent = 100;
+            mitigationTime = c.time;
+            break;
+          }
+          if (breakerType === 'bearish' && c.close > ob.top) {
+            mitigated = true;
+            mitigationPercent = 100;
+            mitigationTime = c.time;
+            break;
+          }
+        }
+
+        // Track partial mitigation for non-breaker OBs
+        if (!mitigated && !breaker) {
+          if (ob.type === 'bullish' && c.low <= ob.top && c.low >= ob.bottom) {
             const penetration = (ob.top - c.low) / (ob.top - ob.bottom);
             mitigationPercent = Math.min(100, Math.max(mitigationPercent, penetration * 100));
-          }
-        } else {
-          // Check if wick went above the zone
-          if (c.high > ob.top && !swept && !mitigated) {
-            // Look ahead for confirmation candles
-            let closeBackInside = false;
-            for (let k = j + 1; k <= Math.min(j + confirmationWindow, candles.length - 1); k++) {
-              if (candles[k].close <= ob.top) {
-                swept = true;
-                sweepTime = c.time;
-                sweepPrice = c.high;
-                sweepIndex = j;
-                closeBackInside = true;
-                break;
-              }
-            }
-
-            // If no close back inside, mark as mitigated
-            if (c.close > ob.top) {
-              mitigated = true;
-              mitigationPercent = 100;
-              mitigationTime = c.time;
-              break;
-            }
-          }
-
-          // Track partial mitigation (price entering the zone)
-          if (c.high >= ob.bottom && c.high <= ob.top && !mitigated) {
+          } else if (ob.type === 'bearish' && c.high >= ob.bottom && c.high <= ob.top) {
             const penetration = (c.high - ob.bottom) / (ob.top - ob.bottom);
             mitigationPercent = Math.min(100, Math.max(mitigationPercent, penetration * 100));
           }
@@ -298,6 +310,11 @@ export function useOrderBlockDetection({
         sweepTime,
         sweepPrice,
         sweepIndex,
+        breaker,
+        breakerType,
+        conversionTime,
+        conversionIndex,
+        conversionPrice,
         hasFVGConfluence,
         confluenceFVGId,
       });
