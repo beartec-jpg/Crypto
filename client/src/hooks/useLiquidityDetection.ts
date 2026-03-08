@@ -144,6 +144,10 @@ function groupByPrice(
  *            `confirmationWindow` candles closes back below = confirmed sweep.
  * For lows:  candle wicks below the level, then at least one of the next
  *            `confirmationWindow` candles closes back above = confirmed sweep.
+ *
+ * @param maxCandleIndex - Optional upper bound for scanning (inclusive). Defaults to
+ *   the last candle in the array. Pass a specific index to prevent look-ahead bias
+ *   when evaluating historical/replay candle positions.
  */
 function detectSweep(
   candles: Candle[],
@@ -151,12 +155,18 @@ function detectSweep(
   afterIndex: number,
   type: 'high' | 'low',
   confirmationWindow: number = 3,
+  maxCandleIndex?: number,
 ): { swept: boolean; sweepPending?: boolean; sweepTime?: number; sweepPrice?: number; sweepIndex?: number; sweptIndex?: number } {
+  // Clamp scanUpTo to valid array bounds.  The Math.min guards against a caller
+  // passing a maxCandleIndex that exceeds the actual array length (e.g., a stale
+  // index from a previous render).  Without it an out-of-bounds read would occur.
+  const scanUpTo = Math.min(maxCandleIndex ?? candles.length - 1, candles.length - 1);
+
   // Track the most recent unconfirmed wick so we can report a pending state.
   let lastWickIndex = -1;
   let lastWickPrice: number | undefined;
 
-  for (let i = afterIndex + 1; i < candles.length; i++) {
+  for (let i = afterIndex + 1; i <= scanUpTo; i++) {
     const c = candles[i];
 
     // Stage 1: check if this candle wicks through the level
@@ -167,8 +177,8 @@ function detectSweep(
     if (!wickedThrough) continue;
 
     // Stage 2: look for at least one confirmation close on the correct side
-    //          within the next `confirmationWindow` candles
-    for (let j = i + 1; j <= Math.min(i + confirmationWindow, candles.length - 1); j++) {
+    //          within the next `confirmationWindow` candles, but never beyond scanUpTo
+    for (let j = i + 1; j <= Math.min(i + confirmationWindow, scanUpTo); j++) {
       const confirmCandle = candles[j];
 
       if (type === 'high' && confirmCandle.close < level) {
@@ -201,7 +211,7 @@ function detectSweep(
 
   // Stage 1 pending: a wick occurred within the last `confirmationWindow` candles
   // but the close confirmation has not arrived yet.
-  if (lastWickIndex >= 0 && candles.length - 1 - lastWickIndex < confirmationWindow) {
+  if (lastWickIndex >= 0 && scanUpTo - lastWickIndex < confirmationWindow) {
     return {
       swept: false,
       sweepPending: true,
@@ -284,6 +294,9 @@ export function useLiquidityDetection({
     const lookback = 3;
     const { highs, lows } = detectSwings(candles, lookback);
     const zones: LiquidityZone[] = [];
+    // Pass the index of the last available candle so detectSweep never looks
+    // beyond the current position (prevents look-ahead bias in replay/backtest).
+    const currentCandleIndex = candles.length - 1;
 
     if (settings.showHighs) {
       // Keep History should preserve prior swept levels instead of excluding them.
@@ -294,7 +307,7 @@ export function useLiquidityDetection({
       for (const grp of highGroups) {
         if (grp.touchTimes.length < settings.minTouches) continue;
 
-        const sweep = detectSweep(candles, grp.price, grp.lastIndex, 'high', confirmationWindow);
+        const sweep = detectSweep(candles, grp.price, grp.lastIndex, 'high', confirmationWindow, currentCandleIndex);
         const invalidation = detectInvalidation(candles, grp.price, grp.lastIndex, 'high', settings.invalidationBuffer);
 
         // Only suppress reuse when history is hidden.
@@ -327,7 +340,7 @@ export function useLiquidityDetection({
       for (const grp of lowGroups) {
         if (grp.touchTimes.length < settings.minTouches) continue;
 
-        const sweep = detectSweep(candles, grp.price, grp.lastIndex, 'low', confirmationWindow);
+        const sweep = detectSweep(candles, grp.price, grp.lastIndex, 'low', confirmationWindow, currentCandleIndex);
         const invalidation = detectInvalidation(candles, grp.price, grp.lastIndex, 'low', settings.invalidationBuffer);
 
         // Only suppress reuse when history is hidden.

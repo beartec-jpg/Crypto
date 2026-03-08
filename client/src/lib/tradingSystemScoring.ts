@@ -737,6 +737,10 @@ function scoreLiquiditySweepProximity(
       // Calculate age
       const candlesSinceSweep = currentCandleIndex - lz.sweptIndex;
 
+      // Skip sweeps that haven't happened yet from the current candle's perspective
+      // (prevents look-ahead bias in replay/backtest scoring).
+      if (candlesSinceSweep < 0) continue;
+
       // Max lifetime: 10 candles
       if (candlesSinceSweep > 10) continue;
 
@@ -766,6 +770,10 @@ function scoreLiquiditySweepProximity(
       if (!sb.swept || sb.breakIndex === undefined || sb.brokenLevel === undefined) continue;
 
       const candlesSinceSweep = currentCandleIndex - sb.breakIndex;
+
+      // Skip sweeps that haven't happened yet from the current candle's perspective
+      // (prevents look-ahead bias in replay/backtest scoring).
+      if (candlesSinceSweep < 0) continue;
 
       // Max lifetime: 10 candles
       if (candlesSinceSweep > 10) continue;

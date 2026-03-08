@@ -179,6 +179,131 @@ describe('useLiquidityDetection', () => {
     expect(pendingZone?.sweepPrice).toBe(111);
   });
 
+  it('no look-ahead bias: sweep is pending when candles stop before confirmation', () => {
+    // Equal lows at ~95; wick candle at index 17, confirmation would be at index 18
+    // but we supply the candle array truncated just after the wick — no confirmation yet.
+    const allCandles: Candle[] = [
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1000 + i * 60,
+        open: 100, high: 101, low: 99, close: 100, volume: 1000,
+      })),
+      // Swing low 1 at 95
+      { time: 1300, open: 100, high: 101, low: 95, close: 100, volume: 1000 },
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1360 + i * 60,
+        open: 100, high: 102, low: 99, close: 100, volume: 1000,
+      })),
+      // Swing low 2 at 95.05 (within threshold)
+      { time: 1660, open: 100, high: 101, low: 95.05, close: 100, volume: 1000 },
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1720 + i * 60,
+        open: 100, high: 102, low: 99, close: 100, volume: 1000,
+      })),
+      // Wick candle (index 17): wicks below the level
+      { time: 2020, open: 96, high: 97, low: 94, close: 95.5, volume: 2000 },
+      // Confirmation candle (index 18): closes back above level
+      { time: 2080, open: 95.5, high: 99, low: 95, close: 98, volume: 2000 },
+      // Extra candles beyond confirmation
+      ...Array.from({ length: 3 }, (_, i) => ({
+        time: 2140 + i * 60,
+        open: 98, high: 100, low: 97, close: 98, volume: 1000,
+      })),
+    ];
+
+    // When candles end just at the wick (slice end is exclusive: indices 0-17, last = wick at 17)
+    const candlesAtWick = allCandles.slice(0, 18);
+    const { result: resultAtWick } = renderHook(() =>
+      useLiquidityDetection({
+        candles: candlesAtWick,
+        settings: {
+          ...DEFAULT_LIQUIDITY_SETTINGS,
+          equalThreshold: 0.15,
+          minTouches: 2,
+          showSwept: true,
+          showHighs: false,
+          showLows: true,
+        },
+      }),
+    );
+    const lowZonesAtWick = resultAtWick.current.filter(z => z.type === 'low');
+    const pendingZone = lowZonesAtWick.find(z => z.sweepPending === true);
+    expect(pendingZone).toBeDefined();
+    expect(pendingZone?.swept).toBe(false);
+
+    // When candles include the confirmation (slice end exclusive: indices 0-18, last = confirmation at 18)
+    const candlesAtConfirmation = allCandles.slice(0, 19);
+    const { result: resultAtConfirmation } = renderHook(() =>
+      useLiquidityDetection({
+        candles: candlesAtConfirmation,
+        settings: {
+          ...DEFAULT_LIQUIDITY_SETTINGS,
+          equalThreshold: 0.15,
+          minTouches: 2,
+          showSwept: true,
+          showHighs: false,
+          showLows: true,
+        },
+      }),
+    );
+    const lowZonesAtConfirmation = resultAtConfirmation.current.filter(z => z.type === 'low');
+    const sweptZone = lowZonesAtConfirmation.find(z => z.swept === true);
+    expect(sweptZone).toBeDefined();
+    expect(sweptZone?.sweptIndex).toBe(18);
+    expect(sweptZone?.sweepPending).toBeUndefined();
+  });
+
+  it('confirmation window timeout: sweep not confirmed when confirmation candle is too late', () => {
+    // Equal lows at ~95; wick candle at index 17, no close back above within 3 candles,
+    // then price recovers at index 21 (4 candles after wick — outside confirmation window).
+    // Candles 18-20 stay above the level (no new wicks) so the only wick candidate is index 17.
+    const candles: Candle[] = [
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1000 + i * 60,
+        open: 100, high: 101, low: 99, close: 100, volume: 1000,
+      })),
+      // Swing low 1 at 95
+      { time: 1300, open: 100, high: 101, low: 95, close: 100, volume: 1000 },
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1360 + i * 60,
+        open: 100, high: 102, low: 99, close: 100, volume: 1000,
+      })),
+      // Swing low 2 at 95.05 (within threshold)
+      { time: 1660, open: 100, high: 101, low: 95.05, close: 100, volume: 1000 },
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1720 + i * 60,
+        open: 100, high: 102, low: 99, close: 100, volume: 1000,
+      })),
+      // Wick candle (index 17): wicks below the level, closes below level (no same-bar confirmation)
+      { time: 2020, open: 96, high: 96, low: 94, close: 94.5, volume: 2000 },
+      // Candles 18-20: lows ABOVE the level (no new wicks), closes below level (no confirmation)
+      { time: 2080, open: 94.5, high: 96, low: 95.1, close: 94.8, volume: 1000 },
+      { time: 2140, open: 94.8, high: 96, low: 95.1, close: 94.9, volume: 1000 },
+      { time: 2200, open: 94.9, high: 96, low: 95.1, close: 94.7, volume: 1000 },
+      // Candle 21: recovers above level but is 4 candles after wick (outside window=3)
+      { time: 2260, open: 94.7, high: 99, low: 95.1, close: 98, volume: 2000 },
+    ];
+
+    const { result } = renderHook(() =>
+      useLiquidityDetection({
+        candles,
+        settings: {
+          ...DEFAULT_LIQUIDITY_SETTINGS,
+          equalThreshold: 0.15,
+          minTouches: 2,
+          confirmationCandles: 3,
+          showSwept: true,
+          showHighs: false,
+          showLows: true,
+        },
+      }),
+    );
+
+    const lowZones = result.current.filter(z => z.type === 'low');
+    // No sweep should be confirmed (confirmation candle is outside the window)
+    const sweptZone = lowZones.find(z => z.swept === true);
+    expect(sweptZone).toBeUndefined();
+  });
+
   it('does NOT group equal highs when price closed above the level between touches', () => {
     // Two swing highs at ~100, but a candle closes at 105 (above level) between them
     const candles: Candle[] = [
