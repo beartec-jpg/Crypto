@@ -130,93 +130,123 @@ function groupByPrice(
 }
 
 /**
+ * Internal state for a rolling sweep window.
+ */
+interface SweepWindow {
+  firstBreakIndex: number;   // Candle index where sweep started
+  deepestBreakIndex: number; // Candle index with the deepest penetration
+  deepestPrice: number;      // Lowest low (low sweep) or highest high (high sweep)
+  candlesInWindow: number;   // Rolling counter starting at 1 on first break
+}
+
+/**
  * Check whether a liquidity level has been swept after the last recorded touch.
  *
- * Two-stage confirmation:
- *   Stage 1 – Wick through: a candle's high/low penetrates the level.
- *             Sets sweepPending=true; sweepIndex marks the wick candle.
- *   Stage 2 – Close confirmation: a subsequent candle closes back on the
- *             original side within `confirmationWindow` candles.
- *             Sets swept=true; sweptIndex marks the confirmation candle so
- *             that the scoring decay starts at ±100 on that candle.
+ * Rolling-window confirmation (replaces the per-wick inner loop):
+ *   A sweep is ONE continuous event from the first candle that breaks the level
+ *   until the event either confirms or expires.
  *
- * For highs: candle wicks above the level, then at least one of the next
- *            `confirmationWindow` candles closes back below = confirmed sweep.
- * For lows:  candle wicks below the level, then at least one of the next
- *            `confirmationWindow` candles closes back above = confirmed sweep.
+ *   Start  – First candle that penetrates the level (wick through).
+ *   Update – Each subsequent candle within the window:
+ *              • If it breaks deeper → move the ⚡ marker to that candle.
+ *              • If it closes on the correct side → CONFIRMED (swept = true).
+ *              • Always increment the window counter.
+ *   End    – Confirmation (success) OR the window counter exceeds maxWindowCandles
+ *            without a confirming close on that same candle (failure → reset, allow
+ *            new window).  Concretely: the first break is candle 1/maxWindowCandles;
+ *            the (maxWindowCandles+1)th candle is the last chance to confirm before
+ *            the window expires.
  *
- * @param maxCandleIndex - Optional upper bound for scanning (inclusive). Defaults to
- *   the last candle in the array. Pass a specific index to prevent look-ahead bias
- *   when evaluating historical/replay candle positions.
+ * For highs: wick above the level; any candle within the window that closes
+ *            below = confirmed sweep.
+ * For lows:  wick below the level; any candle within the window that closes
+ *            above = confirmed sweep.
+ *
+ * @param maxWindowCandles - How many candles (after the first break) may elapse
+ *   before the window expires. Default 3.
+ * @param currentCandleIndex - Optional upper bound for scanning (inclusive).
+ *   Defaults to the last candle in the array. Pass a specific index to prevent
+ *   look-ahead bias when evaluating historical/replay candle positions.
  */
-function detectSweep(
+function detectSweepRolling(
   candles: Candle[],
   level: number,
   afterIndex: number,
   type: 'high' | 'low',
-  confirmationWindow: number = 3,
-  maxCandleIndex?: number,
+  maxWindowCandles: number = 3,
+  currentCandleIndex?: number,
 ): { swept: boolean; sweepPending?: boolean; sweepTime?: number; sweepPrice?: number; sweepIndex?: number; sweptIndex?: number } {
   // Clamp scanUpTo to valid array bounds.  The Math.min guards against a caller
-  // passing a maxCandleIndex that exceeds the actual array length (e.g., a stale
-  // index from a previous render).  Without it an out-of-bounds read would occur.
-  const scanUpTo = Math.min(maxCandleIndex ?? candles.length - 1, candles.length - 1);
+  // passing a currentCandleIndex that exceeds the actual array length.
+  const scanUpTo = Math.min(currentCandleIndex ?? candles.length - 1, candles.length - 1);
 
-  // Track the most recent unconfirmed wick so we can report a pending state.
-  let lastWickIndex = -1;
-  let lastWickPrice: number | undefined;
+  let activeWindow: SweepWindow | null = null;
 
   for (let i = afterIndex + 1; i <= scanUpTo; i++) {
-    const c = candles[i];
+    const candle = candles[i];
 
-    // Stage 1: check if this candle wicks through the level
-    const wickedThrough =
-      (type === 'high' && c.high > level) ||
-      (type === 'low' && c.low < level);
+    // Check whether this candle penetrates the level (wick or full body).
+    const penetrated =
+      (type === 'high' && candle.high > level) ||
+      (type === 'low' && candle.low < level);
 
-    if (!wickedThrough) continue;
-
-    // Stage 2: look for at least one confirmation close on the correct side
-    //          within the next `confirmationWindow` candles, but never beyond scanUpTo
-    for (let j = i + 1; j <= Math.min(i + confirmationWindow, scanUpTo); j++) {
-      const confirmCandle = candles[j];
-
-      if (type === 'high' && confirmCandle.close < level) {
-        return {
-          swept: true,
-          // sweepTime anchors the visual marker to the confirmation candle.
-          sweepTime: confirmCandle.time,
-          sweepPrice: c.high,
-          sweepIndex: i,       // wick candle — kept for wick-size calculations
-          sweptIndex: j,       // confirmation candle — used for scoring decay (starts at ±100)
+    // ── No active window ────────────────────────────────────────────────────
+    if (!activeWindow) {
+      if (penetrated) {
+        activeWindow = {
+          firstBreakIndex: i,
+          deepestBreakIndex: i,
+          deepestPrice: type === 'high' ? candle.high : candle.low,
+          candlesInWindow: 1,
         };
       }
+      continue; // First-break candle is always "pending"; check confirmation in subsequent candles within the window.
+    }
 
-      if (type === 'low' && confirmCandle.close > level) {
-        return {
-          swept: true,
-          // sweepTime anchors the visual marker to the confirmation candle.
-          sweepTime: confirmCandle.time,
-          sweepPrice: c.low,
-          sweepIndex: i,       // wick candle — kept for wick-size calculations
-          sweptIndex: j,       // confirmation candle — used for scoring decay (starts at ±100)
-        };
+    // ── Active window ────────────────────────────────────────────────────────
+    activeWindow.candlesInWindow++;
+
+    // Check for confirmation: a close that returns to the correct side.
+    const confirmed =
+      (type === 'high' && candle.close < level) ||
+      (type === 'low' && candle.close > level);
+
+    if (confirmed) {
+      return {
+        swept: true,
+        // sweepTime anchors the visual ⚡ marker to the deepest penetration candle.
+        sweepTime: candles[activeWindow.deepestBreakIndex].time,
+        sweepPrice: activeWindow.deepestPrice,
+        sweepIndex: activeWindow.deepestBreakIndex, // deepest penetration — for wick-size / visual marker
+        sweptIndex: i,                              // confirmation candle — scoring decay starts here at ±100
+      };
+    }
+
+    // If this candle pushes deeper, move the ⚡ marker.
+    if (penetrated) {
+      const isDeeper =
+        (type === 'high' && candle.high > activeWindow.deepestPrice) ||
+        (type === 'low' && candle.low < activeWindow.deepestPrice);
+
+      if (isDeeper) {
+        activeWindow.deepestBreakIndex = i;
+        activeWindow.deepestPrice = type === 'high' ? candle.high : candle.low;
       }
     }
 
-    // No confirmation within the window for this wick — record it and keep scanning.
-    lastWickIndex = i;
-    lastWickPrice = type === 'high' ? c.high : c.low;
+    // Expire the window when it has run its course without confirming.
+    if (activeWindow.candlesInWindow > maxWindowCandles) {
+      activeWindow = null;
+    }
   }
 
-  // Stage 1 pending: a wick occurred within the last `confirmationWindow` candles
-  // but the close confirmation has not arrived yet.
-  if (lastWickIndex >= 0 && scanUpTo - lastWickIndex < confirmationWindow) {
+  // Loop ended with a live window → sweep is still pending.
+  if (activeWindow) {
     return {
       swept: false,
       sweepPending: true,
-      sweepPrice: lastWickPrice,
-      sweepIndex: lastWickIndex,
+      sweepPrice: activeWindow.deepestPrice,
+      sweepIndex: activeWindow.deepestBreakIndex,
     };
   }
 
@@ -307,7 +337,7 @@ export function useLiquidityDetection({
       for (const grp of highGroups) {
         if (grp.touchTimes.length < settings.minTouches) continue;
 
-        const sweep = detectSweep(candles, grp.price, grp.lastIndex, 'high', confirmationWindow, currentCandleIndex);
+        const sweep = detectSweepRolling(candles, grp.price, grp.lastIndex, 'high', confirmationWindow, currentCandleIndex);
         const invalidation = detectInvalidation(candles, grp.price, grp.lastIndex, 'high', settings.invalidationBuffer);
 
         // Only suppress reuse when history is hidden.
@@ -340,7 +370,7 @@ export function useLiquidityDetection({
       for (const grp of lowGroups) {
         if (grp.touchTimes.length < settings.minTouches) continue;
 
-        const sweep = detectSweep(candles, grp.price, grp.lastIndex, 'low', confirmationWindow, currentCandleIndex);
+        const sweep = detectSweepRolling(candles, grp.price, grp.lastIndex, 'low', confirmationWindow, currentCandleIndex);
         const invalidation = detectInvalidation(candles, grp.price, grp.lastIndex, 'low', settings.invalidationBuffer);
 
         // Only suppress reuse when history is hidden.

@@ -125,8 +125,8 @@ describe('useLiquidityDetection', () => {
     const highZones = result.current.filter(z => z.type === 'high');
     const sweptZone = highZones.find(z => z.swept);
     expect(sweptZone).toBeDefined();
-    // sweepTime is the first confirmation candle after the wick
-    expect(sweptZone?.sweepTime).toBe(2080);
+    // sweepTime is the deepest penetration candle's time (wick candle = index 17, time 2020)
+    expect(sweptZone?.sweepTime).toBe(2020);
     // sweepPrice is the wick extreme of the wick candle
     expect(sweptZone?.sweepPrice).toBe(111);
     // sweepIndex is the wick candle (index 17); sweptIndex is the confirmation candle (index 18)
@@ -464,5 +464,282 @@ describe('useLiquidityDetection', () => {
     // Swept zones should be excluded
     const sweptZones = result.current.filter(z => z.swept);
     expect(sweptZones.length).toBe(0);
+  });
+
+  describe('Rolling Sweep Window', () => {
+    it('should confirm sweep with single break and immediate recovery', () => {
+      // Level at 95 (low sweep): wick below, then next candle closes above.
+      // candle indices (afterIndex = 0, level = 95):
+      //   0: afterIndex  (normal, high=102, low=98)
+      //   1: break to 94, close at 96  → window starts (1/3), pending
+      //   2: close at 98 (above 95)    → CONFIRMED, sweptIndex=2, sweepIndex=1
+      const candles: Candle[] = [
+        { time: 0,   open: 100, high: 102, low: 98, close: 100, volume: 1000 },
+        { time: 60,  open: 100, high: 100, low: 94, close: 96,  volume: 1000 },
+        { time: 120, open: 96,  high: 99,  low: 95, close: 98,  volume: 1000 },
+      ];
+
+      // Build a full candle set around level 95 so the hook finds a liquidity zone.
+      // We embed the above sweep sequence after a set of equal lows at 95.
+      const baseLow = 95;
+      const fullCandles: Candle[] = [
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1000 + i * 60,
+          open: 100, high: 101, low: 99, close: 100, volume: 1000,
+        })),
+        // Swing low 1 at 95
+        { time: 1300, open: 100, high: 101, low: baseLow, close: 100, volume: 1000 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1360 + i * 60,
+          open: 100, high: 102, low: 99, close: 100, volume: 1000,
+        })),
+        // Swing low 2 at 95.05 (within threshold)
+        { time: 1660, open: 100, high: 101, low: 95.05, close: 100, volume: 1000 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1720 + i * 60,
+          open: 100, high: 102, low: 99, close: 100, volume: 1000,
+        })),
+        // Wick candle: low=94 (breaks below 95), close=96 (above 95)
+        { time: 2020, open: 100, high: 100, low: 94, close: 96, volume: 1000 },
+        // Confirmation: close=98 above 95
+        { time: 2080, open: 96, high: 99, low: 95, close: 98, volume: 1000 },
+      ];
+
+      const { result } = renderHook(() =>
+        useLiquidityDetection({
+          candles: fullCandles,
+          settings: {
+            ...DEFAULT_LIQUIDITY_SETTINGS,
+            equalThreshold: 0.15,
+            minTouches: 2,
+            showSwept: true,
+            showHighs: false,
+            showLows: true,
+          },
+        }),
+      );
+
+      const lowZones = result.current.filter(z => z.type === 'low');
+      const sweptZone = lowZones.find(z => z.swept === true);
+      expect(sweptZone).toBeDefined();
+      // sweepTime is the deepest break candle's time (wick candle at time=2020)
+      expect(sweptZone?.sweepTime).toBe(2020);
+      expect(sweptZone?.sweepPrice).toBe(94);
+      // sweepIndex = wick candle index, sweptIndex = confirmation candle index
+      expect(sweptZone?.sweptIndex).toBeGreaterThan(sweptZone?.sweepIndex!);
+      expect(sweptZone?.sweepPending).toBeUndefined();
+    });
+
+    it('should track deepest penetration across multiple candles', () => {
+      // Level at 95 (low sweep): multiple breaks, each going deeper.
+      // Window candles: break@94, break@93, break@92, then confirm above 95.
+      // Lightning bolt (sweepIndex) must end up on the candle with low=92.
+      const fullCandles: Candle[] = [
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1000 + i * 60,
+          open: 100, high: 101, low: 99, close: 100, volume: 1000,
+        })),
+        // Swing low 1 at 95
+        { time: 1300, open: 100, high: 101, low: 95, close: 100, volume: 1000 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1360 + i * 60,
+          open: 100, high: 102, low: 99, close: 100, volume: 1000,
+        })),
+        // Swing low 2 at 95.05 (within threshold)
+        { time: 1660, open: 100, high: 101, low: 95.05, close: 100, volume: 1000 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1720 + i * 60,
+          open: 100, high: 102, low: 99, close: 100, volume: 1000,
+        })),
+        // Break 1 to 94 (window 1/3) — time=2020
+        { time: 2020, open: 100, high: 100, low: 94, close: 94, volume: 1000 },
+        // Break 2 deeper to 93 (window 2/3) — time=2080
+        { time: 2080, open: 94,  high: 95,  low: 93, close: 93, volume: 1000 },
+        // Break 3 deepest to 92 (window 3/3) — time=2140
+        { time: 2140, open: 93,  high: 94,  low: 92, close: 92, volume: 1000 },
+        // Confirmation: close above 95 — time=2200
+        { time: 2200, open: 92,  high: 98,  low: 91, close: 96, volume: 1000 },
+      ];
+
+      const { result } = renderHook(() =>
+        useLiquidityDetection({
+          candles: fullCandles,
+          settings: {
+            ...DEFAULT_LIQUIDITY_SETTINGS,
+            equalThreshold: 0.15,
+            minTouches: 2,
+            confirmationCandles: 3,
+            showSwept: true,
+            showHighs: false,
+            showLows: true,
+          },
+        }),
+      );
+
+      const lowZones = result.current.filter(z => z.type === 'low');
+      const sweptZone = lowZones.find(z => z.swept === true);
+      expect(sweptZone).toBeDefined();
+      // ⚡ must sit at the deepest break candle (time=2140, low=92)
+      expect(sweptZone?.sweepTime).toBe(2140);
+      expect(sweptZone?.sweepPrice).toBe(92);
+      expect(sweptZone?.sweepPending).toBeUndefined();
+    });
+
+    it('should fail when window expires without recovery (3-candle limit)', () => {
+      // Level at 95 (low sweep): breaks below on candle 1, stays below through
+      // candles 2, 3, and 4 — no recovery → sweep fails, no zone swept.
+      const fullCandles: Candle[] = [
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1000 + i * 60,
+          open: 100, high: 101, low: 99, close: 100, volume: 1000,
+        })),
+        // Swing low 1 at 95
+        { time: 1300, open: 100, high: 101, low: 95, close: 100, volume: 1000 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1360 + i * 60,
+          open: 100, high: 102, low: 99, close: 100, volume: 1000,
+        })),
+        // Swing low 2 at 95.05 (within threshold)
+        { time: 1660, open: 100, high: 101, low: 95.05, close: 100, volume: 1000 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1720 + i * 60,
+          open: 100, high: 102, low: 99, close: 100, volume: 1000,
+        })),
+        // Break (window 1/3)
+        { time: 2020, open: 100, high: 100, low: 94, close: 94, volume: 1000 },
+        // Still below (window 2/3)
+        { time: 2080, open: 94,  high: 95,  low: 93, close: 93, volume: 1000 },
+        // Still below (window 3/3)
+        { time: 2140, open: 93,  high: 94,  low: 92, close: 92, volume: 1000 },
+        // Still below (4th candle — window expires, no confirmation)
+        { time: 2200, open: 92,  high: 93,  low: 91, close: 91, volume: 1000 },
+      ];
+
+      const { result } = renderHook(() =>
+        useLiquidityDetection({
+          candles: fullCandles,
+          settings: {
+            ...DEFAULT_LIQUIDITY_SETTINGS,
+            equalThreshold: 0.15,
+            minTouches: 2,
+            confirmationCandles: 3,
+            showSwept: true,
+            showHighs: false,
+            showLows: true,
+          },
+        }),
+      );
+
+      const lowZones = result.current.filter(z => z.type === 'low');
+      const sweptZone = lowZones.find(z => z.swept === true);
+      expect(sweptZone).toBeUndefined();
+    });
+
+    it('should handle multiple break attempts within the window', () => {
+      // Level at 95 (low sweep): break then partially recover, then break again,
+      // then confirm — all within the 3-candle window from the first break.
+      // candle A: break to 94, close above 95 (1/3, no confirm yet — first candle starts window)
+      // candle B: break to 93, close below 95 (2/3, deeper, not confirmed)
+      // candle C: close above 95 (3/3) → CONFIRMED
+      const fullCandles: Candle[] = [
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1000 + i * 60,
+          open: 100, high: 101, low: 99, close: 100, volume: 1000,
+        })),
+        // Swing low 1 at 95
+        { time: 1300, open: 100, high: 101, low: 95, close: 100, volume: 1000 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1360 + i * 60,
+          open: 100, high: 102, low: 99, close: 100, volume: 1000,
+        })),
+        // Swing low 2 at 95.05 (within threshold)
+        { time: 1660, open: 100, high: 101, low: 95.05, close: 100, volume: 1000 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1720 + i * 60,
+          open: 100, high: 102, low: 99, close: 100, volume: 1000,
+        })),
+        // candle A: break to 94, close above 95 — first break, window 1/3
+        { time: 2020, open: 100, high: 100, low: 94, close: 96, volume: 1000 },
+        // candle B: break deeper to 93, close below 95 — window 2/3
+        { time: 2080, open: 96,  high: 97,  low: 93, close: 94, volume: 1000 },
+        // candle C: close above 95 — window 3/3 → CONFIRMED
+        { time: 2140, open: 94,  high: 98,  low: 93, close: 97, volume: 1000 },
+      ];
+
+      const { result } = renderHook(() =>
+        useLiquidityDetection({
+          candles: fullCandles,
+          settings: {
+            ...DEFAULT_LIQUIDITY_SETTINGS,
+            equalThreshold: 0.15,
+            minTouches: 2,
+            confirmationCandles: 3,
+            showSwept: true,
+            showHighs: false,
+            showLows: true,
+          },
+        }),
+      );
+
+      const lowZones = result.current.filter(z => z.type === 'low');
+      const sweptZone = lowZones.find(z => z.swept === true);
+      expect(sweptZone).toBeDefined();
+      expect(sweptZone?.sweepPending).toBeUndefined();
+      // deepest break is candle B (low=93, time=2080)
+      expect(sweptZone?.sweepTime).toBe(2080);
+      expect(sweptZone?.sweepPrice).toBe(93);
+    });
+
+    it('should place lightning bolt at deepest break candle, not first break candle', () => {
+      // Level at 95 (low sweep): first break to 94, then deeper to 92.
+      // sweepTime/sweepIndex must point to the deeper candle, not the first break.
+      const fullCandles: Candle[] = [
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1000 + i * 60,
+          open: 100, high: 101, low: 99, close: 100, volume: 1000,
+        })),
+        // Swing low 1 at 95
+        { time: 1300, open: 100, high: 101, low: 95, close: 100, volume: 1000 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1360 + i * 60,
+          open: 100, high: 102, low: 99, close: 100, volume: 1000,
+        })),
+        // Swing low 2 at 95.05 (within threshold)
+        { time: 1660, open: 100, high: 101, low: 95.05, close: 100, volume: 1000 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1720 + i * 60,
+          open: 100, high: 102, low: 99, close: 100, volume: 1000,
+        })),
+        // First break to 94 (window 1/3) — time=2020
+        { time: 2020, open: 100, high: 100, low: 94, close: 93, volume: 1000 },
+        // Deeper break to 92 (window 2/3) — time=2080 ← ⚡ should be here
+        { time: 2080, open: 93,  high: 94,  low: 92, close: 92, volume: 1000 },
+        // Confirmation: close above 95 — time=2140
+        { time: 2140, open: 92,  high: 98,  low: 91, close: 96, volume: 1000 },
+      ];
+
+      const { result } = renderHook(() =>
+        useLiquidityDetection({
+          candles: fullCandles,
+          settings: {
+            ...DEFAULT_LIQUIDITY_SETTINGS,
+            equalThreshold: 0.15,
+            minTouches: 2,
+            confirmationCandles: 3,
+            showSwept: true,
+            showHighs: false,
+            showLows: true,
+          },
+        }),
+      );
+
+      const lowZones = result.current.filter(z => z.type === 'low');
+      const sweptZone = lowZones.find(z => z.swept === true);
+      expect(sweptZone).toBeDefined();
+      // ⚡ should be at the DEEPER candle (time=2080), NOT the first break (time=2020)
+      expect(sweptZone?.sweepTime).toBe(2080);
+      expect(sweptZone?.sweepPrice).toBe(92);
+      expect(sweptZone?.sweepPending).toBeUndefined();
+    });
   });
 });
