@@ -226,13 +226,40 @@ function detectSweepRolling(
       (type === 'low' && candle.close > level);
 
     if (confirmed) {
+      const confirmedSweptIndex = i;
+      let deepestBreakIndex = activeWindow.deepestBreakIndex;
+      let deepestPrice = activeWindow.deepestPrice;
+
+      // After confirmation, keep scanning up to 10 candles for a deeper penetration.
+      // The visual ⚡ marker (sweepIndex) must track the true lowest low / highest high
+      // even if price pushes further after the sweep is confirmed.
+      // The confirmation candle (sweptIndex) stays fixed — it anchors score decay.
+      const postConfirmEnd = Math.min(confirmedSweptIndex + 10, scanUpTo);
+      for (let j = confirmedSweptIndex + 1; j <= postConfirmEnd; j++) {
+        const postCandle = candles[j];
+        const postPenetrated =
+          (type === 'high' && postCandle.high > level) ||
+          (type === 'low' && postCandle.low < level);
+
+        if (postPenetrated) {
+          const isDeeper =
+            (type === 'high' && postCandle.high > deepestPrice) ||
+            (type === 'low' && postCandle.low < deepestPrice);
+
+          if (isDeeper) {
+            deepestBreakIndex = j;
+            deepestPrice = type === 'high' ? postCandle.high : postCandle.low;
+          }
+        }
+      }
+
       return {
         swept: true,
         // sweepTime anchors the visual ⚡ marker to the deepest penetration candle.
-        sweepTime: candles[activeWindow.deepestBreakIndex].time,
-        sweepPrice: activeWindow.deepestPrice,
-        sweepIndex: activeWindow.deepestBreakIndex, // deepest penetration — for wick-size / visual marker
-        sweptIndex: i,                              // confirmation candle — scoring decay starts here at ±100
+        sweepTime: candles[deepestBreakIndex].time,
+        sweepPrice: deepestPrice,
+        sweepIndex: deepestBreakIndex, // deepest penetration — for wick-size / visual marker
+        sweptIndex: confirmedSweptIndex, // confirmation candle — scoring decay starts here at ±100
       };
     }
 
