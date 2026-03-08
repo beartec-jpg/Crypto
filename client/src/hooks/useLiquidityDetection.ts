@@ -131,6 +131,15 @@ function groupByPrice(
 
 /**
  * Check whether a liquidity level has been swept after the last recorded touch.
+ *
+ * Two-stage confirmation:
+ *   Stage 1 – Wick through: a candle's high/low penetrates the level.
+ *             Sets sweepPending=true; sweepIndex marks the wick candle.
+ *   Stage 2 – Close confirmation: a subsequent candle closes back on the
+ *             original side within `confirmationWindow` candles.
+ *             Sets swept=true; sweptIndex marks the confirmation candle so
+ *             that the scoring decay starts at ±100 on that candle.
+ *
  * For highs: candle wicks above the level, then at least one of the next
  *            `confirmationWindow` candles closes back below = confirmed sweep.
  * For lows:  candle wicks below the level, then at least one of the next
@@ -142,45 +151,65 @@ function detectSweep(
   afterIndex: number,
   type: 'high' | 'low',
   confirmationWindow: number = 3,
-): { swept: boolean; sweepTime?: number; sweepPrice?: number; sweepIndex?: number } {
+): { swept: boolean; sweepPending?: boolean; sweepTime?: number; sweepPrice?: number; sweepIndex?: number; sweptIndex?: number } {
+  // Track the most recent unconfirmed wick so we can report a pending state.
+  let lastWickIndex = -1;
+  let lastWickPrice: number | undefined;
+
   for (let i = afterIndex + 1; i < candles.length; i++) {
     const c = candles[i];
 
-    // Step 1: check if this candle wicks through the level
+    // Stage 1: check if this candle wicks through the level
     const wickedThrough =
       (type === 'high' && c.high > level) ||
       (type === 'low' && c.low < level);
 
     if (!wickedThrough) continue;
 
-    // Step 2: look for at least one confirmation close on the correct side
-    //         within the next `confirmationWindow` candles
+    // Stage 2: look for at least one confirmation close on the correct side
+    //          within the next `confirmationWindow` candles
     for (let j = i + 1; j <= Math.min(i + confirmationWindow, candles.length - 1); j++) {
       const confirmCandle = candles[j];
 
       if (type === 'high' && confirmCandle.close < level) {
         return {
           swept: true,
-          // sweepTime is the first confirmation candle that closes back below/above the level.
+          // sweepTime anchors the visual marker to the confirmation candle.
           sweepTime: confirmCandle.time,
           sweepPrice: c.high,
-          sweepIndex: i,
+          sweepIndex: i,       // wick candle — kept for wick-size calculations
+          sweptIndex: j,       // confirmation candle — used for scoring decay (starts at ±100)
         };
       }
 
       if (type === 'low' && confirmCandle.close > level) {
         return {
           swept: true,
-          // sweepTime is the first confirmation candle that closes back above/below the level.
+          // sweepTime anchors the visual marker to the confirmation candle.
           sweepTime: confirmCandle.time,
           sweepPrice: c.low,
-          sweepIndex: i,
+          sweepIndex: i,       // wick candle — kept for wick-size calculations
+          sweptIndex: j,       // confirmation candle — used for scoring decay (starts at ±100)
         };
       }
     }
-    // No confirmation within the window — this wick is not a confirmed sweep.
-    // Continue scanning from the next candle.
+
+    // No confirmation within the window for this wick — record it and keep scanning.
+    lastWickIndex = i;
+    lastWickPrice = type === 'high' ? c.high : c.low;
   }
+
+  // Stage 1 pending: a wick occurred within the last `confirmationWindow` candles
+  // but the close confirmation has not arrived yet.
+  if (lastWickIndex >= 0 && candles.length - 1 - lastWickIndex < confirmationWindow) {
+    return {
+      swept: false,
+      sweepPending: true,
+      sweepPrice: lastWickPrice,
+      sweepIndex: lastWickIndex,
+    };
+  }
+
   return { swept: false };
 }
 

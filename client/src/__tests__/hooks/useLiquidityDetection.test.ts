@@ -101,9 +101,9 @@ describe('useLiquidityDetection', () => {
         time: 1720 + i * 60,
         open: 100, high: 102, low: 99, close: 100, volume: 1000,
       })),
-      // Wick candle: wicks above the level — sweep confirmation starts here
+      // Wick candle (index 17): wicks above the level
       { time: 2020, open: 109, high: 111, low: 108, close: 109, volume: 2000 },
-      // Confirmation candles — first close below level confirms the sweep
+      // Confirmation candles — first close below level (index 18) confirms the sweep
       ...Array.from({ length: 3 }, (_, i) => ({
         time: 2080 + i * 60,
         open: 100, high: 102, low: 99, close: 100, volume: 1000,
@@ -129,6 +129,54 @@ describe('useLiquidityDetection', () => {
     expect(sweptZone?.sweepTime).toBe(2080);
     // sweepPrice is the wick extreme of the wick candle
     expect(sweptZone?.sweepPrice).toBe(111);
+    // sweepIndex is the wick candle (index 17); sweptIndex is the confirmation candle (index 18)
+    expect(sweptZone?.sweepIndex).toBe(17);
+    expect(sweptZone?.sweptIndex).toBe(18);
+    // A confirmed sweep must not be pending
+    expect(sweptZone?.sweepPending).toBeUndefined();
+  });
+
+  it('reports sweepPending when wick occurred but close confirmation not yet received', () => {
+    // Equal highs at ~110, then a wick candle at the very end — no confirmation candle follows.
+    const candles: Candle[] = [
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1000 + i * 60,
+        open: 100, high: 101, low: 99, close: 100, volume: 1000,
+      })),
+      // Swing high 1 at 110
+      { time: 1300, open: 100, high: 110, low: 99, close: 100, volume: 1000 },
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1360 + i * 60,
+        open: 100, high: 102, low: 99, close: 100, volume: 1000,
+      })),
+      // Swing high 2 at 110.05 (within threshold)
+      { time: 1660, open: 100, high: 110.05, low: 99, close: 100, volume: 1000 },
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1720 + i * 60,
+        open: 100, high: 102, low: 99, close: 100, volume: 1000,
+      })),
+      // Wick candle: wicks above the level — this is the last candle (no confirmation yet)
+      { time: 2020, open: 109, high: 111, low: 108, close: 109, volume: 2000 },
+    ];
+
+    const { result } = renderHook(() =>
+      useLiquidityDetection({
+        candles,
+        settings: {
+          ...DEFAULT_LIQUIDITY_SETTINGS,
+          equalThreshold: 0.15,
+          minTouches: 2,
+          showSwept: true,
+        },
+      }),
+    );
+
+    const highZones = result.current.filter(z => z.type === 'high');
+    // The zone should not yet be swept, but should be pending
+    const pendingZone = highZones.find(z => z.sweepPending === true);
+    expect(pendingZone).toBeDefined();
+    expect(pendingZone?.swept).toBe(false);
+    expect(pendingZone?.sweepPrice).toBe(111);
   });
 
   it('does NOT group equal highs when price closed above the level between touches', () => {

@@ -9,9 +9,11 @@ export interface LiquidityZone {
   touchTimes: number[];    // Timestamps of each equal high/low touch
   touchPrices: number[];   // Exact prices at each touch
   swept: boolean;          // Has price swept (wicked) through then rejected?
-  sweepTime?: number;      // Timestamp of the sweep candle
+  sweepPending?: boolean;  // Wick through detected; waiting for close confirmation
+  sweepTime?: number;      // Timestamp of the confirmation candle
   sweepPrice?: number;     // The wick extreme that swept through the level
-  sweepIndex?: number;     // Candle index of the sweep (for enhanced scoring)
+  sweepIndex?: number;     // Candle index of the wick candle
+  sweptIndex?: number;     // Candle index of the confirmation candle (used for scoring decay)
   invalidated: boolean;    // Has price closed through the level (invalidated)?
   invalidationTime?: number; // Timestamp of the invalidation candle
   
