@@ -425,6 +425,88 @@ describe('useLiquidityDetection', () => {
     expect(multiTouchZones.length).toBe(0);
   });
 
+  it('does NOT group equal highs when a candle wicks above the level between touches (wick breakthrough)', () => {
+    // Two swing highs at ~100, but a candle wicks above 100 (high=102) while closing below it
+    const candles: Candle[] = [
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1000 + i * 60,
+        open: 95, high: 96, low: 94, close: 95, volume: 1000,
+      })),
+      // Swing high 1 at 100
+      { time: 1300, open: 95, high: 100, low: 94, close: 95, volume: 1000 },
+      // Candle between: wick goes ABOVE 100 but closes below (wick breakthrough)
+      { time: 1360, open: 95, high: 102, low: 94, close: 96, volume: 1000 },
+      ...Array.from({ length: 4 }, (_, i) => ({
+        time: 1420 + i * 60,
+        open: 95, high: 96, low: 94, close: 95, volume: 1000,
+      })),
+      // Swing high 2 at 100.05 (within threshold)
+      { time: 1660, open: 95, high: 100.05, low: 94, close: 95, volume: 1000 },
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1720 + i * 60,
+        open: 95, high: 96, low: 94, close: 95, volume: 1000,
+      })),
+    ];
+
+    const { result } = renderHook(() =>
+      useLiquidityDetection({
+        candles,
+        settings: {
+          ...DEFAULT_LIQUIDITY_SETTINGS,
+          equalThreshold: 0.15,
+          minTouches: 2,
+        },
+      }),
+    );
+
+    // The two highs should NOT be grouped because a wick broke above the level
+    const highZones = result.current.filter(z => z.type === 'high');
+    const multiTouchZones = highZones.filter(z => z.touchTimes.length >= 2);
+    expect(multiTouchZones.length).toBe(0);
+  });
+
+  it('does NOT group equal lows when a candle wicks below the level between touches (wick breakthrough)', () => {
+    // Two swing lows at ~100, but a candle wicks below 100 (low=98) while closing above it
+    const candles: Candle[] = [
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1000 + i * 60,
+        open: 105, high: 106, low: 104, close: 105, volume: 1000,
+      })),
+      // Swing low 1 at 100
+      { time: 1300, open: 105, high: 106, low: 100, close: 105, volume: 1000 },
+      // Candle between: wick goes BELOW 100 but closes above (wick breakthrough)
+      { time: 1360, open: 105, high: 106, low: 98, close: 104, volume: 1000 },
+      ...Array.from({ length: 4 }, (_, i) => ({
+        time: 1420 + i * 60,
+        open: 105, high: 106, low: 104, close: 105, volume: 1000,
+      })),
+      // Swing low 2 at 100.05 (within threshold)
+      { time: 1660, open: 105, high: 106, low: 100.05, close: 105, volume: 1000 },
+      ...Array.from({ length: 5 }, (_, i) => ({
+        time: 1720 + i * 60,
+        open: 105, high: 106, low: 104, close: 105, volume: 1000,
+      })),
+    ];
+
+    const { result } = renderHook(() =>
+      useLiquidityDetection({
+        candles,
+        settings: {
+          ...DEFAULT_LIQUIDITY_SETTINGS,
+          equalThreshold: 0.15,
+          minTouches: 2,
+          showHighs: false,
+          showLows: true,
+        },
+      }),
+    );
+
+    // The two lows should NOT be grouped because a wick broke below the level
+    const lowZones = result.current.filter(z => z.type === 'low');
+    const multiTouchZones = lowZones.filter(z => z.touchTimes.length >= 2);
+    expect(multiTouchZones.length).toBe(0);
+  });
+
   it('hides swept zones when showSwept is false', () => {
     const candles: Candle[] = [
       ...Array.from({ length: 5 }, (_, i) => ({
