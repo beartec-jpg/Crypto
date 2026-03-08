@@ -287,91 +287,98 @@ function getOrderBlockDetails(input: ScoringInput) {
 
 function getLiquiditySweepDetails(input: ScoringInput) {
   const currentPrice = input.latestClose ?? 0;
-  const lookbackCandles = 50;
+  const currentCandleIndex = input.currentCandleIndex;
 
-  // Collect candidates from explicit liquidity zones
-  type SweepCandidate = {
-    level: number;
-    sweepType: 'high' | 'low';
-    dist: number;
-    distPct: number;
-    age: number;
-    source: 'liquidityZone' | 'structureBreak';
-  };
+  if (!currentCandleIndex) {
+    return (
+      <div className="flex items-start gap-1">
+        <span className="text-slate-500">└─</span>
+        <span>Status: ⚠️ NO ACTIVE SWEEPS</span>
+      </div>
+    );
+  }
 
-  const candidates: SweepCandidate[] = [];
+  // Find the most recent valid sweep (mirrors scoreLiquiditySweepProximity logic)
+  let bestSweepIndex = -1;
+  let bestAge = 0;
+  let bestType: 'high' | 'low' | null = null;
+  let bestScore = 0;
 
   if (input.liquidityZones) {
     for (const lz of input.liquidityZones) {
       if (!lz.swept) continue;
       const sweptIdx = lz.sweptIndex ?? lz.sweepIndex;
-      if (sweptIdx === undefined || input.currentCandleIndex === undefined) continue;
-      if (sweptIdx < input.currentCandleIndex - lookbackCandles) continue;
-      const dist = Math.abs(currentPrice - lz.price);
-      const distPct = currentPrice > 0 ? (dist / currentPrice) * 100 : 0;
-      const age = input.currentCandleIndex - sweptIdx;
-      candidates.push({ level: lz.price, sweepType: lz.type, dist, distPct, age, source: 'liquidityZone' });
+      if (sweptIdx === undefined) continue;
+      const age = currentCandleIndex - sweptIdx;
+      if (age > 10) continue;
+      if (lz.type === 'high' && currentPrice < lz.price) continue;
+      if (lz.type === 'low' && currentPrice > lz.price) continue;
+      if (sweptIdx > bestSweepIndex) {
+        bestSweepIndex = sweptIdx;
+        bestAge = age;
+        bestType = lz.type;
+        const decay = Math.max(0, 100 - (age * 10));
+        bestScore = lz.type === 'high' ? -decay : decay;
+      }
     }
   }
 
-  // Collect candidates from structure breaks
   const sbSweeps = input.structureBreaks?.filter(sb => sb.swept === true) ?? [];
   for (const sb of sbSweeps) {
-    if (sb.brokenLevel === undefined) continue;
-    if (sb.breakIndex === undefined || input.currentCandleIndex === undefined) continue;
-    if (sb.breakIndex < input.currentCandleIndex - lookbackCandles) continue;
-    const dist = Math.abs(currentPrice - sb.brokenLevel);
-    const distPct = currentPrice > 0 ? (dist / currentPrice) * 100 : 0;
-    const age = input.currentCandleIndex - sb.breakIndex;
-    // Bullish structure break = low was swept; bearish = high was swept
-    const sweepType: 'high' | 'low' = sb.direction === 'bullish' ? 'low' : 'high';
-    candidates.push({ level: sb.brokenLevel, sweepType, dist, distPct, age, source: 'structureBreak' });
+    if (sb.brokenLevel === undefined || sb.breakIndex === undefined) continue;
+    const age = currentCandleIndex - sb.breakIndex;
+    if (age > 10) continue;
+    if (sb.direction === 'bullish' && currentPrice < sb.brokenLevel) continue;
+    if (sb.direction === 'bearish' && currentPrice > sb.brokenLevel) continue;
+    if (sb.breakIndex > bestSweepIndex) {
+      bestSweepIndex = sb.breakIndex;
+      bestAge = age;
+      bestType = sb.direction === 'bullish' ? 'low' : 'high';
+      const decay = Math.max(0, 100 - (age * 10));
+      bestScore = sb.direction === 'bullish' ? decay : -decay;
+    }
   }
 
-  if (candidates.length === 0) {
-    return <div>└─ Status: ⚠️ NO SWEEPS DETECTED</div>;
+  if (bestType === null) {
+    return (
+      <div className="flex items-start gap-1">
+        <span className="text-slate-500">└─</span>
+        <span>Status: ⚠️ NO ACTIVE SWEEPS</span>
+      </div>
+    );
   }
 
-  const nearest = candidates.sort((a, b) => a.dist - b.dist)[0];
-  const isActive = nearest.distPct <= 10;
-  const timeDecay = Math.max(0, 1 - (nearest.age / lookbackCandles));
-  const proximityScore = nearest.distPct < 5.0
-    ? Math.round(100 * (1 - (nearest.distPct / 5.0)) * timeDecay)
-    : 0;
-  const isBearish = nearest.sweepType === 'high';
-  const signedScore = isBearish ? -proximityScore : proximityScore;
+  const isBearish = bestType === 'high';
+  const liquidityScore = bestScore;
+  const candlesSinceSweep = bestAge;
 
   return (
-    <>
+    <div className="pl-4 space-y-0.5 text-xs text-slate-400">
       <div className="flex items-start gap-1">
         <span className="text-slate-500">├─</span>
         <span>Type: {isBearish ? 'High Sweep (BEARISH)' : 'Low Sweep (BULLISH)'}</span>
       </div>
       <div className="flex items-start gap-1">
         <span className="text-slate-500">├─</span>
-        <span>Level: {nearest.level.toFixed(2)}</span>
+        <span>Age: {candlesSinceSweep} candles</span>
       </div>
       <div className="flex items-start gap-1">
         <span className="text-slate-500">├─</span>
-        <span>Distance: {nearest.distPct.toFixed(2)}%</span>
+        <span>Decay: {Math.abs(liquidityScore)}% strength</span>
       </div>
       <div className="flex items-start gap-1">
         <span className="text-slate-500">├─</span>
-        <span>Swept: {nearest.age} candles ago</span>
+        <span>Expires: {10 - candlesSinceSweep} candles remaining</span>
       </div>
       <div className="flex items-start gap-1">
         <span className="text-slate-500">├─</span>
         <span>Expected: {isBearish ? '⬇️ Bearish Reversal' : '⬆️ Bullish Reversal'}</span>
       </div>
       <div className="flex items-start gap-1">
-        <span className="text-slate-500">├─</span>
-        <span>Status: {isActive ? '✅ ACTIVE (within 10%)' : '❌ INVALIDATED (>10% away)'}</span>
-      </div>
-      <div className="flex items-start gap-1">
         <span className="text-slate-500">└─</span>
-        <span>Score: {signedScore > 0 ? '+' : ''}{signedScore} (time decay: {(timeDecay * 100).toFixed(0)}%)</span>
+        <span>Score: {liquidityScore > 0 ? '+' : ''}{liquidityScore}</span>
       </div>
-    </>
+    </div>
   );
 }
 

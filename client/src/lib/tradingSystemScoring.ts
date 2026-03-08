@@ -13,7 +13,6 @@ import type {
   ScoredCondition,
   SignalLabel,
 } from '@/types/systemScoring';
-import type { LiquidityZone } from '@/types/liquidity';
 import type { SMTDivergenceResult } from '@/lib/smc/smtDivergence';
 import {
   scoreRSI,
@@ -28,13 +27,6 @@ import {
   type WeightLevel,
 } from '@/lib/conditionWeights';
 import { detectDivergence } from '@/lib/calculations/divergenceCalculations';
-import {
-  createEnhancedSweep,
-  scoreSweepProximityEnhanced,
-  calculateCompositeZoneScore,
-  calculateATR,
-  type EnhancedLiquiditySweep,
-} from '@/lib/smc/enhancedLiquidityScoring';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -715,71 +707,93 @@ function scoreBreakerBlockProximity(
 }
 
 /**
- * Returns a signed score based on distance, recency, and sweep direction.
- * Checks both explicit liquidityZones and structure breaks where swept === true.
+ * Score liquidity sweep with time-based linear decay.
  *
- * High sweep (resistance liquidity grab) → negative score (bearish reversal expected).
- * Low sweep (support liquidity grab) → positive score (bullish reversal expected).
+ * Rules:
+ * - Starts at ±100 on confirmation candle
+ * - Decays by 10 points per candle (reaches 0 after 10 candles)
+ * - High sweep (bearish) = negative score, invalidated if price closes below swept level
+ * - Low sweep (bullish) = positive score, invalidated if price closes above swept level
+ * - Most recent sweep wins if multiple active
+ *
+ * @returns Score from -100 to +100, or 0 if no active sweep
  */
 function scoreLiquiditySweepProximity(
   price: number,
   liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean; sweptIndex?: number }>,
   currentCandleIndex?: number,
-  lookbackCandles: number = 50,
-  structureBreaks?: Array<{ breakTime: number; breakIndex?: number; direction: 'bullish' | 'bearish'; swept?: boolean; brokenLevel?: number }>,
+  structureBreaks?: Array<{ breakIndex?: number; direction: 'bullish' | 'bearish'; swept?: boolean; brokenLevel?: number }>,
 ): number {
+  if (!currentCandleIndex) return 0;
+
   let bestScore = 0;
+  let bestSweepIndex = -1;
 
-  // Check explicit liquidity zones
-  if (liquidityZones && liquidityZones.length > 0 && currentCandleIndex !== undefined) {
-    const recentSwepts = liquidityZones.filter(lz =>
-      lz.swept &&
-      lz.sweptIndex !== undefined &&
-      lz.sweptIndex >= currentCandleIndex - lookbackCandles
-    );
+  // Check liquidity zones (equal highs/lows)
+  if (liquidityZones && liquidityZones.length > 0) {
+    for (const lz of liquidityZones) {
+      if (!lz.swept || lz.sweptIndex === undefined) continue;
 
-    for (const lz of recentSwepts) {
-      const distancePct = Math.abs(price - lz.price) / price * 100;
-      if (distancePct >= 5.0) continue;
-      const proximityScore = 100 * (1 - (distancePct / 5.0));
-      const candlesSinceSweep = currentCandleIndex - (lz.sweptIndex || currentCandleIndex);
-      if (candlesSinceSweep > lookbackCandles) continue;
-      const timeDecay = Math.max(0, 1 - (candlesSinceSweep / lookbackCandles));
-      // High sweep (resistance grab) = bearish (negative); low sweep (support grab) = bullish (positive)
-      const directionalScore = lz.type === 'high' ? -proximityScore : proximityScore;
-      const finalScore = Math.round(directionalScore * timeDecay);
-      if (Math.abs(finalScore) > Math.abs(bestScore)) {
-        bestScore = finalScore;
+      // Calculate age
+      const candlesSinceSweep = currentCandleIndex - lz.sweptIndex;
+
+      // Max lifetime: 10 candles
+      if (candlesSinceSweep > 10) continue;
+
+      // Check invalidation by price crossing swept level
+      if (lz.type === 'high' && price < lz.price) continue; // High sweep invalid if price below
+      if (lz.type === 'low' && price > lz.price) continue;  // Low sweep invalid if price above
+
+      // Linear decay: 100 → 90 → 80 → ... → 0
+      const decayScore = Math.max(0, 100 - (candlesSinceSweep * 10));
+
+      // Apply directional sign
+      // High sweep (resistance grab) = bearish (negative)
+      // Low sweep (support grab) = bullish (positive)
+      const directionalScore = lz.type === 'high' ? -decayScore : decayScore;
+
+      // Keep most recent sweep (highest sweptIndex)
+      if (lz.sweptIndex > bestSweepIndex) {
+        bestScore = directionalScore;
+        bestSweepIndex = lz.sweptIndex;
       }
     }
   }
 
-  // Check structure breaks where swept === true (pre-filtered by invalidation logic in scoreSmartMoney)
+  // Check structure breaks (BOS/CHoCH sweeps)
   if (structureBreaks && structureBreaks.length > 0) {
-    const activeSweeps = structureBreaks.filter(sb =>
-      sb.swept === true &&
-      sb.brokenLevel !== undefined
-    );
+    for (const sb of structureBreaks) {
+      if (!sb.swept || sb.breakIndex === undefined || sb.brokenLevel === undefined) continue;
 
-    for (const sweep of activeSweeps) {
-      const distancePct = Math.abs(price - (sweep.brokenLevel ?? 0)) / price * 100;
-      if (distancePct >= 5.0) continue;
-      const proximityScore = 100 * (1 - (distancePct / 5.0));
-      const candlesSinceSweep = currentCandleIndex !== undefined
-        ? currentCandleIndex - (sweep.breakIndex ?? currentCandleIndex)
-        : 0;
-      if (candlesSinceSweep > lookbackCandles) continue;
-      const timeDecay = Math.max(0, 1 - (candlesSinceSweep / lookbackCandles));
-      // Swept bullish break (support grab) = bullish (positive); swept bearish break = bearish (negative)
-      const directionalScore = sweep.direction === 'bullish' ? proximityScore : -proximityScore;
-      const finalScore = Math.round(directionalScore * timeDecay);
-      if (Math.abs(finalScore) > Math.abs(bestScore)) {
-        bestScore = finalScore;
+      const candlesSinceSweep = currentCandleIndex - sb.breakIndex;
+
+      // Max lifetime: 10 candles
+      if (candlesSinceSweep > 10) continue;
+
+      // Check invalidation
+      // Bullish break sweep = support grab = bullish (price should rise)
+      // If price drops below broken level = invalidated
+      if (sb.direction === 'bullish' && price < sb.brokenLevel) continue;
+
+      // Bearish break sweep = resistance grab = bearish (price should drop)
+      // If price rises above broken level = invalidated
+      if (sb.direction === 'bearish' && price > sb.brokenLevel) continue;
+
+      // Linear decay
+      const decayScore = Math.max(0, 100 - (candlesSinceSweep * 10));
+
+      // Apply directional sign
+      const directionalScore = sb.direction === 'bullish' ? decayScore : -decayScore;
+
+      // Keep most recent sweep
+      if (sb.breakIndex > bestSweepIndex) {
+        bestScore = directionalScore;
+        bestSweepIndex = sb.breakIndex;
       }
     }
   }
 
-  return bestScore;
+  return Math.round(bestScore);
 }
 
 /**
@@ -1031,28 +1045,6 @@ function isMSSInvalidated(
   return !!newerOppositeMSS;
 }
 
-/**
- * Determine if a swept level is invalidated.
- * A sweep is invalidated when price moves >10% away from the swept level,
- * or when a later confirmed break occurs at the same level.
- */
-function isSweptLevelInvalidated(
-  sweep: { breakTime: number; brokenLevel?: number; confirmed?: boolean },
-  currentPrice: number,
-  allStructureBreaks: Array<{ breakTime: number; brokenLevel?: number; confirmed?: boolean }>,
-): boolean {
-  const distancePct = Math.abs(currentPrice - (sweep.brokenLevel ?? 0)) / currentPrice * 100;
-  if (distancePct > 10.0) return true;
-
-  const laterConfirmedBreak = allStructureBreaks.find(sb =>
-    sb.breakTime > sweep.breakTime &&
-    sb.confirmed === true &&
-    Math.abs((sb.brokenLevel ?? 0) - (sweep.brokenLevel ?? 0)) / currentPrice * 100 < 1.0
-  );
-
-  return !!laterConfirmedBreak;
-}
-
 export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   const {
     latestClose,
@@ -1123,130 +1115,15 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   const obScore = scoreOrderBlockProximity(currentPrice, input.previousClose, orderBlocks);
   const breakerScore = scoreBreakerBlockProximity(currentPrice, orderBlocks);
 
-  // Enhanced liquidity sweep scoring
-  // If we have full liquidity zone data with sweep details, use enhanced validation logic
-  const enhancedSweeps: EnhancedLiquiditySweep[] = [];
-  let liquidityScore = 0;
-  let fvgScoreAdjusted = fvgScore;
-  let obScoreAdjusted = obScore;
-
-  if (
-    liquidityZones && 
-    liquidityZones.length > 0 && 
-    currentCandleIndex !== undefined &&
-    priceHistory && 
-    priceHistory.length >= 50
-  ) {
-    // We have detailed data for enhanced sweep analysis
-    // Create enhanced sweeps from liquidity zones where data is available
-    const extendedLiqZones: Array<LiquidityZone & { sweepIndex?: number; sweptIndex?: number }> =
-      liquidityZones.map(lz => ({ ...lz, sweepIndex: lz.sweepIndex ?? lz.sweptIndex, sweptIndex: lz.sweptIndex })) as any;
-
-    for (const lz of extendedLiqZones) {
-      const sweepIndex = lz.sweepIndex ?? lz.sweptIndex;
-      if (lz.swept && sweepIndex !== undefined && sweepIndex < currentCandleIndex) {
-        // For enhanced scoring, we'll use a simplified approach based on available data
-        // Score based on sweep strength (wick depth) and proximity
-        const fromSweep = currentCandleIndex - sweepIndex;
-        const timeDecay = Math.max(0.5, 1 - (fromSweep / 50)); // 50-candle decay
-        
-        // Simplified sweep score based on closeness to level
-        const distancePct = Math.abs(currentPrice - lz.price) / currentPrice;
-        
-        if (distancePct <= 0.05) { // Within 5%
-          const proximityScore = 100 * (1 - (distancePct / 0.05)); // 0-100
-          const sweepScore = Math.round(proximityScore * timeDecay);
-          
-          enhancedSweeps.push({
-            id: lz.id,
-            direction: lz.type === 'low' ? 'buy-side' : 'sell-side',
-            sweptLevel: lz.price,
-            sweepTime: lz.sweepTime ?? 0,
-            sweepIndex,
-            wickSize: 0, // Not available in this context
-            wickSizePct: 0,
-            reversalStrength: 65, // Simplified
-            confluenceScore: 50, // Simplified
-            volumeConfirmation: 50,
-            validationScore: Math.min(100, sweepScore + 20),
-            isValid: !lz.invalidated && sweepScore > 30,
-            candlesSinceSweep: fromSweep,
-            ageDecayFactor: timeDecay,
-          });
-        }
-      }
-    }
-    
-    // Score using enhanced sweeps if available
-    if (enhancedSweeps.length > 0) {
-      liquidityScore = scoreSweepProximityEnhanced(currentPrice, enhancedSweeps, true);
-      
-      // Boost nearby FVG/OB scores if sweep is nearby
-      for (const sweep of enhancedSweeps) {
-        if (!sweep.isValid) continue;
-        
-        // Check FVGs for proximity
-        if (fvgs) {
-          for (let i = 0; i < fvgs.length; i++) {
-            const fvg = fvgs[i];
-            const distToFvg = Math.min(
-              Math.abs(sweep.sweptLevel - fvg.low),
-              Math.abs(sweep.sweptLevel - fvg.high)
-            ) / sweep.sweptLevel;
-            
-            if (distToFvg <= 0.01) { // Within 1%
-              const boostFactor = 1 + (sweep.validationScore / 100) * 0.5; // Up to 50% boost
-              fvgScoreAdjusted = Math.round(Math.abs(fvgScore) * boostFactor) * (fvgScore < 0 ? -1 : 1);
-            }
-          }
-        }
-        
-        // Check Order Blocks for proximity
-        if (orderBlocks) {
-          for (let i = 0; i < orderBlocks.length; i++) {
-            const ob = orderBlocks[i];
-            const distToOb = Math.min(
-              Math.abs(sweep.sweptLevel - ob.low),
-              Math.abs(sweep.sweptLevel - ob.high)
-            ) / sweep.sweptLevel;
-            
-            if (distToOb <= 0.01) { // Within 1%
-              const boostFactor = 1 + (sweep.validationScore / 100) * 0.4; // Up to 40% boost
-              obScoreAdjusted = Math.round(Math.abs(obScore) * boostFactor) * (obScore < 0 ? -1 : 1);
-            }
-          }
-        }
-      }
-    } else {
-      // Fallback to original sweep proximity scoring
-      const activeSweeps = structureBreaks?.filter(sb =>
-        sb.swept === true &&
-        !isSweptLevelInvalidated(sb, currentPrice, structureBreaks ?? [])
-      );
-
-      liquidityScore = scoreLiquiditySweepProximity(
-        currentPrice,
-        liquidityZones,
-        currentCandleIndex,
-        lookbackCandles,
-        activeSweeps,
-      );
-    }
-  } else {
-    // Fallback to original scoring when data is insufficient
-    const activeSweeps = structureBreaks?.filter(sb =>
-      sb.swept === true &&
-      !isSweptLevelInvalidated(sb, currentPrice, structureBreaks ?? [])
-    );
-
-    liquidityScore = scoreLiquiditySweepProximity(
-      currentPrice,
-      liquidityZones,
-      currentCandleIndex,
-      lookbackCandles,
-      activeSweeps,
-    );
-  }
+  // Time-based liquidity sweep scoring (±100 on confirmation, decays by 10/candle, expires after 10 candles)
+  const liquidityScore = scoreLiquiditySweepProximity(
+    currentPrice,
+    liquidityZones,
+    currentCandleIndex,
+    structureBreaks,
+  );
+  const fvgScoreAdjusted = fvgScore;
+  const obScoreAdjusted = obScore;
 
   // Divergence confluence using peak/trough analysis (single-asset baseline)
   const singleAssetDivergenceScore = scoreDivergenceConfluence(
@@ -1287,35 +1164,27 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       name: 'FVG Proximity',
       score: fvgScoreAdjusted,
       value: fvgScoreAdjusted !== 0 ? `${Math.abs(fvgScoreAdjusted)}/100` : undefined,
-      description: enhancedSweeps.length > 0 
-        ? `Distance-scaled proximity to Fair Value Gap (boosted by ${enhancedSweeps.length} nearby sweep${enhancedSweeps.length > 1 ? 's' : ''}).`
-        : 'Distance-scaled proximity to Fair Value Gap.',
+      description: 'Distance-scaled proximity to Fair Value Gap.',
     },
     {
       id: 'orderBlockTouch',
       name: 'Order Block Proximity',
       score: obScoreAdjusted,
       value: obScoreAdjusted !== 0 ? `${Math.abs(obScoreAdjusted)}/100` : undefined,
-      description: enhancedSweeps.length > 0 
-        ? `Distance-scaled proximity to Order Block (boosted by ${enhancedSweeps.length} nearby sweep${enhancedSweeps.length > 1 ? 's' : ''}).`
-        : 'Distance-scaled proximity to Order Block.',
+      description: 'Distance-scaled proximity to Order Block.',
     },
     {
       id: 'liquiditySweep',
       name: 'Liquidity Sweep',
       score: liquidityScore,
       value: liquidityScore !== 0
-        ? `${Math.abs(liquidityScore).toFixed(0)}/100 (${liquidityScore > 0 ? 'Low Sweep' : 'High Sweep'})`
+        ? `${Math.abs(liquidityScore)}/100 (${liquidityScore > 0 ? 'Low Sweep' : 'High Sweep'}, ${(100 - Math.abs(liquidityScore)) / 10}/${10} candles)`
         : undefined,
       description: liquidityScore > 0
-        ? (enhancedSweeps.length > 0
-          ? `Institutional sweep detection: ${enhancedSweeps.length} active sweep${enhancedSweeps.length > 1 ? 's' : ''} (avg validation ${Math.round(enhancedSweeps.reduce((sum, s) => sum + s.validationScore, 0) / enhancedSweeps.length)}/100). Proximity to swept low (support liquidity grab - bullish reversal expected).`
-          : 'Proximity to swept low (support liquidity grab - bullish reversal expected).')
+        ? `Low sweep (support liquidity grab): Bullish reversal expected. Active for ${10 - (100 - Math.abs(liquidityScore)) / 10} more candles.`
         : liquidityScore < 0
-        ? (enhancedSweeps.length > 0
-          ? `Institutional sweep detection: ${enhancedSweeps.length} active sweep${enhancedSweeps.length > 1 ? 's' : ''} (avg validation ${Math.round(enhancedSweeps.reduce((sum, s) => sum + s.validationScore, 0) / enhancedSweeps.length)}/100). Proximity to swept high (resistance liquidity grab - bearish reversal expected).`
-          : 'Proximity to swept high (resistance liquidity grab - bearish reversal expected).')
-        : 'Active liquidity grab (invalidates when price moves >10% away or level is confirmed broken).',
+        ? `High sweep (resistance liquidity grab): Bearish reversal expected. Active for ${10 - (100 - Math.abs(liquidityScore)) / 10} more candles.`
+        : 'No active liquidity sweeps (max lifetime: 10 candles).',
     },
     {
       id: 'divergenceConfluence',
