@@ -51,8 +51,8 @@ function detectSwings(
 
 /**
  * Validate that price has not broken through the level between two swing points.
- * For highs: price should not have closed above the level.
- * For lows: price should not have closed below the level.
+ * For highs: no candle's high (wick or body) should be above the level.
+ * For lows: no candle's low (wick or body) should be below the level.
  */
 function validateNoBreakthrough(
   candles: Candle[],
@@ -65,10 +65,10 @@ function validateNoBreakthrough(
   const endIndex = Math.max(point1.index, point2.index);
 
   for (let i = startIndex + 1; i < endIndex; i++) {
-    if (type === 'high' && candles[i].close > level) {
+    if (type === 'high' && candles[i].high > level) {
       return false;
     }
-    if (type === 'low' && candles[i].close < level) {
+    if (type === 'low' && candles[i].low < level) {
       return false;
     }
   }
