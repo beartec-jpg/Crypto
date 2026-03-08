@@ -206,6 +206,20 @@ function detectSweepRolling(
     // ── Active window ────────────────────────────────────────────────────────
     activeWindow.candlesInWindow++;
 
+    // If this candle pushes deeper, move the ⚡ marker (must happen BEFORE
+    // the confirmation check so that a candle which both goes deeper AND
+    // closes on the confirmation side is recorded with the correct depth).
+    if (penetrated) {
+      const isDeeper =
+        (type === 'high' && candle.high > activeWindow.deepestPrice) ||
+        (type === 'low' && candle.low < activeWindow.deepestPrice);
+
+      if (isDeeper) {
+        activeWindow.deepestBreakIndex = i;
+        activeWindow.deepestPrice = type === 'high' ? candle.high : candle.low;
+      }
+    }
+
     // Check for confirmation: a close that returns to the correct side.
     const confirmed =
       (type === 'high' && candle.close < level) ||
@@ -220,18 +234,6 @@ function detectSweepRolling(
         sweepIndex: activeWindow.deepestBreakIndex, // deepest penetration — for wick-size / visual marker
         sweptIndex: i,                              // confirmation candle — scoring decay starts here at ±100
       };
-    }
-
-    // If this candle pushes deeper, move the ⚡ marker.
-    if (penetrated) {
-      const isDeeper =
-        (type === 'high' && candle.high > activeWindow.deepestPrice) ||
-        (type === 'low' && candle.low < activeWindow.deepestPrice);
-
-      if (isDeeper) {
-        activeWindow.deepestBreakIndex = i;
-        activeWindow.deepestPrice = type === 'high' ? candle.high : candle.low;
-      }
     }
 
     // Expire the window when it has run its course without confirming.
