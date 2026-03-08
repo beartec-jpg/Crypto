@@ -533,7 +533,9 @@ describe('useLiquidityDetection', () => {
     it('should track deepest penetration across multiple candles', () => {
       // Level at 95 (low sweep): multiple breaks, each going deeper.
       // Window candles: break@94, break@93, break@92, then confirm above 95.
-      // Lightning bolt (sweepIndex) must end up on the candle with low=92.
+      // The confirmation candle (time=2200) wicks even deeper to low=91, so
+      // after the fix (deepest penetration updated BEFORE the confirmation check)
+      // the ⚡ marker ends up on the confirmation candle itself (time=2200, low=91).
       const fullCandles: Candle[] = [
         ...Array.from({ length: 5 }, (_, i) => ({
           time: 1000 + i * 60,
@@ -557,7 +559,8 @@ describe('useLiquidityDetection', () => {
         { time: 2080, open: 94,  high: 95,  low: 93, close: 93, volume: 1000 },
         // Break 3 deepest to 92 (window 3/3) — time=2140
         { time: 2140, open: 93,  high: 94,  low: 92, close: 92, volume: 1000 },
-        // Confirmation: close above 95 — time=2200
+        // Confirmation: wicks even deeper to 91 AND closes above 95 — time=2200
+        // Deepest penetration is updated before the confirmation check, so ⚡ moves here.
         { time: 2200, open: 92,  high: 98,  low: 91, close: 96, volume: 1000 },
       ];
 
@@ -579,9 +582,11 @@ describe('useLiquidityDetection', () => {
       const lowZones = result.current.filter(z => z.type === 'low');
       const sweptZone = lowZones.find(z => z.swept === true);
       expect(sweptZone).toBeDefined();
-      // ⚡ must sit at the deepest break candle (time=2140, low=92)
-      expect(sweptZone?.sweepTime).toBe(2140);
-      expect(sweptZone?.sweepPrice).toBe(92);
+      // ⚡ must sit at the deepest candle (time=2200, low=91) because its wick
+      // went deeper than all previous break candles and the depth update now
+      // happens before the confirmation check.
+      expect(sweptZone?.sweepTime).toBe(2200);
+      expect(sweptZone?.sweepPrice).toBe(91);
       expect(sweptZone?.sweepPending).toBeUndefined();
     });
 
@@ -712,9 +717,10 @@ describe('useLiquidityDetection', () => {
         })),
         // First break to 94 (window 1/3) — time=2020
         { time: 2020, open: 100, high: 100, low: 94, close: 93, volume: 1000 },
-        // Deeper break to 92 (window 2/3) — time=2080 ← ⚡ should be here
+        // Deeper break to 92 (window 2/3) — time=2080 ← would be ⚡ if conf. candle didn't go deeper
         { time: 2080, open: 93,  high: 94,  low: 92, close: 92, volume: 1000 },
-        // Confirmation: close above 95 — time=2140
+        // Confirmation: wicks even deeper to 91 AND closes above 95 — time=2140 ← ⚡ ends up here
+        // because deepest penetration is updated before the confirmation check.
         { time: 2140, open: 92,  high: 98,  low: 91, close: 96, volume: 1000 },
       ];
 
@@ -736,9 +742,11 @@ describe('useLiquidityDetection', () => {
       const lowZones = result.current.filter(z => z.type === 'low');
       const sweptZone = lowZones.find(z => z.swept === true);
       expect(sweptZone).toBeDefined();
-      // ⚡ should be at the DEEPER candle (time=2080), NOT the first break (time=2020)
-      expect(sweptZone?.sweepTime).toBe(2080);
-      expect(sweptZone?.sweepPrice).toBe(92);
+      // ⚡ should be at the DEEPEST candle (time=2140, low=91), NOT the first break (time=2020).
+      // The confirmation candle wicks even deeper (91 < 92), and since deepest penetration
+      // is now updated before the confirmation check, ⚡ moves to the confirmation candle.
+      expect(sweptZone?.sweepTime).toBe(2140);
+      expect(sweptZone?.sweepPrice).toBe(91);
       expect(sweptZone?.sweepPending).toBeUndefined();
     });
   });
