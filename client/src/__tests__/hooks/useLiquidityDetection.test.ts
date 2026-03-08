@@ -749,5 +749,229 @@ describe('useLiquidityDetection', () => {
       expect(sweptZone?.sweepPrice).toBe(91);
       expect(sweptZone?.sweepPending).toBeUndefined();
     });
+
+    it('should move lightning bolt to post-confirmation candle when it goes deeper', () => {
+      // Low sweep at 95:
+      //   Candle A: wick to 94, close=96 (above 95) → FIRST BREAK, starts window (pending)
+      //   Candle B: close=98 (above 95) → CONFIRMED (sweptIndex=B), sweepIndex still on A (low=94)
+      //   Candle C: drops to 93 (deeper than A) within 10 candles of confirmation → sweepIndex moves to C
+      //   Expected: sweepIndex on C (lower low), sweptIndex stays on B
+      const baseLow = 95;
+      const fullCandles: Candle[] = [
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1000 + i * 60,
+          open: 100, high: 101, low: 99, close: 100, volume: 1000,
+        })),
+        { time: 1300, open: 100, high: 101, low: baseLow, close: 100, volume: 1000 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1360 + i * 60,
+          open: 100, high: 102, low: 99, close: 100, volume: 1000,
+        })),
+        { time: 1660, open: 100, high: 101, low: 95.05, close: 100, volume: 1000 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1720 + i * 60,
+          open: 100, high: 102, low: 99, close: 100, volume: 1000,
+        })),
+        // Candle A: first break — wick to 94 but close=96 stays above level, starts window (pending)
+        { time: 2020, open: 100, high: 100, low: 94, close: 96, volume: 1000 },
+        // Candle B: close=98 > 95 → CONFIRMED (sweptIndex=B), deepest still at A (low=94)
+        { time: 2080, open: 96, high: 99, low: 96, close: 98, volume: 1000 },
+        // Candle C: drops to 93 AFTER confirmation — deeper than A within 10-candle post-confirm window
+        { time: 2140, open: 98, high: 98, low: 93, close: 96, volume: 1000 },
+      ];
+
+      const { result } = renderHook(() =>
+        useLiquidityDetection({
+          candles: fullCandles,
+          settings: {
+            ...DEFAULT_LIQUIDITY_SETTINGS,
+            equalThreshold: 0.15,
+            minTouches: 2,
+            confirmationCandles: 3,
+            showSwept: true,
+            showHighs: false,
+            showLows: true,
+          },
+        }),
+      );
+
+      const lowZones = result.current.filter(z => z.type === 'low');
+      const sweptZone = lowZones.find(z => z.swept === true);
+      expect(sweptZone).toBeDefined();
+      // ⚡ must move to candle C (deeper post-confirmation low)
+      expect(sweptZone?.sweepTime).toBe(2140);
+      expect(sweptZone?.sweepPrice).toBe(93);
+      // Confirmation candle B is sweptIndex; C is deeper so sweepIndex > sweptIndex
+      const sweepIdx = sweptZone?.sweepIndex!;
+      const sweptIdx = sweptZone?.sweptIndex!;
+      expect(sweepIdx).toBeGreaterThan(sweptIdx);
+      expect(sweptZone?.sweepPending).toBeUndefined();
+    });
+
+    it('should NOT move lightning bolt when post-confirmation candle does not penetrate level', () => {
+      // Low sweep at 95:
+      //   Candle A: wick to 94, close=96 → first break (pending)
+      //   Candle B: close=98 → CONFIRMED, sweepIndex=A (low=94)
+      //   Candle C: low=96 (does NOT breach 95) → marker stays on A
+      const baseLow = 95;
+      const fullCandles: Candle[] = [
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1000 + i * 60,
+          open: 100, high: 101, low: 99, close: 100, volume: 1000,
+        })),
+        { time: 1300, open: 100, high: 101, low: baseLow, close: 100, volume: 1000 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1360 + i * 60,
+          open: 100, high: 102, low: 99, close: 100, volume: 1000,
+        })),
+        { time: 1660, open: 100, high: 101, low: 95.05, close: 100, volume: 1000 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1720 + i * 60,
+          open: 100, high: 102, low: 99, close: 100, volume: 1000,
+        })),
+        // Candle A: wick to 94, close=96 → first break (pending)
+        { time: 2020, open: 100, high: 100, low: 94, close: 96, volume: 1000 },
+        // Candle B: close=98 → CONFIRMED, sweepIndex stays at A (low=94)
+        { time: 2080, open: 96, high: 99, low: 96, close: 98, volume: 1000 },
+        // Candle C: low=96, does NOT breach 95 → marker stays on A
+        { time: 2140, open: 98, high: 100, low: 96, close: 98, volume: 1000 },
+      ];
+
+      const { result } = renderHook(() =>
+        useLiquidityDetection({
+          candles: fullCandles,
+          settings: {
+            ...DEFAULT_LIQUIDITY_SETTINGS,
+            equalThreshold: 0.15,
+            minTouches: 2,
+            confirmationCandles: 3,
+            showSwept: true,
+            showHighs: false,
+            showLows: true,
+          },
+        }),
+      );
+
+      const lowZones = result.current.filter(z => z.type === 'low');
+      const sweptZone = lowZones.find(z => z.swept === true);
+      expect(sweptZone).toBeDefined();
+      // ⚡ stays at candle A (time=2020, low=94) — candle C didn't breach the level
+      expect(sweptZone?.sweepTime).toBe(2020);
+      expect(sweptZone?.sweepPrice).toBe(94);
+    });
+
+    it('should stop tracking deeper penetration after 10 candles from confirmation', () => {
+      // Low sweep at 95:
+      //   Candle A: wick to 94, close=96 → first break (pending)
+      //   Candle B: close=98 → CONFIRMED (sweptIndex=B), sweepIndex=A
+      //   11 candles (B+1 to B+11): above 95, no deeper penetration
+      //   Candle at B+12: drops to 93, OUTSIDE the 10-candle post-confirm window
+      //   Expected: sweepIndex stays at A (time=2020, low=94)
+      const baseLow = 95;
+      const fullCandles: Candle[] = [
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1000 + i * 60,
+          open: 100, high: 101, low: 99, close: 100, volume: 1000,
+        })),
+        { time: 1300, open: 100, high: 101, low: baseLow, close: 100, volume: 1000 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1360 + i * 60,
+          open: 100, high: 102, low: 99, close: 100, volume: 1000,
+        })),
+        { time: 1660, open: 100, high: 101, low: 95.05, close: 100, volume: 1000 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1720 + i * 60,
+          open: 100, high: 102, low: 99, close: 100, volume: 1000,
+        })),
+        // Candle A: wick to 94, close=96 → first break (pending)
+        { time: 2020, open: 100, high: 100, low: 94, close: 96, volume: 1000 },
+        // Candle B: close=98 → CONFIRMED (sweptIndex=B)
+        { time: 2080, open: 96, high: 99, low: 96, close: 98, volume: 1000 },
+        // 11 normal candles above 95 (positions B+1 to B+11, indices fill the 10-candle window)
+        ...Array.from({ length: 11 }, (_, i) => ({
+          time: 2140 + i * 60,
+          open: 97, high: 99, low: 96, close: 98, volume: 1000,
+        })),
+        // Candle at B+12: drops to 93, OUTSIDE the 10-candle post-confirm window
+        { time: 2800, open: 97, high: 97, low: 93, close: 95, volume: 1000 },
+      ];
+
+      const { result } = renderHook(() =>
+        useLiquidityDetection({
+          candles: fullCandles,
+          settings: {
+            ...DEFAULT_LIQUIDITY_SETTINGS,
+            equalThreshold: 0.15,
+            minTouches: 2,
+            confirmationCandles: 3,
+            showSwept: true,
+            showHighs: false,
+            showLows: true,
+          },
+        }),
+      );
+
+      const lowZones = result.current.filter(z => z.type === 'low');
+      const sweptZone = lowZones.find(z => z.swept === true);
+      expect(sweptZone).toBeDefined();
+      // ⚡ stays at candle A (low=94) — the candle at position B+12 is outside the 10-candle window
+      expect(sweptZone?.sweepTime).toBe(2020);
+      expect(sweptZone?.sweepPrice).toBe(94);
+    });
+
+    it('should move lightning bolt for high sweeps when post-confirmation candle reaches higher', () => {
+      // High sweep at 110:
+      //   Candle A: wick to 111, close=111 (NOT below 110) → first break (pending, window starts)
+      //   Candle B: close=109 (below 110) → CONFIRMED (sweptIndex=B), sweepIndex=A (high=111)
+      //   Candle C: wicks even higher to 113 (post-confirm, within 10 candles)
+      //   Expected: sweepIndex on C (higher high), sweptIndex stays on B
+      const baseHigh = 110;
+      const fullCandles: Candle[] = [
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1000 + i * 60,
+          open: 100, high: 101, low: 99, close: 100, volume: 1000,
+        })),
+        { time: 1300, open: 100, high: baseHigh, low: 99, close: 100, volume: 1000 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1360 + i * 60,
+          open: 100, high: 102, low: 99, close: 100, volume: 1000,
+        })),
+        { time: 1660, open: 100, high: 110.05, low: 99, close: 100, volume: 1000 },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          time: 1720 + i * 60,
+          open: 100, high: 102, low: 99, close: 100, volume: 1000,
+        })),
+        // Candle A: wick to 111, stays above 110 (close=111 is NOT below 110) → starts window
+        { time: 2020, open: 100, high: 111, low: 99, close: 111, volume: 1000 },
+        // Candle B: close=109 (below 110) → CONFIRMED (sweptIndex=B), deepest still at A (high=111)
+        { time: 2080, open: 111, high: 111, low: 108, close: 109, volume: 1000 },
+        // Candle C: wicks even higher to 113 (post-confirmation, within 10 candles)
+        { time: 2140, open: 109, high: 113, low: 108, close: 109, volume: 1000 },
+      ];
+
+      const { result } = renderHook(() =>
+        useLiquidityDetection({
+          candles: fullCandles,
+          settings: {
+            ...DEFAULT_LIQUIDITY_SETTINGS,
+            equalThreshold: 0.15,
+            minTouches: 2,
+            confirmationCandles: 3,
+            showSwept: true,
+            showHighs: true,
+            showLows: false,
+          },
+        }),
+      );
+
+      const highZones = result.current.filter(z => z.type === 'high');
+      const sweptZone = highZones.find(z => z.swept === true);
+      expect(sweptZone).toBeDefined();
+      // ⚡ must move to candle C (higher post-confirmation high)
+      expect(sweptZone?.sweepTime).toBe(2140);
+      expect(sweptZone?.sweepPrice).toBe(113);
+      // sweptIndex (B) is earlier than sweepIndex (C)
+      expect(sweptZone?.sweepIndex!).toBeGreaterThan(sweptZone?.sweptIndex!);
+    });
   });
 });
