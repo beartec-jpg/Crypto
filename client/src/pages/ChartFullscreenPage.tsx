@@ -798,8 +798,8 @@ export function ChartFullscreenPage({
         type: lz.type,
         swept: lz.swept,
         sweepIndex: lz.sweepIndex,
-        // Backward-compatible alias for older scoring paths.
-        sweptIndex: lz.sweepIndex,
+        sweptIndex: lz.sweptIndex,
+        sweepPrice: lz.sweepPrice,
       })),
       volumeProfileData: volumeProfileData
         ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }
@@ -927,7 +927,8 @@ export function ChartFullscreenPage({
         type: lz.type,
         swept: lz.swept,
         sweepIndex: lz.sweepIndex,
-        sweptIndex: lz.sweepIndex,
+        sweptIndex: lz.sweptIndex,
+        sweepPrice: lz.sweepPrice,
       })),
       volumeProfileData: volumeProfileData
         ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }

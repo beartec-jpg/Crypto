@@ -222,7 +222,7 @@ export interface ScoringInput {
   /** SMC Order Blocks for Smart Money scoring */
   orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean; breaker?: boolean; breakerType?: 'bullish' | 'bearish'; conversionTime?: number; conversionIndex?: number; conversionPrice?: number }>;
   /** Liquidity zones for Smart Money scoring */
-  liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean; sweepIndex?: number; sweptIndex?: number }>;
+  liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean; sweepIndex?: number; sweptIndex?: number; sweepPrice?: number }>;
   /** Current timeframe for dynamic lookback calculation */
   timeframe?: string;
   /** Volume profile data for Volume Profile scoring */
@@ -712,15 +712,15 @@ function scoreBreakerBlockProximity(
  * Rules:
  * - Starts at ±100 on confirmation candle
  * - Decays by 10 points per candle (reaches 0 after 10 candles)
- * - High sweep (bearish) = negative score, invalidated if price closes below swept level
- * - Low sweep (bullish) = positive score, invalidated if price closes above swept level
+ * - High sweep (bearish) = negative score, invalidated if price rises above sweep candle's high (sweepPrice)
+ * - Low sweep (bullish) = positive score, invalidated if price drops below sweep candle's low (sweepPrice)
  * - Most recent sweep wins if multiple active
  *
  * @returns Score from -100 to +100, or 0 if no active sweep
  */
 function scoreLiquiditySweepProximity(
   price: number,
-  liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean; sweptIndex?: number }>,
+  liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean; sweptIndex?: number; sweepPrice?: number }>,
   currentCandleIndex?: number,
   structureBreaks?: Array<{ breakIndex?: number; direction: 'bullish' | 'bearish'; swept?: boolean; brokenLevel?: number }>,
 ): number {
@@ -744,9 +744,11 @@ function scoreLiquiditySweepProximity(
       // Max lifetime: 10 candles
       if (candlesSinceSweep > 10) continue;
 
-      // Check invalidation by price crossing swept level
-      if (lz.type === 'high' && price < lz.price) continue; // High sweep invalid if price below
-      if (lz.type === 'low' && price > lz.price) continue;  // Low sweep invalid if price above
+      // Check invalidation by price crossing the sweep candle's extreme (sweepPrice).
+      // Fall back to zone level (lz.price) if sweepPrice is not available.
+      const sweepExtremePrice = lz.sweepPrice ?? lz.price;
+      if (lz.type === 'high' && price > sweepExtremePrice) continue; // High sweep invalid if price rises above sweep candle's high
+      if (lz.type === 'low' && price < sweepExtremePrice) continue;  // Low sweep invalid if price drops below sweep candle's low
 
       // Linear decay: 100 → 90 → 80 → ... → 0
       const decayScore = Math.max(0, 100 - (candlesSinceSweep * 10));
