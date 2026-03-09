@@ -745,8 +745,8 @@ function scoreLiquiditySweepProximity(
       if (candlesSinceSweep > 10) continue;
 
       // Check invalidation by price crossing swept level
-      if (lz.type === 'high' && price < lz.price) continue; // High sweep invalid if price below
-      if (lz.type === 'low' && price > lz.price) continue;  // Low sweep invalid if price above
+      if (lz.type === 'high' && price > lz.price) continue; // High sweep invalid if price rises back above swept level
+      if (lz.type === 'low' && price < lz.price) continue;  // Low sweep invalid if price drops back below swept level
 
       // Linear decay: 100 → 90 → 80 → ... → 0
       const decayScore = Math.max(0, 100 - (candlesSinceSweep * 10));
