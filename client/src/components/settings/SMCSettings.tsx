@@ -115,10 +115,6 @@ export function SMCSettings({
           <Label htmlFor="show-order-blocks" className="text-sm text-white cursor-pointer">Order Blocks {!isPaidTier && '🔒'}</Label>
         </div>
         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
-          <Switch checked={indicators.smc.showPremiumDiscount} onCheckedChange={() => handleSMCToolToggle('Premium/Discount', indicators.smc.showPremiumDiscount, indicators.smc.setShowPremiumDiscount)} id="show-premium-discount" data-testid="switch-premium-discount" disabled={!isPaidTier && !indicators.smc.showPremiumDiscount} />
-          <Label htmlFor="show-premium-discount" className="text-sm text-white cursor-pointer">Premium/Discount {!isPaidTier && '🔒'}</Label>
-        </div>
-        <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
           <Switch checked={indicators.smc.showChartLabels} onCheckedChange={() => handleSMCToolToggle('Chart Labels', indicators.smc.showChartLabels, indicators.smc.setShowChartLabels)} id="show-labels" data-testid="switch-labels" disabled={!isPaidTier && !indicators.smc.showChartLabels} />
           <Label htmlFor="show-labels" className="text-sm text-white cursor-pointer">Chart Labels {!isPaidTier && '🔒'}</Label>
         </div>
@@ -342,33 +338,9 @@ export function SMCSettings({
         </div>
       )}
       
-      {/* Premium/Discount Settings */}
-      {indicators.smc.showPremiumDiscount && (
-        <div className="bg-slate-800/50 rounded-lg p-3">
-          <div className="text-xs font-semibold text-blue-400 mb-2">Premium/Discount Settings</div>
-          <div className="flex items-center justify-between">
-            <Label className="text-xs text-gray-300">Lookback Period</Label>
-            <input
-              type="number"
-              min="20"
-              max="200"
-              value={indicators.smc.pdLookbackInput}
-              onChange={(e) => {
-                indicators.smc.setPdLookbackInput(e.target.value);
-                const val = parseInt(e.target.value);
-                if (!isNaN(val) && val >= 20) indicators.smc.setPdLookback(val);
-              }}
-              className="w-16 bg-slate-700 text-white text-xs px-2 py-1 rounded border border-slate-600"
-              data-testid="input-pd-lookback"
-            />
-          </div>
-          <p className="text-xs text-gray-500 mt-1">Candles to look back for range calculation (larger = wider zones)</p>
-        </div>
-      )}
       
       <div className="text-xs text-gray-400 bg-slate-800/50 rounded-lg p-2">
         <p><strong>Order Blocks:</strong> Institutional support/resistance zones</p>
-        <p><strong>Premium/Discount:</strong> Shows if price is in upper or lower half of range</p>
       </div>
       
       {/* Save Buttons */}

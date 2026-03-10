@@ -36,7 +36,6 @@ export interface TradingSystemCallbacks {
   setOrderBlocksEnabled?: (enabled: boolean) => void;
   setBOSEnabled?: (enabled: boolean) => void;
   setLiquidityEnabled?: (enabled: boolean) => void;
-  setPDZonesEnabled?: (enabled: boolean) => void;
   setAutoFibEnabled?: (enabled: boolean) => void;
   
   // Tool callbacks
@@ -72,7 +71,6 @@ export function useTradingSystem(callbacks: TradingSystemCallbacks) {
     callbacks.setOrderBlocksEnabled?.(false);
     callbacks.setBOSEnabled?.(false);
     callbacks.setLiquidityEnabled?.(false);
-    callbacks.setPDZonesEnabled?.(false);
     callbacks.setAutoFibEnabled?.(false);
 
     // Tools
@@ -173,10 +171,6 @@ export function useTradingSystem(callbacks: TradingSystemCallbacks) {
       
       if (smc.liquidity !== undefined) {
         callbacks.setLiquidityEnabled?.(smc.liquidity.enabled);
-      }
-      
-      if (smc.pdZones !== undefined) {
-        callbacks.setPDZonesEnabled?.(smc.pdZones.enabled);
       }
       
       if (smc.autoFib !== undefined) {

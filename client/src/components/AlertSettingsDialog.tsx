@@ -42,7 +42,6 @@ const ALERT_TYPES = [
   { value: 'fvg', label: 'Fair Value Gap (FVG)', description: 'Alert when FVGs are created', category: 'Smart Money' },
   { value: 'order_block', label: 'Order Block Creation', description: 'Alert when new order blocks form', category: 'Smart Money' },
   { value: 'order_block_test', label: 'Order Block Test', description: 'Alert when price tests order blocks', category: 'Smart Money' },
-  { value: 'pd_zones', label: 'Premium/Discount Zone Test', description: 'Alert on equilibrium zone tests', category: 'Smart Money' },
   { value: 'liquidation', label: 'Liquidation Spikes', description: 'Alert on high-volume liquidation events', category: 'Smart Money' },
   
   // Oscillators
