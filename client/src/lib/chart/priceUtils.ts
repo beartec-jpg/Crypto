@@ -37,6 +37,31 @@ export function getDecimalsForPrice(price: number, sigFigs: number = 3): number 
 }
 
 /**
+ * Dynamic chart decimals by token value.
+ * Rules:
+ * - >= 1000: no decimals
+ * - >= 1: show 4 significant figures (e.g. 1.025, 10.12, 100.3)
+ * - < 1: show 3 significant figures (e.g. 0.000364)
+ */
+export function getDynamicPriceDecimals(price: number): number {
+  const absPrice = Math.abs(price);
+  if (absPrice === 0) return 0;
+  if (absPrice >= 1000) return 0;
+
+  const targetSigFigs = absPrice >= 1 ? 4 : 3;
+  return getDecimalsForPrice(absPrice, targetSigFigs);
+}
+
+/**
+ * Dynamic chart formatter using token-price-dependent decimals.
+ */
+export function formatPriceDynamic(price: number): string {
+  if (price === 0) return '0';
+  const decimals = getDynamicPriceDecimals(price);
+  return price.toFixed(decimals);
+}
+
+/**
  * Format price using N significant figures for smart decimal precision.
  * Examples (3 sig figs): 123.45 → "123", 12.34 → "12.3", 1.234 → "1.23",
  * 0.1234 → "0.123", 0.01234 → "0.0123", 0.001234 → "0.00123"

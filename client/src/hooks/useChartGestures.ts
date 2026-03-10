@@ -1,7 +1,7 @@
 import { useRef, useCallback, useEffect, useMemo } from 'react';
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { CrosshairMode } from 'lightweight-charts';
-import { formatPriceWithSignificantFigures } from '@/lib/chart/priceUtils';
+import { formatPriceDynamic } from '@/lib/chart/priceUtils';
 
 const GESTURE_CONFIG = {
   LONG_PRESS_MS: 500,
@@ -478,7 +478,7 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     const windowSize = radius * 2 + 1;
     
     // Position and update the label with window size
-    labelRef.current.textContent = `📍 ${timeStr} | $${formatPriceWithSignificantFigures(price)} | ${windowSize} candle${windowSize > 1 ? 's' : ''}`;
+    labelRef.current.textContent = `📍 ${timeStr} | $${formatPriceDynamic(price)} | ${windowSize} candle${windowSize > 1 ? 's' : ''}`;
     labelRef.current.style.left = `${localX}px`;
     labelRef.current.style.top = `${localY}px`;
     labelRef.current.style.display = 'block';
