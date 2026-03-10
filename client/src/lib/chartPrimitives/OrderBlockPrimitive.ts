@@ -88,33 +88,8 @@ class OBRenderer implements IPrimitivePaneRenderer {
 
         // Main OB zone fill
         const fillAlpha = this._settings.zoneOpacity * ageFactor;
-        if (ob.breaker) {
-          // Diagonal hatching pattern for breaker blocks
-          const hatchColor = ob.breakerType === 'bullish'
-            ? this._settings.bullishColor
-            : this._settings.bearishColor;
-          const hatchRgba = hexToRgba(hatchColor, fillAlpha);
-
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(rectX, rectY, rectW, rectH);
-          ctx.clip();
-
-          // Draw diagonal hatch lines (45°)
-          ctx.strokeStyle = hatchRgba;
-          ctx.lineWidth = 2;
-          const step = 8;
-          for (let d = -rectH; d < rectW + rectH; d += step) {
-            ctx.beginPath();
-            ctx.moveTo(rectX + d, rectY);
-            ctx.lineTo(rectX + d + rectH, rectY + rectH);
-            ctx.stroke();
-          }
-          ctx.restore();
-        } else {
-          ctx.fillStyle = hexToRgba(baseColor, fillAlpha);
-          ctx.fillRect(rectX, rectY, rectW, rectH);
-        }
+        ctx.fillStyle = hexToRgba(baseColor, fillAlpha);
+        ctx.fillRect(rectX, rectY, rectW, rectH);
 
         // Main OB border
         ctx.strokeStyle = hexToRgba(baseColor, Math.min(1, fillAlpha * 3));
@@ -195,16 +170,6 @@ class OBRenderer implements IPrimitivePaneRenderer {
             ctx.font = '13px sans-serif';
             const sweepY = ob.type === 'bullish' ? yBottom + 14 : yTop - 6;
             ctx.fillText('⚡', xSweep - 6, sweepY);
-          }
-        }
-
-        // Breaker conversion marker 🔄 at the conversion point
-        if (ob.breaker && ob.conversionTime) {
-          const xConvert = timeScale.timeToCoordinate(ob.conversionTime as Time);
-          if (xConvert !== null) {
-            ctx.font = '13px sans-serif';
-            const convertY = ob.type === 'bullish' ? yBottom + 14 : yTop - 6;
-            ctx.fillText('🔄', xConvert - 6, convertY);
           }
         }
       }

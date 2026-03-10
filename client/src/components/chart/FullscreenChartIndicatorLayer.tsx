@@ -2,6 +2,7 @@ import { MovingAverages } from '@/components/chart/MovingAverages';
 import { VWAPRenderer } from '@/components/indicators/trend/VWAPRenderer';
 import { FVGRenderer } from '@/components/indicators/FVGRenderer';
 import { OrderBlockRenderer } from '@/components/indicators/OrderBlockRenderer';
+import { BreakerRenderer } from '@/components/indicators/BreakerRenderer';
 import { BOSRenderer } from '@/components/indicators/BOSRenderer';
 import { LiquidityRenderer } from '@/components/indicators/LiquidityRenderer';
 import { PDZoneRenderer } from '@/components/indicators/PDZoneRenderer';
@@ -39,6 +40,8 @@ interface FullscreenChartIndicatorLayerProps {
   fvgSettings: any;
   orderBlocks: any[];
   obSettings: any;
+  breakers: any[];
+  breakerSettings: any;
   structureBreaks: any[];
   swingPoints: any[];
   sessionSeparators: any[];
@@ -97,6 +100,8 @@ export function FullscreenChartIndicatorLayer({
   fvgSettings,
   orderBlocks,
   obSettings,
+  breakers,
+  breakerSettings,
   structureBreaks,
   swingPoints,
   sessionSeparators,
@@ -171,6 +176,13 @@ export function FullscreenChartIndicatorLayer({
         candleSeries={candleSeries}
         orderBlocks={orderBlocks}
         settings={obSettings}
+      />
+
+      <BreakerRenderer
+        chart={chart}
+        candleSeries={candleSeries}
+        breakers={breakers}
+        settings={breakerSettings}
       />
 
       <BOSRenderer

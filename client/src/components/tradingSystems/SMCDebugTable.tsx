@@ -144,53 +144,47 @@ function ConditionDebug({ title, score, details }: ConditionDebugProps) {
 
 function getBreakerBlockDetails(input: ScoringInput) {
   const currentPrice = input.latestClose ?? 0;
-  const breakers = input.orderBlocks?.filter(ob => ob.breaker === true && ob.mitigated !== true) ?? [];
+  const activeBreakers = (input.breakers ?? []).filter(b => b.mitigated !== true);
 
-  if (breakers.length === 0) {
+  if (activeBreakers.length === 0) {
     return <div>└─ Status: ⚠️ NO ACTIVE BREAKERS</div>;
   }
 
-  const nearest = breakers
-    .map(ob => {
+  const nearest = activeBreakers
+    .map(b => {
       let dist: number;
       let distPct: number;
       let isInside: boolean;
 
-      if (currentPrice >= ob.low && currentPrice <= ob.high) {
+      if (currentPrice >= b.low && currentPrice <= b.high) {
         dist = 0;
         distPct = 0;
         isInside = true;
       } else {
-        const distanceFromTop = currentPrice > ob.high ? currentPrice - ob.high : 0;
-        const distanceFromBottom = currentPrice < ob.low ? ob.low - currentPrice : 0;
+        const distanceFromTop = currentPrice > b.high ? currentPrice - b.high : 0;
+        const distanceFromBottom = currentPrice < b.low ? b.low - currentPrice : 0;
         dist = Math.max(distanceFromTop, distanceFromBottom);
         distPct = currentPrice > 0 ? (dist / currentPrice) * 100 : 0;
         isInside = false;
       }
 
-      return { ob, dist, distPct, isInside };
+      return { b, dist, distPct, isInside };
     })
     .sort((a, b) => a.dist - b.dist)[0];
 
   const candlesSinceConversion =
-    input.currentCandleIndex !== undefined && nearest.ob.conversionIndex !== undefined
-      ? input.currentCandleIndex - nearest.ob.conversionIndex
-      : 'Unknown';
-
-  const originalObAge =
-    input.currentCandleIndex !== undefined && nearest.ob.conversionIndex !== undefined
-      ? nearest.ob.conversionIndex
+    input.currentCandleIndex !== undefined && nearest.b.conversionIndex !== undefined
+      ? input.currentCandleIndex - nearest.b.conversionIndex
       : 'Unknown';
 
   return (
     <>
-      <div>├─ Type: {nearest.ob.breakerType === 'bullish' ? 'Bullish' : 'Bearish'} Breaker (was {nearest.ob.type === 'bullish' ? 'Bullish' : 'Bearish'} OB)</div>
-      <div>├─ Range: {nearest.ob.low.toFixed(4)} - {nearest.ob.high.toFixed(4)}</div>
+      <div>├─ Type: {nearest.b.type === 'bullish' ? 'Bullish' : 'Bearish'} Breaker</div>
+      <div>├─ Range: {nearest.b.low.toFixed(4)} - {nearest.b.high.toFixed(4)}</div>
       <div>├─ Distance: {nearest.isInside ? '0.00% (INSIDE ZONE)' : `${nearest.distPct.toFixed(2)}%`}</div>
-      <div>├─ Converted: {candlesSinceConversion} candles ago{nearest.ob.conversionPrice !== undefined ? ` at ${nearest.ob.conversionPrice.toFixed(4)}` : ''}</div>
-      <div>├─ Original OB age: {originalObAge} candles</div>
+      <div>├─ Converted: {candlesSinceConversion} candles ago{nearest.b.conversionPrice !== undefined ? ` at ${nearest.b.conversionPrice.toFixed(4)}` : ''}</div>
       <div>├─ Status: ✅ ACTIVE BREAKER</div>
-      <div>└─ Total Breakers: {breakers.length}</div>
+      <div>└─ Total Breakers: {activeBreakers.length}</div>
     </>
   );
 }

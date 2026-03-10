@@ -4,6 +4,7 @@ import { useOrderBlockDetection } from '@/hooks/useOrderBlockDetection';
 import { DEFAULT_OB_SETTINGS } from '@/types/orderBlock';
 import type { Candle } from '@/types/candle';
 import type { OrderBlock } from '@/types/orderBlock';
+import type { Breaker } from '@/types/breaker';
 
 function candle(time: number, open: number, high: number, low: number, close: number): Candle {
   return {
@@ -17,6 +18,44 @@ function candle(time: number, open: number, high: number, low: number, close: nu
 }
 
 describe('useOrderBlockDetection', () => {
+  it('mitigates OB when price closes on the wrong side (simple mitigation)', () => {
+    const candles: Candle[] = [
+      // OB candle (bearish) -> candidate bullish OB zone: top=101, bottom=98
+      candle(1000, 100, 101, 98, 99),
+      // Bullish displacement to validate OB formation
+      candle(1060, 99, 102, 99, 101),
+      // Neutral progression
+      candle(1120, 101, 102, 100, 101),
+      // Candle closes below bottom -> simple mitigation (not a pass-through)
+      candle(1180, 99.5, 100, 96, 97.0),
+    ];
+
+    const settings = {
+      ...DEFAULT_OB_SETTINGS,
+      minDisplacementCandles: 1,
+      minDisplacementPercent: 0.5,
+      minBodyPercent: 10,
+      maxAge: 500,
+    };
+
+    const { result } = renderHook(() =>
+      useOrderBlockDetection({
+        candles,
+        settings,
+        fvgs: [],
+      }),
+    );
+
+    const { orderBlocks } = result.current;
+    const bullishObs = orderBlocks.filter((ob: OrderBlock) => ob.type === 'bullish');
+    expect(bullishObs.length).toBeGreaterThan(0);
+
+    const ob = bullishObs[0];
+    expect(ob.mitigated).toBe(true);
+    expect(ob.mitigationPercent).toBe(100);
+    expect(ob.mitigationTime).toBe(1180);
+  });
+
   it('mitigates and clears sweep markers after a swept OB later closes beyond invalidation boundary', () => {
     const candles: Candle[] = [
       // OB candle (bearish) -> candidate bullish OB zone: top=101, bottom=98
@@ -49,7 +88,8 @@ describe('useOrderBlockDetection', () => {
       }),
     );
 
-    const bullishObs = result.current.filter((ob: OrderBlock) => ob.type === 'bullish');
+    const { orderBlocks } = result.current;
+    const bullishObs = orderBlocks.filter((ob: OrderBlock) => ob.type === 'bullish');
     expect(bullishObs.length).toBeGreaterThan(0);
 
     const ob = bullishObs[0];
@@ -62,10 +102,9 @@ describe('useOrderBlockDetection', () => {
     expect(ob.sweepTime).toBeUndefined();
     expect(ob.sweepPrice).toBeUndefined();
     expect(ob.sweepIndex).toBeUndefined();
-    expect(ob.breaker).toBe(false);
   });
 
-  it('preserves clean breaker conversion when there is no prior sweep', () => {
+  it('creates a separate breaker entity when OB is passed through with confirmation', () => {
     const candles: Candle[] = [
       // OB candle (bearish) -> candidate bullish OB
       candle(2000, 100, 101, 98, 99),
@@ -95,18 +134,62 @@ describe('useOrderBlockDetection', () => {
       }),
     );
 
-    const bullishObs = result.current.filter((ob: OrderBlock) => ob.type === 'bullish');
+    const { orderBlocks, breakers } = result.current;
+
+    // OB should be mitigated (dead)
+    const bullishObs = orderBlocks.filter((ob: OrderBlock) => ob.type === 'bullish');
     expect(bullishObs.length).toBeGreaterThan(0);
-
     const ob = bullishObs[0];
-    expect(ob.breaker).toBe(true);
-    expect(ob.breakerType).toBe('bearish');
-    expect(ob.conversionTime).toBe(2120);
-    expect(ob.conversionPrice).toBeCloseTo(97.6, 6);
+    expect(ob.mitigated).toBe(true);
 
-    // No prior sweep in this clean-break path.
-    expect(ob.swept).toBe(false);
-    expect(ob.mitigated).toBe(false);
+    // A separate bearish breaker should be created
+    expect(breakers.length).toBeGreaterThan(0);
+    const breaker = breakers.find((b: Breaker) => b.sourceOBId === ob.id);
+    expect(breaker).toBeDefined();
+    expect(breaker!.type).toBe('bearish');
+    expect(breaker!.conversionTime).toBe(2120);
+    expect(breaker!.conversionPrice).toBeCloseTo(97.6, 6);
+    expect(breaker!.mitigated).toBe(false);
+  });
+
+  it('mitigates breaker independently when price closes back through it', () => {
+    const candles: Candle[] = [
+      // OB candle (bearish) -> candidate bullish OB
+      candle(2000, 100, 101, 98, 99),
+      // Bullish displacement
+      candle(2060, 99, 102, 99, 101),
+      // Full zone pass-through: open=101.5 > top=101, close=97.6 < bottom=98
+      candle(2120, 101.5, 103, 97, 97.6),
+      // Confirmation candles stay outside -> breaker confirmed
+      candle(2180, 97.7, 97.9, 96.9, 97.2),
+      candle(2240, 97.3, 97.8, 96.8, 97.1),
+      candle(2300, 97.2, 97.6, 96.7, 97.0),
+      // Price closes above top of zone -> bearish breaker mitigated
+      candle(2360, 99.0, 102, 98.5, 101.5),
+    ];
+
+    const settings = {
+      ...DEFAULT_OB_SETTINGS,
+      minDisplacementCandles: 1,
+      minDisplacementPercent: 0.5,
+      minBodyPercent: 10,
+      maxAge: 500,
+    };
+
+    const { result } = renderHook(() =>
+      useOrderBlockDetection({
+        candles,
+        settings,
+        fvgs: [],
+      }),
+    );
+
+    const { breakers } = result.current;
+    expect(breakers.length).toBeGreaterThan(0);
+    const breaker = breakers[0];
+    expect(breaker.type).toBe('bearish');
+    expect(breaker.mitigated).toBe(true);
+    expect(breaker.mitigationTime).toBe(2360);
   });
 
   it('mitigates and clears sweep markers for bearish OB after post-sweep close above invalidation boundary', () => {
@@ -141,7 +224,8 @@ describe('useOrderBlockDetection', () => {
       }),
     );
 
-    const bearishObs = result.current.filter((ob: OrderBlock) => ob.type === 'bearish');
+    const { orderBlocks } = result.current;
+    const bearishObs = orderBlocks.filter((ob: OrderBlock) => ob.type === 'bearish');
     expect(bearishObs.length).toBeGreaterThan(0);
 
     const ob = bearishObs[0];
@@ -154,6 +238,5 @@ describe('useOrderBlockDetection', () => {
     expect(ob.sweepTime).toBeUndefined();
     expect(ob.sweepPrice).toBeUndefined();
     expect(ob.sweepIndex).toBeUndefined();
-    expect(ob.breaker).toBe(false);
   });
 });

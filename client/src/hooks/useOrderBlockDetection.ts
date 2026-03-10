@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { Candle } from '@/types/candle';
 import type { FVGDetection } from '@/types/fvg';
 import type { OrderBlock, OrderBlockSettings } from '@/types/orderBlock';
+import type { Breaker } from '@/types/breaker';
 
 const VOLUME_LOOKBACK = 20;
 
@@ -88,9 +89,9 @@ export function useOrderBlockDetection({
   candles,
   settings,
   fvgs = [],
-}: UseOrderBlockDetectionOptions): OrderBlock[] {
+}: UseOrderBlockDetectionOptions): { orderBlocks: OrderBlock[]; breakers: Breaker[] } {
   return useMemo(() => {
-    if (!settings.enabled || candles.length < 4) return [];
+    if (!settings.enabled || candles.length < 4) return { orderBlocks: [], breakers: [] };
 
     const lookforward = Math.max(1, settings.minDisplacementCandles);
     const raw: OrderBlock[] = [];
@@ -187,9 +188,10 @@ export function useOrderBlockDetection({
       }
     }
 
-    // Phase 2: sweep detection, breaker conversion, mitigation tracking, age, and confluence
+    // Phase 2: sweep detection, breaker conversion, OB mitigation tracking, age, and confluence
     const totalCandles = candles.length;
     const result: OrderBlock[] = [];
+    const pendingBreakers: Breaker[] = [];
     const confirmationWindow = 3;
 
     for (const ob of raw) {
@@ -206,11 +208,6 @@ export function useOrderBlockDetection({
       let sweepTime: number | undefined;
       let sweepPrice: number | undefined;
       let sweepIndex: number | undefined;
-      let breaker = false;
-      let breakerType: 'bullish' | 'bearish' | undefined;
-      let conversionTime: number | undefined;
-      let conversionIndex: number | undefined;
-      let conversionPrice: number | undefined;
 
       for (let j = startIdx + 1; j < candles.length; j++) {
         const c = candles[j];
@@ -222,7 +219,7 @@ export function useOrderBlockDetection({
           (ob.type === 'bullish' && c.open > ob.top && c.close < ob.bottom) ||
           (ob.type === 'bearish' && c.open < ob.bottom && c.close > ob.top);
 
-        if (passedThrough && !breaker && !mitigated) {
+        if (passedThrough && !mitigated) {
           let closedBackInside = false;
 
           // Check next N candles for confirmation
@@ -252,51 +249,50 @@ export function useOrderBlockDetection({
             // the sweep has saved the OB so it should not be immediately invalidated.
             continue;
           } else {
-            // BREAKER: All confirmation candles stayed on opposite side, OB converts
-            breaker = true;
-            breakerType = ob.type === 'bullish' ? 'bearish' : 'bullish';
-            conversionTime = c.time;
-            conversionIndex = j;
-            conversionPrice = c.close;
-            // Continue loop to check for breaker mitigation
-          }
-        }
-
-        // If a prior sweep exists and price later closes beyond the invalidation
-        // boundary, the original OB is no longer valid and must be retired.
-        const closedBeyondInvalidation =
-          (ob.type === 'bullish' && c.close < ob.bottom) ||
-          (ob.type === 'bearish' && c.close > ob.top);
-
-        if (swept && !breaker && !mitigated && closedBeyondInvalidation) {
-          mitigated = true;
-          mitigationPercent = 100;
-          mitigationTime = c.time;
-          swept = false;
-          sweepTime = undefined;
-          sweepPrice = undefined;
-          sweepIndex = undefined;
-          break;
-        }
-
-        // Check breaker mitigation (price closes through the breaker zone again)
-        if (breaker && !mitigated) {
-          if (breakerType === 'bullish' && c.close < ob.bottom) {
+            // BREAKER: All confirmation candles stayed on opposite side, OB dies and creates a breaker
             mitigated = true;
             mitigationPercent = 100;
             mitigationTime = c.time;
-            break;
+
+            pendingBreakers.push({
+              id: `breaker-${ob.id}-${c.time}`,
+              type: ob.type === 'bullish' ? 'bearish' : 'bullish',
+              top: ob.top,
+              bottom: ob.bottom,
+              time: ob.time,
+              conversionTime: c.time,
+              conversionIndex: j,
+              conversionPrice: c.close,
+              sourceOBId: ob.id,
+              mitigated: false,
+              age: 0,
+            });
+
+            break; // OB is dead
           }
-          if (breakerType === 'bearish' && c.close > ob.top) {
+        }
+
+        // Simple OB mitigation: price closes on opposite side
+        if (!mitigated) {
+          const obClosedWrongSide =
+            (ob.type === 'bullish' && c.close < ob.bottom) ||
+            (ob.type === 'bearish' && c.close > ob.top);
+
+          if (obClosedWrongSide) {
             mitigated = true;
             mitigationPercent = 100;
             mitigationTime = c.time;
+            // Clear swept state since the OB is gone
+            swept = false;
+            sweepTime = undefined;
+            sweepPrice = undefined;
+            sweepIndex = undefined;
             break;
           }
         }
 
-        // Track partial mitigation for non-breaker OBs
-        if (!mitigated && !breaker) {
+        // Track partial mitigation for non-mitigated OBs
+        if (!mitigated) {
           if (ob.type === 'bullish' && c.low <= ob.top && c.low >= ob.bottom) {
             const penetration = (ob.top - c.low) / (ob.top - ob.bottom);
             mitigationPercent = Math.min(100, Math.max(mitigationPercent, penetration * 100));
@@ -332,16 +328,49 @@ export function useOrderBlockDetection({
         sweepTime,
         sweepPrice,
         sweepIndex,
-        breaker,
-        breakerType,
-        conversionTime,
-        conversionIndex,
-        conversionPrice,
         hasFVGConfluence,
         confluenceFVGId,
       });
     }
 
-    return result;
+    // Phase 3: Breaker mitigation tracking
+    const processedBreakers: Breaker[] = [];
+
+    for (const breaker of pendingBreakers) {
+      const startIdx = candles.findIndex(c => c.time === breaker.conversionTime);
+      if (startIdx < 0) continue;
+
+      const age = totalCandles - 1 - startIdx;
+      if (age > settings.maxAge) continue;
+
+      let mitigated = false;
+      let mitigationTime: number | undefined;
+
+      // Check each candle after breaker creation
+      for (let j = startIdx + 1; j < candles.length; j++) {
+        const c = candles[j];
+
+        // Breaker mitigation: price closes back through the zone
+        if (breaker.type === 'bullish' && c.close < breaker.bottom) {
+          mitigated = true;
+          mitigationTime = c.time;
+          break;
+        }
+        if (breaker.type === 'bearish' && c.close > breaker.top) {
+          mitigated = true;
+          mitigationTime = c.time;
+          break;
+        }
+      }
+
+      processedBreakers.push({
+        ...breaker,
+        age,
+        mitigated,
+        mitigationTime,
+      });
+    }
+
+    return { orderBlocks: result, breakers: processedBreakers };
   }, [candles, settings, fvgs]);
 }
