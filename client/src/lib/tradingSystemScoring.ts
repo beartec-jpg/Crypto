@@ -758,7 +758,7 @@ function scoreLiquiditySweepProximity(
   price: number,
   liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean; sweptIndex?: number; sweepPrice?: number }>,
   currentCandleIndex?: number,
-  structureBreaks?: Array<{ breakIndex?: number; direction: 'bullish' | 'bearish'; swept?: boolean; brokenLevel?: number }>,
+  _structureBreaks?: Array<{ breakIndex?: number; direction: 'bullish' | 'bearish'; swept?: boolean; brokenLevel?: number }>,
 ): number {
   if (!currentCandleIndex) return 0;
 
@@ -802,42 +802,8 @@ function scoreLiquiditySweepProximity(
     }
   }
 
-  // Check structure breaks (BOS/CHoCH sweeps)
-  if (structureBreaks && structureBreaks.length > 0) {
-    for (const sb of structureBreaks) {
-      if (!sb.swept || sb.breakIndex === undefined || sb.brokenLevel === undefined) continue;
-
-      const candlesSinceSweep = currentCandleIndex - sb.breakIndex;
-
-      // Skip sweeps that haven't happened yet from the current candle's perspective
-      // (prevents look-ahead bias in replay/backtest scoring).
-      if (candlesSinceSweep < 0) continue;
-
-      // Max lifetime: 10 candles
-      if (candlesSinceSweep > 10) continue;
-
-      // Check invalidation
-      // Bullish break sweep = support grab = bullish (price should rise)
-      // If price drops below broken level = invalidated
-      if (sb.direction === 'bullish' && price < sb.brokenLevel) continue;
-
-      // Bearish break sweep = resistance grab = bearish (price should drop)
-      // If price rises above broken level = invalidated
-      if (sb.direction === 'bearish' && price > sb.brokenLevel) continue;
-
-      // Linear decay
-      const decayScore = Math.max(0, 100 - (candlesSinceSweep * 10));
-
-      // Apply directional sign
-      const directionalScore = sb.direction === 'bullish' ? decayScore : -decayScore;
-
-      // Keep most recent sweep
-      if (sb.breakIndex > bestSweepIndex) {
-        bestScore = directionalScore;
-        bestSweepIndex = sb.breakIndex;
-      }
-    }
-  }
+  // Structure levels (BOS/CHoCH/MSS) are terminal once breached and are not
+  // considered sweepable liquidity for this score.
 
   return Math.round(bestScore);
 }

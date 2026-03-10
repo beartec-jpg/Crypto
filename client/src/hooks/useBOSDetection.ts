@@ -168,42 +168,13 @@ function detectStructureBreaks(
       const confirmed = candle.close > recentHigh.price;
 
       if (wicked) {
-        const swept = !confirmed;
-
         if (settings.requireClose && !confirmed) {
-          // Only swept - record if not hiding swept
-          if (!settings.hideSwept) {
-            const sbType: 'bos' | 'choch' =
-              trend === 'bearish' ? 'choch' : 'bos';
-            const direction: 'bullish' | 'bearish' = 'bullish';
-
-            brokenSwingIds.add(recentHigh.id);
-
-            // Integration
-            const associatedFVGId = findAssociatedFVG(candle, fvgs, 'bullish');
-            const associatedOBId = findAssociatedOB(candle, orderBlocks, 'bullish');
-
-            const newBreak = createBreak(sbType, direction, recentHigh, candle, ci, swept, false,
-              associatedOBId, associatedFVGId, settings.extendLines);
-            
-            breaks.push(newBreak);
-
-            // If this is a CHoCH (trend reversal), mark as pending MSS candidate
-            if (sbType === 'choch') {
-              const lastLowSwing = prevLows[prevLows.length - 1];
-              pendingMSS.set(newBreak.id, {
-                breakId: newBreak.id,
-                direction: 'bullish',
-                swingIdNeeded: 'HL',
-                lastSwingPrice: lastLowSwing ? lastLowSwing.price : 0,
-              });
-            }
-
-            // Update trend
-            trend = direction;
-          }
+          // Wick-only touches do not invalidate or sweep market structure levels.
           continue;
         }
+
+        const swept = false;
+        const breakConfirmed = settings.requireClose ? confirmed : wicked;
 
         brokenSwingIds.add(recentHigh.id);
 
@@ -214,7 +185,7 @@ function detectStructureBreaks(
         const associatedFVGId = findAssociatedFVG(candle, fvgs, 'bullish');
         const associatedOBId = findAssociatedOB(candle, orderBlocks, 'bullish');
 
-        const newBreak = createBreak(sbType, direction, recentHigh, candle, ci, swept, confirmed,
+        const newBreak = createBreak(sbType, direction, recentHigh, candle, ci, swept, breakConfirmed,
           associatedOBId, associatedFVGId, settings.extendLines);
         
         breaks.push(newBreak);
@@ -240,39 +211,13 @@ function detectStructureBreaks(
       const confirmed = candle.close < recentLow.price;
 
       if (wicked) {
-        const swept = !confirmed;
-
         if (settings.requireClose && !confirmed) {
-          if (!settings.hideSwept) {
-            const sbType: 'bos' | 'choch' =
-              trend === 'bullish' ? 'choch' : 'bos';
-            const direction: 'bullish' | 'bearish' = 'bearish';
-
-            brokenSwingIds.add(recentLow.id);
-
-            const associatedFVGId = findAssociatedFVG(candle, fvgs, 'bearish');
-            const associatedOBId = findAssociatedOB(candle, orderBlocks, 'bearish');
-
-            const newBreak = createBreak(sbType, direction, recentLow, candle, ci, swept, false,
-              associatedOBId, associatedFVGId, settings.extendLines);
-            
-            breaks.push(newBreak);
-
-            // If this is a CHoCH (trend reversal), mark as pending MSS candidate
-            if (sbType === 'choch') {
-              const lastHighSwing = prevHighs[prevHighs.length - 1];
-              pendingMSS.set(newBreak.id, {
-                breakId: newBreak.id,
-                direction: 'bearish',
-                swingIdNeeded: 'LH',
-                lastSwingPrice: lastHighSwing ? lastHighSwing.price : 0,
-              });
-            }
-
-            trend = direction;
-          }
+          // Wick-only touches do not invalidate or sweep market structure levels.
           continue;
         }
+
+        const swept = false;
+        const breakConfirmed = settings.requireClose ? confirmed : wicked;
 
         brokenSwingIds.add(recentLow.id);
 
@@ -283,7 +228,7 @@ function detectStructureBreaks(
         const associatedFVGId = findAssociatedFVG(candle, fvgs, 'bearish');
         const associatedOBId = findAssociatedOB(candle, orderBlocks, 'bearish');
 
-        const newBreak = createBreak(sbType, direction, recentLow, candle, ci, swept, confirmed,
+        const newBreak = createBreak(sbType, direction, recentLow, candle, ci, swept, breakConfirmed,
           associatedOBId, associatedFVGId, settings.extendLines);
         
         breaks.push(newBreak);
