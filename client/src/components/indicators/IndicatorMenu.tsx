@@ -9,7 +9,7 @@ import type { FVGSettings } from '@/types/fvg';
 import type { OrderBlockSettings } from '@/types/orderBlock';
 import type { BreakerSettings } from '@/types/breaker';
 import type { BOSSettings } from '@/types/structureBreak';
-import type { LiquiditySettings, PDZoneSettings } from '@/types/liquidity';
+import type { LiquiditySettings } from '@/types/liquidity';
 import type { AutoFibSettings } from '@/types/autoFib';
 import type { MAConfig } from '@/types/chart.types';
 
@@ -57,8 +57,6 @@ interface IndicatorMenuProps {
   onBOSSettingsChange: (s: BOSSettings) => void;
   liquiditySettings: LiquiditySettings;
   onLiquiditySettingsChange: (s: LiquiditySettings) => void;
-  pdZoneSettings: PDZoneSettings;
-  onPDZoneSettingsChange: (s: PDZoneSettings) => void;
   onOpenSmc: () => void;
   autoFibSettings: AutoFibSettings;
   onAutoFibToggle: (enabled: boolean) => void;
@@ -117,8 +115,6 @@ export function IndicatorMenu({
   onBOSSettingsChange,
   liquiditySettings,
   onLiquiditySettingsChange,
-  pdZoneSettings,
-  onPDZoneSettingsChange,
   onOpenSmc,
   autoFibSettings,
   onAutoFibToggle,
@@ -137,7 +133,6 @@ export function IndicatorMenu({
     (obSettings.enabled ? 1 : 0) +
     (bosSettings.enabled ? 1 : 0) +
     (liquiditySettings.enabled ? 1 : 0) +
-    (pdZoneSettings.enabled ? 1 : 0) +
     (autoFibSettings.enabled ? 1 : 0);
 
   return (
@@ -354,14 +349,6 @@ export function IndicatorMenu({
                 checked={liquiditySettings.enabled}
                 onCheckedChange={checked =>
                   onLiquiditySettingsChange({ ...liquiditySettings, enabled: checked })
-                }
-              />
-              <IndicatorRow
-                label="Premium / Discount"
-                description="Fibonacci-based zones"
-                checked={pdZoneSettings.enabled}
-                onCheckedChange={checked =>
-                  onPDZoneSettingsChange({ ...pdZoneSettings, enabled: checked })
                 }
               />
             </div>

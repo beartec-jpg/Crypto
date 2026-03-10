@@ -51,8 +51,6 @@ import { useBOSSettings } from '@/hooks/useBOSSettings';
 import { useBOSDetection } from '@/hooks/useBOSDetection';
 import { useLiquiditySettings } from '@/hooks/useLiquiditySettings';
 import { useLiquidityDetection } from '@/hooks/useLiquidityDetection';
-import { usePDZoneSettings } from '@/hooks/usePDZoneSettings';
-import { usePDZoneDetection } from '@/hooks/usePDZoneDetection';
 import { useAutoFibSettings } from '@/hooks/useAutoFibSettings';
 import { useAutoFibDetection } from '@/hooks/useAutoFibDetection';
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
@@ -385,13 +383,6 @@ export function ChartFullscreenPage({
     timeframe,
   });
 
-  // Hooks - Premium/Discount Zone detection
-  const pdZoneSettings = usePDZoneSettings();
-  const pdZones = usePDZoneDetection({
-    candles: effectiveCandles,
-    settings: pdZoneSettings.settings,
-  });
-
   // Hooks - Auto-Fibonacci detection
   const autoFibSettings = useAutoFibSettings();
   const autoFibVisibleRange = useVisibleRange(chartRef.current);
@@ -473,7 +464,6 @@ export function ChartFullscreenPage({
     setOrderBlocksEnabled: (enabled) => obSettings.updateSetting('enabled', enabled),
     setBOSEnabled: (enabled) => bosSettings.updateSetting('enabled', enabled),
     setLiquidityEnabled: (enabled) => liquiditySettings.updateSetting('enabled', enabled),
-    setPDZonesEnabled: (enabled) => pdZoneSettings.updateSetting('enabled', enabled),
     setAutoFibEnabled: (enabled) => autoFibSettings.updateSettings({ enabled }),
     
     // Tools
@@ -1612,8 +1602,6 @@ export function ChartFullscreenPage({
           onBOSSettingsChange={bosSettings.setSettings}
           liquiditySettings={liquiditySettings.settings}
           onLiquiditySettingsChange={liquiditySettings.setSettings}
-          pdZoneSettings={pdZoneSettings.settings}
-          onPDZoneSettingsChange={pdZoneSettings.setSettings}
           onOpenSmc={() => setShowSmcModal(true)}
           autoFibSettings={autoFibSettings.settings}
           onAutoFibToggle={(enabled) => autoFibSettings.updateSettings({ enabled })}
@@ -1740,8 +1728,6 @@ export function ChartFullscreenPage({
           bosSettings={bosSettings.settings}
           liquidityZones={liquidityZones}
           liquiditySettings={liquiditySettings.settings}
-          pdZones={pdZones}
-          pdZoneSettings={pdZoneSettings.settings}
           autoFibResult={autoFibResult}
           autoFibSettings={autoFibSettings.settings}
           volumeProfileData={volumeProfileData}
@@ -1865,8 +1851,6 @@ export function ChartFullscreenPage({
         onBOSSettingsChange={bosSettings.setSettings}
         liquiditySettings={liquiditySettings.settings}
         onLiquiditySettingsChange={liquiditySettings.setSettings}
-        pdZoneSettings={pdZoneSettings.settings}
-        onPDZoneSettingsChange={pdZoneSettings.setSettings}
         showDegreePicker={showDegreePicker}
         onDegreeSelect={elliottWaveController.handleDegreeSelect}
         onCloseDegreePicker={() => setShowDegreePicker(false)}

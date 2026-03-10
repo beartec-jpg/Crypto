@@ -155,10 +155,8 @@ function getDefaultWeights(systemId: string): Record<string, WeightLevel> {
 
   if (systemId === 'mtf-confluence') {
     return {
-      htfBias: 1,
       localTrend: 1,
       structureDirection: 1,
-      macdMomentum: 1,
     };
   }
 
