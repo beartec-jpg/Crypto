@@ -620,7 +620,7 @@ function scoreFVGProximity(currentPrice: number, previousPrice: number, fvgs?: A
   if (activeFVGs.length === 0) return 0;
 
   const scores = activeFVGs.map(fvg => {
-    const proximity = scoreZoneProximity(currentPrice, fvg.high, fvg.low, 0.3);
+    const proximity = scoreZoneProximity(currentPrice, fvg.high, fvg.low, 2.0);
 
     const isInsideZone = currentPrice >= fvg.low && currentPrice <= fvg.high;
     const isAboveZone = currentPrice > fvg.high;
@@ -1177,42 +1177,13 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     return buildEvaluation('smart-money', [], 0, ['No valid market structure detected']);
   }
 
-  // Score entry zones (OB, FVG, Breaker)
+  // Score entry zones (OB, FVG, Breaker) — always computed for display
   const obScore = scoreOrderBlockProximity(currentPrice, previousClose, orderBlocks);
   const fvgScore = scoreFVGProximity(currentPrice, previousClose, fvgs);
   const breakerScore = scoreBreakerBlockProximity(currentPrice, orderBlocks);
 
-  // Filter zones: must be enabled (weight>0), strong enough (≥40), and aligned with structure direction
-  const validZones = [
-    { id: 'orderBlockTouch', name: 'Order Block Proximity', score: obScore, weight: weights.orderBlockTouch ?? 0 },
-    { id: 'fvgProximity', name: 'FVG Proximity', score: fvgScore, weight: weights.fvgProximity ?? 0 },
-    { id: 'breakerBlockProximity', name: 'Breaker Block Proximity', score: breakerScore, weight: weights.breakerBlockProximity ?? 0 },
-  ].filter(zone => {
-    const isBullishZone = zone.score > 0;
-    const structureIsBullish = latestStructureDirection === 'bullish';
-    return (
-      zone.weight > 0 &&
-      Math.abs(zone.score) >= 40 &&
-      isBullishZone === structureIsBullish
-    );
-  });
-
-  if (validZones.length === 0) {
-    return buildEvaluation('smart-money', [], 0, ['No valid entry zones aligned with market structure']);
-  }
-
-  // Calculate base entry score (weighted average of active zones)
-  const totalWeight = validZones.reduce((sum, z) => sum + z.weight, 0);
-  const baseEntryScore = validZones.reduce((sum, z) => sum + (z.score * z.weight), 0) / totalWeight;
-
-  // Apply confluence boosters (multiply base score instead of adding)
-  let boostedScore = baseEntryScore;
-
+  // Compute confluence scores upfront so they appear in conditions even when no entry zone qualifies
   const liquidityScore = scoreLiquiditySweepProximity(currentPrice, liquidityZones, currentCandleIndex, structureBreaks);
-  if ((weights.liquiditySweep ?? 0) > 0 && Math.abs(liquidityScore) >= 40) {
-    const sweepBoost = (Math.abs(liquidityScore) / 100) * 0.3;
-    boostedScore *= (1 + sweepBoost);
-  }
 
   const singleAssetDivergenceScore = scoreDivergenceConfluence(
     priceHistory ?? [],
@@ -1223,27 +1194,63 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   const hybridDivergence = scoreHybridDivergence(smtDivergence, singleAssetDivergenceScore);
   const divergenceFinalScore = hybridDivergence.score;
 
-  if ((weights.divergenceConfluence ?? 0) > 0 && Math.abs(divergenceFinalScore) >= 40) {
-    const divBoost = (Math.abs(divergenceFinalScore) / 100) * 0.2;
-    boostedScore *= (1 + divBoost);
-  }
-
   const autoFibWeight = weights.autoFibConfluence ?? 0;
   const autoFibScore = autoFibWeight > 0
     ? scoreAutoFibConfluence(autoFibResult, currentPrice, fvgs, orderBlocks)
     : 0;
-  if (autoFibScore >= 40) {
-    const fibBoost = (autoFibScore / 100) * 0.15;
-    boostedScore *= (1 + fibBoost);
-  }
 
-  // Apply trend strength multiplier (consecutive MSS/CHoCH in same direction)
-  // Compute consecutiveCount once and derive the multiplier from it (avoids duplicate filtering)
+  // Trend strength (computed upfront for conditions display)
   const consecutiveMSSCount = getConsecutiveMSSCount(structureBreaks ?? [], latestStructureDirection, currentTime ?? 0, lookbackCandles);
   const trendMultiplier = Math.min(1.0 + (consecutiveMSSCount - 1) * 0.1, 1.5);
-  const finalScore = Math.round(boostedScore * trendMultiplier);
 
-  // Build granular conditions for display
+  // All possible entry zones (always built; weight defaults: fvg=3, ob=3, breaker=1)
+  const allZones = [
+    { id: 'orderBlockTouch', name: 'Order Block Proximity', score: obScore, weight: weights.orderBlockTouch ?? 3 },
+    { id: 'fvgProximity', name: 'FVG Proximity', score: fvgScore, weight: weights.fvgProximity ?? 3 },
+    { id: 'breakerBlockProximity', name: 'Breaker Block Proximity', score: breakerScore, weight: weights.breakerBlockProximity ?? 1 },
+  ];
+
+  // Filter zones: must be enabled (weight>0), strong enough (≥20), and aligned with structure direction
+  const validZones = allZones.filter(zone => {
+    if (zone.weight <= 0) return false;
+    if (Math.abs(zone.score) < 20) return false;
+    // Zone sign must match market structure direction
+    const isBullishZone = zone.score > 0;
+    const structureIsBullish = latestStructureDirection === 'bullish';
+    return isBullishZone === structureIsBullish;  // Both bullish OR both bearish
+  });
+
+  // Calculate base entry score (weighted average of valid zones), or 0 when none qualify
+  let baseEntryScore = 0;
+  let boostedScore = 0;
+
+  if (validZones.length > 0) {
+    const totalWeight = validZones.reduce((sum, z) => sum + z.weight, 0);
+    baseEntryScore = validZones.reduce((sum, z) => sum + (z.score * z.weight), 0) / totalWeight;
+
+    // Apply confluence boosters (multiply base score instead of adding)
+    boostedScore = baseEntryScore;
+
+    if ((weights.liquiditySweep ?? 0) > 0 && Math.abs(liquidityScore) >= 40) {
+      const sweepBoost = (Math.abs(liquidityScore) / 100) * 0.3;
+      boostedScore *= (1 + sweepBoost);
+    }
+
+    if ((weights.divergenceConfluence ?? 0) > 0 && Math.abs(divergenceFinalScore) >= 40) {
+      const divBoost = (Math.abs(divergenceFinalScore) / 100) * 0.2;
+      boostedScore *= (1 + divBoost);
+    }
+
+    if (autoFibScore >= 40) {
+      const fibBoost = (autoFibScore / 100) * 0.15;
+      boostedScore *= (1 + fibBoost);
+    }
+  }
+
+  const finalScore = validZones.length > 0 ? Math.round(boostedScore * trendMultiplier) : 0;
+
+  // Build conditions for ALL zones so weight sliders are always visible and the debug
+  // table can display raw scores regardless of whether zones qualify for an entry.
   const conditions: ScoredCondition[] = [
     {
       id: 'trendStrength',
@@ -1256,18 +1263,21 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       value: `${trendMultiplier.toFixed(2)}x`,
       description: `${consecutiveMSSCount} consecutive ${latestStructureDirection} MSS/CHoCH`,
     },
-    ...validZones.map(zone => {
+    ...allZones.map(zone => {
       const userWeight = (weights[zone.id] ?? 1) as WeightLevel;
+      const isValidZone = validZones.some(vz => vz.id === zone.id);
       return {
         id: zone.id,
         name: zone.name,
-        met: true,
+        met: isValidZone,
         weight: userWeight,
         score: Math.round(zone.score),
         userWeight,
-        weightedScore: Math.round(zone.score) * userWeight,
+        weightedScore: isValidZone ? Math.round(zone.score) * userWeight : 0,
         value: `${Math.abs(Math.round(zone.score))}/100`,
-        description: `${zone.name} (weight: ${zone.weight})`,
+        description: isValidZone
+          ? `Active entry zone (weight: ${userWeight})`
+          : `Not qualifying (score: ${Math.round(zone.score)}/100)`,
       };
     }),
     {
@@ -1311,12 +1321,18 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     },
   ];
 
-  const reasoning: string[] = [
-    `Base Entry: ${Math.round(baseEntryScore)} (${validZones.map(z => z.name).join(' + ')})`,
-    `Confluence Boosts: +${Math.round((boostedScore / baseEntryScore - 1) * 100)}%`,
-    `Trend Multiplier: ${trendMultiplier.toFixed(2)}x (${consecutiveMSSCount} consecutive shifts)`,
-    `Final Score: ${finalScore}`,
-  ];
+  const confluenceBoostPct = baseEntryScore !== 0
+    ? Math.round((boostedScore / baseEntryScore - 1) * 100)
+    : 0;
+
+  const reasoning: string[] = validZones.length === 0
+    ? ['No valid entry zones aligned with market structure']
+    : [
+      `Base Entry: ${Math.round(baseEntryScore)} (${validZones.map(z => z.name).join(' + ')})`,
+      `Confluence Boosts: +${confluenceBoostPct}%`,
+      `Trend Multiplier: ${trendMultiplier.toFixed(2)}x (${consecutiveMSSCount} consecutive shifts)`,
+      `Final Score: ${finalScore}`,
+    ];
 
   return buildEvaluation('smart-money', conditions, finalScore, reasoning);
 }
