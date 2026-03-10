@@ -25,8 +25,8 @@ describe('useOrderBlockDetection', () => {
       candle(1060, 99, 102, 99, 101),
       // Neutral progression
       candle(1120, 101, 102, 100, 101),
-      // Pass-through candle below OB bottom (potential sweep/break)
-      candle(1180, 99, 100, 97.5, 97.6),
+      // Full zone pass-through: open=101.5 > top=101, close=97.6 < bottom=98 (potential sweep/break)
+      candle(1180, 101.5, 103, 97, 97.6),
       // Confirmation candle closes back inside -> marks sweep
       candle(1240, 98.2, 99.2, 97.9, 98.4),
       // Later close-through beyond invalidation boundary (open <= bottom avoids re-pass-through path)
@@ -71,8 +71,8 @@ describe('useOrderBlockDetection', () => {
       candle(2000, 100, 101, 98, 99),
       // Bullish displacement
       candle(2060, 99, 102, 99, 101),
-      // Clean pass-through candle
-      candle(2120, 99, 100, 97.4, 97.6),
+      // Full zone pass-through: open=101.5 > top=101, close=97.6 < bottom=98
+      candle(2120, 101.5, 103, 97, 97.6),
       // Confirmation candles stay below bottom -> convert to breaker
       candle(2180, 97.7, 97.9, 96.9, 97.2),
       candle(2240, 97.3, 97.8, 96.8, 97.1),
@@ -117,8 +117,8 @@ describe('useOrderBlockDetection', () => {
       candle(3060, 102, 102.2, 99.2, 99.8),
       // Neutral progression
       candle(3120, 99.8, 100.5, 99.4, 100),
-      // Pass-through candle above OB top (potential sweep/break)
-      candle(3180, 102.4, 103.8, 102.2, 103.4),
+      // Full zone pass-through above OB top: open=99.0 < bottom=100, close=103.4 > top=103 (potential sweep/break)
+      candle(3180, 99.0, 103.5, 98.8, 103.4),
       // Confirmation candle closes back inside -> marks sweep
       candle(3240, 102.8, 103, 101.7, 102.6),
       // Later close-through above invalidation boundary (open >= top avoids re-pass-through path)
