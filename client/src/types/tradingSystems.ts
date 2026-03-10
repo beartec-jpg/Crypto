@@ -45,7 +45,6 @@ export interface TradingSystem {
     smc?: {
       fvg?: { enabled: boolean };
       orderBlocks?: { enabled: boolean };
-      breakerBlocks?: { enabled: boolean };
       bos?: { enabled: boolean };
       liquidity?: { enabled: boolean };
       pdZones?: { enabled: boolean };
@@ -166,7 +165,6 @@ export const TRADING_SYSTEMS: Record<TradingSystemId, TradingSystem> = {
       smc: {
         fvg: { enabled: true },
         orderBlocks: { enabled: true },
-        breakerBlocks: { enabled: true },
         bos: { enabled: true },
         liquidity: { enabled: true },
         pdZones: { enabled: true },

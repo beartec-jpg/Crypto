@@ -46,8 +46,6 @@ import { useFVGSettings } from '@/hooks/useFVGSettings';
 import { useFVGDetection } from '@/hooks/useFVGDetection';
 import { useOrderBlockSettings } from '@/hooks/useOrderBlockSettings';
 import { useOrderBlockDetection } from '@/hooks/useOrderBlockDetection';
-import { useBreakerBlockSettings } from '@/hooks/useBreakerBlockSettings';
-import { useBreakerBlockDetection } from '@/hooks/useBreakerBlockDetection';
 import { useBOSSettings } from '@/hooks/useBOSSettings';
 import { useBOSDetection } from '@/hooks/useBOSDetection';
 import { useLiquiditySettings } from '@/hooks/useLiquiditySettings';
@@ -367,10 +365,6 @@ export function ChartFullscreenPage({
   const obSettings = useOrderBlockSettings();
   const orderBlocks = useOrderBlockDetection({ candles: effectiveCandles, settings: obSettings.settings, fvgs });
 
-  // Hooks - Breaker Block detection (derived from existing Order Blocks)
-  const bbSettings = useBreakerBlockSettings();
-  const breakerBlocks = useBreakerBlockDetection({ candles: effectiveCandles, orderBlocks, settings: bbSettings.settings });
-
   // Hooks - BOS/CHoCH detection
   const bosSettings = useBOSSettings();
   const { structureBreaks, swingPoints, sessionSeparators } = useBOSDetection({
@@ -475,7 +469,6 @@ export function ChartFullscreenPage({
     // SMC
     setFVGEnabled: (enabled) => fvgSettings.updateSetting('enabled', enabled),
     setOrderBlocksEnabled: (enabled) => obSettings.updateSetting('enabled', enabled),
-    setBreakerBlocksEnabled: (enabled) => bbSettings.updateSetting('enabled', enabled),
     setBOSEnabled: (enabled) => bosSettings.updateSetting('enabled', enabled),
     setLiquidityEnabled: (enabled) => liquiditySettings.updateSetting('enabled', enabled),
     setPDZonesEnabled: (enabled) => pdZoneSettings.updateSetting('enabled', enabled),
@@ -1773,8 +1766,6 @@ export function ChartFullscreenPage({
           fvgSettings={fvgSettings.settings}
           orderBlocks={orderBlocks}
           obSettings={obSettings.settings}
-          breakerBlocks={breakerBlocks}
-          bbSettings={bbSettings.settings}
           structureBreaks={structureBreaks}
           swingPoints={swingPoints}
           sessionSeparators={sessionSeparators}

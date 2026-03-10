@@ -34,7 +34,6 @@ export interface TradingSystemCallbacks {
   // SMC callbacks
   setFVGEnabled?: (enabled: boolean) => void;
   setOrderBlocksEnabled?: (enabled: boolean) => void;
-  setBreakerBlocksEnabled?: (enabled: boolean) => void;
   setBOSEnabled?: (enabled: boolean) => void;
   setLiquidityEnabled?: (enabled: boolean) => void;
   setPDZonesEnabled?: (enabled: boolean) => void;
@@ -71,7 +70,6 @@ export function useTradingSystem(callbacks: TradingSystemCallbacks) {
     // SMC
     callbacks.setFVGEnabled?.(false);
     callbacks.setOrderBlocksEnabled?.(false);
-    callbacks.setBreakerBlocksEnabled?.(false);
     callbacks.setBOSEnabled?.(false);
     callbacks.setLiquidityEnabled?.(false);
     callbacks.setPDZonesEnabled?.(false);
@@ -167,10 +165,6 @@ export function useTradingSystem(callbacks: TradingSystemCallbacks) {
       
       if (smc.orderBlocks !== undefined) {
         callbacks.setOrderBlocksEnabled?.(smc.orderBlocks.enabled);
-      }
-      
-      if (smc.breakerBlocks !== undefined) {
-        callbacks.setBreakerBlocksEnabled?.(smc.breakerBlocks.enabled);
       }
       
       if (smc.bos !== undefined) {
