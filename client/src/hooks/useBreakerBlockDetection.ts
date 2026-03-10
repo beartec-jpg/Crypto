@@ -85,15 +85,15 @@ export function useBreakerBlockDetection({
       for (let i = breakIdx + 1; i < candles.length; i++) {
         const c = candles[i];
         if (bbType === 'bullish') {
-          // Bullish breaker is mitigated when price trades back inside
-          if (c.low < ob.top && c.high > ob.bottom) {
+          // Bullish breaker is mitigated when price closes BELOW the bottom
+          if (c.close < ob.bottom) {
             mitigated = true;
             mitigationTime = c.time;
             break;
           }
         } else {
-          // Bearish breaker is mitigated when price trades back inside
-          if (c.low < ob.top && c.high > ob.bottom) {
+          // Bearish breaker is mitigated when price closes ABOVE the top
+          if (c.close > ob.top) {
             mitigated = true;
             mitigationTime = c.time;
             break;

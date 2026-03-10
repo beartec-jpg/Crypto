@@ -216,9 +216,11 @@ export function useOrderBlockDetection({
         const c = candles[j];
 
         // Check for body pass-through (single candle body completely traverses the OB zone)
+        // Bullish OB -> bearish breaker: candle must open ABOVE the TOP and close BELOW the BOTTOM
+        // Bearish OB -> bullish breaker: candle must open BELOW the BOTTOM and close ABOVE the TOP
         const passedThrough =
-          (ob.type === 'bullish' && c.open > ob.bottom && c.close < ob.bottom) ||
-          (ob.type === 'bearish' && c.open < ob.top && c.close > ob.top);
+          (ob.type === 'bullish' && c.open > ob.top && c.close < ob.bottom) ||
+          (ob.type === 'bearish' && c.open < ob.bottom && c.close > ob.top);
 
         if (passedThrough && !breaker && !mitigated) {
           let closedBackInside = false;
@@ -246,6 +248,9 @@ export function useOrderBlockDetection({
             sweepTime = c.time;
             sweepPrice = ob.type === 'bullish' ? c.low : c.high;
             sweepIndex = j;
+            // Skip the closedBeyondInvalidation check for this same candle;
+            // the sweep has saved the OB so it should not be immediately invalidated.
+            continue;
           } else {
             // BREAKER: All confirmation candles stayed on opposite side, OB converts
             breaker = true;
