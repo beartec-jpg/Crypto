@@ -95,7 +95,7 @@ export const DEFAULT_LIQUIDITY_SETTINGS: LiquiditySettings = {
 };
 
 export const DEFAULT_PD_ZONE_SETTINGS: PDZoneSettings = {
-  enabled: true,
+  enabled: false,
   rangeSource: 'swing',
   showPremium: true,
   showDiscount: true,
