@@ -1203,11 +1203,11 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   const consecutiveMSSCount = getConsecutiveMSSCount(structureBreaks ?? [], latestStructureDirection, currentTime ?? 0, lookbackCandles);
   const trendMultiplier = Math.min(1.0 + (consecutiveMSSCount - 1) * 0.1, 1.5);
 
-  // All possible entry zones (always built; weight defaults: fvg=3, ob=3, breaker=1)
+  // All possible entry zones — weights come from getConditionWeights (single source of truth)
   const allZones = [
-    { id: 'orderBlockTouch', name: 'Order Block Proximity', score: obScore, weight: weights.orderBlockTouch ?? 3 },
-    { id: 'fvgProximity', name: 'FVG Proximity', score: fvgScore, weight: weights.fvgProximity ?? 3 },
-    { id: 'breakerBlockProximity', name: 'Breaker Block Proximity', score: breakerScore, weight: weights.breakerBlockProximity ?? 1 },
+    { id: 'orderBlockTouch', name: 'Order Block Proximity', score: obScore, weight: weights.orderBlockTouch as WeightLevel },
+    { id: 'fvgProximity', name: 'FVG Proximity', score: fvgScore, weight: weights.fvgProximity as WeightLevel },
+    { id: 'breakerBlockProximity', name: 'Breaker Block Proximity', score: breakerScore, weight: weights.breakerBlockProximity as WeightLevel },
   ];
 
   // Filter zones: must be enabled (weight>0), strong enough (≥20), and aligned with structure direction
@@ -1264,19 +1264,18 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       description: `${consecutiveMSSCount} consecutive ${latestStructureDirection} MSS/CHoCH`,
     },
     ...allZones.map(zone => {
-      const userWeight = (weights[zone.id] ?? 1) as WeightLevel;
       const isValidZone = validZones.some(vz => vz.id === zone.id);
       return {
         id: zone.id,
         name: zone.name,
         met: isValidZone,
-        weight: userWeight,
+        weight: zone.weight,
         score: Math.round(zone.score),
-        userWeight,
-        weightedScore: isValidZone ? Math.round(zone.score) * userWeight : 0,
+        userWeight: zone.weight,
+        weightedScore: isValidZone ? Math.round(zone.score) * zone.weight : 0,
         value: `${Math.abs(Math.round(zone.score))}/100`,
         description: isValidZone
-          ? `Active entry zone (weight: ${userWeight})`
+          ? `Active entry zone (weight: ${zone.weight})`
           : `Not qualifying (score: ${Math.round(zone.score)}/100)`,
       };
     }),
