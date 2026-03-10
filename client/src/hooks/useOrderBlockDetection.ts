@@ -220,7 +220,7 @@ export function useOrderBlockDetection({
           (ob.type === 'bullish' && c.open > ob.bottom && c.close < ob.bottom) ||
           (ob.type === 'bearish' && c.open < ob.top && c.close > ob.top);
 
-        if (passedThrough && !swept && !breaker && !mitigated) {
+        if (passedThrough && !breaker && !mitigated) {
           let closedBackInside = false;
 
           // Check next N candles for confirmation
@@ -255,6 +255,19 @@ export function useOrderBlockDetection({
             conversionPrice = c.close;
             break;
           }
+        }
+
+        // If a prior sweep exists and price later closes beyond the invalidation
+        // boundary, the original OB is no longer valid and must be retired.
+        const closedBeyondInvalidation =
+          (ob.type === 'bullish' && c.close < ob.bottom) ||
+          (ob.type === 'bearish' && c.close > ob.top);
+
+        if (swept && !breaker && !mitigated && closedBeyondInvalidation) {
+          mitigated = true;
+          mitigationPercent = 100;
+          mitigationTime = c.time;
+          break;
         }
 
         // Check breaker mitigation (price closes through the breaker zone again)
