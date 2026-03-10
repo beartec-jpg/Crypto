@@ -126,17 +126,17 @@ export function useFVGDetection({ candles, settings }: UseFVGDetectionOptions): 
           }
 
           // Check if wick went below the gap
-          if (c.low < fvg.bottom && !swept && !mitigated) {
-            // Look ahead for confirmation candles
-            let closeBackInside = false;
-            for (let k = j + 1; k <= Math.min(j + confirmationWindow, candles.length - 1); k++) {
-              if (candles[k].close >= fvg.bottom) {
-                swept = true;
-                sweepTime = c.time;
-                sweepPrice = c.low;
-                sweepIndex = j;
-                closeBackInside = true;
-                break;
+          if (c.low < fvg.bottom && !mitigated) {
+            // Look ahead for confirmation candles (only mark sweep if not already swept)
+            if (!swept) {
+              for (let k = j + 1; k <= Math.min(j + confirmationWindow, candles.length - 1); k++) {
+                if (candles[k].close >= fvg.bottom) {
+                  swept = true;
+                  sweepTime = c.time;
+                  sweepPrice = c.low;
+                  sweepIndex = j;
+                  break;
+                }
               }
             }
 
@@ -145,6 +145,11 @@ export function useFVGDetection({ candles, settings }: UseFVGDetectionOptions): 
               mitigated = true;
               mitigationPercent = 100;
               mitigationTime = c.time;
+              // Clear failed sweep markers — price closed through, so the sweep failed
+              swept = false;
+              sweepTime = undefined;
+              sweepPrice = undefined;
+              sweepIndex = undefined;
               if (settings.detectIFVG) {
                 isInverse = true;
               }
@@ -161,17 +166,17 @@ export function useFVGDetection({ candles, settings }: UseFVGDetectionOptions): 
           }
 
           // Check if wick went above the gap
-          if (c.high > fvg.top && !swept && !mitigated) {
-            // Look ahead for confirmation candles
-            let closeBackInside = false;
-            for (let k = j + 1; k <= Math.min(j + confirmationWindow, candles.length - 1); k++) {
-              if (candles[k].close <= fvg.top) {
-                swept = true;
-                sweepTime = c.time;
-                sweepPrice = c.high;
-                sweepIndex = j;
-                closeBackInside = true;
-                break;
+          if (c.high > fvg.top && !mitigated) {
+            // Look ahead for confirmation candles (only mark sweep if not already swept)
+            if (!swept) {
+              for (let k = j + 1; k <= Math.min(j + confirmationWindow, candles.length - 1); k++) {
+                if (candles[k].close <= fvg.top) {
+                  swept = true;
+                  sweepTime = c.time;
+                  sweepPrice = c.high;
+                  sweepIndex = j;
+                  break;
+                }
               }
             }
 
@@ -180,6 +185,11 @@ export function useFVGDetection({ candles, settings }: UseFVGDetectionOptions): 
               mitigated = true;
               mitigationPercent = 100;
               mitigationTime = c.time;
+              // Clear failed sweep markers — price closed through, so the sweep failed
+              swept = false;
+              sweepTime = undefined;
+              sweepPrice = undefined;
+              sweepIndex = undefined;
               if (settings.detectIFVG) {
                 isInverse = true;
               }
