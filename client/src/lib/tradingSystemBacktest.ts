@@ -156,7 +156,7 @@ export function detectTrendReversal(trendState: TrendState): ReversalInfo {
   };
 }
 
-import { scoreSystem } from './tradingSystemScoring';
+import { scoreSystem, buildSmcZoneInputs } from './tradingSystemScoring';
 import type { TradingSystemId } from '@/types/tradingSystems';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
 import type { SuperTrendPoint } from '@/hooks/useSuperTrendCalculation';
@@ -198,6 +198,7 @@ export interface ViewportBacktestParams {
   divergencePoints: DivergencePoint[];
   fvgs: Array<{ top: number; bottom: number; mitigated: boolean; type: 'bullish' | 'bearish'; endTime?: number }>;
   orderBlocks: Array<{ top: number; bottom: number; type: 'bullish' | 'bearish'; time?: number; mitigated?: boolean; mitigationTime?: number }>;
+  breakers?: Array<{ top: number; bottom: number; type: 'bullish' | 'bearish'; mitigated?: boolean; mitigationTime?: number; conversionIndex?: number; conversionPrice?: number; conversionTime?: number }>;
   liquidityZones: Array<{ price: number; type: 'high' | 'low'; swept: boolean; touchTimes?: number[]; sweepPrice?: number; sweepIndex?: number; sweptIndex?: number }>;
   volumeProfileData?: {
     rows: Array<{ price: number; volume: number }>;
@@ -254,6 +255,7 @@ export function runTradingSystemBacktest(params: ViewportBacktestParams): Backte
     divergencePoints,
     fvgs,
     orderBlocks,
+    breakers = [],
     liquidityZones,
     volumeProfileData,
     swingPoints,
@@ -347,20 +349,7 @@ export function runTradingSystemBacktest(params: ViewportBacktestParams): Backte
       currentCandleIndex: index,
       structureBreaks,
       swingPoints,
-      fvgs: fvgs
-        .filter(fvg => !fvg.endTime || fvg.endTime <= currentTime)
-        .map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
-      orderBlocks: orderBlocks
-        .filter(ob => !ob.time || ob.time <= currentTime)
-        .map(ob => ({
-          high: ob.top,
-          low: ob.bottom,
-          type: ob.type,
-          mitigated: ob.mitigated && (!ob.mitigationTime || ob.mitigationTime <= currentTime),
-        })),
-      liquidityZones: liquidityZones
-        .filter(lz => !lz.touchTimes || lz.touchTimes.length === 0 || lz.touchTimes[lz.touchTimes.length - 1] <= currentTime)
-        .map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept, sweepPrice: lz.sweepPrice, sweepIndex: lz.sweepIndex, sweptIndex: lz.sweptIndex })),
+      ...buildSmcZoneInputs(fvgs, orderBlocks, breakers, liquidityZones, currentTime),
       volumeProfileData: mappedVolumeProfile,
     });
 

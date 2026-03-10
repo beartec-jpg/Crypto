@@ -218,6 +218,111 @@ function buildEvaluation(
 
 // ── Shared input type ─────────────────────────────────────────────────────────
 
+/** Raw FVG as returned by useFVGDetection (uses top/bottom, not high/low). */
+export interface RawSmcFVG {
+  top: number;
+  bottom: number;
+  mitigated: boolean;
+  type: 'bullish' | 'bearish';
+  /** Unix timestamp (seconds) after which the FVG is considered formed — used as look-ahead guard. */
+  endTime?: number;
+}
+
+/** Raw OrderBlock as returned by useOrderBlockDetection (uses top/bottom, not high/low). */
+export interface RawSmcOrderBlock {
+  top: number;
+  bottom: number;
+  type: 'bullish' | 'bearish';
+  /** Unix timestamp when OB was formed — used as look-ahead guard. */
+  time?: number;
+  mitigated?: boolean;
+  mitigationTime?: number;
+}
+
+/** Raw Breaker as returned by useBreakerBlockDetection (uses top/bottom, not high/low). */
+export interface RawSmcBreaker {
+  top: number;
+  bottom: number;
+  type: 'bullish' | 'bearish';
+  mitigated?: boolean;
+  mitigationTime?: number;
+  conversionIndex?: number;
+  conversionPrice?: number;
+  /** Unix timestamp when the OB was converted to a breaker — used as look-ahead guard. */
+  conversionTime?: number;
+}
+
+/** Raw LiquidityZone as returned by useLiquidityDetection. */
+export interface RawSmcLiquidityZone {
+  price: number;
+  type: 'high' | 'low';
+  swept: boolean;
+  touchTimes?: number[];
+  sweepPrice?: number;
+  sweepIndex?: number;
+  sweptIndex?: number;
+}
+
+/**
+ * Build the SMC zone arrays (`fvgs`, `orderBlocks`, `breakers`, `liquidityZones`) for a
+ * `ScoringInput` from the raw detector output.  This is the **single source-of-truth mapper**
+ * used by every scoring path — both live/fullscreen and historical/backtest.
+ *
+ * When `currentTime` is provided (backtest / historical-candle mode), items that had not yet
+ * formed at that candle timestamp are filtered out (look-ahead guard).  When omitted (live
+ * fullscreen mode) all items are included as-is.
+ *
+ * Liquidity sweep metadata (`sweepPrice`, `sweepIndex`, `sweptIndex`) is always preserved.
+ */
+export function buildSmcZoneInputs(
+  fvgs: RawSmcFVG[],
+  orderBlocks: RawSmcOrderBlock[],
+  breakers: RawSmcBreaker[],
+  liquidityZones: RawSmcLiquidityZone[],
+  currentTime?: number,
+): Pick<ScoringInput, 'fvgs' | 'orderBlocks' | 'breakers' | 'liquidityZones'> {
+  return {
+    fvgs: fvgs
+      .filter(fvg => currentTime === undefined || !fvg.endTime || fvg.endTime <= currentTime)
+      .map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
+    orderBlocks: orderBlocks
+      .filter(ob => currentTime === undefined || !ob.time || ob.time <= currentTime)
+      .map(ob => ({
+        high: ob.top,
+        low: ob.bottom,
+        type: ob.type,
+        mitigated: ob.mitigated === true &&
+          (ob.mitigationTime === undefined || currentTime === undefined || ob.mitigationTime <= currentTime),
+      })),
+    breakers: breakers
+      .filter(b => currentTime === undefined || !b.conversionTime || b.conversionTime <= currentTime)
+      .map(b => ({
+        high: b.top,
+        low: b.bottom,
+        type: b.type,
+        mitigated: b.mitigated === true &&
+          (b.mitigationTime === undefined || currentTime === undefined || b.mitigationTime <= currentTime),
+        conversionIndex: b.conversionIndex,
+        conversionPrice: b.conversionPrice,
+      })),
+    liquidityZones: liquidityZones
+      .filter(lz =>
+        currentTime === undefined ||
+        !lz.touchTimes ||
+        lz.touchTimes.length === 0 ||
+        lz.touchTimes[lz.touchTimes.length - 1] <= currentTime,
+      )
+      .map(lz => ({
+        price: lz.price,
+        type: lz.type,
+        swept: lz.swept,
+        sweepPrice: lz.sweepPrice,
+        sweepIndex: lz.sweepIndex,
+        sweptIndex: lz.sweptIndex,
+      })),
+  };
+}
+
 export interface ScoringInput {
   rsi?: number;
   currentPrice?: number;
@@ -1138,10 +1243,6 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
 
   const latestStructureDirection = recentStructureBreak?.direction;
 
-  if (!latestStructureDirection) {
-    return buildEvaluation('smart-money', [], 0, ['No valid market structure detected']);
-  }
-
   // Score entry zones (OB, FVG, Breaker) — always computed for display
   const obScore = scoreOrderBlockProximity(currentPrice, previousClose, orderBlocks);
   const fvgScore = scoreFVGProximity(currentPrice, previousClose, fvgs);
@@ -1154,7 +1255,7 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     priceHistory ?? [],
     rsiHistory ?? [],
     macdHistHistory ?? [],
-    latestStructureDirection,
+    latestStructureDirection ?? 'bullish',
   );
   const hybridDivergence = scoreHybridDivergence(smtDivergence, singleAssetDivergenceScore);
   const divergenceFinalScore = hybridDivergence.score;
@@ -1165,8 +1266,13 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     : 0;
 
   // Trend strength (computed upfront for conditions display)
-  const consecutiveMSSCount = getConsecutiveMSSCount(structureBreaks ?? [], latestStructureDirection, currentTime ?? 0, lookbackCandles);
-  const trendMultiplier = Math.min(1.0 + (consecutiveMSSCount - 1) * 0.1, 1.5);
+  // When no structure direction is known, consecutiveMSSCount = 0 and multiplier stays at 1.0.
+  const consecutiveMSSCount = latestStructureDirection
+    ? getConsecutiveMSSCount(structureBreaks ?? [], latestStructureDirection, currentTime ?? 0, lookbackCandles)
+    : 0;
+  const trendMultiplier = latestStructureDirection
+    ? Math.min(1.0 + (consecutiveMSSCount - 1) * 0.1, 1.5)
+    : 1.0;
 
   // All possible entry zones — weights come from getConditionWeights (single source of truth)
   const allZones = [
@@ -1175,8 +1281,10 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     { id: 'breakerBlockProximity', name: 'Breaker Block Proximity', score: breakerScore, weight: weights.breakerBlockProximity as WeightLevel },
   ];
 
-  // Filter zones: must be enabled (weight>0), strong enough (≥20), and aligned with structure direction
+  // Filter zones: must be enabled (weight>0), strong enough (≥20), and aligned with structure direction.
+  // When no structure direction is known, no zones are valid (score will be 0).
   const validZones = allZones.filter(zone => {
+    if (!latestStructureDirection) return false;
     if (zone.weight <= 0) return false;
     if (Math.abs(zone.score) < 20) return false;
     // Zone sign must match market structure direction
@@ -1226,7 +1334,7 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       userWeight: 1,
       weightedScore: Math.round((trendMultiplier - 1) * 100),
       value: `${trendMultiplier.toFixed(2)}x`,
-      description: `${consecutiveMSSCount} consecutive ${latestStructureDirection} MSS/CHoCH`,
+      description: `${consecutiveMSSCount} consecutive ${latestStructureDirection ?? 'n/a'} MSS/CHoCH`,
     },
     ...allZones.map(zone => {
       const isValidZone = validZones.some(vz => vz.id === zone.id);
@@ -1290,7 +1398,9 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     : 0;
 
   const reasoning: string[] = validZones.length === 0
-    ? ['No valid entry zones aligned with market structure']
+    ? [latestStructureDirection
+        ? 'No valid entry zones aligned with market structure'
+        : 'No valid market structure detected']
     : [
       `Base Entry: ${Math.round(baseEntryScore)} (${validZones.map(z => z.name).join(' + ')})`,
       `Confluence Boosts: +${confluenceBoostPct}%`,
