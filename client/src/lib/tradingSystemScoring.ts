@@ -1098,7 +1098,7 @@ export function getConsecutiveMSSCount(
   structureBreaks: Array<{ direction: 'bullish' | 'bearish'; type?: string; breakTime: number }>,
   currentDirection: 'bullish' | 'bearish',
   currentTime: number,
-  _lookbackCandles: number = 50,
+  lookbackCandles: number = 50,
 ): number {
   const recentBreaks = structureBreaks
     .filter(sb => sb.type === 'mss' || sb.type === 'choch')
@@ -1238,8 +1238,9 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   }
 
   // Apply trend strength multiplier (consecutive MSS/CHoCH in same direction)
-  const trendMultiplier = getTrendStrengthMultiplier(structureBreaks ?? [], latestStructureDirection, currentTime ?? 0, lookbackCandles);
+  // Compute consecutiveCount once and derive the multiplier from it (avoids duplicate filtering)
   const consecutiveMSSCount = getConsecutiveMSSCount(structureBreaks ?? [], latestStructureDirection, currentTime ?? 0, lookbackCandles);
+  const trendMultiplier = Math.min(1.0 + (consecutiveMSSCount - 1) * 0.1, 1.5);
   const finalScore = Math.round(boostedScore * trendMultiplier);
 
   // Build granular conditions for display
