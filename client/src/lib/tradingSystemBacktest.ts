@@ -198,7 +198,7 @@ export interface ViewportBacktestParams {
   divergencePoints: DivergencePoint[];
   fvgs: Array<{ top: number; bottom: number; mitigated: boolean; type: 'bullish' | 'bearish'; endTime?: number }>;
   orderBlocks: Array<{ top: number; bottom: number; type: 'bullish' | 'bearish'; time?: number; mitigated?: boolean; mitigationTime?: number }>;
-  liquidityZones: Array<{ price: number; type: 'high' | 'low'; swept: boolean; touchTimes?: number[] }>;
+  liquidityZones: Array<{ price: number; type: 'high' | 'low'; swept: boolean; touchTimes?: number[]; sweepPrice?: number; sweepIndex?: number; sweptIndex?: number }>;
   volumeProfileData?: {
     rows: Array<{ price: number; volume: number }>;
     vahPrice?: number;
@@ -360,7 +360,7 @@ export function runTradingSystemBacktest(params: ViewportBacktestParams): Backte
         })),
       liquidityZones: liquidityZones
         .filter(lz => !lz.touchTimes || lz.touchTimes.length === 0 || lz.touchTimes[lz.touchTimes.length - 1] <= currentTime)
-        .map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept })),
+        .map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept, sweepPrice: lz.sweepPrice, sweepIndex: lz.sweepIndex, sweptIndex: lz.sweptIndex })),
       volumeProfileData: mappedVolumeProfile,
     });
 
