@@ -59,11 +59,46 @@ export function getSignalLabelWithThresholds(
   return { label: 'SELL SIGNAL', color: '#ef4444' };
 }
 
+/**
+ * Extended signal labels for scores >100 (shows confluence stacking).
+ * Falls back to standard labels for scores within the normal -100..+100 range.
+ */
+export function getExtendedSignalLabel(
+  score: number,
+  buyThreshold: number = 80,
+  sellThreshold: number = 80,
+): { label: SignalLabel; color: string } {
+  const buyBuildingThreshold = buyThreshold * 0.625;
+  const sellBuildingThreshold = sellThreshold * 0.625;
+
+  // Extended positive ranges (>100)
+  if (score >= 150) return { label: 'LEGENDARY LONG', color: '#10b981' };  // Emerald-500
+  if (score >= 120) return { label: 'OUTSTANDING LONG', color: '#14b8a6' }; // Teal-500
+  if (score >= 100) return { label: 'EXCELLENT LONG', color: '#22c55e' };   // Green-500
+
+  // Standard positive ranges
+  if (score >= buyThreshold) return { label: 'BUY SIGNAL', color: '#22c55e' };
+  if (score >= buyBuildingThreshold) return { label: 'BUILDING BUY', color: '#84cc16' };
+  if (score >= 20) return { label: 'WEAK BULLISH', color: '#a3e635' };
+
+  // Neutral
+  if (score > -20) return { label: 'NEUTRAL', color: '#94a3b8' };
+
+  // Standard negative ranges
+  if (score > -sellBuildingThreshold) return { label: 'WEAK BEARISH', color: '#fb923c' };
+  if (score > -sellThreshold) return { label: 'BEARISH SETUP', color: '#f97316' };
+
+  // Extended negative ranges (<-100)
+  if (score > -100) return { label: 'SELL SIGNAL', color: '#ef4444' };
+  if (score > -120) return { label: 'EXCELLENT SHORT', color: '#ef4444' };
+  if (score > -150) return { label: 'OUTSTANDING SHORT', color: '#dc2626' }; // Red-600
+  return { label: 'LEGENDARY SHORT', color: '#b91c1c' };                     // Red-700
+}
+
 /** Clamp a value to [-100, 100]. */
 function clamp(value: number): number {
   return Math.max(-100, Math.min(100, value));
 }
-
 type GranularCondition = {
   id: string;
   name: string;
@@ -136,7 +171,8 @@ function buildEvaluation(
   rawScore: number,
   reasoning?: string[],
 ): SystemEvaluation {
-  const score = clamp(rawScore);
+  // No clamp — allow scores >100 (Smart Money confluence stacking)
+  const score = Math.round(rawScore);
 
   const buyThreshold = parseInt(
     localStorage.getItem(`tradingSystem_${systemId}_buyThreshold`) || '70',
@@ -146,7 +182,7 @@ function buildEvaluation(
     localStorage.getItem(`tradingSystem_${systemId}_sellThreshold`) || '70',
     10,
   );
-  const { label, color } = getSignalLabelWithThresholds(score, buyThreshold, sellThreshold);
+  const { label, color } = getExtendedSignalLabel(score, buyThreshold, sellThreshold);
 
   const hasGranularScoring = conditions.some(
     c => c.score !== undefined && c.userWeight !== undefined,
@@ -556,7 +592,7 @@ function scoreZoneProximity(
  * Get structure lookback candles based on timeframe
  * Scales lookback window to be appropriate for each timeframe
  */
-function getStructureLookbackCandles(timeframe?: string): number {
+export function getStructureLookbackCandles(timeframe?: string): number {
   const lookbacks: Record<string, number> = {
     '1m': 30,   // 30 minutes
     '5m': 24,   // 2 hours
@@ -1055,11 +1091,52 @@ function isMSSInvalidated(
   return !!newerOppositeMSS;
 }
 
+/**
+ * Count consecutive MSS/CHoCH in the same direction (stops at first opposing shift).
+ */
+export function getConsecutiveMSSCount(
+  structureBreaks: Array<{ direction: 'bullish' | 'bearish'; type?: string; breakTime: number }>,
+  currentDirection: 'bullish' | 'bearish',
+  currentTime: number,
+  lookbackCandles: number = 50,
+): number {
+  const recentBreaks = structureBreaks
+    .filter(sb => sb.type === 'mss' || sb.type === 'choch')
+    .filter(sb => sb.breakTime <= currentTime)
+    .sort((a, b) => b.breakTime - a.breakTime);
+
+  let consecutiveCount = 0;
+  for (const sb of recentBreaks) {
+    if (sb.direction === currentDirection) {
+      consecutiveCount++;
+    } else {
+      break; // Stop at first opposing shift
+    }
+  }
+
+  return consecutiveCount;
+}
+
+/**
+ * Calculate trend strength multiplier based on consecutive MSS/CHoCH in same direction.
+ * 1 shift = 1.0x, 2 shifts = 1.1x, 3 shifts = 1.2x, ..., 6+ shifts = 1.5x (capped).
+ */
+export function getTrendStrengthMultiplier(
+  structureBreaks: Array<{ direction: 'bullish' | 'bearish'; type?: string; breakTime: number }>,
+  currentDirection: 'bullish' | 'bearish',
+  currentTime: number,
+  lookbackCandles: number = 50,
+): number {
+  const consecutiveCount = getConsecutiveMSSCount(structureBreaks, currentDirection, currentTime, lookbackCandles);
+  return Math.min(1.0 + (consecutiveCount - 1) * 0.1, 1.5);
+}
+
 export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   const {
     latestClose,
+    previousClose,
     structureBreaks,
-    swingPoints,
+    currentTime,
     currentCandleIndex,
     fvgs,
     orderBlocks,
@@ -1070,11 +1147,11 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     macdHistHistory,
     smtDivergence,
     autoFibResult,
+    swingPoints,
   } = input;
 
+  const weights = getConditionWeights('smart-money');
   const currentPrice = latestClose;
-
-  // Dynamic lookback for BOS/CHoCH (not used for MSS)
   const lookbackCandles = getStructureLookbackCandles(timeframe);
 
   // Filter structure breaks within the lookback window (for BOS/CHoCH fallback)
@@ -1096,124 +1173,152 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
 
   const latestStructureDirection = recentStructureBreak?.direction;
 
-  // Prior trend from most recent BOS/CHoCH (non-MSS), used to evaluate MSS direction
-  const priorTrendBreak = structureBreaks
-    ?.filter(sb => sb.type !== 'mss')
-    .sort((a, b) => b.breakTime - a.breakTime)[0];
-  const priorTrend = priorTrendBreak?.direction;
-
-  // Score MSS direction relative to prior trend:
-  //   - MSS confirming prior trend:  ±90 (strong continuation)
-  //   - MSS counter to prior trend:  ∓60 (reversal warning)
-  //   - No active MSS: fall back to BOS/CHoCH direction score (±90)
-  let structureShiftScore: number;
-  if (activeMSS) {
-    const mssDir = activeMSS.direction;
-    if (!priorTrend || mssDir === priorTrend) {
-      structureShiftScore = mssDir === 'bullish' ? 90 : -90;
-    } else {
-      structureShiftScore = mssDir === 'bullish' ? 60 : -60;
-    }
-  } else {
-    structureShiftScore =
-      latestStructureDirection === 'bullish' ? 90 :
-      latestStructureDirection === 'bearish' ? -90 : 0;
+  if (!latestStructureDirection) {
+    return buildEvaluation('smart-money', [], 0, ['No valid market structure detected']);
   }
 
-  // Distance-scaled proximity scores (-100 to +100, signed by zone type)
-  const fvgScore = scoreFVGProximity(currentPrice, input.previousClose, fvgs);
-  const obScore = scoreOrderBlockProximity(currentPrice, input.previousClose, orderBlocks);
+  // Score entry zones (OB, FVG, Breaker)
+  const obScore = scoreOrderBlockProximity(currentPrice, previousClose, orderBlocks);
+  const fvgScore = scoreFVGProximity(currentPrice, previousClose, fvgs);
   const breakerScore = scoreBreakerBlockProximity(currentPrice, orderBlocks);
 
-  // Time-based liquidity sweep scoring (±100 on confirmation, decays by 10/candle, expires after 10 candles)
-  const liquidityScore = scoreLiquiditySweepProximity(
-    currentPrice,
-    liquidityZones,
-    currentCandleIndex,
-    structureBreaks,
-  );
-  const fvgScoreAdjusted = fvgScore;
-  const obScoreAdjusted = obScore;
+  // Filter zones: must be enabled (weight>0), strong enough (≥40), and aligned with structure direction
+  const validZones = [
+    { id: 'orderBlockTouch', name: 'Order Block Proximity', score: obScore, weight: weights.orderBlockTouch ?? 0 },
+    { id: 'fvgProximity', name: 'FVG Proximity', score: fvgScore, weight: weights.fvgProximity ?? 0 },
+    { id: 'breakerBlockProximity', name: 'Breaker Block Proximity', score: breakerScore, weight: weights.breakerBlockProximity ?? 0 },
+  ].filter(zone => {
+    const isBullishZone = zone.score > 0;
+    const structureIsBullish = latestStructureDirection === 'bullish';
+    return (
+      zone.weight > 0 &&
+      Math.abs(zone.score) >= 40 &&
+      isBullishZone === structureIsBullish
+    );
+  });
 
-  // Divergence confluence using peak/trough analysis (single-asset baseline)
+  if (validZones.length === 0) {
+    return buildEvaluation('smart-money', [], 0, ['No valid entry zones aligned with market structure']);
+  }
+
+  // Calculate base entry score (weighted average of active zones)
+  const totalWeight = validZones.reduce((sum, z) => sum + z.weight, 0);
+  const baseEntryScore = validZones.reduce((sum, z) => sum + (z.score * z.weight), 0) / totalWeight;
+
+  // Apply confluence boosters (multiply base score instead of adding)
+  let boostedScore = baseEntryScore;
+
+  const liquidityScore = scoreLiquiditySweepProximity(currentPrice, liquidityZones, currentCandleIndex, structureBreaks);
+  if ((weights.liquiditySweep ?? 0) > 0 && Math.abs(liquidityScore) >= 40) {
+    const sweepBoost = (Math.abs(liquidityScore) / 100) * 0.3;
+    boostedScore *= (1 + sweepBoost);
+  }
+
   const singleAssetDivergenceScore = scoreDivergenceConfluence(
     priceHistory ?? [],
     rsiHistory ?? [],
     macdHistHistory ?? [],
     latestStructureDirection,
   );
-
-  // Hybrid divergence: SMT primary + single-asset fallback + confluence bonus
   const hybridDivergence = scoreHybridDivergence(smtDivergence, singleAssetDivergenceScore);
   const divergenceFinalScore = hybridDivergence.score;
 
-  // Auto-Fib confluence scoring (only when weight > 0)
-  const autoFibWeight = getConditionWeights('smart-money').autoFibConfluence ?? 0;
+  if ((weights.divergenceConfluence ?? 0) > 0 && Math.abs(divergenceFinalScore) >= 40) {
+    const divBoost = (Math.abs(divergenceFinalScore) / 100) * 0.2;
+    boostedScore *= (1 + divBoost);
+  }
+
+  const autoFibWeight = weights.autoFibConfluence ?? 0;
   const autoFibScore = autoFibWeight > 0
     ? scoreAutoFibConfluence(autoFibResult, currentPrice, fvgs, orderBlocks)
     : 0;
+  if (autoFibScore >= 40) {
+    const fibBoost = (autoFibScore / 100) * 0.15;
+    boostedScore *= (1 + fibBoost);
+  }
 
-  const granularConditions: GranularCondition[] = [
+  // Apply trend strength multiplier (consecutive MSS/CHoCH in same direction)
+  // Compute consecutiveCount once and derive the multiplier from it (avoids duplicate filtering)
+  const consecutiveMSSCount = getConsecutiveMSSCount(structureBreaks ?? [], latestStructureDirection, currentTime ?? 0, lookbackCandles);
+  const trendMultiplier = Math.min(1.0 + (consecutiveMSSCount - 1) * 0.1, 1.5);
+  const finalScore = Math.round(boostedScore * trendMultiplier);
+
+  // Build granular conditions for display
+  const conditions: ScoredCondition[] = [
     {
-      id: 'structureShift',
-      name: 'SMC Structure Shift',
-      score: structureShiftScore,
-      description: 'Direction of active MSS (invalidates when price breaks prior pivot or opposite MSS forms).',
+      id: 'trendStrength',
+      name: 'Trend Strength Multiplier',
+      met: trendMultiplier > 1.0,
+      weight: 1,
+      score: Math.round((trendMultiplier - 1) * 100),
+      userWeight: 1,
+      weightedScore: Math.round((trendMultiplier - 1) * 100),
+      value: `${trendMultiplier.toFixed(2)}x`,
+      description: `${consecutiveMSSCount} consecutive ${latestStructureDirection} MSS/CHoCH`,
     },
-    {
-      id: 'breakerBlockProximity',
-      name: 'Breaker Block Proximity',
-      score: breakerScore,
-      value: breakerScore !== 0
-        ? `${Math.abs(breakerScore).toFixed(0)}/100 (${breakerScore > 0 ? 'Bullish' : 'Bearish'})`
-        : undefined,
-      description: 'Proximity to converted breaker blocks (failed OBs that flipped polarity).',
-    },
-    {
-      id: 'fvgProximity',
-      name: 'FVG Proximity',
-      score: fvgScoreAdjusted,
-      value: fvgScoreAdjusted !== 0 ? `${Math.abs(fvgScoreAdjusted)}/100` : undefined,
-      description: 'Distance-scaled proximity to Fair Value Gap.',
-    },
-    {
-      id: 'orderBlockTouch',
-      name: 'Order Block Proximity',
-      score: obScoreAdjusted,
-      value: obScoreAdjusted !== 0 ? `${Math.abs(obScoreAdjusted)}/100` : undefined,
-      description: 'Distance-scaled proximity to Order Block.',
-    },
+    ...validZones.map(zone => {
+      const userWeight = (weights[zone.id] ?? 1) as WeightLevel;
+      return {
+        id: zone.id,
+        name: zone.name,
+        met: true,
+        weight: userWeight,
+        score: Math.round(zone.score),
+        userWeight,
+        weightedScore: Math.round(zone.score) * userWeight,
+        value: `${Math.abs(Math.round(zone.score))}/100`,
+        description: `${zone.name} (weight: ${zone.weight})`,
+      };
+    }),
     {
       id: 'liquiditySweep',
       name: 'Liquidity Sweep',
-      score: liquidityScore,
-      value: liquidityScore !== 0
-        ? `${Math.abs(liquidityScore)}/100 (${liquidityScore > 0 ? 'Low Sweep' : 'High Sweep'}, ${(100 - Math.abs(liquidityScore)) / 10}/${10} candles)`
-        : undefined,
+      met: Math.abs(liquidityScore) >= 40,
+      weight: (weights.liquiditySweep ?? 0) as WeightLevel,
+      score: Math.round(liquidityScore),
+      userWeight: (weights.liquiditySweep ?? 0) as WeightLevel,
+      weightedScore: Math.round(liquidityScore) * (weights.liquiditySweep ?? 0),
+      value: liquidityScore !== 0 ? `${Math.abs(Math.round(liquidityScore))}/100` : undefined,
       description: liquidityScore > 0
-        ? `Low sweep (support liquidity grab): Bullish reversal expected. Active for ${10 - (100 - Math.abs(liquidityScore)) / 10} more candles.`
+        ? `Low sweep (bullish): +${Math.round((Math.abs(liquidityScore) / 100) * 30)}% boost`
         : liquidityScore < 0
-        ? `High sweep (resistance liquidity grab): Bearish reversal expected. Active for ${10 - (100 - Math.abs(liquidityScore)) / 10} more candles.`
-        : 'No active liquidity sweeps (max lifetime: 10 candles).',
+        ? `High sweep (bearish): +${Math.round((Math.abs(liquidityScore) / 100) * 30)}% boost`
+        : 'No active liquidity sweeps',
     },
     {
       id: 'divergenceConfluence',
       name: 'Divergence Confluence',
-      score: divergenceFinalScore,
-      value: divergenceFinalScore !== 0 ? `${Math.abs(divergenceFinalScore)} pts` : undefined,
-      description: hybridDivergence.source,
+      met: Math.abs(divergenceFinalScore) >= 40,
+      weight: (weights.divergenceConfluence ?? 0) as WeightLevel,
+      score: Math.round(divergenceFinalScore),
+      userWeight: (weights.divergenceConfluence ?? 0) as WeightLevel,
+      weightedScore: Math.round(divergenceFinalScore) * (weights.divergenceConfluence ?? 0),
+      value: divergenceFinalScore !== 0 ? `${Math.abs(Math.round(divergenceFinalScore))}/100` : undefined,
+      description: hybridDivergence.source + (Math.abs(divergenceFinalScore) >= 40 ? ` (+${Math.round((Math.abs(divergenceFinalScore) / 100) * 20)}% boost)` : ''),
     },
     {
       id: 'autoFibConfluence',
       name: 'Auto-Fib Confluence',
-      score: autoFibScore,
-      value: autoFibScore > 0 ? `${autoFibScore}/100` : undefined,
-      description: 'Dynamic fib levels (primary + secondary) with FVG/OB alignment.',
+      met: autoFibScore >= 40,
+      weight: autoFibWeight as WeightLevel,
+      score: Math.round(autoFibScore),
+      userWeight: autoFibWeight as WeightLevel,
+      weightedScore: Math.round(autoFibScore) * autoFibWeight,
+      value: autoFibScore > 0 ? `${Math.round(autoFibScore)}/100` : undefined,
+      description: autoFibScore >= 40
+        ? `Fib alignment (+${Math.round((autoFibScore / 100) * 15)}% boost)`
+        : 'No fib confluence',
     },
   ];
 
-  const { conditions, overallScore, reasoning } = mapWeightedConditions('smart-money', granularConditions);
-  return buildEvaluation('smart-money', conditions, overallScore, reasoning);
+  const reasoning: string[] = [
+    `Base Entry: ${Math.round(baseEntryScore)} (${validZones.map(z => z.name).join(' + ')})`,
+    `Confluence Boosts: +${Math.round((boostedScore / baseEntryScore - 1) * 100)}%`,
+    `Trend Multiplier: ${trendMultiplier.toFixed(2)}x (${consecutiveMSSCount} consecutive shifts)`,
+    `Final Score: ${finalScore}`,
+  ];
+
+  return buildEvaluation('smart-money', conditions, finalScore, reasoning);
 }
 
 // ── 5. Momentum Scalper ───────────────────────────────────────────────────────

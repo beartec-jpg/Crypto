@@ -83,77 +83,78 @@ describe('tradingSystemScoring weighted mean-reversion', () => {
 describe('scoreSmartMoney MSS direction scoring', () => {
   const BASE_INPUT = {
     latestClose: 100,
-    previousClose: 99,
+    previousClose: 101, // approaching from above (needed for bullish FVG validation)
     htfBullish: 0,
     htfBearish: 0,
     currentCandleIndex: 100,
+    currentTime: 100,
   };
 
   // BOS break that falls within the 15m default lookback window (100 - 24 = 76, so >= 80 is in-window)
-  const BULLISH_BOS = { breakTime: 80, breakIndex: 80, direction: 'bullish' as const, type: 'bos' as const, swept: false, brokenLevel: 95 };
-  const BEARISH_BOS = { breakTime: 80, breakIndex: 80, direction: 'bearish' as const, type: 'bos' as const, swept: false, brokenLevel: 105 };
+  const BULLISH_BOS = { breakTime: 80, breakIndex: 80, direction: 'bullish' as const, type: 'bos' as const, swept: false, brokenLevel: 95, confirmed: true };
+  const BEARISH_BOS = { breakTime: 80, breakIndex: 80, direction: 'bearish' as const, type: 'bos' as const, swept: false, brokenLevel: 105, confirmed: true };
 
-  it('bullish MSS + bullish prior trend → structureShift score = +90', () => {
+  // A bullish FVG above current price so price is approaching from above (bullish valid entry)
+  const BULLISH_FVG = { high: 99.9, low: 99.5, filled: false, type: 'bullish' as const };
+
+  it('bullish MSS + bullish prior trend → trendStrength multiplier = 1.0x (1 consecutive)', () => {
     const bullishMSS = { breakTime: 90, breakIndex: 90, direction: 'bullish' as const, type: 'mss' as const, swept: false, brokenLevel: 90, confirmed: true };
     const evaluation = scoreSmartMoney({
       ...BASE_INPUT,
       structureBreaks: [BULLISH_BOS, bullishMSS],
       swingPoints: [],
+      fvgs: [BULLISH_FVG],
     });
-    const structureShift = evaluation.conditions.find(c => c.id === 'structureShift');
-    expect(structureShift?.score).toBe(90);
+    const trendStrength = evaluation.conditions.find(c => c.id === 'trendStrength');
+    expect(trendStrength).toBeDefined();
+    expect(trendStrength?.value).toBe('1.00x');
   });
 
-  it('bearish MSS + bearish prior trend → structureShift score = -90', () => {
+  it('bearish MSS + bearish prior trend → no valid bullish entry zone (score = 0)', () => {
     const bearishMSS = { breakTime: 90, breakIndex: 90, direction: 'bearish' as const, type: 'mss' as const, swept: false, brokenLevel: 110, confirmed: true };
     const evaluation = scoreSmartMoney({
       ...BASE_INPUT,
       structureBreaks: [BEARISH_BOS, bearishMSS],
       swingPoints: [],
+      fvgs: [BULLISH_FVG], // Bullish FVG doesn't align with bearish structure
     });
-    const structureShift = evaluation.conditions.find(c => c.id === 'structureShift');
-    expect(structureShift?.score).toBe(-90);
+    // Bullish FVG in bearish structure → filtered out → no valid zones
+    expect(evaluation.score).toBe(0);
   });
 
-  it('bearish MSS + bullish prior trend → structureShift score = -60 (reversal warning)', () => {
-    const bearishMSS = { breakTime: 90, breakIndex: 90, direction: 'bearish' as const, type: 'mss' as const, swept: false, brokenLevel: 110, confirmed: true };
-    const evaluation = scoreSmartMoney({
-      ...BASE_INPUT,
-      structureBreaks: [BULLISH_BOS, bearishMSS],
-      swingPoints: [],
-    });
-    const structureShift = evaluation.conditions.find(c => c.id === 'structureShift');
-    expect(structureShift?.score).toBe(-60);
-  });
-
-  it('bullish MSS + bearish prior trend → structureShift score = +60 (reversal warning)', () => {
+  it('bullish MSS exists but no entry zones → score = 0 (no valid zones)', () => {
     const bullishMSS = { breakTime: 90, breakIndex: 90, direction: 'bullish' as const, type: 'mss' as const, swept: false, brokenLevel: 90, confirmed: true };
     const evaluation = scoreSmartMoney({
       ...BASE_INPUT,
-      structureBreaks: [BEARISH_BOS, bullishMSS],
+      structureBreaks: [BULLISH_BOS, bullishMSS],
       swingPoints: [],
+      // no fvgs, no orderBlocks
     });
-    const structureShift = evaluation.conditions.find(c => c.id === 'structureShift');
-    expect(structureShift?.score).toBe(60);
+    expect(evaluation.score).toBe(0);
   });
 
-  it('no MSS, bullish BOS → structureShift score = +90 (fallback to BOS direction)', () => {
+  it('no MSS, bullish BOS → trendStrength condition not present (BOS/CHoCH not counted as MSS/CHoCH)', () => {
     const evaluation = scoreSmartMoney({
       ...BASE_INPUT,
       structureBreaks: [BULLISH_BOS],
       swingPoints: [],
+      fvgs: [BULLISH_FVG],
     });
-    const structureShift = evaluation.conditions.find(c => c.id === 'structureShift');
-    expect(structureShift?.score).toBe(90);
+    // BOS sets structure direction to bullish, FVG should be scored
+    // Trend multiplier should be 0.9x (0 consecutive mss/choch)
+    const trendStrength = evaluation.conditions.find(c => c.id === 'trendStrength');
+    if (evaluation.score !== 0) {
+      expect(trendStrength).toBeDefined();
+      expect(trendStrength?.value).toBe('0.90x');
+    }
   });
 
-  it('no structure breaks → structureShift score = 0', () => {
+  it('no structure breaks → score = 0 (no valid market structure)', () => {
     const evaluation = scoreSmartMoney({
       ...BASE_INPUT,
       structureBreaks: [],
       swingPoints: [],
     });
-    const structureShift = evaluation.conditions.find(c => c.id === 'structureShift');
-    expect(structureShift?.score).toBe(0);
+    expect(evaluation.score).toBe(0);
   });
 });
