@@ -963,13 +963,14 @@ function scoreAutoFibConfluence(
 
   let bestScore = 0;
 
-  const allFibLevels: Array<{ price: number; isFrozen: boolean; isGolden: boolean }> = [];
+  const allFibLevels: Array<{ price: number; isFrozen: boolean; isGolden: boolean; level: string }> = [];
 
   if (fibResult.primary) {
     allFibLevels.push(...fibResult.primary.levels.map(l => ({
       price: l.price,
       isFrozen: l.isFrozen,
       isGolden: l.isGolden,
+      level: l.level,
     })));
   }
 
@@ -978,6 +979,7 @@ function scoreAutoFibConfluence(
       price: l.price,
       isFrozen: l.isFrozen,
       isGolden: l.isGolden,
+      level: l.level,
     })));
   }
 
@@ -1027,6 +1029,15 @@ function scoreAutoFibConfluence(
 
     if (hasFVGConfluence && hasOBConfluence) {
       score += 15 * frozenPenalty; // Triple confluence bonus
+    }
+
+    // OTE zone bonus (61.8–78.6%): institutional optimal trade entry area.
+    // When price sits at an OTE-range fib AND a zone (FVG or OB) overlaps it,
+    // this is the highest-conviction confluence setup — add a distinct extra boost.
+    const levelNum = parseFloat(fib.level);
+    const isOTELevel = levelNum >= 61.8 && levelNum <= 78.6;
+    if (isOTELevel && (hasFVGConfluence || hasOBConfluence)) {
+      score += 18 * frozenPenalty;
     }
 
     if (score > bestScore) {
@@ -1169,8 +1180,9 @@ export function getConsecutiveMSSCount(
   currentTime: number,
   lookbackCandles: number = 50,
 ): number {
+  // Include all structure break types: CHoCH sets the direction (count=1), each subsequent BOS stacks (+1).
   const recentBreaks = structureBreaks
-    .filter(sb => sb.type === 'mss' || sb.type === 'choch')
+    .filter(sb => sb.type === 'bos' || sb.type === 'mss' || sb.type === 'choch')
     .filter(sb => sb.breakTime <= currentTime)
     .sort((a, b) => b.breakTime - a.breakTime);
 
@@ -1179,7 +1191,7 @@ export function getConsecutiveMSSCount(
     if (sb.direction === currentDirection) {
       consecutiveCount++;
     } else {
-      break; // Stop at first opposing shift
+      break; // Stop at first opposing break (any type)
     }
   }
 
@@ -1198,6 +1210,97 @@ export function getTrendStrengthMultiplier(
 ): number {
   const consecutiveCount = getConsecutiveMSSCount(structureBreaks, currentDirection, currentTime, lookbackCandles);
   return Math.min(1.0 + (consecutiveCount - 1) * 0.1, 1.5);
+}
+
+/**
+ * Score the classic institutional inducement sequence:
+ *   1. Liquidity sweep detected (equal highs/lows taken)
+ *   2. MSS/CHoCH confirms AFTER the sweep (structure shifts against sweep direction)
+ *   3. Price is currently near/in an OB, FVG, or Breaker aligned with the MSS direction
+ *
+ * When all three fire in chronological order this is a high-conviction setup.
+ * Returns a directional score: positive = bullish inducement (low sweep → bullish MSS),
+ * negative = bearish inducement (high sweep → bearish MSS).
+ */
+function scoreInducementSequence(
+  currentPrice: number,
+  liquidityZones: ScoringInput['liquidityZones'],
+  structureBreaks: ScoringInput['structureBreaks'],
+  orderBlocks: ScoringInput['orderBlocks'],
+  fvgs: ScoringInput['fvgs'],
+  breakers: ScoringInput['breakers'],
+  currentCandleIndex: number | undefined,
+): number {
+  if (!liquidityZones || !structureBreaks) return 0;
+
+  // Step 1: find the most recent confirmed sweep
+  const recentSweeps = liquidityZones
+    .filter(lz => lz.swept && (lz.sweptIndex !== undefined || lz.sweepIndex !== undefined))
+    .sort((a, b) => (b.sweptIndex ?? b.sweepIndex ?? 0) - (a.sweptIndex ?? a.sweepIndex ?? 0));
+
+  if (recentSweeps.length === 0) return 0;
+
+  const latestSweep = recentSweeps[0];
+  const sweepConfirmedIndex = latestSweep.sweptIndex ?? latestSweep.sweepIndex ?? 0;
+
+  // Step 2: find an MSS or CHoCH that occurred AFTER the sweep confirmation
+  const mssAfterSweep = structureBreaks
+    .filter(sb => (sb.type === 'mss' || sb.type === 'choch') && sb.confirmed !== false)
+    .filter(sb => {
+      if (sb.breakIndex !== undefined && sweepConfirmedIndex > 0) {
+        return sb.breakIndex > sweepConfirmedIndex;
+      }
+      return true; // fall back to including if no index available
+    })
+    .sort((a, b) => (b.breakIndex ?? 0) - (a.breakIndex ?? 0))[0];
+
+  if (!mssAfterSweep) return 0;
+
+  // The sweep direction and MSS direction must be opposite (inducement reversal pattern).
+  // Low sweep → expect bullish MSS (price swept lows then reversed up).
+  // High sweep → expect bearish MSS (price swept highs then reversed down).
+  const expectBullishMSS = latestSweep.type === 'low';
+  const mssIsBullish = mssAfterSweep.direction === 'bullish';
+  if (expectBullishMSS !== mssIsBullish) return 0;
+
+  // Step 3: is price near/in a zone aligned with the MSS direction?
+  const zoneScanDistance = 0.01; // 1% from current price = "near a zone"
+  let zoneAligned = false;
+
+  if (orderBlocks) {
+    for (const ob of orderBlocks) {
+      if (ob.mitigated) continue;
+      if (ob.type !== mssAfterSweep.direction) continue;
+      const withinZone = currentPrice >= ob.low * (1 - zoneScanDistance) &&
+                         currentPrice <= ob.high * (1 + zoneScanDistance);
+      if (withinZone) { zoneAligned = true; break; }
+    }
+  }
+
+  if (!zoneAligned && fvgs) {
+    for (const fvg of fvgs) {
+      if (fvg.filled) continue;
+      if (fvg.type !== mssAfterSweep.direction) continue;
+      const withinZone = currentPrice >= fvg.low * (1 - zoneScanDistance) &&
+                         currentPrice <= fvg.high * (1 + zoneScanDistance);
+      if (withinZone) { zoneAligned = true; break; }
+    }
+  }
+
+  if (!zoneAligned && breakers) {
+    for (const br of breakers) {
+      if (br.mitigated) continue;
+      if (br.type !== mssAfterSweep.direction) continue;
+      const withinZone = currentPrice >= br.low * (1 - zoneScanDistance) &&
+                         currentPrice <= br.high * (1 + zoneScanDistance);
+      if (withinZone) { zoneAligned = true; break; }
+    }
+  }
+
+  if (!zoneAligned) return 0;
+
+  // All three steps confirmed — return a strong directional score
+  return mssIsBullish ? 85 : -85;
 }
 
 export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
@@ -1265,8 +1368,20 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     ? scoreAutoFibConfluence(autoFibResult, currentPrice, fvgs, orderBlocks)
     : 0;
 
+  // Inducement sequence: sweep → MSS/CHoCH → zone entry (high-conviction institutional pattern)
+  const inducementScore = scoreInducementSequence(
+    currentPrice,
+    liquidityZones,
+    structureBreaks,
+    orderBlocks,
+    fvgs,
+    breakers,
+    currentCandleIndex,
+  );
+
   // Trend strength (computed upfront for conditions display)
-  // When no structure direction is known, consecutiveMSSCount = 0 and multiplier stays at 1.0.
+  // CHoCH sets direction (count=1), each subsequent BOS in that direction stacks (+1).
+  // Multiplier: 1 break = ×1.0, 2 = ×1.1, 3 = ×1.2, … capped at ×1.5.
   const consecutiveMSSCount = latestStructureDirection
     ? getConsecutiveMSSCount(structureBreaks ?? [], latestStructureDirection, currentTime ?? 0, lookbackCandles)
     : 0;
@@ -1334,7 +1449,7 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       userWeight: 1,
       weightedScore: Math.round((trendMultiplier - 1) * 100),
       value: `${trendMultiplier.toFixed(2)}x`,
-      description: `${consecutiveMSSCount} consecutive ${latestStructureDirection ?? 'n/a'} MSS/CHoCH`,
+      description: `${consecutiveMSSCount} consecutive ${latestStructureDirection ?? 'n/a'} structure breaks (CHoCH+BOS)`,
     },
     ...allZones.map(zone => {
       const isValidZone = validZones.some(vz => vz.id === zone.id);
@@ -1390,6 +1505,19 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       description: autoFibScore >= 40
         ? `Fib alignment (+${Math.round((autoFibScore / 100) * 15)}% boost)`
         : 'No fib confluence',
+    },
+    {
+      id: 'inducementSequence',
+      name: 'Inducement Sequence',
+      met: Math.abs(inducementScore) >= 40,
+      weight: 2 as WeightLevel,
+      score: Math.round(inducementScore),
+      userWeight: 2 as WeightLevel,
+      weightedScore: Math.round(inducementScore) * 2,
+      value: Math.abs(inducementScore) >= 40 ? `${Math.abs(Math.round(inducementScore))}/100` : undefined,
+      description: Math.abs(inducementScore) >= 40
+        ? `Sweep → MSS/CHoCH → Zone confirmed (${inducementScore > 0 ? 'bullish' : 'bearish'})`
+        : 'No inducement sequence detected',
     },
   ];
 
@@ -1638,13 +1766,10 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
 // ── 7. Multi-Timeframe Confluence ─────────────────────────────────────────────
 
 export function scoreMTFConfluence(input: ScoringInput): SystemEvaluation {
-  const { htfBullish, htfBearish, stTrend, latestStructureDirection, macdNow, sigNow } = input;
+  const { stTrend, latestStructureDirection } = input;
 
-  const totalHTF = htfBullish + htfBearish;
-
-  const htfBiasScore = totalHTF > 0
-    ? normalizeByRange(htfBullish - htfBearish, totalHTF)
-    : 0;
+  // HTF bias (htfBullish/htfBearish) is excluded — visual-only overlay.
+  // MACD momentum is excluded — belongs to momentum systems, not SMC structure.
 
   const localTrendScore = scoreBoolean(stTrend === 'bullish', stTrend === 'bearish', 80);
   const structureDirectionScore = scoreBoolean(
@@ -1652,19 +1777,8 @@ export function scoreMTFConfluence(input: ScoringInput): SystemEvaluation {
     latestStructureDirection === 'bearish',
     75,
   );
-  const macdMomentumScore =
-    macdNow !== undefined && sigNow !== undefined
-      ? normalizeByRange(macdNow - sigNow, 0.5)
-      : 0;
 
   const granularConditions: GranularCondition[] = [
-    {
-      id: 'htfBias',
-      name: 'HTF Bias Alignment',
-      score: htfBiasScore,
-      value: totalHTF > 0 ? `${htfBullish}/${totalHTF} bullish` : undefined,
-      description: 'Majority high-timeframe directional bias.',
-    },
     {
       id: 'localTrend',
       name: 'Local Trend',
@@ -1676,12 +1790,6 @@ export function scoreMTFConfluence(input: ScoringInput): SystemEvaluation {
       name: 'Structure Direction',
       score: structureDirectionScore,
       description: 'Market structure direction on active timeframe.',
-    },
-    {
-      id: 'macdMomentum',
-      name: 'MACD Momentum',
-      score: macdMomentumScore,
-      description: 'Momentum confirmation from MACD signal spread.',
     },
   ];
 

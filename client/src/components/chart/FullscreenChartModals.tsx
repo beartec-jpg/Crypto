@@ -50,8 +50,6 @@ interface FullscreenChartModalsProps {
   onBOSSettingsChange: (settings: any) => void;
   liquiditySettings: any;
   onLiquiditySettingsChange: (settings: any) => void;
-  pdZoneSettings: any;
-  onPDZoneSettingsChange: (settings: any) => void;
 
   showDegreePicker: boolean;
   onDegreeSelect: (degree: string, waveLabel: string, patternType: string) => void;
@@ -110,8 +108,6 @@ export function FullscreenChartModals({
   onBOSSettingsChange,
   liquiditySettings,
   onLiquiditySettingsChange,
-  pdZoneSettings,
-  onPDZoneSettingsChange,
   showDegreePicker,
   onDegreeSelect,
   onCloseDegreePicker,
@@ -182,8 +178,6 @@ export function FullscreenChartModals({
         onBOSSettingsChange={onBOSSettingsChange}
         liquiditySettings={liquiditySettings}
         onLiquiditySettingsChange={onLiquiditySettingsChange}
-        pdZoneSettings={pdZoneSettings}
-        onPDZoneSettingsChange={onPDZoneSettingsChange}
       />
 
       <DegreePicker

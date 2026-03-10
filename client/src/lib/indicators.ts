@@ -493,45 +493,6 @@ export function calculateOrderBlocks(
   return orderBlocks;
 }
 
-export interface PremiumDiscount {
-  time: number;
-  equilibrium: number;
-  premium: number;
-  discount: number;
-  range: number;
-}
-
-/**
- * Calculate Premium/Discount Zones (SMC)
- * Based on swing high/low range - shows where price is expensive/cheap
- */
-export function calculatePremiumDiscount(
-  candles: CandleData[],
-  swingLength: number = 20
-): PremiumDiscount[] {
-  if (candles.length < swingLength) return [];
-  
-  const result: PremiumDiscount[] = [];
-  
-  for (let i = swingLength; i < candles.length; i++) {
-    const window = candles.slice(i - swingLength, i + 1);
-    const high = Math.max(...window.map(c => c.high));
-    const low = Math.min(...window.map(c => c.low));
-    const range = high - low;
-    const equilibrium = (high + low) / 2;
-    
-    result.push({
-      time: candles[i].time,
-      equilibrium,
-      premium: equilibrium + (range * 0.25), // Top 50% is premium
-      discount: equilibrium - (range * 0.25), // Bottom 50% is discount
-      range
-    });
-  }
-  
-  return result;
-}
-
 
 // ========== BATCH 3: OSCILLATORS & REMAINING TREND TOOLS ==========
 
