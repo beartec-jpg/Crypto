@@ -267,6 +267,10 @@ export function useOrderBlockDetection({
           mitigated = true;
           mitigationPercent = 100;
           mitigationTime = c.time;
+          swept = false;
+          sweepTime = undefined;
+          sweepPrice = undefined;
+          sweepIndex = undefined;
           break;
         }
 
