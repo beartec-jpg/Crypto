@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import type { FVGSettings } from '@/types/fvg';
 import type { OrderBlockSettings } from '@/types/orderBlock';
+import type { BreakerSettings } from '@/types/breaker';
 import type { BOSSettings } from '@/types/structureBreak';
 import type { LiquiditySettings, PDZoneSettings } from '@/types/liquidity';
 import type { AutoFibSettings } from '@/types/autoFib';
@@ -50,6 +51,8 @@ interface IndicatorMenuProps {
   onFVGSettingsChange: (s: FVGSettings) => void;
   obSettings: OrderBlockSettings;
   onOBSettingsChange: (s: OrderBlockSettings) => void;
+  breakerSettings: BreakerSettings;
+  onBreakerSettingsChange: (s: BreakerSettings) => void;
   bosSettings: BOSSettings;
   onBOSSettingsChange: (s: BOSSettings) => void;
   liquiditySettings: LiquiditySettings;
@@ -108,6 +111,8 @@ export function IndicatorMenu({
   onFVGSettingsChange,
   obSettings,
   onOBSettingsChange,
+  breakerSettings,
+  onBreakerSettingsChange,
   bosSettings,
   onBOSSettingsChange,
   liquiditySettings,
@@ -325,6 +330,14 @@ export function IndicatorMenu({
                 checked={obSettings.enabled}
                 onCheckedChange={checked =>
                   onOBSettingsChange({ ...obSettings, enabled: checked })
+                }
+              />
+              <IndicatorRow
+                label="Breaker Blocks"
+                description="Converted order blocks"
+                checked={breakerSettings.enabled}
+                onCheckedChange={checked =>
+                  onBreakerSettingsChange({ ...breakerSettings, enabled: checked })
                 }
               />
               <IndicatorRow

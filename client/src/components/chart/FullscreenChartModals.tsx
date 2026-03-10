@@ -44,6 +44,8 @@ interface FullscreenChartModalsProps {
   onFVGSettingsChange: (settings: any) => void;
   obSettings: any;
   onOBSettingsChange: (settings: any) => void;
+  breakerSettings: any;
+  onBreakerSettingsChange: (settings: any) => void;
   bosSettings: any;
   onBOSSettingsChange: (settings: any) => void;
   liquiditySettings: any;
@@ -102,6 +104,8 @@ export function FullscreenChartModals({
   onFVGSettingsChange,
   obSettings,
   onOBSettingsChange,
+  breakerSettings,
+  onBreakerSettingsChange,
   bosSettings,
   onBOSSettingsChange,
   liquiditySettings,
@@ -172,6 +176,8 @@ export function FullscreenChartModals({
         onFVGSettingsChange={onFVGSettingsChange}
         obSettings={obSettings}
         onOBSettingsChange={onOBSettingsChange}
+        breakerSettings={breakerSettings}
+        onBreakerSettingsChange={onBreakerSettingsChange}
         bosSettings={bosSettings}
         onBOSSettingsChange={onBOSSettingsChange}
         liquiditySettings={liquiditySettings}

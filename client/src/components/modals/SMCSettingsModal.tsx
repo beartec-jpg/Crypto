@@ -7,6 +7,7 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { FVGSettings } from '@/types/fvg';
 import type { OrderBlockSettings } from '@/types/orderBlock';
+import type { BreakerSettings } from '@/types/breaker';
 import type { BOSSettings } from '@/types/structureBreak';
 import type { LiquiditySettings, PDZoneSettings, PDRangeSource } from '@/types/liquidity';
 
@@ -17,6 +18,8 @@ interface SMCSettingsModalProps {
   onFVGSettingsChange: (settings: FVGSettings) => void;
   obSettings: OrderBlockSettings;
   onOBSettingsChange: (settings: OrderBlockSettings) => void;
+  breakerSettings: BreakerSettings;
+  onBreakerSettingsChange: (settings: BreakerSettings) => void;
   bosSettings: BOSSettings;
   onBOSSettingsChange: (settings: BOSSettings) => void;
   liquiditySettings: LiquiditySettings;
@@ -74,6 +77,8 @@ export function SMCSettingsModal({
   onFVGSettingsChange,
   obSettings,
   onOBSettingsChange,
+  breakerSettings,
+  onBreakerSettingsChange,
   bosSettings,
   onBOSSettingsChange,
   liquiditySettings,
@@ -87,6 +92,10 @@ export function SMCSettingsModal({
 
   function updateOB<K extends keyof OrderBlockSettings>(key: K, value: OrderBlockSettings[K]) {
     onOBSettingsChange({ ...obSettings, [key]: value });
+  }
+
+  function updateBreaker<K extends keyof BreakerSettings>(key: K, value: BreakerSettings[K]) {
+    onBreakerSettingsChange({ ...breakerSettings, [key]: value });
   }
 
   function updateBOS<K extends keyof BOSSettings>(key: K, value: BOSSettings[K]) {
@@ -121,6 +130,7 @@ export function SMCSettingsModal({
           <TabsList className="w-full bg-slate-800 border border-slate-700 flex-wrap h-auto gap-1 p-1">
             <TabsTrigger value="fvg" className="flex-1 data-[state=active]:bg-slate-700 text-xs">FVG</TabsTrigger>
             <TabsTrigger value="orderblock" className="flex-1 data-[state=active]:bg-slate-700 text-xs">OB</TabsTrigger>
+            <TabsTrigger value="breaker" className="flex-1 data-[state=active]:bg-slate-700 text-xs">Breaker</TabsTrigger>
             <TabsTrigger value="bos" className="flex-1 data-[state=active]:bg-slate-700 text-xs">BOS/CHoCH</TabsTrigger>
             <TabsTrigger value="liquidity" className="flex-1 data-[state=active]:bg-slate-700 text-xs">Liquidity</TabsTrigger>
             <TabsTrigger value="pdzone" className="flex-1 data-[state=active]:bg-slate-700 text-xs">P/D Zones</TabsTrigger>
@@ -449,6 +459,106 @@ export function SMCSettingsModal({
                       type="color"
                       value={obSettings[key] as string}
                       onChange={(e) => updateOB(key, e.target.value)}
+                      className="w-8 h-8 rounded cursor-pointer border border-slate-600 bg-transparent"
+                      aria-label={`${label} color`}
+                    />
+                    <span className="text-xs text-slate-300">{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Breaker Tab */}
+          <TabsContent value="breaker" className="space-y-4 py-2">
+            <SettingRow label="Enable Breaker Detection">
+              <Switch
+                checked={breakerSettings.enabled}
+                onCheckedChange={(v) => updateBreaker('enabled', v)}
+                className="data-[state=checked]:bg-blue-600"
+              />
+            </SettingRow>
+
+            <div className="border-t border-slate-700 pt-2">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Visibility</p>
+
+              <SettingRow label="Show Bullish Breakers">
+                <Switch
+                  checked={breakerSettings.showBullish}
+                  onCheckedChange={(v) => updateBreaker('showBullish', v)}
+                  className="data-[state=checked]:bg-green-600"
+                />
+              </SettingRow>
+
+              <SettingRow label="Show Bearish Breakers">
+                <Switch
+                  checked={breakerSettings.showBearish}
+                  onCheckedChange={(v) => updateBreaker('showBearish', v)}
+                  className="data-[state=checked]:bg-red-600"
+                />
+              </SettingRow>
+
+              <SettingRow label="Show Mitigated Breakers">
+                <Switch
+                  checked={breakerSettings.showMitigated}
+                  onCheckedChange={(v) => updateBreaker('showMitigated', v)}
+                  className="data-[state=checked]:bg-blue-600"
+                />
+              </SettingRow>
+
+              <SettingRow label="Extend Right">
+                <Switch
+                  checked={breakerSettings.extendRight}
+                  onCheckedChange={(v) => updateBreaker('extendRight', v)}
+                  className="data-[state=checked]:bg-blue-600"
+                />
+              </SettingRow>
+            </div>
+
+            <div className="border-t border-slate-700 pt-2">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Opacity</p>
+
+              <SliderRow
+                label="Zone Opacity"
+                value={breakerSettings.zoneOpacity}
+                min={0.05}
+                max={0.5}
+                step={0.05}
+                displayValue={`${Math.round(breakerSettings.zoneOpacity * 100)}%`}
+                onChange={(v) => updateBreaker('zoneOpacity', v)}
+              />
+            </div>
+
+            <div className="border-t border-slate-700 pt-2">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Age Limit</p>
+
+              <SliderRow
+                label="Max Age (candles)"
+                value={breakerSettings.maxAge}
+                min={10}
+                max={500}
+                step={10}
+                displayValue={`${breakerSettings.maxAge}`}
+                onChange={(v) => updateBreaker('maxAge', v)}
+              />
+            </div>
+
+            <div className="border-t border-slate-700 pt-2">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Colors</p>
+
+              <div className="grid grid-cols-3 gap-2">
+                {(
+                  [
+                    { label: 'Bullish', key: 'bullishColor' as const },
+                    { label: 'Bearish', key: 'bearishColor' as const },
+                    { label: 'Mitigated', key: 'mitigatedColor' as const },
+                  ] as { label: string; key: keyof BreakerSettings }[]
+                ).map(({ label, key }) => (
+                  <div key={key} className="flex flex-col items-center gap-1">
+                    <input
+                      type="color"
+                      value={breakerSettings[key] as string}
+                      onChange={(e) => updateBreaker(key, e.target.value)}
                       className="w-8 h-8 rounded cursor-pointer border border-slate-600 bg-transparent"
                       aria-label={`${label} color`}
                     />

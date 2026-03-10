@@ -1645,6 +1645,8 @@ export function ChartFullscreenPage({
           onFVGSettingsChange={fvgSettings.setSettings}
           obSettings={obSettings.settings}
           onOBSettingsChange={obSettings.setSettings}
+          breakerSettings={breakerSettings.settings}
+          onBreakerSettingsChange={breakerSettings.setSettings}
           bosSettings={bosSettings.settings}
           onBOSSettingsChange={bosSettings.setSettings}
           liquiditySettings={liquiditySettings.settings}
@@ -1896,6 +1898,8 @@ export function ChartFullscreenPage({
         onFVGSettingsChange={fvgSettings.setSettings}
         obSettings={obSettings.settings}
         onOBSettingsChange={obSettings.setSettings}
+        breakerSettings={breakerSettings.settings}
+        onBreakerSettingsChange={breakerSettings.setSettings}
         bosSettings={bosSettings.settings}
         onBOSSettingsChange={bosSettings.setSettings}
         liquiditySettings={liquiditySettings.settings}
