@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { SystemEvaluation } from '@/types/systemScoring';
 import type { ScoringInput } from '@/lib/tradingSystemScoring';
+import { getTrendStrengthMultiplier, getConsecutiveMSSCount, getStructureLookbackCandles } from '@/lib/tradingSystemScoring';
 
 interface SMCDebugTableProps {
   evaluation: SystemEvaluation;
@@ -34,11 +35,20 @@ export function SMCDebugTable({ evaluation, scoringInput }: SMCDebugTableProps) 
       </button>
 
       <div className="mt-3 space-y-4 text-xs px-3">
-        {/* SMC Structure Shift */}
+        {/* Overall Score with tier display */}
+        <div className="flex items-center justify-between pb-2 border-b border-slate-700">
+          <span className="font-semibold text-slate-300">📊 FINAL SCORE</span>
+          <span className={`font-mono text-sm ${getScoreTierColor(evaluation.score)}`}>
+            {evaluation.score > 0 ? '+' : ''}{evaluation.score}
+            {Math.abs(evaluation.score) >= 120 && <span className="ml-1">🔥</span>}
+          </span>
+        </div>
+
+        {/* Trend Strength Multiplier */}
         <ConditionDebug
-          title="SMC Structure Shift"
-          score={evaluation.conditions.find(c => c.id === 'structureShift')?.score ?? 0}
-          details={getStructureShiftDetails(scoringInput)}
+          title="Trend Strength Multiplier"
+          score={evaluation.conditions.find(c => c.id === 'trendStrength')?.score ?? 0}
+          details={getTrendStrengthDetails(scoringInput)}
         />
 
         {/* Breaker Block Proximity */}
@@ -104,20 +114,25 @@ interface ConditionDebugProps {
   details: React.ReactNode;
 }
 
-function ConditionDebug({ title, score, details }: ConditionDebugProps) {
-  const scoreColor =
-    score > 60 ? 'text-green-400' :
-    score > 20 ? 'text-yellow-400' :
-    score < -60 ? 'text-red-400' :
-    score < -20 ? 'text-orange-400' :
-    'text-slate-400';
+function getScoreTierColor(score: number): string {
+  const abs = Math.abs(score);
+  if (abs >= 150) return 'text-emerald-400 font-extrabold animate-pulse';
+  if (abs >= 120) return 'text-teal-400 font-bold';
+  if (abs >= 100) return 'text-green-400 font-semibold';
+  if (abs >= 80) return 'text-green-500';
+  if (abs >= 50) return 'text-lime-500';
+  if (abs >= 20) return 'text-yellow-400';
+  return 'text-slate-400';
+}
 
+function ConditionDebug({ title, score, details }: ConditionDebugProps) {
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
         <span className="font-semibold text-slate-300">{title}</span>
-        <span className={`font-mono ${scoreColor}`}>
-          {score > 0 ? '+' : ''}{score} / 100
+        <span className={`font-mono ${getScoreTierColor(score)}`}>
+          {score > 0 ? '+' : ''}{score}{Math.abs(score) <= 100 ? ' / 100' : ''}
+          {Math.abs(score) >= 120 && <span className="ml-1 text-xs">🔥</span>}
         </span>
       </div>
       <div className="ml-3 space-y-1 text-slate-400">
@@ -180,25 +195,57 @@ function getBreakerBlockDetails(input: ScoringInput) {
   );
 }
 
-function getStructureShiftDetails(input: ScoringInput) {
-  const recentMSS = input.structureBreaks
-    ?.filter(sb => sb.type === 'mss')
-    .sort((a, b) => b.breakTime - a.breakTime)[0];
-
-  if (!recentMSS) {
-    return <div>└─ Status: ⚠️ NO MSS DETECTED</div>;
+function getTrendStrengthDetails(input: ScoringInput) {
+  if (!input.structureBreaks || input.structureBreaks.length === 0) {
+    return <div>└─ Status: ⚠️ NO STRUCTURE BREAKS</div>;
   }
 
-  const age = input.currentCandleIndex !== undefined && recentMSS.breakIndex !== undefined
-    ? input.currentCandleIndex - recentMSS.breakIndex
-    : 'Unknown';
+  // Determine current structure direction (mirrors scoreSmartMoney logic)
+  const lookbackCandles = getStructureLookbackCandles(input.timeframe);
+  const recentBreaks = input.structureBreaks.filter(sb => {
+    if (sb.breakIndex !== undefined && input.currentCandleIndex !== undefined) {
+      return sb.breakIndex >= input.currentCandleIndex - lookbackCandles;
+    }
+    return true;
+  });
+
+  const recentMSS = input.structureBreaks
+    .filter(sb => sb.type === 'mss')
+    .sort((a, b) => b.breakTime - a.breakTime)[0];
+
+  const recentStructureBreak = recentMSS ?? recentBreaks.sort((a, b) => b.breakTime - a.breakTime)[0];
+  const direction = recentStructureBreak?.direction ?? 'bullish';
+
+  const multiplier = getTrendStrengthMultiplier(
+    input.structureBreaks,
+    direction,
+    input.currentTime ?? 0,
+    lookbackCandles,
+  );
+  const count = getConsecutiveMSSCount(
+    input.structureBreaks,
+    direction,
+    input.currentTime ?? 0,
+    lookbackCandles,
+  );
+
+  const allMSSCHoCH = input.structureBreaks
+    .filter(sb => sb.type === 'mss' || sb.type === 'choch')
+    .sort((a, b) => b.breakTime - a.breakTime)
+    .slice(0, 6);
 
   return (
     <>
-      <div>├─ Active MSS: {recentMSS.direction === 'bullish' ? 'Bullish MSS ↑' : 'Bearish MSS ↓'}</div>
-      <div>├─ MSS Price: {recentMSS.brokenLevel?.toFixed(4) ?? 'N/A'}</div>
-      <div>├─ MSS Age: {age} candles</div>
-      <div>└─ Status: ✅ ACTIVE</div>
+      <div>├─ Direction: {direction === 'bullish' ? 'Bullish ↑' : 'Bearish ↓'}</div>
+      <div>├─ Consecutive {direction} MSS/CHoCH: {count}</div>
+      <div>├─ Multiplier: {multiplier.toFixed(2)}x ({count === 0 ? 'No trend' : count === 1 ? 'Baseline' : `+${Math.round((multiplier - 1) * 100)}% boost`})</div>
+      <div>├─ Recent MSS/CHoCH (newest first):</div>
+      {allMSSCHoCH.slice(0, 4).map((sb, i, arr) => (
+        <div key={i} className="ml-3">
+          {i === arr.length - 1 ? '└' : '├'}─ {sb.type?.toUpperCase()} {sb.direction === 'bullish' ? '↑' : '↓'} {sb.direction === direction ? '✅' : '⛔'}
+        </div>
+      ))}
+      <div>└─ Status: {count > 0 ? `✅ ${multiplier.toFixed(2)}x TREND STRENGTH` : '⚠️ NO CONSECUTIVE TREND'}</div>
     </>
   );
 }

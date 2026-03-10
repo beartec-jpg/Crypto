@@ -1,6 +1,7 @@
 /**
  * TypeScript interfaces for the graduated trading system scoring system.
- * Scores range from -100 (strong bearish) to +100 (strong bullish).
+ * Scores range from -100 (strong bearish) to +100 (strong bullish) for most systems.
+ * The Smart Money system allows scores beyond ±100 to reflect confluence stacking.
  */
 
 export interface ScoredCondition {
@@ -18,7 +19,10 @@ export interface ScoredCondition {
 
 export interface SystemEvaluation {
   systemId: string;
-  /** Continuous score: -100 (strong bearish) to +100 (strong bullish) */
+  /**
+   * Continuous score. For most systems: -100 (strong bearish) to +100 (strong bullish).
+   * For the Smart Money system scores can exceed ±100 to reflect confluence stacking.
+   */
   score: number;
   /** Certainty of the evaluation: 0-100 */
   confidence: number;
@@ -34,13 +38,19 @@ export interface SystemEvaluation {
 }
 
 export type SignalLabel =
+  | 'LEGENDARY LONG'
+  | 'OUTSTANDING LONG'
+  | 'EXCELLENT LONG'
   | 'BUY SIGNAL'
   | 'BUILDING BUY'
   | 'WEAK BULLISH'
   | 'NEUTRAL'
   | 'WEAK BEARISH'
   | 'BEARISH SETUP'
-  | 'SELL SIGNAL';
+  | 'SELL SIGNAL'
+  | 'EXCELLENT SHORT'
+  | 'OUTSTANDING SHORT'
+  | 'LEGENDARY SHORT';
 
 export interface MarkerSettings {
   /** Show percentage score badges on candles at interval */
