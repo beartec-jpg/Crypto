@@ -256,7 +256,9 @@ export interface ScoringInput {
   /** SMC Fair Value Gaps for Smart Money scoring */
   fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish' }>;
   /** SMC Order Blocks for Smart Money scoring */
-  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean; breaker?: boolean; breakerType?: 'bullish' | 'bearish'; conversionTime?: number; conversionIndex?: number; conversionPrice?: number }>;
+  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean }>;
+  /** Breaker blocks (former OBs that flipped polarity) for Smart Money scoring */
+  breakers?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean; conversionIndex?: number; conversionPrice?: number }>;
   /** Liquidity zones for Smart Money scoring */
   liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean; sweepIndex?: number; sweptIndex?: number; sweepPrice?: number }>;
   /** Current timeframe for dynamic lookback calculation */
@@ -712,28 +714,24 @@ function scoreOrderBlockProximity(currentPrice: number, previousPrice: number, o
  */
 function scoreBreakerBlockProximity(
   price: number,
-  orderBlocks?: Array<{
+  breakers?: Array<{
     high: number;
     low: number;
-    breaker?: boolean;
-    breakerType?: 'bullish' | 'bearish';
+    type: 'bullish' | 'bearish';
     mitigated?: boolean;
   }>
 ): number {
-  if (!orderBlocks || orderBlocks.length === 0) return 0;
+  if (!breakers || breakers.length === 0) return 0;
 
   // Only consider active (unmitigated) breakers
-  const breakers = orderBlocks.filter(ob =>
-    ob.breaker === true &&
-    ob.mitigated !== true
-  );
+  const activeBreakers = breakers.filter(b => b.mitigated !== true);
 
-  if (breakers.length === 0) return 0;
+  if (activeBreakers.length === 0) return 0;
 
   // Score each breaker by proximity (3% max distance, same as regular OBs)
-  const scores = breakers.map(breaker => {
+  const scores = activeBreakers.map(breaker => {
     const proximityScore = scoreZoneProximity(price, breaker.high, breaker.low, 3.0);
-    return breaker.breakerType === 'bullish' ? proximityScore : -proximityScore;
+    return breaker.type === 'bullish' ? proximityScore : -proximityScore;
   });
 
   // Return score with highest absolute value
@@ -1106,6 +1104,7 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     currentCandleIndex,
     fvgs,
     orderBlocks,
+    breakers,
     liquidityZones,
     timeframe,
     priceHistory,
@@ -1146,7 +1145,7 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   // Score entry zones (OB, FVG, Breaker) — always computed for display
   const obScore = scoreOrderBlockProximity(currentPrice, previousClose, orderBlocks);
   const fvgScore = scoreFVGProximity(currentPrice, previousClose, fvgs);
-  const breakerScore = scoreBreakerBlockProximity(currentPrice, orderBlocks);
+  const breakerScore = scoreBreakerBlockProximity(currentPrice, breakers);
 
   // Compute confluence scores upfront so they appear in conditions even when no entry zone qualifies
   const liquidityScore = scoreLiquiditySweepProximity(currentPrice, liquidityZones, currentCandleIndex, structureBreaks);

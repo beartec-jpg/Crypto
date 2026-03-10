@@ -46,6 +46,7 @@ import { useFVGSettings } from '@/hooks/useFVGSettings';
 import { useFVGDetection } from '@/hooks/useFVGDetection';
 import { useOrderBlockSettings } from '@/hooks/useOrderBlockSettings';
 import { useOrderBlockDetection } from '@/hooks/useOrderBlockDetection';
+import { useBreakerSettings } from '@/hooks/useBreakerSettings';
 import { useBOSSettings } from '@/hooks/useBOSSettings';
 import { useBOSDetection } from '@/hooks/useBOSDetection';
 import { useLiquiditySettings } from '@/hooks/useLiquiditySettings';
@@ -363,7 +364,8 @@ export function ChartFullscreenPage({
 
   // Hooks - Order Block detection
   const obSettings = useOrderBlockSettings();
-  const orderBlocks = useOrderBlockDetection({ candles: effectiveCandles, settings: obSettings.settings, fvgs });
+  const breakerSettings = useBreakerSettings();
+  const { orderBlocks, breakers } = useOrderBlockDetection({ candles: effectiveCandles, settings: obSettings.settings, fvgs });
 
   // Hooks - BOS/CHoCH detection
   const bosSettings = useBOSSettings();
@@ -780,11 +782,14 @@ export function ChartFullscreenPage({
         low: ob.bottom,
         type: ob.type,
         mitigated: ob.mitigated,
-        breaker: ob.breaker,
-        breakerType: ob.breakerType,
-        conversionTime: ob.conversionTime,
-        conversionIndex: ob.conversionIndex,
-        conversionPrice: ob.conversionPrice,
+      })),
+      breakers: breakers.map(b => ({
+        high: b.top,
+        low: b.bottom,
+        type: b.type,
+        mitigated: b.mitigated,
+        conversionIndex: b.conversionIndex,
+        conversionPrice: b.conversionPrice,
       })),
       liquidityZones: liquidityZones.map(lz => ({
         price: lz.price,
@@ -909,11 +914,14 @@ export function ChartFullscreenPage({
         low: ob.bottom,
         type: ob.type,
         mitigated: ob.mitigated,
-        breaker: ob.breaker,
-        breakerType: ob.breakerType,
-        conversionTime: ob.conversionTime,
-        conversionIndex: ob.conversionIndex,
-        conversionPrice: ob.conversionPrice,
+      })),
+      breakers: breakers.map(b => ({
+        high: b.top,
+        low: b.bottom,
+        type: b.type,
+        mitigated: b.mitigated,
+        conversionIndex: b.conversionIndex,
+        conversionPrice: b.conversionPrice,
       })),
       liquidityZones: liquidityZones.map(lz => ({
         price: lz.price,
@@ -1152,11 +1160,6 @@ export function ChartFullscreenPage({
       low: ob.bottom,
       type: ob.type,
       mitigated: ob.mitigated,
-      breaker: ob.breaker,
-      breakerType: ob.breakerType,
-      conversionTime: ob.conversionTime,
-      conversionIndex: ob.conversionIndex,
-      conversionPrice: ob.conversionPrice,
     })),
     liquidityZones.map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept })),
     volumeProfileData
@@ -1766,6 +1769,8 @@ export function ChartFullscreenPage({
           fvgSettings={fvgSettings.settings}
           orderBlocks={orderBlocks}
           obSettings={obSettings.settings}
+          breakers={breakers}
+          breakerSettings={breakerSettings.settings}
           structureBreaks={structureBreaks}
           swingPoints={swingPoints}
           sessionSeparators={sessionSeparators}
