@@ -1034,7 +1034,8 @@ function scoreAutoFibConfluence(
     // OTE zone bonus (61.8–78.6%): institutional optimal trade entry area.
     // When price sits at an OTE-range fib AND a zone (FVG or OB) overlaps it,
     // this is the highest-conviction confluence setup — add a distinct extra boost.
-    const levelNum = parseFloat(fib.level);
+    // FibLevelData.level is a numeric string without '%', e.g. "61.8" or "78.6".
+    const levelNum = parseFloat(fib.level.replace('%', ''));
     const isOTELevel = levelNum >= 61.8 && levelNum <= 78.6;
     if (isOTELevel && (hasFVGConfluence || hasOBConfluence)) {
       score += 18 * frozenPenalty;
