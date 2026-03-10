@@ -71,7 +71,7 @@ import { useMultiSystemConfluence, type ConfluenceResult } from '@/hooks/useMult
 import { FloatingConfluenceMonitor } from '@/components/tradingSystems/FloatingConfluenceMonitor';
 import { DraggableSystemInfoBox } from '@/components/tradingSystems/DraggableSystemInfoBox';
 import { ActiveSystemMonitor } from '@/components/tradingSystems/ActiveSystemMonitor';
-import { scoreSystem, type ScoringInput } from '@/lib/tradingSystemScoring';
+import { scoreSystem, buildSmcZoneInputs, type ScoringInput } from '@/lib/tradingSystemScoring';
 import { runTradingSystemBacktest, type BacktestResult } from '@/lib/tradingSystemBacktest';
 import { AlertSettingsDialog } from '@/components/AlertSettingsDialog';
 import { DrawingAlertSettings } from '@/components/modals/DrawingAlertSettings';
@@ -570,20 +570,7 @@ export function ChartFullscreenPage({
         currentTime,
         currentCandleIndex: index,
         structureBreaks,
-        fvgs: fvgs
-          .filter(fvg => !fvg.endTime || fvg.endTime <= currentTime)
-          .map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
-        orderBlocks: orderBlocks
-          .filter(ob => !ob.time || ob.time <= currentTime)
-          .map(ob => ({
-            high: ob.top,
-            low: ob.bottom,
-            type: ob.type,
-            mitigated: ob.mitigated && (!ob.mitigationTime || ob.mitigationTime <= currentTime),
-          })),
-        liquidityZones: liquidityZones
-          .filter(lz => lz.touchTimes.length === 0 || lz.touchTimes[lz.touchTimes.length - 1] <= currentTime)
-          .map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept })),
+        ...buildSmcZoneInputs(fvgs, orderBlocks, breakers, liquidityZones, currentTime),
         volumeProfileData: volumeProfileData
           ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }
           : undefined,
@@ -632,6 +619,7 @@ export function ChartFullscreenPage({
     divergencePoints,
     fvgs,
     orderBlocks,
+    breakers,
     liquidityZones,
     volumeProfileData,
   ]);
@@ -776,29 +764,7 @@ export function ChartFullscreenPage({
       currentCandleIndex: effectiveCandles.length - 1,
       structureBreaks,
       swingPoints,
-      fvgs: fvgs.map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
-      orderBlocks: orderBlocks.map(ob => ({
-        high: ob.top,
-        low: ob.bottom,
-        type: ob.type,
-        mitigated: ob.mitigated,
-      })),
-      breakers: breakers.map(b => ({
-        high: b.top,
-        low: b.bottom,
-        type: b.type,
-        mitigated: b.mitigated,
-        conversionIndex: b.conversionIndex,
-        conversionPrice: b.conversionPrice,
-      })),
-      liquidityZones: liquidityZones.map(lz => ({
-        price: lz.price,
-        type: lz.type,
-        swept: lz.swept,
-        sweepIndex: lz.sweepIndex,
-        sweptIndex: lz.sweptIndex,
-        sweepPrice: lz.sweepPrice,
-      })),
+      ...buildSmcZoneInputs(fvgs, orderBlocks, breakers, liquidityZones),
       volumeProfileData: volumeProfileData
         ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }
         : undefined,
@@ -908,29 +874,7 @@ export function ChartFullscreenPage({
       currentCandleIndex: effectiveCandles.length - 1,
       structureBreaks,
       swingPoints,
-      fvgs: fvgs.map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
-      orderBlocks: orderBlocks.map(ob => ({
-        high: ob.top,
-        low: ob.bottom,
-        type: ob.type,
-        mitigated: ob.mitigated,
-      })),
-      breakers: breakers.map(b => ({
-        high: b.top,
-        low: b.bottom,
-        type: b.type,
-        mitigated: b.mitigated,
-        conversionIndex: b.conversionIndex,
-        conversionPrice: b.conversionPrice,
-      })),
-      liquidityZones: liquidityZones.map(lz => ({
-        price: lz.price,
-        type: lz.type,
-        swept: lz.swept,
-        sweepIndex: lz.sweepIndex,
-        sweptIndex: lz.sweptIndex,
-        sweepPrice: lz.sweepPrice,
-      })),
+      ...buildSmcZoneInputs(fvgs, orderBlocks, breakers, liquidityZones),
       volumeProfileData: volumeProfileData
         ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }
         : undefined,
@@ -1033,6 +977,7 @@ export function ChartFullscreenPage({
       divergencePoints,
       fvgs,
       orderBlocks,
+      breakers,
       liquidityZones,
       volumeProfileData,
       swingPoints,
@@ -1051,6 +996,7 @@ export function ChartFullscreenPage({
     divergencePoints,
     fvgs,
     orderBlocks,
+    breakers,
     liquidityZones,
     volumeProfileData,
     swingPoints,
@@ -1161,7 +1107,22 @@ export function ChartFullscreenPage({
       type: ob.type,
       mitigated: ob.mitigated,
     })),
-    liquidityZones.map(lz => ({ price: lz.price, type: lz.type, swept: lz.swept })),
+    breakers.map(b => ({
+      high: b.top,
+      low: b.bottom,
+      type: b.type,
+      mitigated: b.mitigated,
+      conversionIndex: b.conversionIndex,
+      conversionPrice: b.conversionPrice,
+    })),
+    liquidityZones.map(lz => ({
+      price: lz.price,
+      type: lz.type,
+      swept: lz.swept,
+      sweepPrice: lz.sweepPrice,
+      sweepIndex: lz.sweepIndex,
+      sweptIndex: lz.sweptIndex,
+    })),
     volumeProfileData
       ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }
       : undefined,
