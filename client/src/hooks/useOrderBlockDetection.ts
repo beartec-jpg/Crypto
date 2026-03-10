@@ -258,7 +258,7 @@ export function useOrderBlockDetection({
             conversionTime = c.time;
             conversionIndex = j;
             conversionPrice = c.close;
-            break;
+            // Continue loop to check for breaker mitigation
           }
         }
 
