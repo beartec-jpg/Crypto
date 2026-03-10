@@ -123,10 +123,9 @@ function getDefaultWeights(systemId: string): Record<string, WeightLevel> {
 
   if (systemId === 'smart-money') {
     return {
-      structureShift: 2,
-      breakerBlockProximity: 2,  // Higher than regular OBs
-      fvgProximity: 1,
-      orderBlockTouch: 1,
+      fvgProximity: 3,
+      orderBlockTouch: 3,
+      breakerBlockProximity: 1,
       liquiditySweep: 1,
       divergenceConfluence: 1, // SMT primary + single-asset fallback + confluence bonus
       autoFibConfluence: 1,

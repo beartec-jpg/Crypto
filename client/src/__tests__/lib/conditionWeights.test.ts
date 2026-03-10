@@ -68,4 +68,16 @@ describe('conditionWeights', () => {
       expect(weights.trend).toBe(1);
     });
   });
+
+  describe('smart-money defaults', () => {
+    it('returns non-zero defaults for all smart-money entry zones', () => {
+      const weights = getConditionWeights('smart-money');
+      expect(weights.fvgProximity).toBe(3);
+      expect(weights.orderBlockTouch).toBe(3);
+      expect(weights.breakerBlockProximity).toBe(1);
+      expect(weights.liquiditySweep).toBe(1);
+      expect(weights.divergenceConfluence).toBe(1);
+      expect(weights.autoFibConfluence).toBe(1);
+    });
+  });
 });

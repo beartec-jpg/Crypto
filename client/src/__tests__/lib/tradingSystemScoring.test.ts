@@ -100,6 +100,32 @@ describe('SMC Scoring - Entry Zone Filtering', () => {
     const result = scoreSmartMoney(input);
     expect(result.score).toBeGreaterThan(0);
   });
+
+  it('should always include all zone conditions even when no valid entry zones exist', () => {
+    // No FVGs/OBs/Breakers → score = 0, but zone conditions still present for weight sliders
+    const result = scoreSmartMoney({ ...baseInput });
+    expect(result.score).toBe(0);
+    // Zone conditions must always be present so weight adjusters are shown in UI
+    expect(result.conditions.find(c => c.id === 'fvgProximity')).toBeDefined();
+    expect(result.conditions.find(c => c.id === 'orderBlockTouch')).toBeDefined();
+    expect(result.conditions.find(c => c.id === 'breakerBlockProximity')).toBeDefined();
+    // Zones not qualifying should have met=false
+    expect(result.conditions.find(c => c.id === 'fvgProximity')?.met).toBe(false);
+  });
+
+  it('should show raw zone scores in conditions even when zones are filtered out', () => {
+    // Bearish FVG with bullish structure → filtered, but should still show in conditions with raw score
+    const input: ScoringInput = {
+      ...baseInput,
+      fvgs: [{ high: 100.5, low: 99.5, filled: false, type: 'bearish' as const }],
+    };
+    const result = scoreSmartMoney(input);
+    expect(result.score).toBe(0);
+    // fvgProximity should be in conditions showing the raw score (non-zero if it scored something)
+    const fvgCondition = result.conditions.find(c => c.id === 'fvgProximity');
+    expect(fvgCondition).toBeDefined();
+    expect(fvgCondition?.met).toBe(false);
+  });
 });
 
 describe('SMC Scoring - Trend Strength Multiplier', () => {
