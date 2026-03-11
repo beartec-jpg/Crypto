@@ -359,6 +359,7 @@ function getLiquiditySweepDetails(input: ScoringInput) {
   let bestAge = 0;
   let bestType: 'high' | 'low' | null = null;
   let bestScore = 0;
+  let bestSource: 'LZ' | 'FVG' | 'OB' | null = null;
 
   if (input.liquidityZones) {
     for (const lz of input.liquidityZones) {
@@ -373,6 +374,7 @@ function getLiquiditySweepDetails(input: ScoringInput) {
         bestSweepIndex = sweptIdx;
         bestAge = age;
         bestType = lz.type;
+        bestSource = 'LZ';
         const decay = Math.max(0, 100 - (age * 10));
         bestScore = lz.type === 'high' ? -decay : decay;
       }
@@ -390,8 +392,51 @@ function getLiquiditySweepDetails(input: ScoringInput) {
       bestSweepIndex = sb.breakIndex;
       bestAge = age;
       bestType = sb.direction === 'bullish' ? 'low' : 'high';
+      bestSource = 'LZ';
       const decay = Math.max(0, 100 - (age * 10));
       bestScore = sb.direction === 'bullish' ? decay : -decay;
+    }
+  }
+
+  // Check FVG sweeps
+  if (input.fvgs) {
+    for (const fvg of input.fvgs) {
+      if (!fvg.swept || fvg.sweepIndex === undefined) continue;
+      const age = currentCandleIndex - fvg.sweepIndex;
+      if (age < 0 || age > 10) continue;
+      if (fvg.sweepPrice !== undefined) {
+        if (fvg.type === 'bullish' && currentPrice < fvg.sweepPrice) continue;
+        if (fvg.type === 'bearish' && currentPrice > fvg.sweepPrice) continue;
+      }
+      if (fvg.sweepIndex > bestSweepIndex) {
+        bestSweepIndex = fvg.sweepIndex;
+        bestAge = age;
+        bestType = fvg.type === 'bullish' ? 'low' : 'high';
+        bestSource = 'FVG';
+        const decay = Math.max(0, 100 - (age * 10));
+        bestScore = fvg.type === 'bullish' ? decay : -decay;
+      }
+    }
+  }
+
+  // Check Order Block sweeps
+  if (input.orderBlocks) {
+    for (const ob of input.orderBlocks) {
+      if (!ob.swept || ob.sweepIndex === undefined) continue;
+      const age = currentCandleIndex - ob.sweepIndex;
+      if (age < 0 || age > 10) continue;
+      if (ob.sweepPrice !== undefined) {
+        if (ob.type === 'bullish' && currentPrice < ob.sweepPrice) continue;
+        if (ob.type === 'bearish' && currentPrice > ob.sweepPrice) continue;
+      }
+      if (ob.sweepIndex > bestSweepIndex) {
+        bestSweepIndex = ob.sweepIndex;
+        bestAge = age;
+        bestType = ob.type === 'bullish' ? 'low' : 'high';
+        bestSource = 'OB';
+        const decay = Math.max(0, 100 - (age * 10));
+        bestScore = ob.type === 'bullish' ? decay : -decay;
+      }
     }
   }
 
@@ -407,12 +452,13 @@ function getLiquiditySweepDetails(input: ScoringInput) {
   const isBearish = bestType === 'high';
   const liquidityScore = bestScore;
   const candlesSinceSweep = bestAge;
+  const sourceLabel = bestSource === 'FVG' ? ' (FVG ⚡)' : bestSource === 'OB' ? ' (OB ⚡)' : '';
 
   return (
     <div className="pl-4 space-y-0.5 text-xs text-slate-400">
       <div className="flex items-start gap-1">
         <span className="text-slate-500">├─</span>
-        <span>Type: {isBearish ? 'High Sweep (BEARISH)' : 'Low Sweep (BULLISH)'}</span>
+        <span>Type: {isBearish ? `High Sweep (BEARISH)${sourceLabel}` : `Low Sweep (BULLISH)${sourceLabel}`}</span>
       </div>
       <div className="flex items-start gap-1">
         <span className="text-slate-500">├─</span>
