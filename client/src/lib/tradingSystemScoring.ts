@@ -1472,13 +1472,18 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     return isBullishZone === structureIsBullish;  // Both bullish OR both bearish
   });
 
-  // Calculate base entry score (weighted average of valid zones), or 0 when none qualify
+  // Calculate total possible weight from ALL enabled zones (weight>0), not just active ones.
+  // This ensures a single active zone cannot score 100% when multiple zones are configured.
+  const totalPossibleWeight = allZones
+    .filter(z => z.weight > 0)
+    .reduce((sum, z) => sum + z.weight, 0);
+
+  // Calculate base entry score (weighted sum of active zones / total possible weight), or 0 when none qualify
   let baseEntryScore = 0;
   let boostedScore = 0;
 
-  if (validZones.length > 0) {
-    const totalWeight = validZones.reduce((sum, z) => sum + z.weight, 0);
-    baseEntryScore = validZones.reduce((sum, z) => sum + (z.score * z.weight), 0) / totalWeight;
+  if (validZones.length > 0 && totalPossibleWeight > 0) {
+    baseEntryScore = validZones.reduce((sum, z) => sum + (z.score * z.weight), 0) / totalPossibleWeight;
 
     // Apply confluence boosters (multiply base score instead of adding)
     boostedScore = baseEntryScore;
