@@ -89,9 +89,6 @@ export function useIndicatorState() {
   const [obSwingLengthInput, setObSwingLengthInput] = useState('10');
   const [orderBlockLength, setOrderBlockLength] = useState(100);
   const [orderBlockLengthInput, setOrderBlockLengthInput] = useState('100');
-  const [showPremiumDiscount, setShowPremiumDiscount] = useState(false);
-  const [pdLookback, setPdLookback] = useState(50);
-  const [pdLookbackInput, setPdLookbackInput] = useState('50');
   
   // DELETE THIS ENTIRE SECTION (lines 93-98) - IT'S A DUPLICATE
   // Trend Tools - SMA with dynamic list and multi-timeframe support
@@ -207,13 +204,7 @@ export function useIndicatorState() {
       orderBlockLength,
       setOrderBlockLength,
       orderBlockLengthInput,
-      setOrderBlockLengthInput,
-      showPremiumDiscount,
-      setShowPremiumDiscount,
-      pdLookback,
-      setPdLookback,
-      pdLookbackInput,
-      setPdLookbackInput
+      setOrderBlockLengthInput
     },
     
     // EMA

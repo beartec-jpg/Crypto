@@ -47,7 +47,6 @@ export interface TradingSystem {
       orderBlocks?: { enabled: boolean };
       bos?: { enabled: boolean };
       liquidity?: { enabled: boolean };
-      pdZones?: { enabled: boolean };
       autoFib?: { enabled: boolean };
     };
     
@@ -113,7 +112,6 @@ export const TRADING_SYSTEMS: Record<TradingSystemId, TradingSystem> = {
         bollingerBands: { enabled: true, period: 20, stdDev: 2 },
       },
       smc: {
-        pdZones: { enabled: true },
       },
       tools: {
         volumeProfile: { enabled: true },
@@ -167,7 +165,6 @@ export const TRADING_SYSTEMS: Record<TradingSystemId, TradingSystem> = {
         orderBlocks: { enabled: true },
         bos: { enabled: true },
         liquidity: { enabled: true },
-        pdZones: { enabled: true },
         autoFib: { enabled: true },
       },
     },
@@ -273,7 +270,6 @@ export const TRADING_SYSTEMS: Record<TradingSystemId, TradingSystem> = {
       },
       smc: {
         orderBlocks: { enabled: true },
-        pdZones: { enabled: true },
       },
       tools: {
         volumeProfile: { enabled: true },

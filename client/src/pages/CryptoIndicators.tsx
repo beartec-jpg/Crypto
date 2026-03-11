@@ -145,7 +145,6 @@ import {
   calculateSupertrend,
   calculateVWAPBands,
   calculateOrderBlocks,
-  calculatePremiumDiscount,
   calculateStochasticRSI,
   calculateWilliamsR,
   calculateCCI,
@@ -1008,7 +1007,6 @@ useEffect(() => {
   const sessionVWAPLondonRef = useRef<ISeriesApi<'Line'> | null>(null);
   const sessionVWAPNYRef = useRef<ISeriesApi<'Line'> | null>(null);
   // NOTE: orderBlocksRefs removed - now managed by OrderBlockOverlay component
-  const premiumDiscountRefs = useRef<{ equilibrium: ISeriesApi<'Line'> | null; premium: ISeriesApi<'Line'> | null; discount: ISeriesApi<'Line'> | null }>({ equilibrium: null, premium: null, discount: null });
   const smaFastRef = useRef<ISeriesApi<'Line'> | null>(null);
   const smaSlowRef = useRef<ISeriesApi<'Line'> | null>(null);
   const parabolicSARRef = useRef<ISeriesApi<'Line'> | null>(null);
@@ -2472,7 +2470,6 @@ useEffect(() => {
           showOrderBlocks: indicators.smc.showOrderBlocks,
           obSwingLength: indicators.smc.obSwingLength,
           orderBlockLength: indicators.smc.orderBlockLength,
-          showPremiumDiscount: indicators.smc.showPremiumDiscount,
           showAutoTrendlines: indicators.smc.showAutoTrendlines,
           showHighValueOnly: indicators.smc.showHighValueOnly,
           showChartLabels: indicators.smc.showChartLabels,
@@ -2505,7 +2502,7 @@ useEffect(() => {
     });
     
     console.log(`💾 Saved indicator defaults for ${userId}_${symbol}_${interval}:`, indicatorDefaults);
-  }, [userId, symbol, interval, indicators.ema.show, indicators.ema.fastPeriod, indicators.ema.slowPeriod, indicators.ema.configs, indicators.sma.show, indicators.sma.configs, indicators.rsi.show, indicators.rsi.period, indicators.macd.show, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal, indicators.obv.show, indicators.mfi.show, indicators.mfi.period, indicators.stochRSI.show, indicators.stochRSI.period, indicators.williamsR.show, indicators.williamsR.period, indicators.cci.show, indicators.cci.period, indicators.adx.show, indicators.adx.period, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev, indicators.vwap.showSession, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.vwap.rollingPeriod, indicators.vwapTools.showBands, indicators.vwapTools.showSession, indicators.smc.showFVG, indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showSwingPivots, indicators.smc.showOrderBlocks, indicators.smc.obSwingLength, indicators.smc.orderBlockLength, indicators.smc.showPremiumDiscount, indicators.supertrend.show, indicators.supertrend.period, indicators.supertrend.multiplier, indicators.parabolicSAR.show, indicators.parabolicSAR.step, indicators.parabolicSAR.max, indicators.smc.showAutoTrendlines, indicators.smc.showHighValueOnly, indicators.smc.showChartLabels, alertFilterMode, cvdSettings.enabled, cvdSettings.level1, cvdSettings.level2, cvdSettings.level3, toast]);
+  }, [userId, symbol, interval, indicators.ema.show, indicators.ema.fastPeriod, indicators.ema.slowPeriod, indicators.ema.configs, indicators.sma.show, indicators.sma.configs, indicators.rsi.show, indicators.rsi.period, indicators.macd.show, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal, indicators.obv.show, indicators.mfi.show, indicators.mfi.period, indicators.stochRSI.show, indicators.stochRSI.period, indicators.williamsR.show, indicators.williamsR.period, indicators.cci.show, indicators.cci.period, indicators.adx.show, indicators.adx.period, indicators.bb.show, indicators.bb.period, indicators.bb.stdDev, indicators.vwap.showSession, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.vwap.rollingPeriod, indicators.vwapTools.showBands, indicators.vwapTools.showSession, indicators.smc.showFVG, indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showSwingPivots, indicators.smc.showOrderBlocks, indicators.smc.obSwingLength, indicators.smc.orderBlockLength, indicators.supertrend.show, indicators.supertrend.period, indicators.supertrend.multiplier, indicators.parabolicSAR.show, indicators.parabolicSAR.step, indicators.parabolicSAR.max, indicators.smc.showAutoTrendlines, indicators.smc.showHighValueOnly, indicators.smc.showChartLabels, alertFilterMode, cvdSettings.enabled, cvdSettings.level1, cvdSettings.level2, cvdSettings.level3, toast]);
 
   // Set current timeframe as the default for this symbol on page load
   const makeTimeframeDefault = useCallback(() => {
@@ -2561,7 +2558,6 @@ useEffect(() => {
     indicators.smc.setShowCHoCH(false);
     indicators.smc.setShowSwingPivots(false);
     indicators.smc.setShowOrderBlocks(false);
-    indicators.smc.setShowPremiumDiscount(false);
     // Trend Indicators
     indicators.supertrend.setShow(false);
     indicators.parabolicSAR.setShow(false);
@@ -2702,7 +2698,6 @@ useEffect(() => {
         indicators.smc.setOrderBlockLength(defaults.indicators.smc.orderBlockLength);
         indicators.smc.setOrderBlockLengthInput(defaults.indicators.smc.orderBlockLength.toString());
       }
-      if (defaults.indicators.smc.showPremiumDiscount !== undefined) indicators.smc.setShowPremiumDiscount(defaults.indicators.smc.showPremiumDiscount);
       
       // Trend Indicators
       if (defaults.indicators.supertrend.show !== undefined) indicators.supertrend.setShow(defaults.indicators.supertrend.show);
@@ -3020,100 +3015,6 @@ useEffect(() => {
   // VWAP Bands
   
   // Session VWAP
-  
-  
-  // Premium/Discount Zones (SMC)
-  useEffect(() => {
-    if (!chartControls.chartReady || !chartRef.current || candles.length === 0) return;
-    
-    const chart = chartRef.current;
-    const refs = premiumDiscountRefs.current;
-    
-    if (indicators.smc.showPremiumDiscount) {
-      const pdData = calculatePremiumDiscount(candles, indicators.smc.pdLookback);
-      
-      if (pdData.length > 0) {
-        // Equilibrium line
-        if (!refs.equilibrium) {
-          try {
-            refs.equilibrium = chart.addSeries(LineSeries, {
-              color: '#a855f7',
-              lineWidth: 2,
-              lineStyle: 0,
-              priceLineVisible: false,
-              lastValueVisible: true,
-              title: 'Equilibrium',
-            });
-          } catch (e) {
-            return;
-          }
-        }
-        
-        // Premium line
-        if (!refs.premium) {
-          try {
-            refs.premium = chart.addSeries(LineSeries, {
-              color: '#ef4444',
-              lineWidth: 1,
-              lineStyle: 2,
-              priceLineVisible: false,
-              lastValueVisible: true,
-              title: 'Premium',
-            });
-          } catch (e) {
-            return;
-          }
-        }
-        
-        // Discount line
-        if (!refs.discount) {
-          try {
-            refs.discount = chart.addSeries(LineSeries, {
-              color: '#10b981',
-              lineWidth: 1,
-              lineStyle: 2,
-              priceLineVisible: false,
-              lastValueVisible: true,
-              title: 'Discount',
-            });
-          } catch (e) {
-            return;
-          }
-        }
-        
-        // Set data
-        const equilibriumData = pdData.map(d => ({ time: d.time as any, value: d.equilibrium }));
-        const premiumData = pdData.map(d => ({ time: d.time as any, value: d.premium }));
-        const discountData = pdData.map(d => ({ time: d.time as any, value: d.discount }));
-        
-        try {
-          refs.equilibrium.setData(equilibriumData);
-          refs.premium.setData(premiumData);
-          refs.discount.setData(discountData);
-        } catch (e) {}
-      }
-    } else {
-      // Remove all lines
-      if (refs.equilibrium) {
-        try {
-          chart.removeSeries(refs.equilibrium);
-        } catch (e) {}
-        refs.equilibrium = null;
-      }
-      if (refs.premium) {
-        try {
-          chart.removeSeries(refs.premium);
-        } catch (e) {}
-        refs.premium = null;
-      }
-      if (refs.discount) {
-        try {
-          chart.removeSeries(refs.discount);
-        } catch (e) {}
-        refs.discount = null;
-      }
-    }
-  }, [chartControls.chartReady, candles, indicators.smc.showPremiumDiscount, indicators.smc.pdLookback]);
   
   // ========== BATCH 3 INDICATORS ==========
   
