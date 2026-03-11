@@ -226,6 +226,11 @@ export interface RawSmcFVG {
   type: 'bullish' | 'bearish';
   /** Unix timestamp (seconds) after which the FVG is considered formed — used as look-ahead guard. */
   endTime?: number;
+  /** Sweep tracking (wick-through without close-through) */
+  swept?: boolean;
+  sweepTime?: number;
+  sweepPrice?: number;
+  sweepIndex?: number;
 }
 
 /** Raw OrderBlock as returned by useOrderBlockDetection (uses top/bottom, not high/low). */
@@ -237,6 +242,11 @@ export interface RawSmcOrderBlock {
   time?: number;
   mitigated?: boolean;
   mitigationTime?: number;
+  /** Sweep tracking (wick-through without close-through) */
+  swept?: boolean;
+  sweepTime?: number;
+  sweepPrice?: number;
+  sweepIndex?: number;
 }
 
 /** Raw Breaker as returned by useBreakerBlockDetection (uses top/bottom, not high/low). */
@@ -284,7 +294,15 @@ export function buildSmcZoneInputs(
   return {
     fvgs: fvgs
       .filter(fvg => currentTime === undefined || !fvg.endTime || fvg.endTime <= currentTime)
-      .map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
+      .map(fvg => ({
+        high: fvg.top,
+        low: fvg.bottom,
+        filled: fvg.mitigated,
+        type: fvg.type,
+        swept: fvg.swept,
+        sweepIndex: fvg.sweepIndex,
+        sweepPrice: fvg.sweepPrice,
+      })),
     orderBlocks: orderBlocks
       .filter(ob => currentTime === undefined || !ob.time || ob.time <= currentTime)
       .map(ob => ({
@@ -293,6 +311,9 @@ export function buildSmcZoneInputs(
         type: ob.type,
         mitigated: ob.mitigated === true &&
           (ob.mitigationTime === undefined || currentTime === undefined || ob.mitigationTime <= currentTime),
+        swept: ob.swept,
+        sweepIndex: ob.sweepIndex,
+        sweepPrice: ob.sweepPrice,
       })),
     breakers: breakers
       .filter(b => currentTime === undefined || !b.conversionTime || b.conversionTime <= currentTime)
@@ -359,9 +380,9 @@ export interface ScoringInput {
   /** Current candle index for index-based structure break lookback */
   currentCandleIndex?: number;
   /** SMC Fair Value Gaps for Smart Money scoring */
-  fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish' }>;
+  fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish'; swept?: boolean; sweepIndex?: number; sweepPrice?: number }>;
   /** SMC Order Blocks for Smart Money scoring */
-  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean }>;
+  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean; swept?: boolean; sweepIndex?: number; sweepPrice?: number }>;
   /** Breaker blocks (former OBs that flipped polarity) for Smart Money scoring */
   breakers?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean; conversionIndex?: number; conversionPrice?: number }>;
   /** Liquidity zones for Smart Money scoring */
@@ -837,6 +858,7 @@ function scoreBreakerBlockProximity(
  * - Decays by 10 points per candle (reaches 0 after 10 candles)
  * - High sweep (bearish) = negative score, invalidated if price rises above sweep candle's high (sweepPrice)
  * - Low sweep (bullish) = positive score, invalidated if price drops below sweep candle's low (sweepPrice)
+ * - FVG/OB sweeps apply the same decay and invalidation; bullish zone sweep = positive, bearish = negative
  * - Most recent sweep wins if multiple active
  *
  * @returns Score from -100 to +100, or 0 if no active sweep
@@ -846,6 +868,8 @@ function scoreLiquiditySweepProximity(
   liquidityZones?: Array<{ price: number; type: 'high' | 'low'; swept: boolean; sweptIndex?: number; sweepPrice?: number }>,
   currentCandleIndex?: number,
   _structureBreaks?: Array<{ breakIndex?: number; direction: 'bullish' | 'bearish'; swept?: boolean; brokenLevel?: number }>,
+  fvgs?: Array<{ type: 'bullish' | 'bearish'; swept?: boolean; sweepIndex?: number; sweepPrice?: number }>,
+  orderBlocks?: Array<{ type: 'bullish' | 'bearish'; swept?: boolean; sweepIndex?: number; sweepPrice?: number; mitigated?: boolean }>,
 ): number {
   if (!currentCandleIndex) return 0;
 
@@ -885,6 +909,58 @@ function scoreLiquiditySweepProximity(
       if (lz.sweptIndex > bestSweepIndex) {
         bestScore = directionalScore;
         bestSweepIndex = lz.sweptIndex;
+      }
+    }
+  }
+
+  // Check FVG sweeps
+  if (fvgs && fvgs.length > 0) {
+    for (const fvg of fvgs) {
+      if (!fvg.swept || fvg.sweepIndex === undefined) continue;
+
+      const candlesSinceSweep = currentCandleIndex - fvg.sweepIndex;
+      if (candlesSinceSweep < 0) continue;
+      if (candlesSinceSweep > 10) continue;
+
+      // Invalidation: if price moves decisively beyond the sweep candle's extreme
+      if (fvg.sweepPrice !== undefined) {
+        if (fvg.type === 'bullish' && price < fvg.sweepPrice) continue; // Bullish sweep invalid if price drops below wick extreme
+        if (fvg.type === 'bearish' && price > fvg.sweepPrice) continue; // Bearish sweep invalid if price rises above wick extreme
+      }
+
+      const decayScore = Math.max(0, 100 - (candlesSinceSweep * 10));
+      // Bullish FVG swept = bullish signal (positive); bearish FVG swept = bearish signal (negative)
+      const directionalScore = fvg.type === 'bullish' ? decayScore : -decayScore;
+
+      if (fvg.sweepIndex > bestSweepIndex) {
+        bestScore = directionalScore;
+        bestSweepIndex = fvg.sweepIndex;
+      }
+    }
+  }
+
+  // Check Order Block sweeps
+  if (orderBlocks && orderBlocks.length > 0) {
+    for (const ob of orderBlocks) {
+      if (!ob.swept || ob.sweepIndex === undefined) continue;
+
+      const candlesSinceSweep = currentCandleIndex - ob.sweepIndex;
+      if (candlesSinceSweep < 0) continue;
+      if (candlesSinceSweep > 10) continue;
+
+      // Invalidation: if price moves decisively beyond the sweep candle's extreme
+      if (ob.sweepPrice !== undefined) {
+        if (ob.type === 'bullish' && price < ob.sweepPrice) continue; // Bullish sweep invalid if price drops below wick extreme
+        if (ob.type === 'bearish' && price > ob.sweepPrice) continue; // Bearish sweep invalid if price rises above wick extreme
+      }
+
+      const decayScore = Math.max(0, 100 - (candlesSinceSweep * 10));
+      // Bullish OB swept = bullish signal (positive); bearish OB swept = bearish signal (negative)
+      const directionalScore = ob.type === 'bullish' ? decayScore : -decayScore;
+
+      if (ob.sweepIndex > bestSweepIndex) {
+        bestScore = directionalScore;
+        bestSweepIndex = ob.sweepIndex;
       }
     }
   }
@@ -1340,7 +1416,7 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   const breakerScore = scoreBreakerBlockProximity(currentPrice, breakers);
 
   // Compute confluence scores upfront so they appear in conditions even when no entry zone qualifies
-  const liquidityScore = scoreLiquiditySweepProximity(currentPrice, liquidityZones, currentCandleIndex, structureBreaks);
+  const liquidityScore = scoreLiquiditySweepProximity(currentPrice, liquidityZones, currentCandleIndex, structureBreaks, fvgs, orderBlocks);
 
   const singleAssetDivergenceScore = scoreDivergenceConfluence(
     priceHistory ?? [],
