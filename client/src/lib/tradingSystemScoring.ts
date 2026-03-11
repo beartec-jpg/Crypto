@@ -1104,100 +1104,48 @@ function scoreDivergenceConfluence(
 function scoreAutoFibConfluence(
   fibResult: { primary: FibSetResult | null; secondary: FibSetResult | null } | undefined,
   currentPrice: number,
-  fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish' }>,
-  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean }>,
-  alignmentThreshold: number = 0.5,
 ): number {
-  if (!fibResult || (!fibResult.primary && !fibResult.secondary)) {
+  if (!fibResult || !fibResult.primary) {
     return 0;
   }
 
-  let bestScore = 0;
+  const primaryLevels = fibResult.primary.levels;
+  if (!primaryLevels || primaryLevels.length === 0) return 0;
 
-  const allFibLevels: Array<{ price: number; isFrozen: boolean; isGolden: boolean; level: string }> = [];
+  const getLevelPrice = (target: string): number | null => {
+    const level = primaryLevels.find(l => l.level === target || l.percentage === `${target}%`);
+    return level?.price ?? null;
+  };
 
-  if (fibResult.primary) {
-    allFibLevels.push(...fibResult.primary.levels.map(l => ({
-      price: l.price,
-      isFrozen: l.isFrozen,
-      isGolden: l.isGolden,
-      level: l.level,
-    })));
+  const level0 = getLevelPrice('0');
+  const level100 = getLevelPrice('100');
+  if (level0 === null || level100 === null || level0 === level100) return 0;
+
+  // Normalize current price to fib percentage scale where 0%=level0 and 100%=level100.
+  const fibPct = ((currentPrice - level0) / (level100 - level0)) * 100;
+  const pct = Math.max(0, Math.min(100, fibPct));
+
+  // Requested behavior:
+  // - Above 50% (towards 0%) = mild negative, increasingly negative as it approaches 0.
+  // - 61.8% to 78.6% zone = 100.
+  // - Between 50% and 61.8% ramps from slight negative to strong positive.
+  // - Above 78.6% decays from 100 toward moderate positive at 100%.
+  if (pct < 50) {
+    const t = (50 - pct) / 50; // 0 at 50%, 1 at 0%
+    return Math.round(-5 - (t * 25)); // -5 .. -30
   }
 
-  if (fibResult.secondary) {
-    allFibLevels.push(...fibResult.secondary.levels.map(l => ({
-      price: l.price,
-      isFrozen: l.isFrozen,
-      isGolden: l.isGolden,
-      level: l.level,
-    })));
+  if (pct < 61.8) {
+    const t = (pct - 50) / (61.8 - 50);
+    return Math.round(-5 + (t * 85)); // -5 .. +80
   }
 
-  for (const fib of allFibLevels) {
-    if (fib.price <= 0) continue;
-
-    const frozenPenalty = fib.isFrozen ? 0.5 : 1.0;
-
-    const distToFib = Math.abs(currentPrice - fib.price) / fib.price * 100;
-    if (distToFib > 5.0) continue;
-
-    let score = distToFib < 0.1
-      ? 100 * frozenPenalty
-      : ((5.0 - distToFib) / 5.0) * 50 * frozenPenalty;
-
-    if (fib.isGolden) {
-      score += 10 * frozenPenalty;
-    }
-
-    let hasFVGConfluence = false;
-    if (fvgs) {
-      for (const fvg of fvgs) {
-        if (fvg.filled) continue;
-        const fvgMid = (fvg.high + fvg.low) / 2;
-        const alignment = Math.abs(fib.price - fvgMid) / fib.price * 100;
-        if (alignment <= alignmentThreshold) {
-          hasFVGConfluence = true;
-          score += 25 * frozenPenalty;
-          break;
-        }
-      }
-    }
-
-    let hasOBConfluence = false;
-    if (orderBlocks) {
-      for (const ob of orderBlocks) {
-        if (ob.mitigated) continue;
-        const obMid = (ob.high + ob.low) / 2;
-        const alignment = Math.abs(fib.price - obMid) / fib.price * 100;
-        if (alignment <= alignmentThreshold) {
-          hasOBConfluence = true;
-          score += 25 * frozenPenalty;
-          break;
-        }
-      }
-    }
-
-    if (hasFVGConfluence && hasOBConfluence) {
-      score += 15 * frozenPenalty; // Triple confluence bonus
-    }
-
-    // OTE zone bonus (61.8–78.6%): institutional optimal trade entry area.
-    // When price sits at an OTE-range fib AND a zone (FVG or OB) overlaps it,
-    // this is the highest-conviction confluence setup — add a distinct extra boost.
-    // FibLevelData.level is a numeric string without '%', e.g. "61.8" or "78.6".
-    const levelNum = parseFloat(fib.level.replace('%', ''));
-    const isOTELevel = levelNum >= 61.8 && levelNum <= 78.6;
-    if (isOTELevel && (hasFVGConfluence || hasOBConfluence)) {
-      score += 18 * frozenPenalty;
-    }
-
-    if (score > bestScore) {
-      bestScore = score;
-    }
+  if (pct <= 78.6) {
+    return 100;
   }
 
-  return Math.round(Math.min(bestScore, 100));
+  const t = Math.min(1, (pct - 78.6) / (100 - 78.6));
+  return Math.round(100 - (t * 80)); // 100 .. 20
 }
 
 /**
@@ -1537,7 +1485,7 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
 
   const autoFibWeight = weights.autoFibConfluence ?? 0;
   const autoFibScore = autoFibWeight > 0
-    ? scoreAutoFibConfluence(autoFibResult, currentPrice, fvgs, orderBlocks)
+    ? scoreAutoFibConfluence(autoFibResult, currentPrice)
     : 0;
 
   // Inducement sequence: sweep → MSS/CHoCH → zone entry (high-conviction institutional pattern)
@@ -1621,6 +1569,9 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     if (autoFibScore >= 40) {
       const fibBoost = (autoFibScore / 100) * 0.15;
       boostedScore *= (1 + fibBoost);
+    } else if (autoFibScore < 0) {
+      const fibPenalty = (Math.abs(autoFibScore) / 100) * 0.12;
+      boostedScore *= Math.max(0.7, 1 - fibPenalty);
     }
 
     // Inducement sequence (sweep → MSS/CHoCH → zone): highest-conviction bonus, up to +25%
@@ -1705,8 +1656,10 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       weightedScore: Math.round(autoFibScore) * autoFibWeight,
       value: autoFibScore > 0 ? `${Math.round(autoFibScore)}/100` : undefined,
       description: autoFibScore >= 40
-        ? `Fib alignment (+${Math.round((autoFibScore / 100) * 15)}% boost)`
-        : 'No fib confluence',
+        ? `Primary fib in OTE region (+${Math.round((autoFibScore / 100) * 15)}% boost)`
+        : autoFibScore < 0
+        ? `Primary fib above 50% retracement (up to -${Math.round((Math.abs(autoFibScore) / 100) * 12)}% penalty)`
+        : 'Primary fib neutral',
     },
     {
       id: 'inducementSequence',

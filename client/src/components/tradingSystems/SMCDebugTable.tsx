@@ -594,6 +594,7 @@ function getAutoFibDetails(input: ScoringInput) {
 
   return (
     <>
+      <div>├─ Scoring Mode: Primary Fib Only</div>
       <div>├─ Primary Fibs: {autoFibResult.primary?.levels.length ?? 0} levels</div>
       {top3.filter(l => l.source === 'Primary').slice(0, 2).map((l, i, arr) => (
         <div key={i} className="ml-3">
