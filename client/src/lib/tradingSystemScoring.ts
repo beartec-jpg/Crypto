@@ -727,23 +727,15 @@ function scoreFVGProximity(currentPrice: number, previousPrice: number, fvgs?: A
   if (activeFVGs.length === 0) return 0;
 
   const scores = activeFVGs.map(fvg => {
-    const proximity = scoreZoneProximity(currentPrice, fvg.high, fvg.low, 2.0);
+    const proximity = scoreZoneProximity(currentPrice, fvg.high, fvg.low, 0.5);
 
     const isInsideZone = currentPrice >= fvg.low && currentPrice <= fvg.high;
     const isAboveZone = currentPrice > fvg.high;
     const isBelowZone = currentPrice < fvg.low;
 
-    // Validate entry/approach direction
-    if (isInsideZone) {
-      // When inside: check where price came from
-      const enteredFromAbove = previousPrice > fvg.high;
-      const enteredFromBelow = previousPrice < fvg.low;
-
-      // Bullish FVG: only valid if entered from above
-      if (fvg.type === 'bullish' && !enteredFromAbove) return 0;
-      // Bearish FVG: only valid if entered from below
-      if (fvg.type === 'bearish' && !enteredFromBelow) return 0;
-    } else {
+    // Inside a zone always scores full magnitude (±100).
+    // When outside, keep directional approach validation.
+    if (!isInsideZone) {
       // When outside: check if approaching from correct direction
       if (fvg.type === 'bullish') {
         // Bullish FVG: only valid if price is above (approaching down)
@@ -777,23 +769,15 @@ function scoreOrderBlockProximity(currentPrice: number, previousPrice: number, o
   if (activeOBs.length === 0) return 0;
 
   const scores = activeOBs.map(ob => {
-    const proximity = scoreZoneProximity(currentPrice, ob.high, ob.low, 3.0);
+    const proximity = scoreZoneProximity(currentPrice, ob.high, ob.low, 0.5);
 
     const isInsideZone = currentPrice >= ob.low && currentPrice <= ob.high;
     const isAboveZone = currentPrice > ob.high;
     const isBelowZone = currentPrice < ob.low;
 
-    // Validate entry/approach direction
-    if (isInsideZone) {
-      // When inside: check where price came from
-      const enteredFromAbove = previousPrice > ob.high;
-      const enteredFromBelow = previousPrice < ob.low;
-
-      // Bullish OB: only valid if entered from above
-      if (ob.type === 'bullish' && !enteredFromAbove) return 0;
-      // Bearish OB: only valid if entered from below
-      if (ob.type === 'bearish' && !enteredFromBelow) return 0;
-    } else {
+    // Inside a zone always scores full magnitude (±100).
+    // When outside, keep directional approach validation.
+    if (!isInsideZone) {
       // When outside: check if approaching from correct direction
       if (ob.type === 'bullish') {
         // Bullish OB: only valid if price is above (approaching down)
@@ -833,9 +817,9 @@ function scoreBreakerBlockProximity(
 
   if (activeBreakers.length === 0) return 0;
 
-  // Score each breaker by proximity (3% max distance, same as regular OBs)
+  // Score each breaker by proximity (0.5% max distance).
   const scores = activeBreakers.map(breaker => {
-    const proximityScore = scoreZoneProximity(price, breaker.high, breaker.low, 3.0);
+    const proximityScore = scoreZoneProximity(price, breaker.high, breaker.low, 0.5);
     return breaker.type === 'bullish' ? proximityScore : -proximityScore;
   });
 
