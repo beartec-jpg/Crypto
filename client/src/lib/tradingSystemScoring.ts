@@ -1548,6 +1548,15 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     (counterTrendDirection === 'bearish' && divergenceIsBearishSignificant) ||
     (counterTrendDirection === 'bullish' && divergenceIsBullishSignificant);
 
+  // Check if secondary fib aligns with the counter-trend zone (Phase 4 boost: 0.9x → 1.0x).
+  // Secondary fib contains the counter-trend fibs; if any level is within 1% of the current price, it is active.
+  const secondaryFibActive = isCounterTrend &&
+    autoFibResult?.secondary != null &&
+    autoFibResult.secondary.levels.some(level => {
+      const distance = Math.abs(currentPrice - level.price) / currentPrice;
+      return distance <= 0.01;
+    });
+
   // Calculate total possible weight from ALL enabled zones (weight>0), not just active ones.
   // This ensures a single active zone cannot score 100% when multiple zones are configured.
   const totalPossibleWeight = allZones
@@ -1602,9 +1611,12 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   }
 
   // Counter-trend entries get a 0.8x penalty instead of the trend strength bonus.
-  // Boost to 0.9x when divergence aligns with the counter-trend direction.
+  // Boost to 0.9x when divergence aligns with the counter-trend direction (Phase 3).
+  // Boost to 1.0x (no penalty) when secondary fib also aligns (Phase 4).
   let counterTrendMultiplier = isCounterTrend ? 0.8 : 1.0;
-  if (isCounterTrend && divergenceAlignsWithCounterTrend) {
+  if (isCounterTrend && secondaryFibActive) {
+    counterTrendMultiplier = 1.0;
+  } else if (isCounterTrend && divergenceAlignsWithCounterTrend) {
     counterTrendMultiplier = 0.9;
   }
   const effectiveTrendMultiplier = isCounterTrend ? 1.0 : trendMultiplier;
@@ -1632,16 +1644,24 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       name: 'Counter-Trend Warning',
       met: isCounterTrend,
       weight: 1,
-      score: isCounterTrend ? (divergenceAlignsWithCounterTrend ? -10 : COUNTER_TREND_CONDITION_SCORE) : 0,
+      score: isCounterTrend
+        ? (secondaryFibActive ? 0 : (divergenceAlignsWithCounterTrend ? -10 : COUNTER_TREND_CONDITION_SCORE))
+        : 0,
       userWeight: 1,
-      weightedScore: isCounterTrend ? (divergenceAlignsWithCounterTrend ? -10 : COUNTER_TREND_CONDITION_SCORE) : 0,
+      weightedScore: isCounterTrend
+        ? (secondaryFibActive ? 0 : (divergenceAlignsWithCounterTrend ? -10 : COUNTER_TREND_CONDITION_SCORE))
+        : 0,
       value: isCounterTrend
-        ? (divergenceAlignsWithCounterTrend ? '⚠️ 0.9x (Div)' : '⚠️ 0.8x')
+        ? (secondaryFibActive
+            ? (divergenceAlignsWithCounterTrend ? '⚠️ 1.0x (Div+Fib)' : '⚠️ 1.0x (Fib)')
+            : (divergenceAlignsWithCounterTrend ? '⚠️ 0.9x (Div)' : '⚠️ 0.8x'))
         : '✅ With Trend',
       description: isCounterTrend
-        ? (divergenceAlignsWithCounterTrend
-            ? 'Counter-trend with divergence confluence (0.9x)'
-            : 'Trading against current structure direction (0.8x multiplier)')
+        ? (secondaryFibActive
+            ? 'Counter-trend with full confluence - no penalty (1.0x)'
+            : (divergenceAlignsWithCounterTrend
+                ? 'Counter-trend with divergence confluence (0.9x)'
+                : 'Trading against current structure direction (0.8x multiplier)'))
         : 'Trading with current structure direction',
     },
     ...allZones.map(zone => {

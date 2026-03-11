@@ -274,6 +274,85 @@ describe('SMC Scoring - Counter-Trend Zone Scoring', () => {
     expect(cond?.value).toBe('⚠️ 0.8x');
     expect(cond?.score).toBe(-20);
   });
+
+  // Phase 4: secondary fib alignment boosts counter-trend to 1.0x (no penalty)
+  // A secondary fib level within 1% of currentPrice=100 triggers the boost.
+  const SECONDARY_FIB_NEAR_PRICE = {
+    primary: null,
+    secondary: {
+      levels: [{ label: '61.8', price: 100.5, isFrozen: false }],
+      high: 105, low: 95, startTime: 0, endTime: 2000,
+    },
+  };
+
+  it('should boost counter-trend multiplier to 1.0x when secondary fib is near price', () => {
+    const input: ScoringInput = {
+      ...baseInput, // bullish structure
+      fvgs: [BEARISH_FVG_INSIDE], // bearish (counter-trend) zone
+      autoFibResult: SECONDARY_FIB_NEAR_PRICE,
+    };
+    const result = scoreSmartMoney(input);
+    const cond = result.conditions.find(c => c.id === 'counterTrend');
+    expect(cond?.met).toBe(true);
+    expect(cond?.value).toBe('⚠️ 1.0x (Fib)');
+    expect(cond?.score).toBe(0);
+    expect(cond?.description).toContain('1.0x');
+  });
+
+  it('counter-trend score with secondary fib should have higher magnitude than with divergence only (multiplier isolated)', () => {
+    setConditionWeight('smart-money', 'divergenceConfluence', 0);
+    setConditionWeight('smart-money', 'autoFibConfluence', 0);
+
+    const withDivInput: ScoringInput = {
+      ...baseInput,
+      fvgs: [BEARISH_FVG_INSIDE],
+      divergencePoints: [BEARISH_DIV_POINT], // 0.9x
+    };
+    const withFibInput: ScoringInput = {
+      ...baseInput,
+      fvgs: [BEARISH_FVG_INSIDE],
+      autoFibResult: SECONDARY_FIB_NEAR_PRICE, // 1.0x
+    };
+    const withDivResult = scoreSmartMoney(withDivInput);
+    const withFibResult = scoreSmartMoney(withFibInput);
+
+    // 1.0x (secondary fib) > 0.9x (divergence) → higher score magnitude
+    expect(Math.abs(withFibResult.score)).toBeGreaterThan(Math.abs(withDivResult.score));
+  });
+
+  it('should use 1.0x multiplier when both divergence and secondary fib align', () => {
+    const input: ScoringInput = {
+      ...baseInput, // bullish structure
+      fvgs: [BEARISH_FVG_INSIDE], // bearish (counter-trend) zone
+      divergencePoints: [BEARISH_DIV_POINT], // bearish divergence aligns → 0.9x
+      autoFibResult: SECONDARY_FIB_NEAR_PRICE, // secondary fib near price → 1.0x
+    };
+    const result = scoreSmartMoney(input);
+    const cond = result.conditions.find(c => c.id === 'counterTrend');
+    expect(cond?.met).toBe(true);
+    expect(cond?.value).toBe('⚠️ 1.0x (Div+Fib)');
+    expect(cond?.score).toBe(0);
+  });
+
+  it('should not apply secondary fib boost when secondary fib is outside 1% of price', () => {
+    const farFibResult = {
+      primary: null,
+      secondary: {
+        levels: [{ label: '61.8', price: 102.0, isFrozen: false }], // 2% away → outside 1% threshold
+        high: 110, low: 90, startTime: 0, endTime: 2000,
+      },
+    };
+    const input: ScoringInput = {
+      ...baseInput, // bullish structure
+      fvgs: [BEARISH_FVG_INSIDE], // bearish (counter-trend) zone
+      autoFibResult: farFibResult,
+    };
+    const result = scoreSmartMoney(input);
+    const cond = result.conditions.find(c => c.id === 'counterTrend');
+    expect(cond?.met).toBe(true);
+    expect(cond?.value).toBe('⚠️ 0.8x'); // no boost because fib is too far
+    expect(cond?.score).toBe(-20);
+  });
 });
 
 describe('SMC Scoring - Trend Strength Multiplier', () => {
