@@ -1105,20 +1105,21 @@ function scoreDivergenceConfluence(
 /**
  * Score Auto-Fib confluence with FVG/OB zones.
  * Returns 0-100 when price is at a key fib level that aligns with an FVG or Order Block.
+ * Pass the primary fib for with-trend entries, or the secondary fib for counter-trend entries.
  */
 function scoreAutoFibConfluence(
-  fibResult: { primary: FibSetResult | null; secondary: FibSetResult | null } | undefined,
+  fibSet: FibSetResult | null | undefined,
   currentPrice: number,
 ): number {
-  if (!fibResult || !fibResult.primary) {
+  if (!fibSet) {
     return 0;
   }
 
-  const primaryLevels = fibResult.primary.levels;
-  if (!primaryLevels || primaryLevels.length === 0) return 0;
+  const levels = fibSet.levels;
+  if (!levels || levels.length === 0) return 0;
 
   const getLevelPrice = (target: string): number | null => {
-    const level = primaryLevels.find(l => l.level === target || l.percentage === `${target}%`);
+    const level = levels.find(l => l.level === target || l.percentage === `${target}%`);
     return level?.price ?? null;
   };
 
@@ -1490,9 +1491,6 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     : hybridDivergence.source;
 
   const autoFibWeight = weights.autoFibConfluence ?? 0;
-  const autoFibScore = autoFibWeight > 0
-    ? scoreAutoFibConfluence(autoFibResult, currentPrice)
-    : 0;
 
   // Inducement sequence: sweep → MSS/CHoCH → zone entry (high-conviction institutional pattern)
   const inducementScore = scoreInducementSequence(
@@ -1556,6 +1554,13 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       const distance = Math.abs(currentPrice - level.price) / currentPrice;
       return distance <= 0.01;
     });
+
+  // Determine which fib set to use based on trade direction:
+  // With-trend → use PRIMARY fib; Counter-trend → use SECONDARY fib.
+  const fibSetToUse = isCounterTrend ? autoFibResult?.secondary : autoFibResult?.primary;
+  const autoFibScore = autoFibWeight > 0
+    ? scoreAutoFibConfluence(fibSetToUse, currentPrice)
+    : 0;
 
   // Calculate total possible weight from ALL enabled zones (weight>0), not just active ones.
   // This ensures a single active zone cannot score 100% when multiple zones are configured.
@@ -1723,10 +1728,10 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       weightedScore: Math.round(autoFibScore) * autoFibWeight,
       value: autoFibScore > 0 ? `${Math.round(autoFibScore)}/100` : undefined,
       description: autoFibScore >= 40
-        ? `Primary fib in OTE region (+${Math.round((autoFibScore / 100) * 15)}% boost)`
+        ? `${isCounterTrend ? 'Secondary' : 'Primary'} fib in OTE region (+${Math.round((autoFibScore / 100) * 15)}% boost)`
         : autoFibScore < 0
-        ? `Primary fib above 50% retracement (up to -${Math.round((Math.abs(autoFibScore) / 100) * 12)}% penalty)`
-        : 'Primary fib neutral',
+        ? `${isCounterTrend ? 'Secondary' : 'Primary'} fib above 50% retracement (up to -${Math.round((Math.abs(autoFibScore) / 100) * 12)}% penalty)`
+        : `${isCounterTrend ? 'Secondary' : 'Primary'} fib neutral`,
     },
     {
       id: 'inducementSequence',
