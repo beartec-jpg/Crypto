@@ -11,6 +11,7 @@ interface SMCDebugTableProps {
 
 export function SMCDebugTable({ evaluation, scoringInput }: SMCDebugTableProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const trendCondition = evaluation.conditions.find(c => c.id === 'trendStrength');
 
   if (!isOpen) {
     return (
@@ -47,7 +48,12 @@ export function SMCDebugTable({ evaluation, scoringInput }: SMCDebugTableProps) 
         {/* Trend Strength Multiplier */}
         <ConditionDebug
           title="Trend Strength Multiplier"
-          score={evaluation.conditions.find(c => c.id === 'trendStrength')?.score ?? 0}
+          score={trendCondition?.score ?? 0}
+          scoreLabel={
+            trendCondition?.value
+              ? `${trendCondition.value} (${(trendCondition.score ?? 0) > 0 ? '+' : ''}${trendCondition.score ?? 0}/100)`
+              : undefined
+          }
           details={getTrendStrengthDetails(scoringInput)}
         />
 
@@ -119,6 +125,7 @@ export function SMCDebugTable({ evaluation, scoringInput }: SMCDebugTableProps) 
 interface ConditionDebugProps {
   title: string;
   score: number;
+  scoreLabel?: string;
   details: React.ReactNode;
 }
 
@@ -133,13 +140,13 @@ function getScoreTierColor(score: number): string {
   return 'text-slate-400';
 }
 
-function ConditionDebug({ title, score, details }: ConditionDebugProps) {
+function ConditionDebug({ title, score, scoreLabel, details }: ConditionDebugProps) {
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
         <span className="font-semibold text-slate-300">{title}</span>
         <span className={`font-mono ${getScoreTierColor(score)}`}>
-          {score > 0 ? '+' : ''}{score}{Math.abs(score) <= 100 ? ' / 100' : ''}
+          {scoreLabel ?? `${score > 0 ? '+' : ''}${score}${Math.abs(score) <= 100 ? ' / 100' : ''}`}
           {Math.abs(score) >= 120 && <span className="ml-1 text-xs">🔥</span>}
         </span>
       </div>
