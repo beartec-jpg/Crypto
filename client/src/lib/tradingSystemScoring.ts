@@ -773,10 +773,15 @@ function scoreDivergencePointsConfluence(
   const tfMinutes = getTimeframeMinutes(timeframe);
   const barSeconds = tfMinutes * 60;
   const lookbackBars = 120;
+  const confirmationBars = 5;
   const lookbackSeconds = lookbackBars * barSeconds;
 
   const recentPoints = divergencePoints
-    .filter(point => Math.abs(currentTime - point.time) <= lookbackSeconds)
+    .filter(point => {
+      const ageSeconds = currentTime - point.time;
+      if (ageSeconds < confirmationBars * barSeconds) return false;
+      return ageSeconds <= lookbackSeconds;
+    })
     .sort((a, b) => b.time - a.time)
     .slice(0, 8);
 

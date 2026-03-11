@@ -506,8 +506,23 @@ export function ChartFullscreenPage({
       sqzData.map(point => [Number(point.time), { sqzOff: point.sqzOff, value: point.value }])
     );
 
-    const htfBullish = htfBiasEntries.filter(entry => entry.bias === 'bullish').length;
-    const htfBearish = htfBiasEntries.filter(entry => entry.bias === 'bearish').length;
+    // Avoid look-ahead in historical mode: current HTF panel state should not
+    // influence past-candle signal generation.
+    const htfBullish = 0;
+    const htfBearish = 0;
+
+    const tfMinutesMap: Record<string, number> = {
+      '1m': 1,
+      '5m': 5,
+      '15m': 15,
+      '30m': 30,
+      '1h': 60,
+      '4h': 240,
+      '1d': 1440,
+    };
+    const tfMinutes = tfMinutesMap[timeframe] ?? 15;
+    const barSeconds = tfMinutes * 60;
+    const divergenceConfirmationSeconds = 5 * barSeconds;
 
     const events: Array<{
       time: number;
@@ -542,6 +557,11 @@ export function ChartFullscreenPage({
       }
 
       const sqzValue = sqzByTime.get(currentTime);
+      const divergencePointsForCandle = divergencePoints.filter(point => {
+        const ageSeconds = currentTime - Number(point.time);
+        return ageSeconds >= divergenceConfirmationSeconds;
+      });
+
       const evaluation = evaluateTradingSystemSignal({
         systemId: tradingSystem.activeSystem,
         lastRsi: rsiByTime.get(currentTime),
@@ -566,7 +586,7 @@ export function ChartFullscreenPage({
         longTermMA,
         latestClose: currentCandle.close,
         previousClose: prevCandle.close,
-        divergencePoints,
+        divergencePoints: divergencePointsForCandle,
         currentTime,
         currentCandleIndex: index,
         structureBreaks,
@@ -623,6 +643,7 @@ export function ChartFullscreenPage({
     breakers,
     liquidityZones,
     volumeProfileData,
+    timeframe,
   ]);
 
   const historicalSystemSignalMarkers = useMemo(() => {
