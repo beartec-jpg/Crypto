@@ -733,6 +733,97 @@ export function getStructureLookbackCandles(timeframe?: string): number {
   return lookbacks[timeframe || '15m'] || 15;
 }
 
+function getTimeframeMinutes(timeframe?: string): number {
+  const minutesByTimeframe: Record<string, number> = {
+    '1m': 1,
+    '5m': 5,
+    '15m': 15,
+    '30m': 30,
+    '1h': 60,
+    '4h': 240,
+    '1d': 1440,
+  };
+  return minutesByTimeframe[timeframe || '15m'] || 15;
+}
+
+function getDivergenceTimeframeWeight(timeframe?: string): number {
+  const weights: Record<string, number> = {
+    '1m': 0.75,
+    '5m': 0.9,
+    '15m': 1.0,
+    '30m': 1.1,
+    '1h': 1.25,
+    '4h': 1.5,
+    '1d': 1.8,
+  };
+  return weights[timeframe || '15m'] || 1.0;
+}
+
+function scoreDivergencePointsConfluence(
+  divergencePoints: DivergencePoint[] | undefined,
+  currentTime: number | undefined,
+  timeframe: string | undefined,
+  htfBullish: number,
+  htfBearish: number,
+): { score: number; source: string; confidence: number } {
+  if (!divergencePoints || divergencePoints.length === 0 || currentTime === undefined) {
+    return { score: 0, source: 'No divergence points', confidence: 0 };
+  }
+
+  const tfMinutes = getTimeframeMinutes(timeframe);
+  const barSeconds = tfMinutes * 60;
+  const lookbackBars = 120;
+  const lookbackSeconds = lookbackBars * barSeconds;
+
+  const recentPoints = divergencePoints
+    .filter(point => Math.abs(currentTime - point.time) <= lookbackSeconds)
+    .sort((a, b) => b.time - a.time)
+    .slice(0, 8);
+
+  if (recentPoints.length === 0) {
+    return { score: 0, source: 'No recent divergence points', confidence: 0 };
+  }
+
+  let weightedSignedSum = 0;
+  let totalWeight = 0;
+
+  for (const point of recentPoints) {
+    const ageBars = Math.max(0, (currentTime - point.time) / barSeconds);
+    const recencyWeight = Math.max(0.25, 1 - ageBars / 80);
+    const oscillatorStrength = Math.max(1 / 7, Math.min(1, point.count / 7));
+    const smtBonus = point.smtScore ? Math.min(0.5, point.smtScore / 200) : 0;
+    const pointWeight = recencyWeight * (1 + smtBonus);
+
+    const baseMagnitude = oscillatorStrength * 100;
+    const signedMagnitude = point.type === 'bullish' ? baseMagnitude : -baseMagnitude;
+
+    weightedSignedSum += signedMagnitude * pointWeight;
+    totalWeight += pointWeight;
+  }
+
+  if (totalWeight === 0) {
+    return { score: 0, source: 'No weighted divergence points', confidence: 0 };
+  }
+
+  const normalizedScore = weightedSignedSum / totalWeight;
+  const timeframeWeight = getDivergenceTimeframeWeight(timeframe);
+
+  const dominantIsBullish = normalizedScore >= 0;
+  const alignedHtf = dominantIsBullish ? htfBullish : htfBearish;
+  const opposingHtf = dominantIsBullish ? htfBearish : htfBullish;
+  const totalHtf = Math.max(1, htfBullish + htfBearish);
+  const htfBiasFactor = 1 + ((alignedHtf - opposingHtf) / totalHtf) * 0.35;
+
+  const scaled = clamp(Math.round(normalizedScore * timeframeWeight * htfBiasFactor));
+  const confidence = Math.min(100, Math.round((Math.abs(normalizedScore) / 100) * 100));
+
+  return {
+    score: scaled,
+    source: `Scanner divergence (${recentPoints.length} pts, TF-weighted)`,
+    confidence,
+  };
+}
+
 /**
  * Score FVG proximity with distance scaling and directional sign.
  * Returns -100 to +100: positive for bullish FVGs, negative for bearish FVGs.
@@ -1378,6 +1469,9 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     breakers,
     liquidityZones,
     timeframe,
+    divergencePoints,
+    htfBullish,
+    htfBearish,
     priceHistory,
     rsiHistory,
     macdHistHistory,
@@ -1422,10 +1516,24 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     priceHistory ?? [],
     rsiHistory ?? [],
     macdHistHistory ?? [],
-    latestStructureDirection ?? 'bullish',
+    latestStructureDirection,
   );
+
+  const scannerDivergence = scoreDivergencePointsConfluence(
+    divergencePoints,
+    currentTime,
+    timeframe,
+    htfBullish,
+    htfBearish,
+  );
+
   const hybridDivergence = scoreHybridDivergence(smtDivergence, singleAssetDivergenceScore);
-  const divergenceFinalScore = hybridDivergence.score;
+  const divergenceFinalScore = scannerDivergence.score !== 0
+    ? clamp(Math.round(scannerDivergence.score * 0.8 + hybridDivergence.score * 0.2))
+    : hybridDivergence.score;
+  const divergenceSource = scannerDivergence.score !== 0
+    ? `${scannerDivergence.source}; ${hybridDivergence.source}`
+    : hybridDivergence.source;
 
   const autoFibWeight = weights.autoFibConfluence ?? 0;
   const autoFibScore = autoFibWeight > 0
@@ -1493,9 +1601,21 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       boostedScore *= (1 + sweepBoost);
     }
 
-    if ((weights.divergenceConfluence ?? 0) > 0 && Math.abs(divergenceFinalScore) >= 40) {
-      const divBoost = (Math.abs(divergenceFinalScore) / 100) * 0.2;
-      boostedScore *= (1 + divBoost);
+    if ((weights.divergenceConfluence ?? 0) > 0 && Math.abs(divergenceFinalScore) >= 20) {
+      const structureIsBullish = latestStructureDirection === 'bullish';
+      const divergenceIsBullish = divergenceFinalScore > 0;
+      const isAligned = latestStructureDirection
+        ? structureIsBullish === divergenceIsBullish
+        : true;
+
+      const divergenceFactor = Math.abs(divergenceFinalScore) / 100;
+      if (isAligned) {
+        const divBoost = divergenceFactor * 0.2;
+        boostedScore *= (1 + divBoost);
+      } else {
+        const divPenalty = divergenceFactor * 0.35;
+        boostedScore *= Math.max(0.55, 1 - divPenalty);
+      }
     }
 
     if (autoFibScore >= 40) {
@@ -1566,7 +1686,14 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       userWeight: (weights.divergenceConfluence ?? 0) as WeightLevel,
       weightedScore: Math.round(divergenceFinalScore) * (weights.divergenceConfluence ?? 0),
       value: divergenceFinalScore !== 0 ? `${Math.abs(Math.round(divergenceFinalScore))}/100` : undefined,
-      description: hybridDivergence.source + (Math.abs(divergenceFinalScore) >= 40 ? ` (+${Math.round((Math.abs(divergenceFinalScore) / 100) * 20)}% boost)` : ''),
+      description:
+        divergenceFinalScore === 0
+          ? 'No active divergence'
+          : latestStructureDirection &&
+            ((latestStructureDirection === 'bullish' && divergenceFinalScore < 0) ||
+              (latestStructureDirection === 'bearish' && divergenceFinalScore > 0))
+          ? `${divergenceSource} (trend-opposing, up to -${Math.round((Math.abs(divergenceFinalScore) / 100) * 35)}% penalty)`
+          : `${divergenceSource} (trend-aligned, +${Math.round((Math.abs(divergenceFinalScore) / 100) * 20)}% boost)`,
     },
     {
       id: 'autoFibConfluence',

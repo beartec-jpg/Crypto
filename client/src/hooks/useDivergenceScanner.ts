@@ -65,8 +65,10 @@ export function useDivergenceScanner(
   return useMemo(() => {
     if (recentCandles.length < 30) return [];
 
-    const priceData = recentCandles.map(c => c.close);
-    const { peaks, troughs } = findPeaksAndTroughs(priceData, PIVOT_LOOKBACK);
+    const highData = recentCandles.map(c => c.high);
+    const lowData = recentCandles.map(c => c.low);
+    const { peaks } = findPeaksAndTroughs(highData, PIVOT_LOOKBACK);
+    const { troughs } = findPeaksAndTroughs(lowData, PIVOT_LOOKBACK);
 
     const results: DivergencePoint[] = [];
 
@@ -114,7 +116,7 @@ export function useDivergenceScanner(
       const currIdx = peaks[i];
 
       // Only flag when price confirms the higher-high condition
-      if (priceData[currIdx] > priceData[prevIdx]) {
+      if (highData[currIdx] > highData[prevIdx]) {
         const { count, indicators } = checkAllOscillatorDivergence(
           currIdx,
           prevIdx,
@@ -126,7 +128,7 @@ export function useDivergenceScanner(
           const smtData = smtResults.get(currIdx);
           results.push({
             time: recentCandles[currIdx].time,
-            price: priceData[currIdx],
+            price: highData[currIdx],
             type: 'bearish',
             count,
             indicators,
@@ -144,7 +146,7 @@ export function useDivergenceScanner(
       const prevIdx = troughs[i - 1];
       const currIdx = troughs[i];
 
-      if (priceData[currIdx] < priceData[prevIdx]) {
+      if (lowData[currIdx] < lowData[prevIdx]) {
         const { count, indicators } = checkAllOscillatorDivergence(
           currIdx,
           prevIdx,
@@ -156,7 +158,7 @@ export function useDivergenceScanner(
           const smtData = smtResults.get(currIdx);
           results.push({
             time: recentCandles[currIdx].time,
-            price: priceData[currIdx],
+            price: lowData[currIdx],
             type: 'bullish',
             count,
             indicators,
