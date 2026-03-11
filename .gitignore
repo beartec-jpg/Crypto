@@ -37,4 +37,4 @@ __pycache__
 
 # Test coverage
 coverage
-.vitest
+.vitestclient/package-lock.json
