@@ -54,11 +54,11 @@ export function useFullscreenChartLifecycle({
         chartRef.current?.timeScale().applyOptions({ rightOffset: 50 });
         isInitialDataLoad.current = false;
       } else {
-        const currentRange = chartRef.current?.timeScale().getVisibleRange();
+        const currentLogicalRange = chartRef.current?.timeScale().getVisibleLogicalRange();
         candleSeriesRef.current.setData(chartData);
-        if (currentRange) {
+        if (currentLogicalRange) {
           try {
-            chartRef.current?.timeScale().setVisibleRange(currentRange);
+            chartRef.current?.timeScale().setVisibleLogicalRange(currentLogicalRange);
           } catch {
           }
         }

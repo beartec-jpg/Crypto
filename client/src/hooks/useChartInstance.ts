@@ -6,6 +6,30 @@ import {
   TOP_TOOLBAR_HEIGHT,
 } from '@/lib/constants/layout';
 
+function restoreVisibleLogicalRange(chart: IChartApi, fallbackToFit = false) {
+  const timeScale = chart.timeScale();
+  const savedRange = timeScale.getVisibleLogicalRange();
+
+  requestAnimationFrame(() => {
+    try {
+      if (
+        savedRange &&
+        Number.isFinite(savedRange.from) &&
+        Number.isFinite(savedRange.to) &&
+        savedRange.to > savedRange.from
+      ) {
+        timeScale.setVisibleLogicalRange(savedRange);
+        return;
+      }
+    } catch {
+    }
+
+    if (fallbackToFit) {
+      timeScale.fitContent();
+    }
+  });
+}
+
 interface UseChartInstanceOptions {
   containerRef: React.RefObject<HTMLDivElement>;
   totalOscillatorHeight: number;
@@ -134,9 +158,28 @@ export function useChartInstance({
           const newHeight = window.innerHeight - topToolbarHeight - mobileNavHeight - totalOscillatorHeight;
           
           if (newWidth > 0 && newHeight > 0) {
+            const chart = chartRef.current;
+            if (!chart) return;
+
+            // Preserve user's current viewport while resizing.
+            const savedLogicalRange = chart.timeScale().getVisibleLogicalRange();
             chartRef.current.applyOptions({ width: newWidth, height: newHeight });
+
             requestAnimationFrame(() => {
-              chartRef.current?.timeScale().fitContent();
+              try {
+                if (
+                  savedLogicalRange &&
+                  Number.isFinite(savedLogicalRange.from) &&
+                  Number.isFinite(savedLogicalRange.to) &&
+                  savedLogicalRange.to > savedLogicalRange.from
+                ) {
+                  chart.timeScale().setVisibleLogicalRange(savedLogicalRange);
+                  return;
+                }
+              } catch {
+              }
+
+              chart.timeScale().fitContent();
             });
           }
         }
@@ -168,13 +211,14 @@ export function useChartInstance({
     const newHeight = window.innerHeight - topToolbarHeight - mobileNavHeight - totalOscillatorHeight;
     
     if (newHeight > 0) {
+      const chart = chartRef.current;
+      if (!chart) return;
+
       chartRef.current.applyOptions({ 
         height: newHeight 
       });
-      
-      requestAnimationFrame(() => {
-        chartRef.current?.timeScale().fitContent();
-      });
+
+      restoreVisibleLogicalRange(chart, true);
       
       console.log('[Chart] Resized for oscillator change, new height:', newHeight);
     }
