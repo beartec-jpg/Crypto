@@ -1539,6 +1539,15 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     return isBullishZone !== structureIsBullish;
   });
 
+  // Check if divergence aligns with the counter-trend direction (Phase 3 boost: 0.8x → 0.9x).
+  // Bearish divergence + bearish zone (in bullish trend) → aligned; bullish divergence + bullish zone (in bearish trend) → aligned.
+  const counterTrendDirection = latestStructureDirection === 'bullish' ? 'bearish' : 'bullish';
+  const divergenceIsBearishSignificant = divergenceFinalScore < -40;
+  const divergenceIsBullishSignificant = divergenceFinalScore > 40;
+  const divergenceAlignsWithCounterTrend =
+    (counterTrendDirection === 'bearish' && divergenceIsBearishSignificant) ||
+    (counterTrendDirection === 'bullish' && divergenceIsBullishSignificant);
+
   // Calculate total possible weight from ALL enabled zones (weight>0), not just active ones.
   // This ensures a single active zone cannot score 100% when multiple zones are configured.
   const totalPossibleWeight = allZones
@@ -1593,7 +1602,11 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   }
 
   // Counter-trend entries get a 0.8x penalty instead of the trend strength bonus.
-  const counterTrendMultiplier = isCounterTrend ? 0.8 : 1.0;
+  // Boost to 0.9x when divergence aligns with the counter-trend direction.
+  let counterTrendMultiplier = isCounterTrend ? 0.8 : 1.0;
+  if (isCounterTrend && divergenceAlignsWithCounterTrend) {
+    counterTrendMultiplier = 0.9;
+  }
   const effectiveTrendMultiplier = isCounterTrend ? 1.0 : trendMultiplier;
 
   const finalScore = validZones.length > 0
@@ -1619,12 +1632,16 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       name: 'Counter-Trend Warning',
       met: isCounterTrend,
       weight: 1,
-      score: isCounterTrend ? COUNTER_TREND_CONDITION_SCORE : 0,
+      score: isCounterTrend ? (divergenceAlignsWithCounterTrend ? -10 : COUNTER_TREND_CONDITION_SCORE) : 0,
       userWeight: 1,
-      weightedScore: isCounterTrend ? COUNTER_TREND_CONDITION_SCORE : 0,
-      value: isCounterTrend ? '⚠️ 0.8x' : '✅ With Trend',
+      weightedScore: isCounterTrend ? (divergenceAlignsWithCounterTrend ? -10 : COUNTER_TREND_CONDITION_SCORE) : 0,
+      value: isCounterTrend
+        ? (divergenceAlignsWithCounterTrend ? '⚠️ 0.9x (Div)' : '⚠️ 0.8x')
+        : '✅ With Trend',
       description: isCounterTrend
-        ? 'Trading against current structure direction (0.8x multiplier)'
+        ? (divergenceAlignsWithCounterTrend
+            ? 'Counter-trend with divergence confluence (0.9x)'
+            : 'Trading against current structure direction (0.8x multiplier)')
         : 'Trading with current structure direction',
     },
     ...allZones.map(zone => {
@@ -1718,7 +1735,7 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       `Base Entry: ${Math.round(baseEntryScore)} (${validZones.map(z => z.name).join(' + ')})`,
       `Confluence Boosts: +${confluenceBoostPct}%` + (Math.abs(inducementScore) >= 40 ? ` (incl. Inducement +${Math.round((Math.abs(inducementScore) / 100) * 25)}%)` : ''),
       isCounterTrend
-        ? `Counter-Trend Multiplier: 0.80x (no trend bonus)`
+        ? `Counter-Trend Multiplier: ${counterTrendMultiplier.toFixed(2)}x (no trend bonus${divergenceAlignsWithCounterTrend ? ', divergence boost' : ''})`
         : `Trend Multiplier: ${trendMultiplier.toFixed(2)}x (${consecutiveMSSCount} consecutive shifts)`,
       `Final Score: ${finalScore}`,
     ];

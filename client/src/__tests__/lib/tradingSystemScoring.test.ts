@@ -219,6 +219,61 @@ describe('SMC Scoring - Counter-Trend Zone Scoring', () => {
     const cond = counterTrendResult.conditions.find(c => c.id === 'counterTrend');
     expect(cond?.met).toBe(true);
   });
+
+  // Phase 3: divergence-aligned boost (0.8x → 0.9x)
+  // A recent bearish divergence point (count=7, just past confirmation) drives divergenceFinalScore < -40.
+  // currentTime=2000, barSeconds=900 (15m), confirmationBars=5 → point must be ≥4500s old → time ≤ -2500.
+  const BEARISH_DIV_POINT = { time: -3000, price: 101, type: 'bearish' as const, count: 7, indicators: ['rsi', 'macd'] };
+
+  it('should boost counter-trend multiplier to 0.9x when bearish divergence aligns with bearish zone', () => {
+    const input: ScoringInput = {
+      ...baseInput, // bullish structure
+      fvgs: [BEARISH_FVG_INSIDE], // bearish (counter-trend) zone
+      divergencePoints: [BEARISH_DIV_POINT], // bearish divergence → aligns with bearish counter-trend
+    };
+    const result = scoreSmartMoney(input);
+    const cond = result.conditions.find(c => c.id === 'counterTrend');
+    expect(cond?.met).toBe(true);
+    expect(cond?.value).toBe('⚠️ 0.9x (Div)');
+    expect(cond?.score).toBe(-10);
+    expect(cond?.description).toContain('0.9x');
+  });
+
+  it('counter-trend score with aligned divergence should have higher magnitude than without divergence (divergence weight isolated)', () => {
+    // Disable divergence confluence weight so boostedScore is unaffected by divergence.
+    // Only the counter-trend multiplier changes (0.8x without divergence, 0.9x with aligned divergence).
+    setConditionWeight('smart-money', 'divergenceConfluence', 0);
+
+    const withoutDivInput: ScoringInput = {
+      ...baseInput,
+      fvgs: [BEARISH_FVG_INSIDE],
+    };
+    const withDivInput: ScoringInput = {
+      ...baseInput,
+      fvgs: [BEARISH_FVG_INSIDE],
+      divergencePoints: [BEARISH_DIV_POINT], // bearish divergence aligns with bearish zone → 0.9x multiplier
+    };
+    const withoutDivResult = scoreSmartMoney(withoutDivInput);
+    const withDivResult = scoreSmartMoney(withDivInput);
+
+    // With divergence confluence disabled, the only difference is the counter-trend multiplier.
+    // 0.9x (aligned divergence) > 0.8x (no divergence) → higher score magnitude.
+    expect(Math.abs(withDivResult.score)).toBeGreaterThan(Math.abs(withoutDivResult.score));
+  });
+
+  it('should keep 0.8x multiplier when divergence does not align (bullish divergence with bearish zone)', () => {
+    const BULLISH_DIV_POINT = { time: -3000, price: 99, type: 'bullish' as const, count: 7, indicators: ['rsi', 'macd'] };
+    const input: ScoringInput = {
+      ...baseInput, // bullish structure
+      fvgs: [BEARISH_FVG_INSIDE], // bearish (counter-trend) zone
+      divergencePoints: [BULLISH_DIV_POINT], // bullish divergence → does NOT align with bearish counter-trend
+    };
+    const result = scoreSmartMoney(input);
+    const cond = result.conditions.find(c => c.id === 'counterTrend');
+    expect(cond?.met).toBe(true);
+    expect(cond?.value).toBe('⚠️ 0.8x');
+    expect(cond?.score).toBe(-20);
+  });
 });
 
 describe('SMC Scoring - Trend Strength Multiplier', () => {
