@@ -1146,6 +1146,7 @@ function isMSSInvalidated(
   currentPrice: number,
   swingPoints: Array<{ type: 'high' | 'low'; price: number; time: number; index: number }>,
   allStructureBreaks: Array<{ type?: string; direction: 'bullish' | 'bearish'; breakTime: number }>,
+  currentTime?: number,
 ): boolean {
   if (mss.type !== 'mss') return false;
 
@@ -1166,7 +1167,8 @@ function isMSSInvalidated(
   const newerOppositeMSS = allStructureBreaks.find(sb =>
     sb.type === 'mss' &&
     sb.breakTime > mss.breakTime &&
-    sb.direction !== mss.direction
+    sb.direction !== mss.direction &&
+    (currentTime === undefined || sb.breakTime <= currentTime)
   );
 
   return !!newerOppositeMSS;
@@ -1339,7 +1341,7 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   // MSS with invalidation logic: stays active until price breaks prior pivot or opposite MSS forms
   const activeMSS = structureBreaks
     ?.filter(sb => sb.type === 'mss')
-    .filter(sb => !isMSSInvalidated(sb, currentPrice, swingPoints ?? [], structureBreaks ?? []))
+    .filter(sb => !isMSSInvalidated(sb, currentPrice, swingPoints ?? [], structureBreaks ?? [], currentTime))
     .sort((a, b) => b.breakTime - a.breakTime)[0];
 
   const recentStructureBreak = activeMSS ?? recentBreaks
@@ -1434,6 +1436,12 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       const fibBoost = (autoFibScore / 100) * 0.15;
       boostedScore *= (1 + fibBoost);
     }
+
+    // Inducement sequence (sweep → MSS/CHoCH → zone): highest-conviction bonus, up to +25%
+    if (Math.abs(inducementScore) >= 40) {
+      const inducementBoost = (Math.abs(inducementScore) / 100) * 0.25;
+      boostedScore *= (1 + inducementBoost);
+    }
   }
 
   const finalScore = validZones.length > 0 ? Math.round(boostedScore * trendMultiplier) : 0;
@@ -1517,7 +1525,7 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       weightedScore: Math.round(inducementScore) * 2,
       value: Math.abs(inducementScore) >= 40 ? `${Math.abs(Math.round(inducementScore))}/100` : undefined,
       description: Math.abs(inducementScore) >= 40
-        ? `Sweep → MSS/CHoCH → Zone confirmed (${inducementScore > 0 ? 'bullish' : 'bearish'})`
+        ? `Sweep → MSS/CHoCH → Zone confirmed (${inducementScore > 0 ? 'bullish' : 'bearish'}) (+${Math.round((Math.abs(inducementScore) / 100) * 25)}% boost)`
         : 'No inducement sequence detected',
     },
   ];
@@ -1532,7 +1540,7 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
         : 'No valid market structure detected']
     : [
       `Base Entry: ${Math.round(baseEntryScore)} (${validZones.map(z => z.name).join(' + ')})`,
-      `Confluence Boosts: +${confluenceBoostPct}%`,
+      `Confluence Boosts: +${confluenceBoostPct}%` + (Math.abs(inducementScore) >= 40 ? ` (incl. Inducement +${Math.round((Math.abs(inducementScore) / 100) * 25)}%)` : ''),
       `Trend Multiplier: ${trendMultiplier.toFixed(2)}x (${consecutiveMSSCount} consecutive shifts)`,
       `Final Score: ${finalScore}`,
     ];

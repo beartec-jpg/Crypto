@@ -94,6 +94,14 @@ export function SMCDebugTable({ evaluation, scoringInput }: SMCDebugTableProps) 
         />
 
         {/* Market Context */}
+                {/* Inducement Sequence */}
+                <ConditionDebug
+                  title="Inducement Sequence"
+                  score={evaluation.conditions.find(c => c.id === 'inducementSequence')?.score ?? 0}
+                  details={getInducementDetails(scoringInput)}
+                />
+
+                {/* Market Context */}
         <div className="pt-3 border-t border-slate-700">
           <div className="font-semibold text-slate-300 mb-2">📈 MARKET CONTEXT</div>
           <div className="space-y-1 text-slate-400 ml-3">
@@ -524,6 +532,67 @@ function getAutoFibDetails(input: ScoringInput) {
 // A self-contained display used when FVG-Only mode is toggled in the chart.
 // Reuses the same monospace debug-table style as the rest of this file.
 // ─────────────────────────────────────────────────────────────────────────────
+
+function getInducementDetails(input: ScoringInput) {
+  const currentPrice = input.latestClose ?? 0;
+  const liquidityZones = input.liquidityZones ?? [];
+  const structureBreaks = input.structureBreaks ?? [];
+  const currentIdx = input.currentCandleIndex ?? 0;
+
+  const recentSweeps = liquidityZones
+    .filter(lz => lz.swept && (lz.sweptIndex !== undefined || lz.sweepIndex !== undefined))
+    .sort((a, b) => (b.sweptIndex ?? b.sweepIndex ?? 0) - (a.sweptIndex ?? a.sweepIndex ?? 0));
+
+  if (recentSweeps.length === 0) {
+    return (
+      <div className="pl-4 space-y-0.5 text-xs text-slate-400">
+        <div className="flex items-start gap-1"><span className="text-slate-500">└─</span><span>Status: ⚠️ NO SWEEPS FOUND</span></div>
+      </div>
+    );
+  }
+
+  const latestSweep = recentSweeps[0];
+  const sweepIdx = latestSweep.sweptIndex ?? latestSweep.sweepIndex ?? 0;
+  const sweepAge = currentIdx - sweepIdx;
+  const expectBullish = latestSweep.type === 'low';
+
+  const mssAfterSweep = structureBreaks
+    .filter(sb => (sb.type === 'mss' || sb.type === 'choch') && sb.confirmed !== false)
+    .filter(sb => sb.breakIndex === undefined || sb.breakIndex > sweepIdx)
+    .sort((a, b) => (b.breakIndex ?? 0) - (a.breakIndex ?? 0))[0];
+
+  const mssDirectionMatch = mssAfterSweep
+    ? (expectBullish ? mssAfterSweep.direction === 'bullish' : mssAfterSweep.direction === 'bearish')
+    : false;
+
+  const zoneScan = 0.01;
+  let zoneType = 'none';
+  if (mssAfterSweep && mssDirectionMatch) {
+    const dir = mssAfterSweep.direction;
+    if (input.orderBlocks?.some(ob => !ob.mitigated && ob.type === dir &&
+        currentPrice >= ob.low * (1 - zoneScan) && currentPrice <= ob.high * (1 + zoneScan))) {
+      zoneType = 'OB';
+    } else if (input.fvgs?.some(fvg => !fvg.filled && fvg.type === dir &&
+        currentPrice >= fvg.low * (1 - zoneScan) && currentPrice <= fvg.high * (1 + zoneScan))) {
+      zoneType = 'FVG';
+    } else if (input.breakers?.some(br => !br.mitigated && br.type === dir &&
+        currentPrice >= br.low * (1 - zoneScan) && currentPrice <= br.high * (1 + zoneScan))) {
+      zoneType = 'Breaker';
+    }
+  }
+
+  const allConfirmed = !!mssAfterSweep && mssDirectionMatch && zoneType !== 'none';
+
+  return (
+    <div className="pl-4 space-y-0.5 text-xs text-slate-400">
+      <div className="flex items-start gap-1"><span className="text-slate-500">├─</span><span>Sweep: {latestSweep.type === 'low' ? '⬇️ Low Sweep (expect bullish)' : '⬆️ High Sweep (expect bearish)'}</span></div>
+      <div className="flex items-start gap-1"><span className="text-slate-500">├─</span><span>Sweep Age: {sweepAge} candles ago</span></div>
+      <div className="flex items-start gap-1"><span className="text-slate-500">├─</span><span>MSS/CHoCH after sweep: {mssAfterSweep ? `✅ ${mssAfterSweep.direction} (dir match: ${mssDirectionMatch ? '✅' : '❌'})` : '❌ NONE'}</span></div>
+      <div className="flex items-start gap-1"><span className="text-slate-500">├─</span><span>Zone Alignment: {zoneType !== 'none' ? `✅ In ${zoneType}` : '❌ Not in zone'}</span></div>
+      <div className="flex items-start gap-1"><span className="text-slate-500">└─</span><span>Status: {allConfirmed ? `✅ SEQUENCE CONFIRMED (+25% boost)` : '⚠️ INCOMPLETE'}</span></div>
+    </div>
+  );
+}
 
 interface FVGData {
   /** lower bound of the gap */
