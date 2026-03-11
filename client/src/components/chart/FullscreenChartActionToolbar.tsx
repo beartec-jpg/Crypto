@@ -40,6 +40,8 @@ interface FullscreenChartActionToolbarProps {
   onFVGSettingsChange: (value: any) => void;
   obSettings: any;
   onOBSettingsChange: (value: any) => void;
+  breakerSettings: any;
+  onBreakerSettingsChange: (value: any) => void;
   bosSettings: any;
   onBOSSettingsChange: (value: any) => void;
   liquiditySettings: any;
@@ -105,6 +107,8 @@ export function FullscreenChartActionToolbar({
   onFVGSettingsChange,
   obSettings,
   onOBSettingsChange,
+  breakerSettings,
+  onBreakerSettingsChange,
   bosSettings,
   onBOSSettingsChange,
   liquiditySettings,
@@ -162,6 +166,8 @@ export function FullscreenChartActionToolbar({
         onFVGSettingsChange={onFVGSettingsChange}
         obSettings={obSettings}
         onOBSettingsChange={onOBSettingsChange}
+        breakerSettings={breakerSettings}
+        onBreakerSettingsChange={onBreakerSettingsChange}
         bosSettings={bosSettings}
         onBOSSettingsChange={onBOSSettingsChange}
         liquiditySettings={liquiditySettings}
