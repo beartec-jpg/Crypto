@@ -414,7 +414,7 @@ function getLiquiditySweepDetails(input: ScoringInput) {
         bestType = fvg.type === 'bullish' ? 'low' : 'high';
         bestSource = 'FVG';
         const decay = Math.max(0, 100 - (age * 10));
-        bestScore = fvg.type === 'bullish' ? decay : -decay;
+        bestScore = fvg.type === 'bullish' ? -decay : decay;
       }
     }
   }
@@ -435,7 +435,7 @@ function getLiquiditySweepDetails(input: ScoringInput) {
         bestType = ob.type === 'bullish' ? 'low' : 'high';
         bestSource = 'OB';
         const decay = Math.max(0, 100 - (age * 10));
-        bestScore = ob.type === 'bullish' ? decay : -decay;
+        bestScore = ob.type === 'bullish' ? -decay : decay;
       }
     }
   }

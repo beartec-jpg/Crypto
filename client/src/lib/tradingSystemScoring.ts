@@ -1025,8 +1025,8 @@ function scoreLiquiditySweepProximity(
       }
 
       const decayScore = Math.max(0, 100 - (candlesSinceSweep * 10));
-      // Bullish FVG swept = bullish signal (positive); bearish FVG swept = bearish signal (negative)
-      const directionalScore = fvg.type === 'bullish' ? decayScore : -decayScore;
+      // Bullish FVG swept = bearish signal (negative); bearish FVG swept = bullish signal (positive)
+      const directionalScore = fvg.type === 'bullish' ? -decayScore : decayScore;
 
       if (fvg.sweepIndex > bestSweepIndex) {
         bestScore = directionalScore;
@@ -1051,8 +1051,8 @@ function scoreLiquiditySweepProximity(
       }
 
       const decayScore = Math.max(0, 100 - (candlesSinceSweep * 10));
-      // Bullish OB swept = bullish signal (positive); bearish OB swept = bearish signal (negative)
-      const directionalScore = ob.type === 'bullish' ? decayScore : -decayScore;
+      // Bullish OB swept = bearish signal (negative); bearish OB swept = bullish signal (positive)
+      const directionalScore = ob.type === 'bullish' ? -decayScore : decayScore;
 
       if (ob.sweepIndex > bestSweepIndex) {
         bestScore = directionalScore;
