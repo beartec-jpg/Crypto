@@ -1411,6 +1411,7 @@ function scoreInducementSequence(
 }
 
 export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
+  const COUNTER_TREND_CONDITION_SCORE = -20; // Displayed in debug panel to indicate counter-trend warning
   const {
     latestClose,
     previousClose,
@@ -1521,16 +1522,21 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     { id: 'breakerBlockProximity', name: 'Breaker Block Proximity', score: breakerScore, weight: weights.breakerBlockProximity as WeightLevel },
   ];
 
-  // Filter zones: must be enabled (weight>0), strong enough (≥20), and aligned with structure direction.
+  // Filter zones: must be enabled (weight>0) and strong enough (≥20).
+  // Counter-trend zones are included but penalised with a 0.8x multiplier later.
   // When no structure direction is known, no zones are valid (score will be 0).
   const validZones = allZones.filter(zone => {
     if (!latestStructureDirection) return false;
     if (zone.weight <= 0) return false;
     if (Math.abs(zone.score) < 20) return false;
-    // Zone sign must match market structure direction
+    return true;  // Both with-trend AND counter-trend zones are included
+  });
+
+  // Determine whether this is a counter-trend setup (any valid zone opposes structure direction).
+  const isCounterTrend = validZones.length > 0 && validZones.some(zone => {
     const isBullishZone = zone.score > 0;
     const structureIsBullish = latestStructureDirection === 'bullish';
-    return isBullishZone === structureIsBullish;  // Both bullish OR both bearish
+    return isBullishZone !== structureIsBullish;
   });
 
   // Calculate total possible weight from ALL enabled zones (weight>0), not just active ones.
@@ -1586,7 +1592,13 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     }
   }
 
-  const finalScore = validZones.length > 0 ? Math.round(boostedScore * trendMultiplier) : 0;
+  // Counter-trend entries get a 0.8x penalty instead of the trend strength bonus.
+  const counterTrendMultiplier = isCounterTrend ? 0.8 : 1.0;
+  const effectiveTrendMultiplier = isCounterTrend ? 1.0 : trendMultiplier;
+
+  const finalScore = validZones.length > 0
+    ? Math.round(boostedScore * effectiveTrendMultiplier * counterTrendMultiplier)
+    : 0;
 
   // Build conditions for ALL zones so weight sliders are always visible and the debug
   // table can display raw scores regardless of whether zones qualify for an entry.
@@ -1601,6 +1613,19 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       weightedScore: trendMultiplier,
       value: `${trendMultiplier.toFixed(2)}x`,
       description: `${consecutiveMSSCount} consecutive ${latestStructureDirection ?? 'n/a'} structure breaks (CHoCH+BOS)`,
+    },
+    {
+      id: 'counterTrend',
+      name: 'Counter-Trend Warning',
+      met: isCounterTrend,
+      weight: 1,
+      score: isCounterTrend ? COUNTER_TREND_CONDITION_SCORE : 0,
+      userWeight: 1,
+      weightedScore: isCounterTrend ? COUNTER_TREND_CONDITION_SCORE : 0,
+      value: isCounterTrend ? '⚠️ 0.8x' : '✅ With Trend',
+      description: isCounterTrend
+        ? 'Trading against current structure direction (0.8x multiplier)'
+        : 'Trading with current structure direction',
     },
     ...allZones.map(zone => {
       const isValidZone = validZones.some(vz => vz.id === zone.id);
@@ -1692,7 +1717,9 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     : [
       `Base Entry: ${Math.round(baseEntryScore)} (${validZones.map(z => z.name).join(' + ')})`,
       `Confluence Boosts: +${confluenceBoostPct}%` + (Math.abs(inducementScore) >= 40 ? ` (incl. Inducement +${Math.round((Math.abs(inducementScore) / 100) * 25)}%)` : ''),
-      `Trend Multiplier: ${trendMultiplier.toFixed(2)}x (${consecutiveMSSCount} consecutive shifts)`,
+      isCounterTrend
+        ? `Counter-Trend Multiplier: 0.80x (no trend bonus)`
+        : `Trend Multiplier: ${trendMultiplier.toFixed(2)}x (${consecutiveMSSCount} consecutive shifts)`,
       `Final Score: ${finalScore}`,
     ];
 

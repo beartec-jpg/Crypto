@@ -62,17 +62,21 @@ describe('SMC Scoring - Entry Zone Filtering', () => {
     expect(fvgCondition?.met).toBe(true);
   });
 
-  it('should not score bearish FVG when structure is bullish', () => {
+  it('should score bearish FVG in bullish structure as counter-trend with 0.8x multiplier', () => {
     const input: ScoringInput = {
       ...baseInput,
-      // Bearish FVG: price must be below zone approaching up — but currentPrice=100 > fvg.low=99.5
-      // so score will be negative (bearish) and won't align with bullish structure
+      // Bearish FVG: price is above zone (currentPrice=100 > fvg.low=99.5), counter-trend
       fvgs: [{ high: 100.5, low: 99.5, filled: false, type: 'bearish' as const }],
     };
 
     const result = scoreSmartMoney(input);
-    expect(result.score).toBe(0);
-    expect(result.reasoning).toContain('No valid entry zones aligned with market structure');
+    // Counter-trend zones now score (non-zero) with 0.8x penalty instead of being excluded
+    expect(result.score).not.toBe(0);
+    // Should show the counter-trend warning condition
+    const counterTrendCondition = result.conditions.find(c => c.id === 'counterTrend');
+    expect(counterTrendCondition).toBeDefined();
+    expect(counterTrendCondition?.met).toBe(true);
+    expect(counterTrendCondition?.value).toBe('⚠️ 0.8x');
   });
 
   it('should filter out zones with weight=0', () => {
@@ -113,18 +117,107 @@ describe('SMC Scoring - Entry Zone Filtering', () => {
     expect(result.conditions.find(c => c.id === 'fvgProximity')?.met).toBe(false);
   });
 
-  it('should show raw zone scores in conditions even when zones are filtered out', () => {
-    // Bearish FVG with bullish structure → filtered, but should still show in conditions with raw score
+  it('should show counter-trend zone as met in conditions when zone opposes structure', () => {
+    // Bearish FVG with bullish structure → counter-trend, but still a valid zone now
     const input: ScoringInput = {
       ...baseInput,
       fvgs: [{ high: 100.5, low: 99.5, filled: false, type: 'bearish' as const }],
     };
     const result = scoreSmartMoney(input);
-    expect(result.score).toBe(0);
-    // fvgProximity should be in conditions showing the raw score (non-zero if it scored something)
+    // Counter-trend zones now score non-zero with 0.8x penalty
+    expect(result.score).not.toBe(0);
+    // fvgProximity should be met (it's a valid counter-trend zone)
     const fvgCondition = result.conditions.find(c => c.id === 'fvgProximity');
     expect(fvgCondition).toBeDefined();
-    expect(fvgCondition?.met).toBe(false);
+    expect(fvgCondition?.met).toBe(true);
+  });
+});
+
+describe('SMC Scoring - Counter-Trend Zone Scoring', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    localStorage.clear();
+    resetWeightsToDefault('smart-money');
+    setConditionWeight('smart-money', 'fvgProximity', 3);
+    setConditionWeight('smart-money', 'orderBlockTouch', 3);
+    setConditionWeight('smart-money', 'breakerBlockProximity', 3);
+  });
+
+  const BEARISH_FVG_INSIDE = { high: 100.5, low: 99.5, filled: false, type: 'bearish' as const };
+
+  it('should produce a non-zero score for a bearish FVG in a bullish trend (counter-trend)', () => {
+    const input: ScoringInput = {
+      ...baseInput, // bullish structure
+      fvgs: [BEARISH_FVG_INSIDE],
+    };
+    const result = scoreSmartMoney(input);
+    expect(result.score).not.toBe(0);
+  });
+
+  it('should add counterTrend condition to conditions array when counter-trend', () => {
+    const input: ScoringInput = {
+      ...baseInput,
+      fvgs: [BEARISH_FVG_INSIDE],
+    };
+    const result = scoreSmartMoney(input);
+    const cond = result.conditions.find(c => c.id === 'counterTrend');
+    expect(cond).toBeDefined();
+    expect(cond?.met).toBe(true);
+    expect(cond?.value).toBe('⚠️ 0.8x');
+    expect(cond?.score).toBe(-20);
+  });
+
+  it('should show "With Trend" for counterTrend condition when zones align with structure', () => {
+    const input: ScoringInput = {
+      ...baseInput,
+      fvgs: [BULLISH_FVG_INSIDE],
+    };
+    const result = scoreSmartMoney(input);
+    const cond = result.conditions.find(c => c.id === 'counterTrend');
+    expect(cond).toBeDefined();
+    expect(cond?.met).toBe(false);
+    expect(cond?.value).toBe('✅ With Trend');
+    expect(cond?.score).toBe(0);
+  });
+
+  it('counter-trend score should be lower than with-trend score for the same zone', () => {
+    const withTrendInput: ScoringInput = {
+      ...baseInput, // bullish structure
+      fvgs: [BULLISH_FVG_INSIDE],
+    };
+    const counterTrendInput: ScoringInput = {
+      ...baseInput, // bullish structure
+      fvgs: [BEARISH_FVG_INSIDE],
+    };
+
+    const withTrendResult = scoreSmartMoney(withTrendInput);
+    const counterTrendResult = scoreSmartMoney(counterTrendInput);
+
+    // Both should score, counter-trend should be lower magnitude
+    expect(withTrendResult.score).toBeGreaterThan(0);
+    expect(counterTrendResult.score).not.toBe(0);
+    expect(Math.abs(counterTrendResult.score)).toBeLessThan(Math.abs(withTrendResult.score));
+  });
+
+  it('should not apply trend strength multiplier to counter-trend entries', () => {
+    // Multiple bullish structure breaks to build up trendMultiplier
+    const multiBreakInput: ScoringInput = {
+      ...baseInput,
+      structureBreaks: [
+        { breakTime: 1900, breakIndex: 19, direction: 'bullish', type: 'mss', confirmed: true, swept: false, brokenLevel: 98 },
+        { breakTime: 1800, breakIndex: 18, direction: 'bullish', type: 'mss', confirmed: true, swept: false, brokenLevel: 97 },
+        { breakTime: 1700, breakIndex: 17, direction: 'bullish', type: 'mss', confirmed: true, swept: false, brokenLevel: 96 },
+      ],
+    };
+    const withTrendResult = scoreSmartMoney({ ...multiBreakInput, fvgs: [BULLISH_FVG_INSIDE] });
+    const counterTrendResult = scoreSmartMoney({ ...multiBreakInput, fvgs: [BEARISH_FVG_INSIDE] });
+
+    // With-trend should benefit from trend multiplier (≥1.2x for 3 breaks)
+    // Counter-trend must NOT get the trend bonus — its score should reflect 0.8x only
+    expect(Math.abs(withTrendResult.score)).toBeGreaterThan(Math.abs(counterTrendResult.score));
+
+    const cond = counterTrendResult.conditions.find(c => c.id === 'counterTrend');
+    expect(cond?.met).toBe(true);
   });
 });
 
