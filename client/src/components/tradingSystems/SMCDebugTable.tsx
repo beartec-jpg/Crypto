@@ -490,12 +490,51 @@ function getDivergenceDetails(input: ScoringInput) {
   const rsiMin = input.rsiHistory && input.rsiHistory.length > 0 ? Math.min(...input.rsiHistory) : 0;
   const rsiMax = input.rsiHistory && input.rsiHistory.length > 0 ? Math.max(...input.rsiHistory) : 0;
 
+  const tfMinutesMap: Record<string, number> = {
+    '1m': 1,
+    '5m': 5,
+    '15m': 15,
+    '30m': 30,
+    '1h': 60,
+    '4h': 240,
+    '1d': 1440,
+  };
+  const tfKey = input.timeframe ?? '15m';
+  const tfMinutes = tfMinutesMap[tfKey] ?? 15;
+  const barSeconds = tfMinutes * 60;
+  const currentTime = input.currentTime;
+
+  const recentPoints = (input.divergencePoints ?? [])
+    .filter(p => currentTime === undefined || p.time <= currentTime)
+    .sort((a, b) => b.time - a.time)
+    .slice(0, 4);
+
   return (
     <>
       <div>├─ Bullish Divs: {bullishDivs.length} detected</div>
       <div>├─ Bearish Divs: {bearishDivs.length} detected</div>
       <div>├─ Lookback: {input.rsiHistory?.length ?? 0} candles</div>
       <div>├─ RSI Range: {rsiMin.toFixed(1)} - {rsiMax.toFixed(1)}</div>
+      <div>├─ Recent Points Used:</div>
+      {recentPoints.length === 0 ? (
+        <div className="ml-3">│  └─ None in current scoring window</div>
+      ) : (
+        recentPoints.map((point, idx) => {
+          const ageBars = currentTime !== undefined
+            ? Math.max(0, Math.round((currentTime - point.time) / barSeconds))
+            : 0;
+          const sign = point.type === 'bullish' ? '+' : '-';
+          const indicatorList = point.indicators.join(', ');
+          const smtText = point.smtScore ? ` | SMT ${Math.round(point.smtScore)}` : '';
+          const branch = idx === recentPoints.length - 1 ? '└' : '├';
+          return (
+            <div key={`${point.time}-${point.type}-${idx}`} className="ml-3">
+              {`│  ${branch}─ ${new Date(point.time * 1000).toLocaleString()} | ${point.type.toUpperCase()} | ${sign}${point.count}/7 | age ${ageBars} bars${smtText}`}
+              <div className="ml-4 text-[10px] text-slate-500">{`Indicators: ${indicatorList}`}</div>
+            </div>
+          );
+        })
+      )}
       <div>└─ Status: {bullishDivs.length + bearishDivs.length > 0 ? '✅ DIVERGENCE FOUND' : '⚠️ NO DIVERGENCE'}</div>
     </>
   );
