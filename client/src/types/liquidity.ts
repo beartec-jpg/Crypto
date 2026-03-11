@@ -1,5 +1,5 @@
 /**
- * Liquidity Zone type definitions.
+ * Liquidity Zone and Premium/Discount Zone type definitions.
  */
 
 export interface LiquidityZone {
@@ -23,6 +23,37 @@ export interface LiquidityZone {
   sweepConfluence?: number;      // 0-100: Alignment with FVG/OB/BOS
   sweepMomentum?: number;        // 0-100: Reversal speed score
   sweepVolumeConfirmation?: number; // 0-100: Volume on reversal candle
+}
+
+export type PDRangeSource = 'swing' | 'day' | 'week';
+
+export interface PDZone {
+  id: string;
+  rangeHigh: number;       // Top of the detected range
+  rangeLow: number;        // Bottom of the detected range
+  equilibrium: number;     // 50% mid-point
+  startTime: number;       // Left edge of zone on chart
+  endTime: number;         // Right edge of zone on chart (current candle)
+  source: PDRangeSource;
+}
+
+export interface PDZoneSettings {
+  enabled: boolean;
+
+  // Range Source
+  rangeSource: PDRangeSource; // 'swing' | 'day' | 'week'
+
+  // Display
+  showPremium: boolean;       // Upper 50% — selling zone
+  showDiscount: boolean;      // Lower 50% — buying zone
+  showEquilibrium: boolean;   // 50% equilibrium line
+  showLabels: boolean;
+
+  // Style
+  opacity: number;            // Fill opacity, default 0.15
+  premiumColor: string;       // Default: '#ef4444' (red)
+  discountColor: string;      // Default: '#22c55e' (green)
+  equilibriumColor: string;   // Default: '#fbbf24' (yellow)
 }
 
 export interface LiquiditySettings {
@@ -61,4 +92,17 @@ export const DEFAULT_LIQUIDITY_SETTINGS: LiquiditySettings = {
   sweptColor: '#22c55e',
   invalidatedColor: '#ef4444',
   sweepMarkerColor: '#f97316',
+};
+
+export const DEFAULT_PD_ZONE_SETTINGS: PDZoneSettings = {
+  enabled: false,
+  rangeSource: 'swing',
+  showPremium: true,
+  showDiscount: true,
+  showEquilibrium: true,
+  showLabels: true,
+  opacity: 0.15,
+  premiumColor: '#ef4444',
+  discountColor: '#22c55e',
+  equilibriumColor: '#fbbf24',
 };

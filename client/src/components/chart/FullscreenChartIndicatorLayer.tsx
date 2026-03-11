@@ -5,6 +5,7 @@ import { OrderBlockRenderer } from '@/components/indicators/OrderBlockRenderer';
 import { BreakerRenderer } from '@/components/indicators/BreakerRenderer';
 import { BOSRenderer } from '@/components/indicators/BOSRenderer';
 import { LiquidityRenderer } from '@/components/indicators/LiquidityRenderer';
+import { PDZoneRenderer } from '@/components/indicators/PDZoneRenderer';
 import { AutoFibRenderer } from '@/components/indicators/AutoFibRenderer';
 import { VolumeProfileRenderer } from '@/components/indicators/VolumeProfileRenderer';
 import { VolumeProfileSettingsModal } from '@/components/modals/VolumeProfileSettingsModal';
@@ -47,6 +48,8 @@ interface FullscreenChartIndicatorLayerProps {
   bosSettings: any;
   liquidityZones: any[];
   liquiditySettings: any;
+  pdZones: any[];
+  pdZoneSettings: any;
   autoFibResult: any;
   autoFibSettings: any;
 
@@ -105,6 +108,8 @@ export function FullscreenChartIndicatorLayer({
   bosSettings,
   liquidityZones,
   liquiditySettings,
+  pdZones,
+  pdZoneSettings,
   autoFibResult,
   autoFibSettings,
   volumeProfileData,
@@ -194,6 +199,13 @@ export function FullscreenChartIndicatorLayer({
         candleSeries={candleSeries}
         zones={liquidityZones}
         settings={liquiditySettings}
+      />
+
+      <PDZoneRenderer
+        chart={chart}
+        candleSeries={candleSeries}
+        zones={pdZones}
+        settings={pdZoneSettings}
       />
 
       <AutoFibRenderer

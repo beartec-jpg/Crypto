@@ -44,6 +44,8 @@ interface FullscreenChartActionToolbarProps {
   onBOSSettingsChange: (value: any) => void;
   liquiditySettings: any;
   onLiquiditySettingsChange: (value: any) => void;
+  pdZoneSettings: any;
+  onPDZoneSettingsChange: (value: any) => void;
   onOpenSmc: () => void;
 
   autoFibSettings: any;
@@ -107,6 +109,8 @@ export function FullscreenChartActionToolbar({
   onBOSSettingsChange,
   liquiditySettings,
   onLiquiditySettingsChange,
+  pdZoneSettings,
+  onPDZoneSettingsChange,
   onOpenSmc,
   autoFibSettings,
   onAutoFibToggle,
@@ -162,6 +166,8 @@ export function FullscreenChartActionToolbar({
         onBOSSettingsChange={onBOSSettingsChange}
         liquiditySettings={liquiditySettings}
         onLiquiditySettingsChange={onLiquiditySettingsChange}
+        pdZoneSettings={pdZoneSettings}
+        onPDZoneSettingsChange={onPDZoneSettingsChange}
         onOpenSmc={onOpenSmc}
         autoFibSettings={autoFibSettings}
         onAutoFibToggle={onAutoFibToggle}
