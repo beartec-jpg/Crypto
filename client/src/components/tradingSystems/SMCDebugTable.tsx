@@ -219,7 +219,7 @@ function getTrendStrengthDetails(input: ScoringInput) {
   });
 
   const recentMSS = input.structureBreaks
-    .filter(sb => sb.type === 'mss')
+    .filter(sb => sb.type === 'mss' || sb.type === 'choch')
     .sort((a, b) => b.breakTime - a.breakTime)[0];
 
   const recentStructureBreak = recentMSS ?? recentBreaks.sort((a, b) => b.breakTime - a.breakTime)[0];

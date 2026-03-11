@@ -1322,10 +1322,11 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     return true;
   });
 
-  // MSS with invalidation logic: stays active until price breaks prior pivot or opposite MSS forms
+  // MSS/CHoCH with invalidation logic: CHoCH signals direction change immediately;
+  // MSS stays active until price breaks prior pivot or opposite MSS forms
   const activeMSS = structureBreaks
-    ?.filter(sb => sb.type === 'mss')
-    .filter(sb => !isMSSInvalidated(sb, currentPrice, swingPoints ?? [], structureBreaks ?? [], currentTime))
+    ?.filter(sb => sb.type === 'mss' || sb.type === 'choch')
+    .filter(sb => sb.type === 'choch' || !isMSSInvalidated(sb, currentPrice, swingPoints ?? [], structureBreaks ?? [], currentTime))
     .sort((a, b) => b.breakTime - a.breakTime)[0];
 
   const recentStructureBreak = activeMSS ?? recentBreaks
@@ -1438,9 +1439,9 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       name: 'Trend Strength Multiplier',
       met: trendMultiplier > 1.0,
       weight: 1,
-      score: Math.round((trendMultiplier - 1) * 100),
+      score: trendMultiplier,
       userWeight: 1,
-      weightedScore: Math.round((trendMultiplier - 1) * 100),
+      weightedScore: trendMultiplier,
       value: `${trendMultiplier.toFixed(2)}x`,
       description: `${consecutiveMSSCount} consecutive ${latestStructureDirection ?? 'n/a'} structure breaks (CHoCH+BOS)`,
     },
