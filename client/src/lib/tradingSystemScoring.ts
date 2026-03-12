@@ -1601,6 +1601,19 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
 
   const latestStructureDirection = recentStructureBreak?.direction;
 
+  // ── Dual-Trend Analysis (Primary + Secondary Fibonacci) ──
+  const dualTrendAnalysis = analyzeDualTrendFromFib(
+    autoFibResult,
+    currentPrice,
+    structureBreaks,
+    currentTime ?? 0,
+  );
+
+  // Use PRIMARY trend direction + multiplier from fib analysis (enhanced with structure context)
+  const primaryTrendDirection = dualTrendAnalysis.primaryTrendDirection ?? latestStructureDirection;
+  const primaryTrendMultiplier = dualTrendAnalysis.primaryMultiplier;
+  const secondaryTrendMultiplier = dualTrendAnalysis.secondaryMultiplier;
+
   // Score entry zones (OB, FVG, Breaker) — always computed for display
   const obScore = scoreOrderBlockProximity(currentPrice, previousClose, orderBlocks);
   const fvgScore = scoreFVGProximity(currentPrice, previousClose, fvgs);
@@ -1649,9 +1662,9 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   // CHoCH sets direction (count=1), each subsequent BOS in that direction stacks (+1).
   // Multiplier: 1 break = ×1.0, 2 = ×1.1, 3 = ×1.2, … capped at ×1.5.
   const consecutiveMSSCount = latestStructureDirection
-    ? getConsecutiveMSSCount(structureBreaks ?? [], latestStructureDirection, currentTime ?? 0, lookbackCandles)
+    ? getConsecutiveMSSCount(structureBreaks ?? [], primaryTrendDirection ?? latestStructureDirection, currentTime ?? 0, lookbackCandles)
     : 0;
-  const trendMultiplier = latestStructureDirection
+  const trendMultiplier = primaryTrendDirection
     ? Math.min(1.0 + (consecutiveMSSCount - 1) * 0.1, 1.5)
     : 1.0;
 
@@ -1664,24 +1677,24 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
 
   // Filter zones: must be enabled (weight>0) and strong enough (≥20).
   // Counter-trend zones are included but penalised with a 0.8x multiplier later.
-  // When no structure direction is known, no zones are valid (score will be 0).
+  // When no primary trend direction is known, default to structure direction, else no zones valid.
   const validZones = allZones.filter(zone => {
-    if (!latestStructureDirection) return false;
+    if (!primaryTrendDirection && !latestStructureDirection) return false;
     if (zone.weight <= 0) return false;
     if (Math.abs(zone.score) < 20) return false;
     return true;  // Both with-trend AND counter-trend zones are included
   });
 
-  // Determine whether this is a counter-trend setup (any valid zone opposes structure direction).
+  // Determine whether this is a counter-trend setup (any valid zone opposes primary trend direction).
   const isCounterTrend = validZones.length > 0 && validZones.some(zone => {
     const isBullishZone = zone.score > 0;
-    const structureIsBullish = latestStructureDirection === 'bullish';
-    return isBullishZone !== structureIsBullish;
+    const primaryIsBullish = primaryTrendDirection === 'bullish';
+    return isBullishZone !== primaryIsBullish;
   });
 
   // Check if divergence aligns with the counter-trend direction (Phase 3 boost: 0.8x → 0.9x).
   // Bearish divergence + bearish zone (in bullish trend) → aligned; bullish divergence + bullish zone (in bearish trend) → aligned.
-  const counterTrendDirection = latestStructureDirection === 'bullish' ? 'bearish' : 'bullish';
+  const counterTrendDirection = primaryTrendDirection === 'bullish' ? 'bearish' : 'bullish';
   const divergenceIsBearishSignificant = divergenceFinalScore < -40;
   const divergenceIsBullishSignificant = divergenceFinalScore > 40;
   const divergenceAlignsWithCounterTrend =
@@ -1766,7 +1779,8 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   } else if (isCounterTrend && divergenceAlignsWithCounterTrend) {
     counterTrendMultiplier = 0.9;
   }
-  const effectiveTrendMultiplier = isCounterTrend ? 1.0 : trendMultiplier;
+  // Use primary trend multiplier from fibonacci analysis (enhanced smart money multiplier)
+  const effectiveTrendMultiplier = isCounterTrend ? 1.0 : (primaryTrendMultiplier || trendMultiplier);
 
   const finalScore = validZones.length > 0
     ? Math.round(boostedScore * effectiveTrendMultiplier * counterTrendMultiplier)
@@ -1777,14 +1791,25 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   const conditions: ScoredCondition[] = [
     {
       id: 'trendStrength',
-      name: 'Trend Strength Multiplier',
-      met: trendMultiplier > 1.0,
+      name: 'Primary Trend Strength (from Fib)',
+      met: primaryTrendMultiplier > 1.0,
       weight: 1,
-      score: trendMultiplier,
+      score: primaryTrendMultiplier,
       userWeight: 1,
-      weightedScore: trendMultiplier,
-      value: `${latestStructureDirection === 'bullish' ? '↑' : latestStructureDirection === 'bearish' ? '↓' : '↔'}${trendMultiplier.toFixed(2)}x`,
-      description: `${consecutiveMSSCount} consecutive ${latestStructureDirection ?? 'n/a'} structure breaks (CHoCH+BOS)`,
+      weightedScore: primaryTrendMultiplier,
+      value: `${primaryTrendDirection === 'bullish' ? '↑' : primaryTrendDirection === 'bearish' ? '↓' : '↔'}${primaryTrendMultiplier.toFixed(2)}x`,
+      description: `${dualTrendAnalysis.primaryBOSCount} BOS in primary fib, ${(dualTrendAnalysis.primaryTrendStrength * 100).toFixed(0)}% into swing`,
+    },
+    {
+      id: 'secondaryTrendStrength',
+      name: 'Secondary Trend Strength (from Fib)',
+      met: secondaryTrendMultiplier > 1.0,
+      weight: 1,
+      score: secondaryTrendMultiplier,
+      userWeight: 1,
+      weightedScore: secondaryTrendMultiplier,
+      value: `${dualTrendAnalysis.secondaryTrendDirection === 'bullish' ? '↑' : dualTrendAnalysis.secondaryTrendDirection === 'bearish' ? '↓' : '↔'}${secondaryTrendMultiplier.toFixed(2)}x`,
+      description: `${dualTrendAnalysis.secondaryBOSCount} BOS in secondary fib, ${(dualTrendAnalysis.secondaryTrendStrength * 100).toFixed(0)}% into swing`,
     },
     {
       id: 'counterTrend',
