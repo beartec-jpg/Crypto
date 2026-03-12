@@ -57,9 +57,10 @@ import { useAutoFibSettings } from '@/hooks/useAutoFibSettings';
 import { useAutoFibDetection } from '@/hooks/useAutoFibDetection';
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
 import { calculateEMA } from '@/lib/indicators';
-import { useDivergenceScanner } from '@/hooks/useDivergenceScanner';
+import { useMultiTimeframeDivergenceScanner } from '@/hooks/useMultiTimeframeDivergenceScanner';
 import { useDivergenceSettings } from '@/hooks/useDivergenceSettings';
 import { DEFAULT_OSCILLATOR_CONFIG } from '@/lib/calculations/divergenceCalculations';
+import type { TimeframeKey } from '@/lib/calculations/multiTimeframeDivergenceScoring';
 import { WaveOverlayStack } from '@/components/elliottWave/WaveOverlayStack';
 import { useHTFBias } from '@/hooks/useHTFBias';
 import { useHTFBiasSettings } from '@/hooks/useHTFBiasSettings';
@@ -403,8 +404,14 @@ export function ChartFullscreenPage({
   const superTrendData = useSuperTrendCalculation(effectiveCandles, superTrendSettings.settings);
 
   // Hooks - Divergence Scanner
-  const divergencePoints = useDivergenceScanner(effectiveCandles, DEFAULT_OSCILLATOR_CONFIG);
   const divSettings = useDivergenceSettings();
+  const divergencePoints = useMultiTimeframeDivergenceScanner(
+    symbol,
+    timeframe as TimeframeKey,
+    effectiveCandles,
+    divSettings.settings.enabledTimeframes,
+    DEFAULT_OSCILLATOR_CONFIG,
+  );
 
   const filteredDivergencePoints = useMemo(() => {
     const count = divSettings.settings.historyCount;

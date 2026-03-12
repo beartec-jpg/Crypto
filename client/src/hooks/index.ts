@@ -26,3 +26,4 @@ export * from './useSettingsPersistence';
 
 // Divergence scanner
 export * from './useDivergenceScanner';
+export * from './useMultiTimeframeDivergenceScanner';

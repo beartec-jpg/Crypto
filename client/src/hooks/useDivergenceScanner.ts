@@ -28,6 +28,12 @@ import type { DivergencePoint } from '@/types/chart.types';
 export type { OscillatorConfig };
 
 /**
+ * A DivergencePoint without multi-timeframe cascade fields.
+ * Used as the raw per-timeframe output before MTF enrichment.
+ */
+export type BasicDivergencePoint = Omit<DivergencePoint, 'mtfCascadeLevel' | 'mtfCascadeBonus' | 'mtfActiveTimeframes'>;
+
+/**
  * Number of recent candles to scan. 100 balances two concerns:
  *   1. Performance – calculating 7 oscillators is O(n); capping at 100 keeps
  *      each scan fast even on lower-end devices.
@@ -35,10 +41,135 @@ export type { OscillatorConfig };
  *      needs ~35 candles, so 100 candles gives a comfortable detection window
  *      while limiting redundant historical signals.
  */
-const SCAN_LOOKBACK = 100;
+export const SCAN_LOOKBACK = 100;
 
 /** Lookback window for peak/trough detection. */
 const PIVOT_LOOKBACK = 5;
+
+/**
+ * Pure (non-hook) divergence scan for a single set of candles.
+ *
+ * Detects bearish and bullish divergences across all 7 oscillators plus SMT,
+ * and returns the results WITHOUT multi-timeframe cascade fields so that
+ * callers (both the single-TF hook and the MTF hook) can attach the
+ * appropriate cascade metadata themselves.
+ *
+ * @param candles           - Already-sliced candle array (caller is responsible for the lookback limit)
+ * @param config            - Oscillator configuration
+ * @param correlatedCandles - Optional correlated-asset candles for SMT detection
+ * @param mainSymbol        - Main symbol, used to auto-detect the correlation pair
+ * @returns BasicDivergencePoint[] sorted by time ascending
+ */
+export function scanDivergences(
+  candles: CandleData[],
+  config: OscillatorConfig = DEFAULT_OSCILLATOR_CONFIG,
+  correlatedCandles?: CandleData[],
+  mainSymbol?: string,
+): BasicDivergencePoint[] {
+  if (candles.length < 30) return [];
+
+  const highData = candles.map(c => c.high);
+  const lowData = candles.map(c => c.low);
+  const { peaks } = findPeaksAndTroughs(highData, PIVOT_LOOKBACK);
+  const { troughs } = findPeaksAndTroughs(lowData, PIVOT_LOOKBACK);
+
+  const results: BasicDivergencePoint[] = [];
+
+  // Detect SMT divergences if correlated candles available
+  let smtResults: Map<number, { score: number; confidence: number; timeSyncScore: number }> = new Map();
+  let correlationSymbol: string | undefined;
+
+  if (correlatedCandles && correlatedCandles.length >= 30) {
+    try {
+      if (!correlationSymbol && mainSymbol) {
+        correlationSymbol = getCorrelatedSymbol(mainSymbol);
+      }
+
+      const mainPivots = findPivotsZigZag(candles);
+      const corrPivots = findPivotsZigZag(correlatedCandles);
+
+      if (mainPivots.length > 0 && corrPivots.length > 0) {
+        const smtDiv = detectSMTDivergence(mainPivots, corrPivots);
+
+        if (smtDiv.isValid && smtDiv.type !== null) {
+          const recentTimeIndex = smtDiv.type === 'bearish'
+            ? peaks[peaks.length - 1] ?? candles.length - 1
+            : troughs[troughs.length - 1] ?? candles.length - 1;
+
+          smtResults.set(recentTimeIndex, {
+            score: smtDiv.score,
+            confidence: smtDiv.confidence,
+            timeSyncScore: smtDiv.timeSyncScore ?? 0,
+          });
+        }
+      }
+    } catch (err) {
+      console.debug('SMT divergence detection failed:', err);
+    }
+  }
+
+  // Bearish divergence: price makes higher high, oscillator(s) make lower high
+  for (let i = 1; i < peaks.length; i++) {
+    const prevIdx = peaks[i - 1];
+    const currIdx = peaks[i];
+
+    if (highData[currIdx] > highData[prevIdx]) {
+      const { count, indicators } = checkAllOscillatorDivergence(
+        currIdx,
+        prevIdx,
+        'bearish',
+        candles,
+        config,
+      );
+      if (count > 0) {
+        const smtData = smtResults.get(currIdx);
+        results.push({
+          time: candles[currIdx].time,
+          price: highData[currIdx],
+          type: 'bearish',
+          count,
+          indicators,
+          smtScore: smtData?.score,
+          smtConfidence: smtData?.confidence,
+          correlationSymbol: smtData ? correlationSymbol : undefined,
+          smtTimeSyncScore: smtData?.timeSyncScore,
+        });
+      }
+    }
+  }
+
+  // Bullish divergence: price makes lower low, oscillator(s) make higher low
+  for (let i = 1; i < troughs.length; i++) {
+    const prevIdx = troughs[i - 1];
+    const currIdx = troughs[i];
+
+    if (lowData[currIdx] < lowData[prevIdx]) {
+      const { count, indicators } = checkAllOscillatorDivergence(
+        currIdx,
+        prevIdx,
+        'bullish',
+        candles,
+        config,
+      );
+      if (count > 0) {
+        const smtData = smtResults.get(currIdx);
+        results.push({
+          time: candles[currIdx].time,
+          price: lowData[currIdx],
+          type: 'bullish',
+          count,
+          indicators,
+          smtScore: smtData?.score,
+          smtConfidence: smtData?.confidence,
+          correlationSymbol: smtData ? correlationSymbol : undefined,
+          smtTimeSyncScore: smtData?.timeSyncScore,
+        });
+      }
+    }
+  }
+
+  return results.sort((a, b) => a.time - b.time);
+}
 
 /**
  * Scan candle data for divergence signals across all 7 oscillators + SMT.
@@ -59,7 +190,6 @@ export function useDivergenceScanner(
   enabledTimeframes?: TimeframeKey[],
   currentTimeframe?: TimeframeKey,
 ): DivergencePoint[] {
-  // Limit to recent candles for performance
   const recentCandles = useMemo(
     () => candles.slice(-SCAN_LOOKBACK),
     [candles],
@@ -71,132 +201,12 @@ export function useDivergenceScanner(
   );
 
   return useMemo(() => {
-    if (recentCandles.length < 30) return [];
-
-    const highData = recentCandles.map(c => c.high);
-    const lowData = recentCandles.map(c => c.low);
-    const { peaks } = findPeaksAndTroughs(highData, PIVOT_LOOKBACK);
-    const { troughs } = findPeaksAndTroughs(lowData, PIVOT_LOOKBACK);
-
-    const results: DivergencePoint[] = [];
-
-    // Determine MTF cascade info for the current timeframe.
-    // NOTE: With a single timeframe's candles available here, the maximum cascade
-    // level that can be computed is 1 (the current TF is active). True cascade levels
-    // of 2+ require aggregating divergence detections across multiple timeframe scans
-    // (e.g. by passing candle arrays for each enabled TF from the parent component).
-    // This scaffolding enables the settings/types/UI; full multi-scan aggregation can
-    // be wired at the page level when per-TF candles are available.
     const tfIsEnabled = !!(currentTimeframe && enabledTimeframes?.includes(currentTimeframe));
     const mtfCascadeLevel = tfIsEnabled ? 1 : 0;
     const mtfCascadeBonus = getCascadeBonus(mtfCascadeLevel);
     const mtfActiveTimeframes: TimeframeKey[] = tfIsEnabled && currentTimeframe ? [currentTimeframe] : [];
 
-    // Detect SMT divergences if correlated candles available
-    let smtResults: Map<number, { score: number; confidence: number; timeSyncScore: number }> = new Map();
-    let correlationSymbol: string | undefined;
-
-    if (recentCorrCandles && recentCorrCandles.length >= 30) {
-      try {
-        // Auto-detect correlation symbol if not provided
-        if (!correlationSymbol && mainSymbol) {
-          correlationSymbol = getCorrelatedSymbol(mainSymbol);
-        }
-
-        // Find pivots for both assets
-        const mainPivots = findPivotsZigZag(recentCandles);
-        const corrPivots = findPivotsZigZag(recentCorrCandles);
-
-        if (mainPivots.length > 0 && corrPivots.length > 0) {
-          // Detect SMT divergence
-          const smtDiv = detectSMTDivergence(mainPivots, corrPivots);
-
-          if (smtDiv.isValid && smtDiv.type !== null) {
-            // Map SMT divergence to most recent peak/trough time
-            const recentTimeIndex = smtDiv.type === 'bearish'
-              ? peaks[peaks.length - 1] ?? recentCandles.length - 1
-              : troughs[troughs.length - 1] ?? recentCandles.length - 1;
-
-            smtResults.set(recentTimeIndex, {
-              score: smtDiv.score,
-              confidence: smtDiv.confidence,
-              timeSyncScore: smtDiv.timeSyncScore ?? 0,
-            });
-          }
-        }
-      } catch (err) {
-        // Gracefully degrade if SMT detection fails
-        console.debug('SMT divergence detection failed:', err);
-      }
-    }
-
-    // Bearish divergence: price makes higher high, oscillator(s) make lower high
-    for (let i = 1; i < peaks.length; i++) {
-      const prevIdx = peaks[i - 1];
-      const currIdx = peaks[i];
-
-      // Only flag when price confirms the higher-high condition
-      if (highData[currIdx] > highData[prevIdx]) {
-        const { count, indicators } = checkAllOscillatorDivergence(
-          currIdx,
-          prevIdx,
-          'bearish',
-          recentCandles,
-          config,
-        );
-        if (count > 0) {
-          const smtData = smtResults.get(currIdx);
-          results.push({
-            time: recentCandles[currIdx].time,
-            price: highData[currIdx],
-            type: 'bearish',
-            count,
-            indicators,
-            smtScore: smtData?.score,
-            smtConfidence: smtData?.confidence,
-            correlationSymbol: smtData ? correlationSymbol : undefined,
-            smtTimeSyncScore: smtData?.timeSyncScore,
-            mtfCascadeLevel,
-            mtfCascadeBonus,
-            mtfActiveTimeframes,
-          });
-        }
-      }
-    }
-
-    // Bullish divergence: price makes lower low, oscillator(s) make higher low
-    for (let i = 1; i < troughs.length; i++) {
-      const prevIdx = troughs[i - 1];
-      const currIdx = troughs[i];
-
-      if (lowData[currIdx] < lowData[prevIdx]) {
-        const { count, indicators } = checkAllOscillatorDivergence(
-          currIdx,
-          prevIdx,
-          'bullish',
-          recentCandles,
-          config,
-        );
-        if (count > 0) {
-          const smtData = smtResults.get(currIdx);
-          results.push({
-            time: recentCandles[currIdx].time,
-            price: lowData[currIdx],
-            type: 'bullish',
-            count,
-            indicators,
-            smtScore: smtData?.score,
-            smtConfidence: smtData?.confidence,
-            correlationSymbol: smtData ? correlationSymbol : undefined,
-            smtTimeSyncScore: smtData?.timeSyncScore,
-            mtfCascadeLevel,
-            mtfCascadeBonus,
-            mtfActiveTimeframes,
-          });
-        }
-      }
-    }
-
-    return results.sort((a, b) => a.time - b.time);
+    const base = scanDivergences(recentCandles, config, recentCorrCandles, mainSymbol);
+    return base.map(d => ({ ...d, mtfCascadeLevel, mtfCascadeBonus, mtfActiveTimeframes }));
   }, [recentCandles, recentCorrCandles, config, mainSymbol, enabledTimeframes, currentTimeframe]);
 }
