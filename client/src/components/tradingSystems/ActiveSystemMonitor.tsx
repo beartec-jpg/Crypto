@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { X, ChevronDown, ChevronUp, Check, Lock, Unlock, AlertTriangle, ArrowRightLeft, Loader2 } from 'lucide-react';
+import { X, ChevronDown, ChevronUp, Check, Lock, Unlock, Loader2 } from 'lucide-react';
 import { useDraggable } from '@/hooks/useDraggable';
 import type { OpportunityZone } from '@/lib/confluenceAnalysis';
 import { TRADING_SYSTEMS, type TradingSystemId } from '@/types/tradingSystems';
@@ -16,7 +16,6 @@ import {
 } from '@/lib/tradingSystemColors';
 import { cn } from '@/lib/utils';
 import { SMCDebugTable } from './SMCDebugTable';
-import { analyzeTrendState, detectTrendReversal } from '@/lib/tradingSystemBacktest';
 import type { StructureBreak } from '@/types/structureBreak';
 
 interface ActiveSystemMonitorProps {
@@ -126,17 +125,15 @@ export function ActiveSystemMonitor({
     [conditions],
   );
 
-  // Trend analysis: computed from structure breaks, optionally filtered to visible viewport
-  const trendAnalysis = useMemo(() => {
-    if (!structureBreaks || structureBreaks.length === 0) return null;
-    const startTime = lockedToViewport && visibleRange ? visibleRange.from : undefined;
-    const endTime = lockedToViewport && visibleRange ? visibleRange.to : undefined;
-    const trendState = analyzeTrendState(structureBreaks, startTime, endTime);
-    const reversalInfo = detectTrendReversal(trendState);
-    return { trendState, reversalInfo };
-  }, [structureBreaks, lockedToViewport, visibleRange]);
-
   const showWeightAdjuster = weightedConditions.length > 0;
+
+  // Derive trend direction arrow and multiplier from the trendStrength condition (Smart Money only).
+  // The value encodes direction as a leading arrow character, e.g. "↑1.40x" or "↓1.20x".
+  const trendStrengthCond = systemId === 'smart-money'
+    ? conditions.find(c => c.id === 'trendStrength')
+    : undefined;
+  const trendIndicatorDisplay = trendStrengthCond?.value; // e.g. "↑1.40x"
+  const trendDirectionArrow = trendIndicatorDisplay?.[0]; // leading arrow character
 
   const handleToggleViewportLock = (e: { stopPropagation: () => void }) => {
     e.stopPropagation();
@@ -217,9 +214,19 @@ export function ActiveSystemMonitor({
       {/* Compact score display (always visible) */}
       <div className="px-3 py-2">
         <div className="flex items-baseline justify-between mb-1.5">
-          <span className={cn('text-2xl font-bold', getScoreColor(score))}>
-            {scorePrefix}{score}
-          </span>
+          <div className="flex items-baseline gap-1.5">
+            <span className={cn('text-2xl font-bold', getScoreColor(score))}>
+              {scorePrefix}{score}
+            </span>
+            {trendIndicatorDisplay && (
+              <span className={cn(
+                'text-xs font-semibold',
+                trendDirectionArrow === '↑' ? 'text-emerald-400' : trendDirectionArrow === '↓' ? 'text-rose-400' : 'text-slate-400',
+              )}>
+                {trendIndicatorDisplay}
+              </span>
+            )}
+          </div>
           <span className={cn('text-[10px] font-bold uppercase tracking-wide', getSentimentColor(signalLabel))}>
             {sentimentLabel}
           </span>
@@ -292,77 +299,6 @@ export function ActiveSystemMonitor({
               </div>
             </div>
           </div>
-
-          {/* Trend Analysis (shown when locked to viewport and structure breaks available) */}
-          {lockedToViewport && trendAnalysis && (
-            <div className="border-t border-slate-700/60 pt-2 space-y-1">
-              <div className="text-[10px] text-slate-400 uppercase tracking-wide">
-                Trend Analysis
-                {visibleRange ? (
-                  <span className="ml-1 text-blue-400">(viewport)</span>
-                ) : null}
-              </div>
-
-              {/* MSS / BOS counts */}
-              <div className="text-xs text-slate-300 space-y-0.5">
-                <div>
-                  MSS:{' '}
-                  <span className="text-emerald-400">{trendAnalysis.trendState.mssCount.bullish}↑</span>
-                  {' '}
-                  <span className="text-rose-400">{trendAnalysis.trendState.mssCount.bearish}↓</span>
-                </div>
-                <div>
-                  BOS:{' '}
-                  <span className="text-emerald-400">{trendAnalysis.trendState.bosCount.bullish}↑</span>
-                  {' '}
-                  <span className="text-rose-400">{trendAnalysis.trendState.bosCount.bearish}↓</span>
-                </div>
-              </div>
-
-              {/* Trend status badge (only when no reversal) */}
-              {trendAnalysis.trendState.current === 'bullish' && trendAnalysis.reversalInfo.status === 'neutral' && (
-                <div className="flex items-center gap-1 text-xs font-semibold text-emerald-400 mt-1">
-                  <Check className="w-3 h-3" />
-                  CONFIRMED BULLISH TREND
-                </div>
-              )}
-              {trendAnalysis.trendState.current === 'bearish' && trendAnalysis.reversalInfo.status === 'neutral' && (
-                <div className="flex items-center gap-1 text-xs font-semibold text-rose-400 mt-1">
-                  <Check className="w-3 h-3" />
-                  CONFIRMED BEARISH TREND
-                </div>
-              )}
-              {trendAnalysis.trendState.current === 'neutral' && (
-                <div className="text-xs text-slate-500 mt-1">No confirmed trend yet</div>
-              )}
-
-              {/* Reversal warning */}
-              {trendAnalysis.reversalInfo.status === 'warning' && (
-                <div className="mt-2 p-2 bg-orange-900/20 border border-orange-600/30 rounded">
-                  <div className="flex items-center gap-1 text-xs font-bold text-orange-400 mb-1">
-                    <AlertTriangle className="w-3 h-3" />
-                    TREND REVERSAL WARNING
-                  </div>
-                  <div className="text-[10px] text-orange-300 whitespace-pre-line">
-                    {trendAnalysis.reversalInfo.message.replace(/^⚠️ TREND REVERSAL WARNING\n/, '')}
-                  </div>
-                </div>
-              )}
-
-              {/* Confirmed reversal */}
-              {trendAnalysis.reversalInfo.status === 'confirmed' && (
-                <div className="mt-2 p-2 bg-red-900/20 border border-red-600/30 rounded">
-                  <div className="flex items-center gap-1 text-xs font-bold text-red-400 mb-1">
-                    <ArrowRightLeft className="w-3 h-3" />
-                    TREND REVERSED
-                  </div>
-                  <div className="text-[10px] text-red-300 whitespace-pre-line">
-                    {trendAnalysis.reversalInfo.message.replace(/^🔄 TREND REVERSED\n/, '')}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Viewport Backtest Stats */}
           {lockedToViewport && viewportSignals && (

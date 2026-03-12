@@ -1641,7 +1641,7 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       score: trendMultiplier,
       userWeight: 1,
       weightedScore: trendMultiplier,
-      value: `${trendMultiplier.toFixed(2)}x`,
+      value: `${latestStructureDirection === 'bullish' ? '↑' : latestStructureDirection === 'bearish' ? '↓' : '↔'}${trendMultiplier.toFixed(2)}x`,
       description: `${consecutiveMSSCount} consecutive ${latestStructureDirection ?? 'n/a'} structure breaks (CHoCH+BOS)`,
     },
     {
