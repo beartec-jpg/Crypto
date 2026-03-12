@@ -79,6 +79,7 @@ import { useGDSMarketMetrics } from '@/hooks/indicators/useGDSMarketMetrics';
 import { useGenuineDemandScore } from '@/hooks/indicators/useGenuineDemandScore';
 import { GDSMiniBadge } from '@/components/indicators/GDSMiniBadge';
 import { findMaximumOpportunityZones, type OpportunityZone } from '@/lib/confluenceAnalysis';
+import { getConditionWeights } from '@/lib/conditionWeights';
 import type { IPriceLine } from 'lightweight-charts';
 import { RewindControls } from '@/components/chart/RewindControls';
 // Defensive import: ensures Button is included in the ChartPage chunk scope.
@@ -1043,13 +1044,10 @@ export function ChartFullscreenPage({
     const startIdx = Math.max(0, Math.floor(visibleRange.from));
     const endIdx = Math.min(candles.length - 1, Math.ceil(visibleRange.to));
 
-    // Determine overall HTF bias from highest timeframe with a definitive signal
-    const dominantBias: 'bullish' | 'bearish' | 'neutral' =
-      htfBiasEntries.find(e => !e.isLoading && e.bias !== 'neutral')?.bias ?? 'neutral';
-
     setIsAnalyzingOpportunities(true);
     // Defer to next animation frame so the loading state renders before heavy computation
     requestAnimationFrame(() => {
+      const smcWeights = getConditionWeights('smart-money');
       const zones = findMaximumOpportunityZones(
         candles as Candle[],
         startIdx,
@@ -1057,10 +1055,10 @@ export function ChartFullscreenPage({
         autoFibResult,
         fvgs,
         orderBlocks,
+        breakers,
         structureBreaks,
         liquidityZones,
-        volumeProfileData,
-        dominantBias,
+        smcWeights,
       );
       setMaxOpportunityZones(zones);
       setIsAnalyzingOpportunities(false);
@@ -1069,7 +1067,7 @@ export function ChartFullscreenPage({
       clearOpportunityPriceLines();
       if (candleSeriesRef.current) {
         const lines: IPriceLine[] = [];
-        zones.slice(0, 3).forEach((zone, idx) => {
+        zones.forEach((zone, idx) => {
           const color =
             zone.strength === 'extreme' ? '#a855f7' :
             zone.strength === 'high' ? '#3b82f6' :
@@ -1094,10 +1092,9 @@ export function ChartFullscreenPage({
     autoFibResult,
     fvgs,
     orderBlocks,
+    breakers,
     structureBreaks,
     liquidityZones,
-    volumeProfileData,
-    htfBiasEntries,
     clearOpportunityPriceLines,
     candleSeriesRef,
   ]);
