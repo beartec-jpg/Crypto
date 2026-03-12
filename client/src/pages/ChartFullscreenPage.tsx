@@ -719,6 +719,13 @@ export function ChartFullscreenPage({
     setActiveSystemBacktestSignals(null);
   }, [tradingSystem.activeSystem]);
 
+  // Auto-enable divergence scanner when Smart Money system is activated
+  useEffect(() => {
+    if (tradingSystem.activeSystem === 'smart-money') {
+      setDivergenceScannerEnabled(true);
+    }
+  }, [tradingSystem.activeSystem]);
+
   const activeSystemDetails = useMemo(() => {
     if (!tradingSystem.activeSystem || effectiveCandles.length < 2) return null;
 
