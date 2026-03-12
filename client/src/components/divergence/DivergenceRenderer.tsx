@@ -87,11 +87,20 @@ export function DivergenceRenderer({
         const hasSMT = pos.point.smtScore !== undefined && pos.point.smtScore > 0;
         const smtIndicator = hasSMT ? '⭐' : '';
 
+        // MTF cascade indicator
+        const hasCascade = (pos.point.mtfCascadeLevel ?? 0) >= 2;
+        const cascadeLabel = hasCascade
+          ? `${pos.point.mtfCascadeLevel}-TF ×${pos.point.mtfCascadeBonus?.toFixed(2)}`
+          : '';
+
         // Build tooltip with full divergence info
         const tooltipParts = [
           `${pos.point.type === 'bullish' ? 'Bullish' : 'Bearish'} divergence`,
           `${pos.point.count}/7 indicators`,
         ];
+        if (hasCascade) {
+          tooltipParts.push(`MTF Cascade: ${cascadeLabel} (${(pos.point.mtfActiveTimeframes ?? []).join(', ')})`);
+        }
         if (hasSMT) {
           tooltipParts.push(`SMT: ${pos.point.smtScore}/100 (${pos.point.correlationSymbol})`);
           if (pos.point.smtConfidence !== undefined) {
@@ -105,7 +114,7 @@ export function DivergenceRenderer({
             key={`${pos.point.time}-${pos.point.type}-${i}`}
             className={`absolute z-20 ${bgColor} text-white px-1.5 py-0.5 rounded-full text-xs font-bold cursor-pointer hover:opacity-90 transition-opacity flex items-center gap-0.5 ${
               hasSMT ? 'ring-2 ring-yellow-300' : ''
-            }`}
+            } ${hasCascade ? 'ring-2 ring-purple-400' : ''}`}
             style={{
               left: pos.x,
               top: pos.y,
@@ -120,6 +129,7 @@ export function DivergenceRenderer({
             {emoji && <span>{emoji}</span>}
             <span>{displayValue}</span>
             {smtIndicator && <span>{smtIndicator}</span>}
+            {hasCascade && <span className="text-purple-200">⚡</span>}
           </button>
         );
       })}

@@ -18,6 +18,10 @@ import {
 } from '@/lib/calculations/divergenceCalculations';
 import { detectSMTDivergence } from '@/lib/smc/smtDivergence';
 import { getCorrelatedSymbol } from '@/lib/smc/smtConfig';
+import {
+  getCascadeBonus,
+  type TimeframeKey,
+} from '@/lib/calculations/multiTimeframeDivergenceScoring';
 import type { CandleData } from '@/types/chart.types';
 import type { DivergencePoint } from '@/types/chart.types';
 
@@ -43,6 +47,8 @@ const PIVOT_LOOKBACK = 5;
  * @param config  - Optional oscillator periods; falls back to DEFAULT_OSCILLATOR_CONFIG
  * @param correlatedCandles - Optional correlated asset candles for SMT divergence detection
  * @param mainSymbol - Main asset symbol (used to auto-detect correlation if needed)
+ * @param enabledTimeframes - Timeframes selected in divergence settings for MTF cascade scoring
+ * @param currentTimeframe  - The timeframe that `candles` represents (e.g. '1h')
  * @returns Array of DivergencePoint sorted by time ascending
  */
 export function useDivergenceScanner(
@@ -50,6 +56,8 @@ export function useDivergenceScanner(
   config: OscillatorConfig = DEFAULT_OSCILLATOR_CONFIG,
   correlatedCandles?: CandleData[],
   mainSymbol?: string,
+  enabledTimeframes?: TimeframeKey[],
+  currentTimeframe?: TimeframeKey,
 ): DivergencePoint[] {
   // Limit to recent candles for performance
   const recentCandles = useMemo(
@@ -71,6 +79,14 @@ export function useDivergenceScanner(
     const { troughs } = findPeaksAndTroughs(lowData, PIVOT_LOOKBACK);
 
     const results: DivergencePoint[] = [];
+
+    // Determine MTF cascade info for the current timeframe
+    // When only one timeframe's candles are available, the cascade level is 1
+    // if the current TF is in the enabled list, 0 otherwise.
+    const tfIsEnabled = !!(currentTimeframe && enabledTimeframes?.includes(currentTimeframe));
+    const mtfCascadeLevel = tfIsEnabled ? 1 : 0;
+    const mtfCascadeBonus = getCascadeBonus(mtfCascadeLevel);
+    const mtfActiveTimeframes: TimeframeKey[] = tfIsEnabled && currentTimeframe ? [currentTimeframe] : [];
 
     // Detect SMT divergences if correlated candles available
     let smtResults: Map<number, { score: number; confidence: number; timeSyncScore: number }> = new Map();
@@ -136,6 +152,9 @@ export function useDivergenceScanner(
             smtConfidence: smtData?.confidence,
             correlationSymbol: smtData ? correlationSymbol : undefined,
             smtTimeSyncScore: smtData?.timeSyncScore,
+            mtfCascadeLevel,
+            mtfCascadeBonus,
+            mtfActiveTimeframes,
           });
         }
       }
@@ -166,11 +185,14 @@ export function useDivergenceScanner(
             smtConfidence: smtData?.confidence,
             correlationSymbol: smtData ? correlationSymbol : undefined,
             smtTimeSyncScore: smtData?.timeSyncScore,
+            mtfCascadeLevel,
+            mtfCascadeBonus,
+            mtfActiveTimeframes,
           });
         }
       }
     }
 
     return results.sort((a, b) => a.time - b.time);
-  }, [recentCandles, recentCorrCandles, config, mainSymbol]);
+  }, [recentCandles, recentCorrCandles, config, mainSymbol, enabledTimeframes, currentTimeframe]);
 }
