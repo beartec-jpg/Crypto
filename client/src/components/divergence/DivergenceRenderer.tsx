@@ -98,6 +98,9 @@ export function DivergenceRenderer({
           `${pos.point.type === 'bullish' ? 'Bullish' : 'Bearish'} divergence`,
           `${pos.point.count}/7 indicators`,
         ];
+        if ((pos.point.mtfActiveTimeframes?.length ?? 0) > 0) {
+          tooltipParts.push(`Active TFs: ${pos.point.mtfActiveTimeframes?.length}`);
+        }
         if (hasCascade) {
           tooltipParts.push(`MTF Cascade: ${cascadeLabel} (${(pos.point.mtfActiveTimeframes ?? []).join(', ')})`);
         }

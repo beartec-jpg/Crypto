@@ -32,6 +32,8 @@ export function DivergenceBadgePopup({ point, onClose }: DivergenceBadgePopupPro
   const label = point.type === 'bullish' ? 'Bullish' : 'Bearish';
   const hasSMT = point.smtScore !== undefined && point.smtScore > 0;
   const hasMTF = (point.mtfCascadeLevel ?? 0) >= 1 && (point.mtfActiveTimeframes?.length ?? 0) > 0;
+  const oscillatorPercent = Math.round((point.count / 7) * 100);
+  const activeTfCount = point.mtfActiveTimeframes?.length ?? 0;
 
   return (
     <div
@@ -47,8 +49,18 @@ export function DivergenceBadgePopup({ point, onClose }: DivergenceBadgePopupPro
       </div>
 
       {/* Confluence summary */}
-      <div className="text-xs text-slate-300 mb-3">
-        {point.count} of 7 showing {label.toLowerCase()} divergence
+      <div className="text-xs text-slate-300 mb-3 space-y-0.5">
+        <div>
+          Oscillators: {point.count}/7 ({oscillatorPercent}%)
+        </div>
+        {hasMTF && (
+          <div>
+            Active timeframes: {activeTfCount}
+            {point.mtfCascadeLevel && point.mtfCascadeLevel >= 2
+              ? ` • Cascade ${point.mtfCascadeLevel}-TF ×${point.mtfCascadeBonus?.toFixed(2)}`
+              : ''}
+          </div>
+        )}
       </div>
 
       {/* SMT Section (if present) */}

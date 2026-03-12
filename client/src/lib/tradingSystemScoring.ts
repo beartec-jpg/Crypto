@@ -797,9 +797,15 @@ function scoreDivergencePointsConfluence(
     const recencyWeight = Math.max(0.25, 1 - ageBars / 80);
     const oscillatorStrength = Math.max(1 / 7, Math.min(1, point.count / 7));
     const smtBonus = point.smtScore ? Math.min(0.5, point.smtScore / 200) : 0;
-    const pointWeight = recencyWeight * (1 + smtBonus);
+    const activeTfCount = Math.max(0, point.mtfActiveTimeframes?.length ?? 0);
+    const cascadeBonus = Math.max(1, Math.min(2, point.mtfCascadeBonus ?? 1));
+    // Additional mild bonus from breadth of active TF confirmations.
+    const tfBreadthBonus = activeTfCount > 1 ? Math.min(0.35, (activeTfCount - 1) * 0.07) : 0;
 
-    const baseMagnitude = oscillatorStrength * 100;
+    const pointWeight = recencyWeight * (1 + smtBonus + tfBreadthBonus);
+
+    // MTF cascade bonus amplifies the oscillator confluence score per divergence point.
+    const baseMagnitude = Math.min(100, oscillatorStrength * 100 * cascadeBonus);
     const signedMagnitude = point.type === 'bullish' ? baseMagnitude : -baseMagnitude;
 
     weightedSignedSum += signedMagnitude * pointWeight;
@@ -824,7 +830,7 @@ function scoreDivergencePointsConfluence(
 
   return {
     score: scaled,
-    source: `Scanner divergence (${recentPoints.length} pts, TF-weighted)`,
+    source: `Scanner divergence (${recentPoints.length} pts, TF+MTF weighted)`,
     confidence,
   };
 }

@@ -15,17 +15,27 @@ export function OrderBlockOverlay({
   show,
   candles
 }: OrderBlockOverlayProps) {
-  const orderBlocksRefs = useRef<Array<{ upper: ISeriesApi<'Line'>; lower: ISeriesApi<'Line'>; fill: ISeriesApi<'Histogram'> }>>([]);
+  const orderBlocksRefs = useRef<Array<{ upper?: ISeriesApi<'Line'>; lower?: ISeriesApi<'Line'>; fill?: ISeriesApi<'Histogram'> }>>([]);
 
   useEffect(() => {
     if (!chart || candles.length === 0) return;
     
     // Clear previous order blocks
+    const removed = new Set<ISeriesApi<any>>();
     orderBlocksRefs.current.forEach(ob => {
       try {
-        if (ob.upper) chart.removeSeries(ob.upper);
-        if (ob.lower) chart.removeSeries(ob.lower);
-        if (ob.fill) chart.removeSeries(ob.fill);
+        if (ob.upper && !removed.has(ob.upper)) {
+          chart.removeSeries(ob.upper);
+          removed.add(ob.upper);
+        }
+        if (ob.lower && !removed.has(ob.lower)) {
+          chart.removeSeries(ob.lower);
+          removed.add(ob.lower);
+        }
+        if (ob.fill && !removed.has(ob.fill)) {
+          chart.removeSeries(ob.fill);
+          removed.add(ob.fill);
+        }
       } catch (e) {}
     });
     orderBlocksRefs.current = [];
@@ -34,18 +44,38 @@ export function OrderBlockOverlay({
       const lastTime = candles[candles.length - 1].time;
       
       // Render each order block as a shaded box like FVG
-      // Show fresh blocks with full opacity, mitigated with reduced opacity
       for (const ob of orderBlocks.slice(-20)) { // Show last 20 blocks
         try {
-          // Fresh blocks have higher opacity, mitigated blocks have lower
-          const opacity = ob.mitigated ? 0.1 : 0.25;
-          const borderOpacity = ob.mitigated ? 0.4 : 1;
+          // Do not render mitigated blocks in this legacy overlay.
+          if (ob.mitigated) continue;
+
+          const opacity = 0.25;
+          const borderOpacity = 1;
           const color = ob.type === 'bullish' 
             ? `rgba(16, 185, 129, ${opacity})` 
             : `rgba(239, 68, 68, ${opacity})`;
           const borderColor = ob.type === 'bullish' 
             ? `rgba(16, 185, 129, ${borderOpacity})` 
             : `rgba(239, 68, 68, ${borderOpacity})`;
+
+          // Swept blocks: only render the swept level line when available.
+          if (ob.swept && ob.sweepPrice !== undefined) {
+            const lineSeries = chart.addSeries(LineSeries, {
+              color: borderColor,
+              lineWidth: 2,
+              lineStyle: 2, // dashed
+              priceLineVisible: false,
+              lastValueVisible: false,
+            });
+
+            lineSeries.setData([
+              { time: ob.time as any, value: ob.sweepPrice },
+              { time: lastTime as any, value: ob.sweepPrice },
+            ]);
+
+            orderBlocksRefs.current.push({ upper: lineSeries });
+            continue;
+          }
           
           // Find candles from OB time to current time
           const obIdx = candles.findIndex(c => c.time === ob.time);

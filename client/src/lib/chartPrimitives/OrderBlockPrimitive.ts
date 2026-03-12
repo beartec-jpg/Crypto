@@ -86,16 +86,53 @@ class OBRenderer implements IPrimitivePaneRenderer {
 
         if (rectW <= 0 || rectH <= 0) continue;
 
+        // Swept OBs: keep only a horizontal level marker and skip zone rendering.
+        if (ob.swept) {
+          const sweepLevel = ob.sweepPrice ?? (ob.type === 'bullish' ? ob.bottom : ob.top);
+          const ySweep = this._series!.priceToCoordinate(sweepLevel);
+          if (ySweep !== null) {
+            ctx.strokeStyle = hexToRgba(baseColor, Math.min(1, 0.95 * ageFactor));
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 4]);
+            ctx.beginPath();
+            ctx.moveTo(rectX, ySweep);
+            ctx.lineTo(rectX + rectW, ySweep);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+          continue;
+        }
+
+        // Hide mitigated portion by shrinking the rendered OB zone to only the remaining area.
+        const mitigation = Math.max(0, Math.min(100, ob.mitigationPercent || 0));
+        const mitigatedH = rectH * (mitigation / 100);
+        let visibleY = rectY;
+        let visibleH = rectH;
+
+        if (mitigation > 0) {
+          if (ob.type === 'bullish') {
+            // Bullish OBs mitigate from top down.
+            visibleY = rectY + mitigatedH;
+            visibleH = rectH - mitigatedH;
+          } else {
+            // Bearish OBs mitigate from bottom up.
+            visibleY = rectY;
+            visibleH = rectH - mitigatedH;
+          }
+        }
+
+        if (visibleH <= 0) continue;
+
         // Main OB zone fill
         const fillAlpha = this._settings.zoneOpacity * ageFactor;
         ctx.fillStyle = hexToRgba(baseColor, fillAlpha);
-        ctx.fillRect(rectX, rectY, rectW, rectH);
+        ctx.fillRect(rectX, visibleY, rectW, visibleH);
 
         // Main OB border
         ctx.strokeStyle = hexToRgba(baseColor, Math.min(1, fillAlpha * 3));
         ctx.lineWidth = 1;
         ctx.setLineDash([]);
-        ctx.strokeRect(rectX, rectY, rectW, rectH);
+        ctx.strokeRect(rectX, visibleY, rectW, visibleH);
 
         // Extreme OB overlay (wick area)
         if (this._settings.showExtremeOB && !ob.mitigated) {
@@ -112,7 +149,16 @@ class OBRenderer implements IPrimitivePaneRenderer {
 
             if (exRectH > 0) {
               ctx.fillStyle = hexToRgba(extremeColor, this._settings.extremeOpacity * ageFactor);
-              ctx.fillRect(rectX, exRectY, rectW, exRectH);
+              const exTop = exRectY;
+              const exBottom = exRectY + exRectH;
+              const visTop = visibleY;
+              const visBottom = visibleY + visibleH;
+              const clippedTop = Math.max(exTop, visTop);
+              const clippedBottom = Math.min(exBottom, visBottom);
+              const clippedH = clippedBottom - clippedTop;
+              if (clippedH > 0) {
+                ctx.fillRect(rectX, clippedTop, rectW, clippedH);
+              }
             }
           }
         }
@@ -120,22 +166,13 @@ class OBRenderer implements IPrimitivePaneRenderer {
         // FVG confluence highlight
         if (ob.hasFVGConfluence && this._settings.highlightFVGConfluence && !ob.mitigated) {
           ctx.fillStyle = hexToRgba(this._settings.confluenceColor, 0.25 * ageFactor);
-          ctx.fillRect(rectX, rectY, rectW, rectH);
+          ctx.fillRect(rectX, visibleY, rectW, visibleH);
 
           ctx.strokeStyle = hexToRgba(this._settings.confluenceColor, 0.7 * ageFactor);
           ctx.lineWidth = 1.5;
           ctx.setLineDash([3, 3]);
-          ctx.strokeRect(rectX, rectY, rectW, rectH);
+          ctx.strokeRect(rectX, visibleY, rectW, visibleH);
           ctx.setLineDash([]);
-        }
-
-        // Mitigation fill indicator
-        if (ob.mitigationPercent > 0 && ob.mitigationPercent < 100) {
-          const fillH = rectH * (ob.mitigationPercent / 100);
-          // Bullish: mitigation from top; bearish: mitigation from bottom
-          const fillY = ob.type === 'bullish' ? rectY : rectY + rectH - fillH;
-          ctx.fillStyle = hexToRgba(this._settings.mitigatedColor, 0.3);
-          ctx.fillRect(rectX, fillY, rectW, fillH);
         }
 
         // Label with background
@@ -152,26 +189,16 @@ class OBRenderer implements IPrimitivePaneRenderer {
           ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
           ctx.fillRect(
             rectX + 2,
-            rectY + 2,
+            visibleY + 2,
             textWidth + padding * 2,
             textHeight + padding
           );
 
           // White text
           ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-          ctx.fillText(label, rectX + 2 + padding, rectY + 2 + textHeight);
+          ctx.fillText(label, rectX + 2 + padding, visibleY + 2 + textHeight);
         }
 
-        // Sweep marker ⚡ (blue) when the zone was wicked through but closed back inside
-        if (ob.swept && ob.sweepTime) {
-          const xSweep = timeScale.timeToCoordinate(ob.sweepTime as Time);
-          if (xSweep !== null) {
-            ctx.fillStyle = '#3b82f6'; // blue
-            ctx.font = '13px sans-serif';
-            const sweepY = ob.type === 'bullish' ? yBottom + 14 : yTop - 6;
-            ctx.fillText('⚡', xSweep - 6, sweepY);
-          }
-        }
       }
     });
   }
