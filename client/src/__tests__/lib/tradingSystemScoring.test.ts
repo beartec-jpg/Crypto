@@ -471,7 +471,7 @@ describe('SMC Scoring - Trend Strength Multiplier', () => {
     const result = scoreSmartMoney(input);
     const trendCondition = result.conditions.find(c => c.id === 'trendStrength');
     expect(trendCondition).toBeDefined();
-    expect(trendCondition?.value).toBe('1.10x');
+    expect(trendCondition?.value).toBe('↑1.10x');
   });
 
   it('should show 1.50x for 6 consecutive MSS', () => {
@@ -492,7 +492,7 @@ describe('SMC Scoring - Trend Strength Multiplier', () => {
     const result = scoreSmartMoney(input);
     const trendCondition = result.conditions.find(c => c.id === 'trendStrength');
     expect(trendCondition).toBeDefined();
-    expect(trendCondition?.value).toBe('1.50x');
+    expect(trendCondition?.value).toBe('↑1.50x');
   });
 });
 
