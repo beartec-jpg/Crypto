@@ -105,7 +105,7 @@ export function DivergenceBadgePopup({ point, onClose }: DivergenceBadgePopupPro
             <div className="flex justify-between">
               <span>Cascade Level:</span>
               <span className="text-purple-300 font-semibold">
-                {point.mtfCascadeLevel}-TF{' '}
+                {(point.mtfCascadeLevel ?? 0)}-TF{' '}
                 {(point.mtfCascadeLevel ?? 0) >= 2
                   ? `(×${point.mtfCascadeBonus?.toFixed(2)} bonus)`
                   : '(no bonus yet)'}

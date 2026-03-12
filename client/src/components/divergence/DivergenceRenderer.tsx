@@ -113,8 +113,14 @@ export function DivergenceRenderer({
           <button
             key={`${pos.point.time}-${pos.point.type}-${i}`}
             className={`absolute z-20 ${bgColor} text-white px-1.5 py-0.5 rounded-full text-xs font-bold cursor-pointer hover:opacity-90 transition-opacity flex items-center gap-0.5 ${
-              hasSMT ? 'ring-2 ring-yellow-300' : ''
-            } ${hasCascade ? 'ring-2 ring-purple-400' : ''}`}
+              hasCascade && hasSMT
+                ? 'ring-2 ring-yellow-300 outline outline-2 outline-purple-400'
+                : hasCascade
+                  ? 'ring-2 ring-purple-400'
+                  : hasSMT
+                    ? 'ring-2 ring-yellow-300'
+                    : ''
+            }`}
             style={{
               left: pos.x,
               top: pos.y,

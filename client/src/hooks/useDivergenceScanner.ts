@@ -80,9 +80,13 @@ export function useDivergenceScanner(
 
     const results: DivergencePoint[] = [];
 
-    // Determine MTF cascade info for the current timeframe
-    // When only one timeframe's candles are available, the cascade level is 1
-    // if the current TF is in the enabled list, 0 otherwise.
+    // Determine MTF cascade info for the current timeframe.
+    // NOTE: With a single timeframe's candles available here, the maximum cascade
+    // level that can be computed is 1 (the current TF is active). True cascade levels
+    // of 2+ require aggregating divergence detections across multiple timeframe scans
+    // (e.g. by passing candle arrays for each enabled TF from the parent component).
+    // This scaffolding enables the settings/types/UI; full multi-scan aggregation can
+    // be wired at the page level when per-TF candles are available.
     const tfIsEnabled = !!(currentTimeframe && enabledTimeframes?.includes(currentTimeframe));
     const mtfCascadeLevel = tfIsEnabled ? 1 : 0;
     const mtfCascadeBonus = getCascadeBonus(mtfCascadeLevel);
