@@ -12,7 +12,6 @@ import {
   getScoreBarColor,
   getSentimentColor,
   getSentimentLabel,
-  getTimeAgo,
 } from '@/lib/tradingSystemColors';
 import { cn } from '@/lib/utils';
 import { SMCDebugTable } from './SMCDebugTable';
@@ -105,7 +104,7 @@ export function ActiveSystemMonitor({
   const system = TRADING_SYSTEMS[systemId];
   if (!system) return null;
 
-  const { score, confidence, conditions, signalLabel, timestamp } = evaluation;
+  const { score, conditions, signalLabel } = evaluation;
   const sentimentLabel = getSentimentLabel(score);
   const scorePrefix = score > 0 ? '+' : '';
   const absPct = Math.abs(score);
@@ -253,20 +252,6 @@ export function ActiveSystemMonitor({
       {/* Expanded details */}
       {expanded && (
         <div className="border-t border-slate-700/50 px-3 pb-3 pt-2 space-y-3 max-h-[500px] overflow-y-auto">
-          {/* Stats grid */}
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div>
-              <div className="text-slate-500 mb-0.5">Confidence</div>
-              <div className="text-slate-200 font-semibold text-sm">{confidence}%</div>
-            </div>
-            {timestamp !== undefined && (
-              <div>
-                <div className="text-slate-500 mb-0.5">Updated</div>
-                <div className="text-slate-200 font-semibold text-sm">{getTimeAgo(timestamp)}</div>
-              </div>
-            )}
-          </div>
-
           {/* Signal Thresholds */}
           <div className="border-t border-slate-700/60 pt-2 space-y-1.5">
             <div className="text-[10px] text-slate-400 uppercase tracking-wide">Signal Thresholds</div>
