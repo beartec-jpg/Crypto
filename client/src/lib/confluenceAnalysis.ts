@@ -9,15 +9,15 @@
 import type { Candle } from '@/types/chart';
 import type { FVGDetection } from '@/types/fvg';
 import type { OrderBlock } from '@/types/orderBlock';
+import type { Breaker } from '@/types/breaker';
 import type { StructureBreak } from '@/types/structureBreak';
 import type { LiquidityZone } from '@/types/liquidity';
-import type { VolumeProfileData } from '@/types/volumeProfile';
 import type { AutoFibResult } from '@/types/autoFib';
 
 // ─── Public types ────────────────────────────────────────────────────────────
 
 export interface ConfluentFactor {
-  type: 'fib' | 'fvg' | 'ob' | 'mss' | 'bos' | 'choch' | 'liquidity' | 'vwap' | 'support';
+  type: 'fib' | 'fvg' | 'ob' | 'breaker' | 'mss' | 'bos' | 'choch' | 'liquidity';
   value: number; // points contributed
   price: number;
   direction?: 'bullish' | 'bearish';
@@ -39,6 +39,12 @@ export interface OpportunityZone {
 /**
  * Analyse all technical factors in the visible viewport range and return
  * price zones ordered by confluence score (highest first).
+ *
+ * Scoring is tied to the Smart Money weight system:
+ * - Each factor's contribution = weight × BASE_MULTIPLIER
+ * - Factors with weight = 0 (disabled by user) are excluded entirely
+ * - Returns 1 zone normally; 2 zones max only when a high-quality
+ *   counter-trend zone exists
  */
 export function findMaximumOpportunityZones(
   candles: Candle[],
@@ -47,13 +53,14 @@ export function findMaximumOpportunityZones(
   autoFibResult: AutoFibResult,
   fvgs: FVGDetection[],
   orderBlocks: OrderBlock[],
+  breakers: Breaker[],
   structureBreaks: StructureBreak[],
   liquidityZones: LiquidityZone[],
-  volumeProfileData: VolumeProfileData | null,
-  htfBias: 'bullish' | 'bearish' | 'neutral',
+  weights: Record<string, number>,
 ): OpportunityZone[] {
   if (candles.length === 0 || startIdx >= endIdx) return [];
 
+  const BASE_MULTIPLIER = 10;
   const zones = new Map<number, OpportunityZone>();
 
   // ── Determine price range of the visible window ──────────────────────────
@@ -96,58 +103,81 @@ export function findMaximumOpportunityZones(
   };
 
   // ── 1. Fibonacci levels ───────────────────────────────────────────────────
-  const importantFibLevels = new Set(['50', '61.8', '78.6']);
-
-  const processFibSet = (fibSet: AutoFibResult['primary']) => {
-    if (!fibSet) return;
-    fibSet.levels.forEach(level => {
-      if (level.price < priceMin || level.price > priceMax) return;
-      const points = importantFibLevels.has(level.level) ? 15 : 10;
-      addFactor(level.price, 'neutral', findNearestCandleIndex(candles, startIdx, endIdx, level.price), {
-        type: 'fib',
-        value: points,
-        price: level.price,
-        label: `Fib ${level.percentage}`,
+  const fibWeight = weights.autoFibConfluence ?? 0;
+  if (fibWeight > 0) {
+    const processFibSet = (fibSet: AutoFibResult['primary']) => {
+      if (!fibSet) return;
+      fibSet.levels.forEach(level => {
+        if (level.price < priceMin || level.price > priceMax) return;
+        addFactor(level.price, 'neutral', findNearestCandleIndex(candles, startIdx, endIdx, level.price), {
+          type: 'fib',
+          value: fibWeight * BASE_MULTIPLIER,
+          price: level.price,
+          label: `Fib ${level.percentage}`,
+        });
       });
-    });
-  };
+    };
 
-  processFibSet(autoFibResult.primary);
-  processFibSet(autoFibResult.secondary);
+    processFibSet(autoFibResult.primary);
+    processFibSet(autoFibResult.secondary);
+  }
 
   // ── 2. FVGs ───────────────────────────────────────────────────────────────
   const startTime = candles[startIdx].time;
   const endTime = candles[endIdx].time;
 
-  fvgs
-    .filter(fvg => !fvg.mitigated && fvg.startTime >= startTime && fvg.startTime <= endTime)
-    .forEach(fvg => {
-      const mid = (fvg.top + fvg.bottom) / 2;
-      const candleIdx = findNearestCandleIndex(candles, startIdx, endIdx, mid);
-      addFactor(mid, fvg.type, candleIdx, {
-        type: 'fvg',
-        value: 15,
-        price: mid,
-        direction: fvg.type,
-        label: `${fvg.type === 'bullish' ? 'Bullish' : 'Bearish'} FVG`,
+  const fvgWeight = weights.fvgProximity ?? 0;
+  if (fvgWeight > 0) {
+    fvgs
+      .filter(fvg => !fvg.mitigated && fvg.startTime >= startTime && fvg.startTime <= endTime)
+      .forEach(fvg => {
+        const mid = (fvg.top + fvg.bottom) / 2;
+        const candleIdx = findNearestCandleIndex(candles, startIdx, endIdx, mid);
+        addFactor(mid, fvg.type, candleIdx, {
+          type: 'fvg',
+          value: fvgWeight * BASE_MULTIPLIER,
+          price: mid,
+          direction: fvg.type,
+          label: `${fvg.type === 'bullish' ? 'Bullish' : 'Bearish'} FVG`,
+        });
       });
-    });
+  }
 
   // ── 3. Order Blocks ───────────────────────────────────────────────────────
-  orderBlocks
-    .filter(ob => ob.formationIndex >= startIdx && ob.formationIndex <= endIdx && !ob.mitigated)
-    .forEach(ob => {
-      const mid = (ob.top + ob.bottom) / 2;
-      addFactor(mid, ob.type, ob.formationIndex, {
-        type: 'ob',
-        value: 20,
-        price: mid,
-        direction: ob.type,
-        label: `${ob.type === 'bullish' ? 'Bullish' : 'Bearish'} OB`,
+  const obWeight = weights.orderBlockTouch ?? 0;
+  if (obWeight > 0) {
+    orderBlocks
+      .filter(ob => ob.formationIndex >= startIdx && ob.formationIndex <= endIdx && !ob.mitigated)
+      .forEach(ob => {
+        const mid = (ob.top + ob.bottom) / 2;
+        addFactor(mid, ob.type, ob.formationIndex, {
+          type: 'ob',
+          value: obWeight * BASE_MULTIPLIER,
+          price: mid,
+          direction: ob.type,
+          label: `${ob.type === 'bullish' ? 'Bullish' : 'Bearish'} OB`,
+        });
       });
-    });
+  }
 
-  // ── 4. Structure breaks (MSS / BOS / CHoCH) ───────────────────────────────
+  // ── 4. Breaker Blocks ─────────────────────────────────────────────────────
+  const breakerWeight = weights.breakerBlockProximity ?? 0;
+  if (breakerWeight > 0) {
+    breakers
+      .filter(b => !b.mitigated && b.conversionIndex >= startIdx && b.conversionIndex <= endIdx)
+      .forEach(b => {
+        const mid = (b.top + b.bottom) / 2;
+        addFactor(mid, b.type, b.conversionIndex, {
+          type: 'breaker',
+          value: breakerWeight * BASE_MULTIPLIER,
+          price: mid,
+          direction: b.type,
+          label: `${b.type === 'bullish' ? 'Bullish' : 'Bearish'} Breaker`,
+        });
+      });
+  }
+
+  // ── 5. Structure breaks (MSS / BOS / CHoCH) ───────────────────────────────
   structureBreaks
     .filter(sb => sb.breakIndex >= startIdx && sb.breakIndex <= endIdx)
     .forEach(sb => {
@@ -161,46 +191,23 @@ export function findMaximumOpportunityZones(
       });
     });
 
-  // ── 5. Liquidity zones ────────────────────────────────────────────────────
-  liquidityZones
-    .filter(lz => !lz.swept && !lz.invalidated)
-    .forEach(lz => {
-      const candleIdx = findNearestCandleIndex(candles, startIdx, endIdx, lz.price);
-      addFactor(lz.price, 'neutral', candleIdx, {
-        type: 'liquidity',
-        value: 15,
-        price: lz.price,
-        label: `Liquidity ${lz.type === 'high' ? 'High' : 'Low'}`,
-      });
-    });
-
-  // ── 6. Volume Profile POC ─────────────────────────────────────────────────
-  if (volumeProfileData && volumeProfileData.poc) {
-    const candleIdx = findNearestCandleIndex(candles, startIdx, endIdx, volumeProfileData.poc);
-    addFactor(volumeProfileData.poc, 'neutral', candleIdx, {
-      type: 'vwap',
-      value: 12,
-      price: volumeProfileData.poc,
-      label: 'POC (Volume Point of Control)',
-    });
-  }
-
-  // ── 7. HTF Bias bonus ─────────────────────────────────────────────────────
-  if (htfBias !== 'neutral') {
-    zones.forEach(zone => {
-      if (zone.direction === htfBias) {
-        zone.confluenceScore += 10;
-        zone.factors.push({
-          type: 'support',
-          value: 10,
-          price: zone.priceLevel,
-          label: 'HTF Bias Aligned',
+  // ── 6. Liquidity zones ────────────────────────────────────────────────────
+  const liquidityWeight = weights.liquiditySweep ?? 0;
+  if (liquidityWeight > 0) {
+    liquidityZones
+      .filter(lz => !lz.swept && !lz.invalidated)
+      .forEach(lz => {
+        const candleIdx = findNearestCandleIndex(candles, startIdx, endIdx, lz.price);
+        addFactor(lz.price, 'neutral', candleIdx, {
+          type: 'liquidity',
+          value: liquidityWeight * BASE_MULTIPLIER,
+          price: lz.price,
+          label: `Liquidity ${lz.type === 'high' ? 'High' : 'Low'}`,
         });
-      }
-    });
+      });
   }
 
-  // ── 8. Strength classification & description ──────────────────────────────
+  // ── 7. Strength classification & description ──────────────────────────────
   zones.forEach(zone => {
     if (zone.confluenceScore >= 60) zone.strength = 'extreme';
     else if (zone.confluenceScore >= 40) zone.strength = 'high';
@@ -217,10 +224,33 @@ export function findMaximumOpportunityZones(
     zone.description = `${zone.confluenceScore} pts: ${top3}`;
   });
 
-  // ── Return top zones sorted by score (minimum threshold: 20 pts) ──────────
-  return Array.from(zones.values())
+  // ── 8. Select zones: 1 normally, 2 max if good counter-trend exists ───────
+  const sorted = Array.from(zones.values())
     .filter(z => z.confluenceScore >= 20)
     .sort((a, b) => b.confluenceScore - a.confluenceScore);
+
+  if (sorted.length === 0) return [];
+
+  const result: OpportunityZone[] = [sorted[0]];
+
+  // Add a second zone only when it is counter-trend AND high quality
+  if (sorted.length >= 2) {
+    const second = sorted[1];
+    const isCounterTrend =
+      second.direction !== 'neutral' &&
+      sorted[0].direction !== 'neutral' &&
+      second.direction !== sorted[0].direction;
+    const isHighQuality =
+      second.confluenceScore >= 40 ||
+      second.strength === 'high' ||
+      second.strength === 'extreme';
+
+    if (isCounterTrend && isHighQuality) {
+      result.push(second);
+    }
+  }
+
+  return result;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
