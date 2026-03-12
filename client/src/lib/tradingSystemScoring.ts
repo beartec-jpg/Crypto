@@ -1411,6 +1411,148 @@ function scoreInducementSequence(
   return mssIsBullish ? 85 : -85;
 }
 
+// ── Dual-Trend System (Primary + Secondary Fibonacci) ──────────────────────────
+
+/**
+ * Dual-trend analysis using primary and secondary fibonacci levels.
+ * Primary trend = where the price moved in the primary fib swing (up or down)
+ * Secondary trend = where the price moved in the secondary fib swing
+ * Each trend gets its own direction, strength (0-1 position within trend), and multiplier (1.0-1.5x)
+ */
+export interface DualTrendAnalysis {
+  primaryTrendDirection: 'bullish' | 'bearish' | null;
+  secondaryTrendDirection: 'bullish' | 'bearish' | null;
+  primaryTrendStrength: number; // 0-1: normalized position from start to end of primary fib
+  secondaryTrendStrength: number; // 0-1: normalized position from start to end of secondary fib
+  primaryMultiplier: number; // 1.0 to 1.5x based on BOS count in primary trend range
+  secondaryMultiplier: number; // 1.0 to 1.5x based on BOS count in secondary trend range
+  primaryBOSCount: number;
+  secondaryBOSCount: number;
+  description: string;
+}
+
+/**
+ * Count BOS/MSS breaks within a time range matching a specific direction.
+ */
+function countBOSInRange(
+  structureBreaks: Array<{ breakTime: number; breakIndex?: number; direction: 'bullish' | 'bearish'; type?: string }> | undefined,
+  startTime: number,
+  endTime: number,
+  direction: 'bullish' | 'bearish',
+): number {
+  if (!structureBreaks) return 0;
+  return structureBreaks.filter(sb => {
+    const isInRange = sb.breakTime >= startTime && sb.breakTime <= endTime;
+    const isCorrectDirection = sb.direction === direction;
+    const isBOSType = sb.type === 'bos' || sb.type === 'mss' || sb.type === 'choch';
+    return isInRange && isCorrectDirection && isBOSType;
+  }).length;
+}
+
+/**
+ * Analyze primary and secondary trends using fibonacci level positions.
+ * Determines trend direction from fib swing direction and strength from price position.
+ * Counts BOS within each fib's time range and applies separate multipliers.
+ */
+function analyzeDualTrendFromFib(
+  autoFibResult: { primary: FibSetResult | null; secondary: FibSetResult | null } | undefined,
+  currentPrice: number,
+  structureBreaks: Array<{ breakTime: number; breakIndex?: number; direction: 'bullish' | 'bearish'; type?: string }> | undefined,
+  currentTime: number,
+): DualTrendAnalysis {
+  const analysis: DualTrendAnalysis = {
+    primaryTrendDirection: null,
+    secondaryTrendDirection: null,
+    primaryTrendStrength: 0,
+    secondaryTrendStrength: 0,
+    primaryMultiplier: 1.0,
+    secondaryMultiplier: 1.0,
+    primaryBOSCount: 0,
+    secondaryBOSCount: 0,
+    description: 'No fib data',
+  };
+
+  if (!autoFibResult) return analysis;
+
+  // ── ANALYZE PRIMARY FIBONACCI ──
+  if (autoFibResult.primary) {
+    const prim = autoFibResult.primary;
+    const startPrice = prim.start.price;
+    const endPrice = prim.end.price;
+
+    // Determine primary trend direction: where did price move from start to end?
+    const primaryIsBullish = endPrice > startPrice;
+    analysis.primaryTrendDirection = primaryIsBullish ? 'bullish' : 'bearish';
+
+    // Normalize current price to 0-100% of fib range
+    const primaryRange = Math.abs(endPrice - startPrice);
+    if (primaryRange > 0) {
+      const lowPoint = Math.min(startPrice, endPrice);
+      const priceFromStart = currentPrice - lowPoint;
+      analysis.primaryTrendStrength = Math.max(0, Math.min(1, priceFromStart / primaryRange));
+    }
+
+    // Count BOS within primary fib's time span, aligned with primary trend direction
+    analysis.primaryBOSCount = countBOSInRange(
+      structureBreaks,
+      prim.start.time,
+      prim.end.time,
+      analysis.primaryTrendDirection,
+    );
+
+    // Calculate primary multiplier: 1 BOS = 1.0x, 2 = 1.1x, ..., 6+ = 1.5x (capped)
+    analysis.primaryMultiplier = Math.min(
+      1.0 + Math.max(0, analysis.primaryBOSCount - 1) * 0.1,
+      1.5,
+    );
+  }
+
+  // ── ANALYZE SECONDARY FIBONACCI ──
+  if (autoFibResult.secondary) {
+    const sec = autoFibResult.secondary;
+    const startPrice = sec.start.price;
+    const endPrice = sec.end.price;
+
+    const secondaryIsBullish = endPrice > startPrice;
+    analysis.secondaryTrendDirection = secondaryIsBullish ? 'bullish' : 'bearish';
+
+    const secondaryRange = Math.abs(endPrice - startPrice);
+    if (secondaryRange > 0) {
+      const lowPoint = Math.min(startPrice, endPrice);
+      const priceFromStart = currentPrice - lowPoint;
+      analysis.secondaryTrendStrength = Math.max(0, Math.min(1, priceFromStart / secondaryRange));
+    }
+
+    analysis.secondaryBOSCount = countBOSInRange(
+      structureBreaks,
+      sec.start.time,
+      sec.end.time,
+      analysis.secondaryTrendDirection,
+    );
+
+    analysis.secondaryMultiplier = Math.min(
+      1.0 + Math.max(0, analysis.secondaryBOSCount - 1) * 0.1,
+      1.5,
+    );
+  }
+
+  // Build description
+  const parts = [];
+  if (analysis.primaryTrendDirection) {
+    parts.push(
+      `Primary: ${analysis.primaryTrendDirection} (${analysis.primaryBOSCount} BOS, ${(analysis.primaryTrendStrength * 100).toFixed(0)}% into swing, ×${analysis.primaryMultiplier.toFixed(2)})`,
+    );
+  }
+  if (analysis.secondaryTrendDirection) {
+    parts.push(
+      `Secondary: ${analysis.secondaryTrendDirection} (${analysis.secondaryBOSCount} BOS, ${(analysis.secondaryTrendStrength * 100).toFixed(0)}% into swing, ×${analysis.secondaryMultiplier.toFixed(2)})`,
+    );
+  }
+  analysis.description = parts.length > 0 ? parts.join(' | ') : 'No fib analysis';
+
+  return analysis;
+}
+
 export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   const COUNTER_TREND_CONDITION_SCORE = -20; // Displayed in debug panel to indicate counter-trend warning
   const {
