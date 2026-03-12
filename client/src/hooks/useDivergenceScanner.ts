@@ -25,6 +25,7 @@ import {
 import type { CandleData } from '@/types/chart.types';
 import type { DivergencePoint } from '@/types/chart.types';
 
+export { DEFAULT_OSCILLATOR_CONFIG };
 export type { OscillatorConfig };
 
 /**
