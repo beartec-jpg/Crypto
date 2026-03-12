@@ -58,6 +58,7 @@ interface FullscreenChartActionToolbarProps {
   onToggleDivergenceScanner: (enabled: boolean) => void;
   onOpenDivergenceSettings: () => void;
   superTrendEnabled: boolean;
+  onToggleSuperTrend: (enabled: boolean) => void;
   onOpenSuperTrendSettings: () => void;
 
   onToggleDrawingMode: () => void;
@@ -71,9 +72,11 @@ interface FullscreenChartActionToolbarProps {
   onToggleHtfBias: () => void;
 
   squeezeEnabled: boolean;
+  onToggleSqueeze: (enabled: boolean) => void;
   onOpenSqueezeSettings: () => void;
 
   vpEnabled: boolean;
+  onToggleVolumeProfile: (enabled: boolean) => void;
   onOpenVolumeProfileSettings: () => void;
   gdsMiniBadgeEnabled: boolean;
   onToggleGdsMiniBadge: (enabled: boolean) => void;
@@ -123,6 +126,7 @@ export function FullscreenChartActionToolbar({
   onToggleDivergenceScanner,
   onOpenDivergenceSettings,
   superTrendEnabled,
+  onToggleSuperTrend,
   onOpenSuperTrendSettings,
   onToggleDrawingMode,
   canUndo,
@@ -132,8 +136,10 @@ export function FullscreenChartActionToolbar({
   htfBiasEnabled,
   onToggleHtfBias,
   squeezeEnabled,
+  onToggleSqueeze,
   onOpenSqueezeSettings,
   vpEnabled,
+  onToggleVolumeProfile,
   onOpenVolumeProfileSettings,
   gdsMiniBadgeEnabled,
   onToggleGdsMiniBadge,
@@ -184,12 +190,15 @@ export function FullscreenChartActionToolbar({
         onToggleDivergenceScanner={onToggleDivergenceScanner}
         onOpenDivergenceSettings={onOpenDivergenceSettings}
         superTrendEnabled={superTrendEnabled}
+        onToggleSuperTrend={onToggleSuperTrend}
         onOpenSuperTrendSettings={onOpenSuperTrendSettings}
         htfBiasEnabled={htfBiasEnabled}
         onToggleHtfBias={onToggleHtfBias}
         squeezeEnabled={squeezeEnabled}
+        onToggleSqueeze={onToggleSqueeze}
         onOpenSqueezeSettings={onOpenSqueezeSettings}
         vpEnabled={vpEnabled}
+        onToggleVolumeProfile={onToggleVolumeProfile}
         onOpenVolumeProfileSettings={onOpenVolumeProfileSettings}
         gdsMiniBadgeEnabled={gdsMiniBadgeEnabled}
         onToggleGdsMiniBadge={onToggleGdsMiniBadge}

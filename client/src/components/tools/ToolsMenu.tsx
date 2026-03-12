@@ -10,12 +10,15 @@ interface ToolsMenuProps {
   onToggleDivergenceScanner: (enabled: boolean) => void;
   onOpenDivergenceSettings?: () => void;
   superTrendEnabled: boolean;
+  onToggleSuperTrend: (enabled: boolean) => void;
   onOpenSuperTrendSettings: () => void;
   htfBiasEnabled: boolean;
   onToggleHtfBias: () => void;
   squeezeEnabled: boolean;
+  onToggleSqueeze: (enabled: boolean) => void;
   onOpenSqueezeSettings: () => void;
   vpEnabled: boolean;
+  onToggleVolumeProfile: (enabled: boolean) => void;
   onOpenVolumeProfileSettings: () => void;
   gdsMiniBadgeEnabled: boolean;
   onToggleGdsMiniBadge: (enabled: boolean) => void;
@@ -27,12 +30,15 @@ export function ToolsMenu({
   onToggleDivergenceScanner,
   onOpenDivergenceSettings,
   superTrendEnabled,
+  onToggleSuperTrend,
   onOpenSuperTrendSettings,
   htfBiasEnabled,
   onToggleHtfBias,
   squeezeEnabled,
+  onToggleSqueeze,
   onOpenSqueezeSettings,
   vpEnabled,
+  onToggleVolumeProfile,
   onOpenVolumeProfileSettings,
   gdsMiniBadgeEnabled,
   onToggleGdsMiniBadge,
@@ -103,7 +109,7 @@ export function ToolsMenu({
                 onCheckedChange={onToggleDivergenceScanner}
                 className="shrink-0 data-[state=checked]:bg-blue-600"
               />
-              {divergenceScannerEnabled && onOpenDivergenceSettings && (
+              {onOpenDivergenceSettings && (
                 <Button
                   variant="ghost"
                   size="icon"
@@ -144,22 +150,28 @@ export function ToolsMenu({
                 Squeeze Momentum (LazyBear)
               </div>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                'h-6 w-6 hover:text-white hover:bg-slate-700',
-                squeezeEnabled ? 'text-cyan-400' : 'text-slate-400',
-              )}
-              title="Squeeze Momentum Settings"
-              onClick={() => {
-                setOpen(false);
-                onOpenSqueezeSettings();
-              }}
-              data-testid="btn-squeeze-momentum-toggle"
-            >
-              <Settings className="h-3.5 w-3.5" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Switch
+                checked={squeezeEnabled}
+                onCheckedChange={onToggleSqueeze}
+                className="shrink-0 data-[state=checked]:bg-blue-600"
+              />
+              {
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
+                  title="Squeeze Momentum Settings"
+                  onClick={() => {
+                    setOpen(false);
+                    onOpenSqueezeSettings();
+                  }}
+                  data-testid="btn-squeeze-momentum-settings"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                </Button>
+              }
+            </div>
           </div>
 
           <div className="flex items-center justify-between py-1.5 px-1">
@@ -172,18 +184,25 @@ export function ToolsMenu({
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
-                title="SuperTrend Settings"
-                onClick={() => {
-                  setOpen(false);
-                  onOpenSuperTrendSettings();
-                }}
-              >
-                <Settings className="h-3.5 w-3.5" />
-              </Button>
+              <Switch
+                checked={superTrendEnabled}
+                onCheckedChange={onToggleSuperTrend}
+                className="shrink-0 data-[state=checked]:bg-blue-600"
+              />
+              {
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
+                  title="SuperTrend Settings"
+                  onClick={() => {
+                    setOpen(false);
+                    onOpenSuperTrendSettings();
+                  }}
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                </Button>
+              }
             </div>
           </div>
 
@@ -196,22 +215,28 @@ export function ToolsMenu({
                 VP settings and visibility
               </div>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn(
-                'h-6 w-6 hover:text-white hover:bg-slate-700',
-                vpEnabled ? 'text-blue-400' : 'text-slate-400',
-              )}
-              title="Volume Profile Settings"
-              onClick={() => {
-                setOpen(false);
-                onOpenVolumeProfileSettings();
-              }}
-              data-testid="btn-volume-profile"
-            >
-              <Settings className="h-3.5 w-3.5" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Switch
+                checked={vpEnabled}
+                onCheckedChange={onToggleVolumeProfile}
+                className="shrink-0 data-[state=checked]:bg-blue-600"
+              />
+              {
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
+                  title="Volume Profile Settings"
+                  onClick={() => {
+                    setOpen(false);
+                    onOpenVolumeProfileSettings();
+                  }}
+                  data-testid="btn-volume-profile-settings"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                </Button>
+              }
+            </div>
           </div>
 
           <div className="flex items-center justify-between py-1.5 px-1">

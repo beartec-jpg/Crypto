@@ -1661,6 +1661,13 @@ export function ChartFullscreenPage({
             superTrendSettings.settings.adx.enabled ||
             superTrendSettings.settings.keltner.enabled
           }
+          onToggleSuperTrend={(enabled) => {
+            superTrendSettings.updateSettings({
+              standard: { ...superTrendSettings.settings.standard, enabled },
+              adx: { ...superTrendSettings.settings.adx, enabled: enabled ? superTrendSettings.settings.adx.enabled : false },
+              keltner: { ...superTrendSettings.settings.keltner, enabled: enabled ? superTrendSettings.settings.keltner.enabled : false },
+            });
+          }}
           onOpenSuperTrendSettings={() => setShowSuperTrendModal(true)}
           onToggleDrawingMode={() => {
             if (activeTool) {
@@ -1678,8 +1685,10 @@ export function ChartFullscreenPage({
           htfBiasEnabled={htfBiasSettings.settings.enabled}
           onToggleHtfBias={() => htfBiasSettings.updateSetting('enabled', !htfBiasSettings.settings.enabled)}
           squeezeEnabled={sqzSettings.settings.enabled}
+          onToggleSqueeze={(enabled) => sqzSettings.updateSettings({ enabled })}
           onOpenSqueezeSettings={() => setShowSqueezeSettings(true)}
           vpEnabled={vpSettings.settings.enabled}
+          onToggleVolumeProfile={(enabled) => vpSettings.updateSettings({ enabled })}
           onOpenVolumeProfileSettings={() => setShowVPModal(true)}
           gdsMiniBadgeEnabled={showGdsMiniBadge}
           onToggleGdsMiniBadge={setShowGdsMiniBadge}
