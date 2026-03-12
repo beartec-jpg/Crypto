@@ -30,6 +30,7 @@ export interface MAConfig {
  * Represents a divergence signal detected between price and one or more oscillators.
  * count indicates how many of the 7 oscillators confirm the divergence (1-7).
  * Optional SMT fields indicate multi-asset divergence detection.
+ * Optional MTF fields carry multi-timeframe cascade scoring information.
  */
 export interface DivergencePoint {
   time: number;
@@ -42,4 +43,8 @@ export interface DivergencePoint {
   smtConfidence?: number; // 0-100, SMT confidence
   correlationSymbol?: string; // e.g., 'BTCUSDT' when comparing to BTC
   smtTimeSyncScore?: number; // 0-100, pivot time alignment
+  // MTF (multi-timeframe) cascade fields (optional)
+  mtfCascadeLevel?: number;        // 0-4, consecutive TF activation count
+  mtfCascadeBonus?: number;        // 1.0 | 1.25 | 1.5 | 2.0 multiplier
+  mtfActiveTimeframes?: string[];  // e.g. ['15m','1h','4h']
 }

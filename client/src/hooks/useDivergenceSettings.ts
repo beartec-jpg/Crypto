@@ -1,10 +1,15 @@
 import { useState, useCallback } from 'react';
+import type { TimeframeKey } from '@/lib/calculations/multiTimeframeDivergenceScoring';
+
+export type { TimeframeKey };
 
 export interface DivergenceSettings {
   displayFormat: 'number' | 'percentage';
   showEmoji: boolean;
   showColors: boolean;
   historyCount: 1 | 2 | 3 | 4 | 5;
+  /** Timeframes included in multi-timeframe cascade scoring. */
+  enabledTimeframes: TimeframeKey[];
 }
 
 const DEFAULT_DIVERGENCE_SETTINGS: DivergenceSettings = {
@@ -12,6 +17,7 @@ const DEFAULT_DIVERGENCE_SETTINGS: DivergenceSettings = {
   showEmoji: true,
   showColors: true,
   historyCount: 5,
+  enabledTimeframes: ['15m', '1h', '4h'],
 };
 
 const STORAGE_KEY = 'divergenceSettings';

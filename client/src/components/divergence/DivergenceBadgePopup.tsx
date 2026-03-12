@@ -31,6 +31,7 @@ export function DivergenceBadgePopup({ point, onClose }: DivergenceBadgePopupPro
   const emoji = point.type === 'bullish' ? '🐂' : '🐻';
   const label = point.type === 'bullish' ? 'Bullish' : 'Bearish';
   const hasSMT = point.smtScore !== undefined && point.smtScore > 0;
+  const hasMTF = (point.mtfCascadeLevel ?? 0) >= 1 && (point.mtfActiveTimeframes?.length ?? 0) > 0;
 
   return (
     <div
@@ -79,6 +80,37 @@ export function DivergenceBadgePopup({ point, onClose }: DivergenceBadgePopupPro
                 <span className="text-yellow-300 font-semibold">{point.smtTimeSyncScore}/100</span>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* MTF Cascade Section (if present) */}
+      {hasMTF && (
+        <div className="bg-slate-800 border border-purple-500/30 rounded px-2 py-2 mb-3">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <span className="text-sm font-semibold text-purple-300">⚡ MTF Cascade</span>
+            {(point.mtfCascadeLevel ?? 0) >= 2 && (
+              <span className="bg-purple-600 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">
+                ×{point.mtfCascadeBonus?.toFixed(2)}
+              </span>
+            )}
+          </div>
+          <div className="text-xs text-slate-300 space-y-1">
+            <div className="flex justify-between">
+              <span>Active TFs:</span>
+              <span className="text-purple-300 font-semibold">
+                {point.mtfActiveTimeframes?.join(', ') ?? '—'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Cascade Level:</span>
+              <span className="text-purple-300 font-semibold">
+                {(point.mtfCascadeLevel ?? 0)}-TF{' '}
+                {(point.mtfCascadeLevel ?? 0) >= 2
+                  ? `(×${point.mtfCascadeBonus?.toFixed(2)} bonus)`
+                  : '(no bonus yet)'}
+              </span>
+            </div>
           </div>
         </div>
       )}

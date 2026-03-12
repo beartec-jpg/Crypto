@@ -5,6 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { DivergenceSettings } from '@/hooks/useDivergenceSettings';
+import { TIMEFRAME_ORDER, TIMEFRAME_WEIGHTS } from '@/lib/calculations/multiTimeframeDivergenceScoring';
+import type { TimeframeKey } from '@/hooks/useDivergenceSettings';
 
 interface DivergenceSettingsModalProps {
   isOpen: boolean;
@@ -107,7 +109,7 @@ export function DivergenceSettingsModal({
           </div>
 
           {/* History Count */}
-          <div className="pt-1">
+          <div className="border-b border-slate-700 pb-3 mb-1">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">History</p>
             <SettingRow
               label="History Count"
@@ -131,6 +133,38 @@ export function DivergenceSettingsModal({
                 </SelectContent>
               </Select>
             </SettingRow>
+          </div>
+
+          {/* Timeframes */}
+          <div className="pt-1">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Timeframes</p>
+            <p className="text-xs text-slate-500 mb-2">Select which timeframes participate in cascade scoring</p>
+            <div className="space-y-0.5">
+              {TIMEFRAME_ORDER.map((tf: TimeframeKey) => {
+                const isEnabled = settings.enabledTimeframes.includes(tf);
+                const weight = TIMEFRAME_WEIGHTS[tf];
+                return (
+                  <div key={tf} className="flex items-center justify-between py-1.5">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={isEnabled}
+                        onCheckedChange={(checked) => {
+                          const next = checked
+                            ? [...settings.enabledTimeframes, tf]
+                            : settings.enabledTimeframes.filter(t => t !== tf);
+                          onSettingsChange({ enabledTimeframes: next });
+                        }}
+                        className="data-[state=checked]:bg-blue-600 h-4 w-7"
+                      />
+                      <Label className={`text-sm font-medium ${isEnabled ? 'text-slate-200' : 'text-slate-500'}`}>
+                        {tf}
+                      </Label>
+                    </div>
+                    <span className="text-xs text-slate-500">weight {weight.toFixed(2)}×</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </DialogContent>
