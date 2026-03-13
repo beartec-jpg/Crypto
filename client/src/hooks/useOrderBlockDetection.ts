@@ -132,6 +132,8 @@ export function useOrderBlockDetection({
           type: 'bullish',
           top: current.high,
           bottom: current.low,
+          effectiveTop: current.high,
+          effectiveBottom: current.low,
           extremeTop: current.open,
           extremeBottom: current.low,
           time: current.time,
@@ -165,6 +167,8 @@ export function useOrderBlockDetection({
           type: 'bearish',
           top: current.high,
           bottom: current.low,
+          effectiveTop: current.high,
+          effectiveBottom: current.low,
           extremeTop: current.high,
           extremeBottom: current.close,
           time: current.time,
@@ -208,6 +212,8 @@ export function useOrderBlockDetection({
       let sweepTime: number | undefined;
       let sweepPrice: number | undefined;
       let sweepIndex: number | undefined;
+      let effectiveTop = ob.top;
+      let effectiveBottom = ob.bottom;
 
       for (let j = startIdx + 1; j < candles.length; j++) {
         const c = candles[j];
@@ -296,9 +302,13 @@ export function useOrderBlockDetection({
           if (ob.type === 'bullish' && c.low <= ob.top && c.low >= ob.bottom) {
             const penetration = (ob.top - c.low) / (ob.top - ob.bottom);
             mitigationPercent = Math.min(100, Math.max(mitigationPercent, penetration * 100));
+            // Shrink effective zone from the top down as bullish OB is mitigated
+            effectiveTop = Math.min(effectiveTop, c.low);
           } else if (ob.type === 'bearish' && c.high >= ob.bottom && c.high <= ob.top) {
             const penetration = (c.high - ob.bottom) / (ob.top - ob.bottom);
             mitigationPercent = Math.min(100, Math.max(mitigationPercent, penetration * 100));
+            // Shrink effective zone from the bottom up as bearish OB is mitigated
+            effectiveBottom = Math.max(effectiveBottom, c.high);
           }
         }
       }
@@ -328,6 +338,8 @@ export function useOrderBlockDetection({
         sweepTime,
         sweepPrice,
         sweepIndex,
+        effectiveTop,
+        effectiveBottom,
         hasFVGConfluence,
         confluenceFVGId,
       });
