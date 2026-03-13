@@ -41,7 +41,6 @@ export interface TradingSystemCallbacks {
   // Tool callbacks
   setSuperTrendEnabled?: (enabled: boolean) => void;
   setVolumeProfileEnabled?: (enabled: boolean) => void;
-  setSqueezeEnabled?: (enabled: boolean) => void;
   setDivergenceScannerEnabled?: (enabled: boolean) => void;
   setHTFBiasEnabled?: (enabled: boolean) => void;
   setSessionSeparatorsEnabled?: (enabled: boolean) => void;
@@ -76,7 +75,6 @@ export function useTradingSystem(callbacks: TradingSystemCallbacks) {
     // Tools
     callbacks.setSuperTrendEnabled?.(false);
     callbacks.setVolumeProfileEnabled?.(false);
-    callbacks.setSqueezeEnabled?.(false);
     callbacks.setDivergenceScannerEnabled?.(false);
     callbacks.setHTFBiasEnabled?.(false);
     callbacks.setSessionSeparatorsEnabled?.(false);
@@ -188,10 +186,6 @@ export function useTradingSystem(callbacks: TradingSystemCallbacks) {
       
       if (tools.volumeProfile !== undefined) {
         callbacks.setVolumeProfileEnabled?.(tools.volumeProfile.enabled);
-      }
-      
-      if (tools.squeezeMomentum !== undefined) {
-        callbacks.setSqueezeEnabled?.(tools.squeezeMomentum.enabled);
       }
       
       if (tools.divergenceScanner !== undefined) {

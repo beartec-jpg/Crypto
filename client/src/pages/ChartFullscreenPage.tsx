@@ -345,6 +345,9 @@ export function ChartFullscreenPage({
     setRewindPosition(null);
   }, []);
 
+  // Hooks - Indicators
+  const indicators = useIndicatorState();
+
   const oscillatorSettings = useMemo(
     () => ({
       rsiPeriod: indicators.rsi.period,
@@ -472,9 +475,6 @@ export function ChartFullscreenPage({
         break;
     }
   }, [indicators]);
-
-  // Hooks - Indicators
-  const indicators = useIndicatorState();
 
   // Reset rewind when symbol/timeframe changes
   useEffect(() => {

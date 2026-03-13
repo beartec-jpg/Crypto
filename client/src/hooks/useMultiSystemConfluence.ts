@@ -28,11 +28,6 @@ interface StructureBreak {
   brokenLevel?: number;
 }
 
-interface SqueezeMomentumPoint {
-  sqzOff?: boolean;
-  value?: number;
-}
-
 interface HTFBiasEntry {
   bias: 'bullish' | 'bearish' | 'neutral';
 }
@@ -64,7 +59,6 @@ export function useMultiSystemConfluence(
   oscillatorData: OscillatorData,
   superTrendData: SuperTrendData,
   structureBreaks: StructureBreak[],
-  sqzData: SqueezeMomentumPoint[],
   htfBiasEntries: HTFBiasEntry[],
   divergencePoints?: DivergencePoint[],
   fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish' }>,
@@ -100,7 +94,6 @@ export function useMultiSystemConfluence(
     const stLatest = superTrendData.standard[superTrendData.standard.length - 1];
     const stTrend = stLatest?.trend;
     const latestStructureBreak = structureBreaks[structureBreaks.length - 1];
-    const latestSqz = sqzData[sqzData.length - 1];
     const htfBullish = htfBiasEntries.filter(entry => entry.bias === 'bullish').length;
     const htfBearish = htfBiasEntries.filter(entry => entry.bias === 'bearish').length;
 
@@ -142,8 +135,6 @@ export function useMultiSystemConfluence(
       sigPrev,
       stTrend,
       latestStructureDirection: latestStructureBreak?.direction,
-      sqzOff: latestSqz?.sqzOff,
-      sqzValue: latestSqz?.value,
       htfBullish,
       htfBearish,
       latestClose: latestCandle.close,
@@ -212,7 +203,7 @@ export function useMultiSystemConfluence(
       systemDetails,
       patterns,
     };
-  }, [candles, oscillatorData, superTrendData.standard, structureBreaks, sqzData, htfBiasEntries, divergencePoints, fvgs, orderBlocks, liquidityZones, volumeProfileData, weightsVersion, autoFibResult, swingPoints]);
+  }, [candles, oscillatorData, superTrendData.standard, structureBreaks, htfBiasEntries, divergencePoints, fvgs, orderBlocks, liquidityZones, volumeProfileData, weightsVersion, autoFibResult, swingPoints]);
 
   useEffect(() => {
     if (result !== null) {
