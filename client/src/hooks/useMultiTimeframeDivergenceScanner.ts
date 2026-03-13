@@ -59,6 +59,11 @@ export function useMultiTimeframeDivergenceScanner(
   // ── State: fetched candles keyed by timeframe (non-current TFs only) ────────
   const [perTfCandles, setPerTfCandles] = useState<Partial<Record<TimeframeKey, CandleData[]>>>({});
 
+  // Reset cached candles when timeframe or symbol changes to ensure fresh data
+  useEffect(() => {
+    setPerTfCandles({});
+  }, [symbol, currentTimeframe]);
+
   // Stable string key that changes only when the set of enabled TFs changes.
   // Sorting ensures ['1h','15m'] and ['15m','1h'] produce the same key.
   const enabledTfKey = useMemo(
