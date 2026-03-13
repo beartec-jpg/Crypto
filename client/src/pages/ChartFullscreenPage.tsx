@@ -360,6 +360,11 @@ export function ChartFullscreenPage({
     setRewindPosition(null);
   }, [symbol, timeframe]);
 
+  // Clear divergence selection when chart context changes.
+  useEffect(() => {
+    setSelectedDivergencePoint(null);
+  }, [symbol, timeframe]);
+
   // Hooks - FVG detection (uses effectiveCandles so it updates with rewind)
   const fvgSettings = useFVGSettings();
   const fvgs = useFVGDetection({ candles: effectiveCandles, settings: fvgSettings.settings });

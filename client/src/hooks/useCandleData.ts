@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Candle } from '@/types/chart';
 
 interface UseCandleDataOptions {
@@ -24,14 +24,18 @@ export function useCandleData({
   const [candles, setCandles] = useState<Candle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const requestIdRef = useRef(0);
 
-  const fetchCandles = async () => {
+  const fetchCandles = useCallback(async (signal?: AbortSignal) => {
+    const requestId = ++requestIdRef.current;
+
     try {
       setIsLoading(true);
       setError(null);
 
       const response = await fetch(
-        `/api/crypto/extended-history?symbol=${symbol}&timeframe=${timeframe}`
+        `/api/crypto/extended-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`,
+        { signal },
       );
 
       if (!response.ok) {
@@ -41,25 +45,45 @@ export function useCandleData({
       const data = await response.json();
       const candleData: Candle[] = Array.isArray(data.candles) ? data.candles : [];
 
-      setCandles(candleData);
+      if (requestId === requestIdRef.current) {
+        setCandles(candleData);
+      }
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return;
+      }
       console.error('Failed to fetch candle data:', err);
-      setError(err instanceof Error ? err : new Error('Unknown error'));
+      if (requestId === requestIdRef.current) {
+        setCandles([]);
+        setError(err instanceof Error ? err : new Error('Unknown error'));
+      }
     } finally {
-      setIsLoading(false);
+      if (requestId === requestIdRef.current) {
+        setIsLoading(false);
+      }
     }
-  };
+  }, [symbol, timeframe]);
 
   useEffect(() => {
     if (!enabled) return;
 
-    fetchCandles();
+    // Immediately clear stale candles so symbol/timeframe switches never keep old price bars.
+    setCandles([]);
+    setError(null);
+    setIsLoading(true);
 
-    const interval = setInterval(fetchCandles, refreshInterval);
+    const initialController = new AbortController();
+    fetchCandles(initialController.signal);
 
-    return () => clearInterval(interval);
-    // Note: refreshInterval is intentionally in deps to allow dynamic updates
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const interval = setInterval(() => {
+      const pollController = new AbortController();
+      fetchCandles(pollController.signal);
+    }, refreshInterval);
+
+    return () => {
+      initialController.abort();
+      clearInterval(interval);
+    };
   }, [symbol, timeframe, enabled, refreshInterval]);
 
   return {

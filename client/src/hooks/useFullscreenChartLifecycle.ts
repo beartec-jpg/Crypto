@@ -35,32 +35,37 @@ export function useFullscreenChartLifecycle({
   const isInitialDataLoad = useRef(true);
 
   useEffect(() => {
-    if (candleSeriesRef.current && candles.length > 0) {
-      // When rewinding, only show candles up to the rewind position (hide future candles)
-      const displayCandles = rewindPosition !== null ? candles.slice(0, rewindPosition) : candles;
+    if (!candleSeriesRef.current) return;
 
-      const chartData: any[] = displayCandles.map(candle => ({ ...candle, time: candle.time as Time }));
+    if (candles.length === 0) {
+      candleSeriesRef.current.setData([]);
+      return;
+    }
 
-      // Only add future whitespace bars when in live mode (not rewinding)
-      if (rewindPosition === null) {
-        const lastCandle = candles[candles.length - 1];
-        const futureBars = generateFutureWhitespace(lastCandle.time as number, timeframe, FUTURE_BAR_COUNT);
-        chartData.push(...(futureBars as any[]));
-      }
+    // When rewinding, only show candles up to the rewind position (hide future candles)
+    const displayCandles = rewindPosition !== null ? candles.slice(0, rewindPosition) : candles;
 
-      if (isInitialDataLoad.current) {
-        candleSeriesRef.current.setData(chartData);
-        fitContent(candles.length);
-        chartRef.current?.timeScale().applyOptions({ rightOffset: 50 });
-        isInitialDataLoad.current = false;
-      } else {
-        const currentLogicalRange = chartRef.current?.timeScale().getVisibleLogicalRange();
-        candleSeriesRef.current.setData(chartData);
-        if (currentLogicalRange) {
-          try {
-            chartRef.current?.timeScale().setVisibleLogicalRange(currentLogicalRange);
-          } catch {
-          }
+    const chartData: any[] = displayCandles.map(candle => ({ ...candle, time: candle.time as Time }));
+
+    // Only add future whitespace bars when in live mode (not rewinding)
+    if (rewindPosition === null) {
+      const lastCandle = candles[candles.length - 1];
+      const futureBars = generateFutureWhitespace(lastCandle.time as number, timeframe, FUTURE_BAR_COUNT);
+      chartData.push(...(futureBars as any[]));
+    }
+
+    if (isInitialDataLoad.current) {
+      candleSeriesRef.current.setData(chartData);
+      fitContent(candles.length);
+      chartRef.current?.timeScale().applyOptions({ rightOffset: 50 });
+      isInitialDataLoad.current = false;
+    } else {
+      const currentLogicalRange = chartRef.current?.timeScale().getVisibleLogicalRange();
+      candleSeriesRef.current.setData(chartData);
+      if (currentLogicalRange) {
+        try {
+          chartRef.current?.timeScale().setVisibleLogicalRange(currentLogicalRange);
+        } catch {
         }
       }
     }
