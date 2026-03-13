@@ -6,6 +6,7 @@ import { TRADING_SYSTEMS, type TradingSystemId } from '@/types/tradingSystems';
 import { type SystemEvaluation } from '@/types/systemScoring';
 import { type ScoringInput } from '@/lib/tradingSystemScoring';
 import { ConditionWeightAdjuster } from '@/components/ConditionWeightAdjuster';
+import { CompactIndicatorRow } from '@/components/CompactIndicatorRow';
 import { resetWeightsToDefault } from '@/lib/conditionWeights';
 import {
   getScoreColor,
@@ -42,6 +43,9 @@ interface ActiveSystemMonitorProps {
   onClearOpportunityZones?: () => void;
   onJumpToZone?: (candleIndex: number) => void;
 }
+
+// Condition IDs that are read-only indicators (display-only, no adjustable weight).
+const READONLY_INDICATOR_IDS = ['trendStrength', 'secondaryTrendStrength', 'counterTrend', 'inducementSequence'];
 
 export function ActiveSystemMonitor({
   systemId,
@@ -124,7 +128,26 @@ export function ActiveSystemMonitor({
     [conditions],
   );
 
-  const showWeightAdjuster = weightedConditions.length > 0;
+  // Read-only indicator condition IDs — these display information only and have no adjustable weight.
+  const readOnlyIndicators = useMemo(
+    () => conditions
+      .filter(c => c.id && READONLY_INDICATOR_IDS.includes(c.id))
+      .map(c => ({
+        id: c.id!,
+        fullName: c.name,
+        value: c.value,
+        score: c.score ?? 0,
+        met: c.met,
+      })),
+    [conditions],
+  );
+
+  const adjustableConditions = useMemo(
+    () => weightedConditions.filter(c => !READONLY_INDICATOR_IDS.includes(c.id)),
+    [weightedConditions],
+  );
+
+  const showWeightAdjuster = adjustableConditions.length > 0 || readOnlyIndicators.length > 0;
 
   // Derive trend direction arrow and multiplier from the trendStrength condition (Smart Money only).
   // The value encodes direction as a leading arrow character, e.g. "↑1.40x" or "↓1.20x".
@@ -451,20 +474,26 @@ export function ActiveSystemMonitor({
             <div className="border-t border-slate-700/60 pt-2 space-y-1.5">
               <div className="flex items-center justify-between">
                 <div className="text-[10px] text-slate-400 uppercase tracking-wide">Condition Weights</div>
-                <button
-                  onClick={() => {
-                    resetWeightsToDefault(systemId);
-                    onWeightsChanged?.();
-                  }}
-                  className="text-[10px] text-blue-400 hover:underline"
-                  title="Set all condition weights back to 1"
-                >
-                  Reset to Defaults
-                </button>
+                {adjustableConditions.length > 0 && (
+                  <button
+                    onClick={() => {
+                      resetWeightsToDefault(systemId);
+                      onWeightsChanged?.();
+                    }}
+                    className="text-[10px] text-blue-400 hover:underline"
+                    title="Set all condition weights back to 1"
+                  >
+                    Reset to Defaults
+                  </button>
+                )}
               </div>
 
+              {readOnlyIndicators.length > 0 && (
+                <CompactIndicatorRow conditions={readOnlyIndicators} />
+              )}
+
               <div className="space-y-0.5">
-                {weightedConditions.map(condition => (
+                {adjustableConditions.map(condition => (
                   <ConditionWeightAdjuster
                     key={condition.id}
                     systemId={systemId}
