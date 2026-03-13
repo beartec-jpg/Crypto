@@ -106,7 +106,7 @@ export const DEFAULT_AUTO_FIB_SETTINGS: AutoFibSettings = {
     levels: { ...DEFAULT_FIB_SET_LEVELS },
     color: '#00D9FF',
     showLabels: true,
-    labelPosition: 'left',
+    labelPosition: 'right',
     extendRight: true,
   },
   secondary: {

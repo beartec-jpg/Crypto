@@ -1655,6 +1655,7 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   const divergenceFinalScore = scannerDivergence.score !== 0
     ? clamp(Math.round(scannerDivergence.score * 0.8 + hybridDivergence.score * 0.2))
     : hybridDivergence.score;
+  const divergenceStrengthPct = Math.min(100, Math.abs(divergenceFinalScore));
   const divergenceSource = scannerDivergence.score !== 0
     ? `${scannerDivergence.source}; ${hybridDivergence.source}`
     : hybridDivergence.source;
@@ -1699,21 +1700,40 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     return true;  // Both with-trend AND counter-trend zones are included
   });
 
-  // Determine whether this is a counter-trend setup (any valid zone opposes primary trend direction).
-  const isCounterTrend = validZones.length > 0 && validZones.some(zone => {
-    const isBullishZone = zone.score > 0;
-    const primaryIsBullish = primaryTrendDirection === 'bullish';
-    return isBullishZone !== primaryIsBullish;
-  });
+  // Derive setup direction from weighted zone bias so mixed zones do not cause false counter-trend states.
+  const weightedZoneBias = validZones.reduce((sum, z) => sum + (z.score * z.weight), 0);
+  const setupDirection: 'bullish' | 'bearish' | null =
+    validZones.length > 0 && weightedZoneBias !== 0
+      ? (weightedZoneBias > 0 ? 'bullish' : 'bearish')
+      : null;
+
+  // Counter-trend is based on dominant setup direction vs primary trend direction.
+  const isCounterTrend =
+    validZones.length > 0 &&
+    !!primaryTrendDirection &&
+    !!setupDirection &&
+    setupDirection !== primaryTrendDirection;
+
+  // Use setup direction (when available) as the active directional context for confluence alignment.
+  const activeSetupDirection = setupDirection ?? latestStructureDirection;
 
   // Check if divergence aligns with the counter-trend direction (Phase 3 boost: 0.8x → 0.9x).
   // Bearish divergence + bearish zone (in bullish trend) → aligned; bullish divergence + bullish zone (in bearish trend) → aligned.
-  const counterTrendDirection = primaryTrendDirection === 'bullish' ? 'bearish' : 'bullish';
+  const counterTrendDirection = isCounterTrend
+    ? setupDirection
+    : (primaryTrendDirection === 'bullish' ? 'bearish' : 'bullish');
   const divergenceIsBearishSignificant = divergenceFinalScore < -40;
   const divergenceIsBullishSignificant = divergenceFinalScore > 40;
   const divergenceAlignsWithCounterTrend =
     (counterTrendDirection === 'bearish' && divergenceIsBearishSignificant) ||
     (counterTrendDirection === 'bullish' && divergenceIsBullishSignificant);
+
+  // Counter-trend setups can adopt secondary trend context when directional bias matches.
+  const secondaryTrendAlignsWithSetup =
+    isCounterTrend &&
+    !!setupDirection &&
+    !!dualTrendAnalysis.secondaryTrendDirection &&
+    dualTrendAnalysis.secondaryTrendDirection === setupDirection;
 
   // Check if secondary fib aligns with the counter-trend zone (Phase 4 boost: 0.9x → 1.0x).
   // Secondary fib contains the counter-trend fibs; if any level is within 1% of the current price, it is active.
@@ -1754,13 +1774,13 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
 
     const divWeight = weights.divergenceConfluence ?? 0;
     if (divWeight > 0 && Math.abs(divergenceFinalScore) >= 20) {
-      const structureIsBullish = latestStructureDirection === 'bullish';
+      const structureIsBullish = activeSetupDirection === 'bullish';
       const divergenceIsBullish = divergenceFinalScore > 0;
-      const isAligned = latestStructureDirection
+      const isAligned = activeSetupDirection
         ? structureIsBullish === divergenceIsBullish
         : true;
 
-      const divergenceFactor = Math.abs(divergenceFinalScore) / 100;
+      const divergenceFactor = divergenceStrengthPct / 100;
       if (isAligned) {
         // Weight 1: +20% max, Weight 2: +40% max, Weight 3: +60% max
         const divBoost = divergenceFactor * 0.2 * divWeight;
@@ -1807,8 +1827,15 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   } else if (isCounterTrend && divergenceAlignsWithCounterTrend) {
     counterTrendMultiplier = 0.9;
   }
-  // Use primary trend multiplier from fibonacci analysis (enhanced smart money multiplier)
-  const effectiveTrendMultiplier = isCounterTrend ? 1.0 : (primaryTrendMultiplier || trendMultiplier);
+  // Use primary multiplier for with-trend setups; for counter-trend setups use secondary multiplier when aligned.
+  const effectiveTrendMultiplier = isCounterTrend
+    ? (secondaryTrendAlignsWithSetup ? (secondaryTrendMultiplier || 1.0) : 1.0)
+    : (primaryTrendMultiplier || trendMultiplier);
+
+  // Display active trend context in the compact score header.
+  const activeTrendDirection = isCounterTrend
+    ? (setupDirection ?? dualTrendAnalysis.secondaryTrendDirection)
+    : primaryTrendDirection;
 
   const finalScore = validZones.length > 0
     ? Math.round(boostedScore * effectiveTrendMultiplier * counterTrendMultiplier)
@@ -1819,14 +1846,18 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   const conditions: ScoredCondition[] = [
     {
       id: 'trendStrength',
-      name: 'Primary Trend Strength (from Fib)',
-      met: primaryTrendMultiplier > 1.0,
+      name: isCounterTrend ? 'Active Trend Strength (Secondary Context)' : 'Primary Trend Strength (from Fib)',
+      met: effectiveTrendMultiplier > 1.0,
       weight: 1,
-      score: primaryTrendMultiplier,
+      score: effectiveTrendMultiplier,
       userWeight: 1,
-      weightedScore: primaryTrendMultiplier,
-      value: `${primaryTrendDirection === 'bullish' ? '↑' : primaryTrendDirection === 'bearish' ? '↓' : '↔'}${primaryTrendMultiplier.toFixed(2)}x`,
-      description: `${dualTrendAnalysis.primaryBOSCount} BOS in primary fib, ${(dualTrendAnalysis.primaryTrendStrength * 100).toFixed(0)}% into swing`,
+      weightedScore: effectiveTrendMultiplier,
+      value: `${activeTrendDirection === 'bullish' ? '↑' : activeTrendDirection === 'bearish' ? '↓' : '↔'}${effectiveTrendMultiplier.toFixed(2)}x`,
+      description: isCounterTrend
+        ? (secondaryTrendAlignsWithSetup
+            ? `${dualTrendAnalysis.secondaryBOSCount} BOS in secondary fib, ${(dualTrendAnalysis.secondaryTrendStrength * 100).toFixed(0)}% into swing`
+            : 'Counter-trend setup without secondary trend alignment (neutral ×1.00)')
+        : `${dualTrendAnalysis.primaryBOSCount} BOS in primary fib, ${(dualTrendAnalysis.primaryTrendStrength * 100).toFixed(0)}% into swing`,
     },
     {
       id: 'secondaryTrendStrength',
@@ -1903,15 +1934,15 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       score: Math.round(divergenceFinalScore),
       userWeight: (weights.divergenceConfluence ?? 0) as WeightLevel,
       weightedScore: Math.round(divergenceFinalScore) * (weights.divergenceConfluence ?? 0),
-      value: divergenceFinalScore !== 0 ? `${Math.abs(Math.round(divergenceFinalScore))}/100` : undefined,
+      value: divergenceFinalScore !== 0 ? `${Math.round(divergenceStrengthPct)}%` : undefined,
       description:
         divergenceFinalScore === 0
           ? 'No active divergence'
-          : latestStructureDirection &&
-            ((latestStructureDirection === 'bullish' && divergenceFinalScore < 0) ||
-              (latestStructureDirection === 'bearish' && divergenceFinalScore > 0))
-          ? `${divergenceSource} (trend-opposing, up to -${Math.round(Math.min(100, (Math.abs(divergenceFinalScore) / 100) * 35 * (weights.divergenceConfluence ?? 0)))}% penalty)`
-          : `${divergenceSource} (trend-aligned, +${Math.round((Math.abs(divergenceFinalScore) / 100) * 20 * (weights.divergenceConfluence ?? 0))}% boost)`,
+          : activeSetupDirection &&
+            ((activeSetupDirection === 'bullish' && divergenceFinalScore < 0) ||
+              (activeSetupDirection === 'bearish' && divergenceFinalScore > 0))
+          ? `${divergenceSource} (active context: ${activeSetupDirection}; trend-opposing, up to -${Math.round(Math.min(100, (divergenceStrengthPct / 100) * 35 * (weights.divergenceConfluence ?? 0)))}% penalty)`
+          : `${divergenceSource} (active context: ${activeSetupDirection ?? 'neutral'}; trend-aligned, +${Math.round((divergenceStrengthPct / 100) * 20 * (weights.divergenceConfluence ?? 0))}% boost)`,
     },
     {
       id: 'autoFibConfluence',

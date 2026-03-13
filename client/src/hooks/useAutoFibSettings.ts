@@ -8,11 +8,19 @@ function loadSettings(): AutoFibSettings {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
+      // Legacy migration: primary labels used to default to left; normalize to right.
+      const primaryLabelPosition = parsed?.primary?.labelPosition === 'left'
+        ? 'right'
+        : parsed?.primary?.labelPosition;
       // Deep-merge to preserve nested primary/secondary defaults
       return {
         ...DEFAULT_AUTO_FIB_SETTINGS,
         ...parsed,
-        primary: { ...DEFAULT_AUTO_FIB_SETTINGS.primary, ...(parsed.primary ?? {}) },
+        primary: {
+          ...DEFAULT_AUTO_FIB_SETTINGS.primary,
+          ...(parsed.primary ?? {}),
+          ...(primaryLabelPosition ? { labelPosition: primaryLabelPosition } : {}),
+        },
         secondary: { ...DEFAULT_AUTO_FIB_SETTINGS.secondary, ...(parsed.secondary ?? {}) },
       };
     }

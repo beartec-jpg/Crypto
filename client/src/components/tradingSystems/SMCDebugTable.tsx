@@ -12,6 +12,7 @@ interface SMCDebugTableProps {
 export function SMCDebugTable({ evaluation, scoringInput }: SMCDebugTableProps) {
   const [isOpen, setIsOpen] = useState(false);
   const trendCondition = evaluation.conditions.find(c => c.id === 'trendStrength');
+  const divergenceCondition = evaluation.conditions.find(c => c.id === 'divergenceConfluence');
 
   if (!isOpen) {
     return (
@@ -88,7 +89,12 @@ export function SMCDebugTable({ evaluation, scoringInput }: SMCDebugTableProps) 
         {/* Divergence */}
         <ConditionDebug
           title="Divergence Confluence"
-          score={evaluation.conditions.find(c => c.id === 'divergenceConfluence')?.score ?? 0}
+          score={divergenceCondition?.score ?? 0}
+          scoreLabel={
+            divergenceCondition?.score !== undefined
+              ? `${(divergenceCondition.score ?? 0) > 0 ? '+' : ''}${Math.round(Math.abs(divergenceCondition.score ?? 0))}%`
+              : undefined
+          }
           details={getDivergenceDetails(scoringInput)}
         />
 
@@ -523,13 +529,13 @@ function getDivergenceDetails(input: ScoringInput) {
           const ageBars = currentTime !== undefined
             ? Math.max(0, Math.round((currentTime - point.time) / barSeconds))
             : 0;
-          const sign = point.type === 'bullish' ? '+' : '-';
+          const oscillatorPercent = Math.round((point.count / 7) * 100);
           const indicatorList = point.indicators.join(', ');
           const smtText = point.smtScore ? ` | SMT ${Math.round(point.smtScore)}` : '';
           const branch = idx === recentPoints.length - 1 ? '└' : '├';
           return (
             <div key={`${point.time}-${point.type}-${idx}`} className="ml-3">
-              {`│  ${branch}─ ${new Date(point.time * 1000).toLocaleString()} | ${point.type.toUpperCase()} | ${sign}${point.count}/7 | age ${ageBars} bars${smtText}`}
+              {`│  ${branch}─ ${new Date(point.time * 1000).toLocaleString()} | ${point.type.toUpperCase()} | ${oscillatorPercent}% | age ${ageBars} bars${smtText}`}
               <div className="ml-4 text-[10px] text-slate-500">{`Indicators: ${indicatorList}`}</div>
             </div>
           );
