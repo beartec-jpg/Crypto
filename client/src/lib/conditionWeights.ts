@@ -147,6 +147,7 @@ function getDefaultWeights(systemId: string): Record<string, WeightLevel> {
       bullishDivergence: 1,
       bearishDivergence: 1,
       smtDivergence: 1, // Multi-asset divergence with confluence bonus
+      divergenceNet: 1, // HTF/timeframe weighted net bias from scanner divergence
       rsiLevel: 1,
       rsiTurn: 1,
       macdTurn: 1,

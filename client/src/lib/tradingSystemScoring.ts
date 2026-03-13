@@ -839,6 +839,83 @@ function scoreDivergencePointsConfluence(
   };
 }
 
+function getDirectionalDivergenceStrengths(
+  divergencePoints: DivergencePoint[] | undefined,
+  currentTime: number | undefined,
+  timeframe: string | undefined,
+): {
+  bullishScore: number;
+  bearishScore: number;
+  latestBullish?: DivergencePoint;
+  latestBearish?: DivergencePoint;
+} {
+  if (!divergencePoints || divergencePoints.length === 0 || currentTime === undefined) {
+    return { bullishScore: 0, bearishScore: 0 };
+  }
+
+  const tfMinutes = getTimeframeMinutes(timeframe);
+  const barSeconds = tfMinutes * 60;
+  const lookbackBars = 120;
+  const confirmationBars = 5;
+  const lookbackSeconds = lookbackBars * barSeconds;
+
+  const recentPoints = divergencePoints
+    .filter(point => {
+      const ageSeconds = currentTime - point.time;
+      if (ageSeconds < confirmationBars * barSeconds) return false;
+      return ageSeconds <= lookbackSeconds;
+    })
+    .sort((a, b) => b.time - a.time)
+    .slice(0, 12);
+
+  if (recentPoints.length === 0) {
+    return { bullishScore: 0, bearishScore: 0 };
+  }
+
+  let bullishWeighted = 0;
+  let bullishWeightTotal = 0;
+  let bearishWeighted = 0;
+  let bearishWeightTotal = 0;
+
+  const latestBullish = recentPoints.find(p => p.type === 'bullish');
+  const latestBearish = recentPoints.find(p => p.type === 'bearish');
+
+  for (const point of recentPoints) {
+    const ageBars = Math.max(0, (currentTime - point.time) / barSeconds);
+    const recencyWeight = Math.max(0.25, 1 - ageBars / 80);
+    const oscillatorStrength = Math.max(1 / 7, Math.min(1, point.count / 7));
+    const smtBonus = point.smtScore ? Math.min(0.5, point.smtScore / 200) : 0;
+    const activeTfCount = Math.max(0, point.mtfActiveTimeframes?.length ?? 0);
+    const cascadeBonus = Math.max(1, Math.min(2, point.mtfCascadeBonus ?? 1));
+    const tfBreadthBonus = activeTfCount > 1 ? Math.min(0.35, (activeTfCount - 1) * 0.07) : 0;
+
+    const pointWeight = recencyWeight * (1 + smtBonus + tfBreadthBonus);
+    const magnitude = Math.min(100, oscillatorStrength * 100 * cascadeBonus);
+
+    if (point.type === 'bullish') {
+      bullishWeighted += magnitude * pointWeight;
+      bullishWeightTotal += pointWeight;
+    } else {
+      bearishWeighted += magnitude * pointWeight;
+      bearishWeightTotal += pointWeight;
+    }
+  }
+
+  const bullishScore = bullishWeightTotal > 0
+    ? clamp(Math.round(bullishWeighted / bullishWeightTotal))
+    : 0;
+  const bearishScore = bearishWeightTotal > 0
+    ? -clamp(Math.round(bearishWeighted / bearishWeightTotal))
+    : 0;
+
+  return {
+    bullishScore,
+    bearishScore,
+    latestBullish,
+    latestBearish,
+  };
+}
+
 /**
  * Score FVG proximity with distance scaling and directional sign.
  * Returns -100 to +100: positive for bullish FVGs, negative for bearish FVGs.
@@ -2073,13 +2150,13 @@ export function scoreMomentumScalper(input: ScoringInput): SystemEvaluation {
 
 // ── 6. Divergence Master ─────────────────────────────────────────────────────
 
-/** Lookback period in candles for divergence detection (last N divergence points are considered). */
-const DIVERGENCE_LOOKBACK_BARS = 50;
-
 export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
   const {
     divergencePoints = [],
     currentTime,
+    timeframe,
+    htfBullish,
+    htfBearish,
     lastRsi,
     prevRsi,
     macdNow,
@@ -2091,42 +2168,22 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
     smtDivergence,
   } = input;
 
-  // ── Actual divergence detection from divergencePoints ──────────────────────
-  // Use the most recent DIVERGENCE_LOOKBACK_BARS points, optionally filtered by currentTime.
-  const recentSlice = divergencePoints.slice(-DIVERGENCE_LOOKBACK_BARS);
-  const recentPoints = currentTime !== undefined
-    ? recentSlice.filter(d => d.time <= currentTime)
-    : recentSlice;
+  const directionalDiv = getDirectionalDivergenceStrengths(
+    divergencePoints,
+    currentTime,
+    timeframe,
+  );
+  const bullishDivScore = directionalDiv.bullishScore;
+  const bearishDivScore = directionalDiv.bearishScore;
 
-  const recentBullish = recentPoints.filter(d => d.type === 'bullish');
-  const recentBearish = recentPoints.filter(d => d.type === 'bearish');
-
-  const strongBullish = recentBullish
-    .filter(d => d.count >= 3)
-    .sort((a, b) => (b.time as number) - (a.time as number))[0];
-
-  const strongBearish = recentBearish
-    .filter(d => d.count >= 3)
-    .sort((a, b) => (b.time as number) - (a.time as number))[0];
-
-  const weakBullish = recentBullish
-    .filter(d => d.count >= 1)
-    .sort((a, b) => (b.time as number) - (a.time as number))[0];
-  const weakBearish = recentBearish
-    .filter(d => d.count >= 1)
-    .sort((a, b) => (b.time as number) - (a.time as number))[0];
-
-  const bullishDivScore = strongBullish
-    ? Math.min(100, 65 + (strongBullish.count * 10))
-    : weakBullish
-      ? Math.min(80, 35 + (weakBullish.count * 10))
-      : 0;
-
-  const bearishDivScore = strongBearish
-    ? -Math.min(100, 65 + (strongBearish.count * 10))
-    : weakBearish
-      ? -Math.min(80, 35 + (weakBearish.count * 10))
-      : 0;
+  // Net scanner divergence adds HTF/timeframe-aware context to the standalone Divergence Master.
+  const scannerDivergence = scoreDivergencePointsConfluence(
+    divergencePoints,
+    currentTime,
+    timeframe,
+    htfBullish,
+    htfBearish,
+  );
 
   const rsiLevelScore = lastRsi !== undefined ? scoreRSI(lastRsi) : 0;
 
@@ -2172,26 +2229,37 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
       id: 'bullishDivergence',
       name: 'Bullish Divergence',
       score: bullishDivScore,
-      value: (strongBullish ?? weakBullish)
-        ? (strongBullish ?? weakBullish)!.indicators.slice(0, 3).join(', ')
+      value: directionalDiv.latestBullish
+        ? `${Math.round((directionalDiv.latestBullish.count / 7) * 100)}%`
         : undefined,
-      description: 'Strength of recent bullish divergence cluster.',
+      description: directionalDiv.latestBullish
+        ? `Latest bullish point (${directionalDiv.latestBullish.indicators.slice(0, 3).join(', ')})`
+        : 'No recent bullish divergence points.',
     },
     {
       id: 'bearishDivergence',
       name: 'Bearish Divergence',
       score: bearishDivScore,
-      value: (strongBearish ?? weakBearish)
-        ? (strongBearish ?? weakBearish)!.indicators.slice(0, 3).join(', ')
+      value: directionalDiv.latestBearish
+        ? `${Math.round((directionalDiv.latestBearish.count / 7) * 100)}%`
         : undefined,
-      description: 'Strength of recent bearish divergence cluster.',
+      description: directionalDiv.latestBearish
+        ? `Latest bearish point (${directionalDiv.latestBearish.indicators.slice(0, 3).join(', ')})`
+        : 'No recent bearish divergence points.',
     },
     {
       id: 'smtDivergence',
       name: 'SMT Divergence',
       score: smtDivScore,
-      value: smtDivScore !== 0 ? `${Math.abs(smtDivScore)}/100` : undefined,
+      value: smtDivScore !== 0 ? `${Math.abs(smtDivScore)}%` : undefined,
       description: smtDivDetails || 'No SMT divergence signal',
+    },
+    {
+      id: 'divergenceNet',
+      name: 'Divergence Net Bias',
+      score: scannerDivergence.score,
+      value: scannerDivergence.score !== 0 ? `${Math.abs(scannerDivergence.score)}%` : undefined,
+      description: scannerDivergence.source,
     },
     {
       id: 'rsiLevel',
@@ -2214,7 +2282,85 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
     },
   ];
 
-  const { conditions, overallScore, reasoning } = mapWeightedConditions('divergence-master', granularConditions);
+  const weights = getConditionWeights('divergence-master');
+  const conditions: ScoredCondition[] = granularConditions.map(condition => {
+    const userWeight = (weights[condition.id] ?? 1) as WeightLevel;
+    const score = clamp(Math.round(condition.score));
+    return {
+      id: condition.id,
+      name: condition.name,
+      met: Math.abs(score) >= 40,
+      weight: userWeight,
+      score,
+      userWeight,
+      weightedScore: score * userWeight,
+      value: condition.value,
+      description: condition.description,
+    };
+  });
+
+  const toBullishMagnitude = (condition: ScoredCondition): number => {
+    const score = condition.score ?? 0;
+    if (condition.id === 'bearishDivergence') return 0;
+    return Math.max(0, score);
+  };
+
+  const toBearishMagnitude = (condition: ScoredCondition): number => {
+    const score = condition.score ?? 0;
+    if (condition.id === 'bullishDivergence') return 0;
+    return Math.abs(Math.min(0, score));
+  };
+
+  const setupScore = (
+    setup: 'bullish' | 'bearish',
+  ): number => {
+    const active = conditions.filter(c => (c.userWeight ?? 0) > 0);
+    if (active.length === 0) return 0;
+
+    const weightedMagnitude = active.reduce((sum, c) => {
+      const mag = setup === 'bullish' ? toBullishMagnitude(c) : toBearishMagnitude(c);
+      return sum + (mag * (c.userWeight ?? 0));
+    }, 0);
+
+    const totalWeight = active.reduce((sum, c) => sum + (c.userWeight ?? 0), 0);
+    if (totalWeight === 0) return 0;
+
+    return Math.round(weightedMagnitude / totalWeight);
+  };
+
+  const bullishSetupScore = setupScore('bullish');
+  const bearishSetupScore = setupScore('bearish');
+
+  const latestBullTime = directionalDiv.latestBullish?.time ?? -Infinity;
+  const latestBearTime = directionalDiv.latestBearish?.time ?? -Infinity;
+
+  const activeSetupDirection: 'bullish' | 'bearish' | null =
+    Number.isFinite(latestBullTime) || Number.isFinite(latestBearTime)
+      ? (latestBullTime >= latestBearTime ? 'bullish' : 'bearish')
+      : scannerDivergence.score > 0
+        ? 'bullish'
+        : scannerDivergence.score < 0
+          ? 'bearish'
+          : bullishSetupScore > bearishSetupScore
+            ? 'bullish'
+            : bearishSetupScore > bullishSetupScore
+              ? 'bearish'
+              : null;
+
+  const overallScore = activeSetupDirection === 'bullish'
+    ? bullishSetupScore
+    : activeSetupDirection === 'bearish'
+      ? -bearishSetupScore
+      : 0;
+
+  const reasoning: string[] = [
+    `Bull Setup: ${bullishSetupScore}%`,
+    `Bear Setup: ${bearishSetupScore}%`,
+    activeSetupDirection
+      ? `Active Setup: ${activeSetupDirection === 'bullish' ? 'Bullish' : 'Bearish'} (${activeSetupDirection === 'bullish' ? '+' : '-'}${Math.abs(overallScore)})`
+      : 'Active Setup: Neutral',
+  ];
+
   return buildEvaluation('divergence-master', conditions, overallScore, reasoning);
 }
 
