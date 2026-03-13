@@ -76,6 +76,7 @@ import { scoreSystem, buildSmcZoneInputs, type ScoringInput } from '@/lib/tradin
 import { runTradingSystemBacktest, type BacktestResult } from '@/lib/tradingSystemBacktest';
 import { AlertSettingsDialog } from '@/components/AlertSettingsDialog';
 import { DrawingAlertSettings } from '@/components/modals/DrawingAlertSettings';
+import type { OscillatorModalConfig } from '@/components/modals/OscillatorSelectorModal';
 import { useGDSMarketMetrics } from '@/hooks/indicators/useGDSMarketMetrics';
 import { useGenuineDemandScore } from '@/hooks/indicators/useGenuineDemandScore';
 import { GDSMiniBadge } from '@/components/indicators/GDSMiniBadge';
@@ -349,8 +350,133 @@ export function ChartFullscreenPage({
     setRewindPosition(null);
   }, []);
 
+  const oscillatorSettings = useMemo(
+    () => ({
+      rsiPeriod: indicators.rsi.period,
+      macdFast: indicators.macd.fast,
+      macdSlow: indicators.macd.slow,
+      macdSignal: indicators.macd.signal,
+      stochRsiPeriod: indicators.stochRSI.period,
+      mfiPeriod: indicators.mfi.period,
+      williamsRPeriod: indicators.williamsR.period,
+      cciPeriod: indicators.cci.period,
+      adxPeriod: indicators.adx.period,
+    }),
+    [
+      indicators.rsi.period,
+      indicators.macd.fast,
+      indicators.macd.slow,
+      indicators.macd.signal,
+      indicators.stochRSI.period,
+      indicators.mfi.period,
+      indicators.williamsR.period,
+      indicators.cci.period,
+      indicators.adx.period,
+    ],
+  );
+
   // Hooks - Oscillator data
-  const oscillatorData = useOscillatorData(effectiveCandles);
+  const oscillatorData = useOscillatorData(effectiveCandles, oscillatorSettings);
+
+  const oscillatorModalConfigs = useMemo<Record<string, OscillatorModalConfig>>(
+    () => ({
+      rsi: { enabled: oscillatorPanel.selectedOscillators.has('rsi'), period: indicators.rsi.period },
+      macd: {
+        enabled: oscillatorPanel.selectedOscillators.has('macd'),
+        fast: indicators.macd.fast,
+        slow: indicators.macd.slow,
+        signal: indicators.macd.signal,
+      },
+      stochRsi: { enabled: oscillatorPanel.selectedOscillators.has('stochRsi'), period: indicators.stochRSI.period },
+      mfi: { enabled: oscillatorPanel.selectedOscillators.has('mfi'), period: indicators.mfi.period },
+      williamsR: { enabled: oscillatorPanel.selectedOscillators.has('williamsR'), period: indicators.williamsR.period },
+      cci: { enabled: oscillatorPanel.selectedOscillators.has('cci'), period: indicators.cci.period },
+      adx: { enabled: oscillatorPanel.selectedOscillators.has('adx'), period: indicators.adx.period },
+      obv: { enabled: oscillatorPanel.selectedOscillators.has('obv') },
+      volume: { enabled: oscillatorPanel.selectedOscillators.has('volume') },
+      cmf: { enabled: oscillatorPanel.selectedOscillators.has('cmf') },
+      tsi: { enabled: oscillatorPanel.selectedOscillators.has('tsi') },
+      klinger: { enabled: oscillatorPanel.selectedOscillators.has('klinger') },
+      waddah: { enabled: oscillatorPanel.selectedOscillators.has('waddah') },
+      smartMoney: { enabled: oscillatorPanel.selectedOscillators.has('smartMoney') },
+    }),
+    [
+      oscillatorPanel.selectedOscillators,
+      indicators.rsi.period,
+      indicators.macd.fast,
+      indicators.macd.slow,
+      indicators.macd.signal,
+      indicators.stochRSI.period,
+      indicators.mfi.period,
+      indicators.williamsR.period,
+      indicators.cci.period,
+      indicators.adx.period,
+    ],
+  );
+
+  const handleUpdateOscillatorConfig = useCallback((oscillatorId: string, config: OscillatorModalConfig) => {
+    switch (oscillatorId) {
+      case 'rsi': {
+        if (typeof config.period === 'number' && Number.isFinite(config.period)) {
+          indicators.rsi.setPeriod(config.period);
+          indicators.rsi.setPeriodInput(String(config.period));
+        }
+        break;
+      }
+      case 'macd': {
+        if (typeof config.fast === 'number' && Number.isFinite(config.fast)) {
+          indicators.macd.setFast(config.fast);
+          indicators.macd.setFastInput(String(config.fast));
+        }
+        if (typeof config.slow === 'number' && Number.isFinite(config.slow)) {
+          indicators.macd.setSlow(config.slow);
+          indicators.macd.setSlowInput(String(config.slow));
+        }
+        if (typeof config.signal === 'number' && Number.isFinite(config.signal)) {
+          indicators.macd.setSignal(config.signal);
+          indicators.macd.setSignalInput(String(config.signal));
+        }
+        break;
+      }
+      case 'stochRsi': {
+        if (typeof config.period === 'number' && Number.isFinite(config.period)) {
+          indicators.stochRSI.setPeriod(config.period);
+          indicators.stochRSI.setPeriodInput(String(config.period));
+        }
+        break;
+      }
+      case 'mfi': {
+        if (typeof config.period === 'number' && Number.isFinite(config.period)) {
+          indicators.mfi.setPeriod(config.period);
+          indicators.mfi.setPeriodInput(String(config.period));
+        }
+        break;
+      }
+      case 'williamsR': {
+        if (typeof config.period === 'number' && Number.isFinite(config.period)) {
+          indicators.williamsR.setPeriod(config.period);
+          indicators.williamsR.setPeriodInput(String(config.period));
+        }
+        break;
+      }
+      case 'cci': {
+        if (typeof config.period === 'number' && Number.isFinite(config.period)) {
+          indicators.cci.setPeriod(config.period);
+          indicators.cci.setPeriodInput(String(config.period));
+        }
+        break;
+      }
+      case 'adx': {
+        if (typeof config.period === 'number' && Number.isFinite(config.period)) {
+          indicators.adx.setPeriod(config.period);
+          indicators.adx.setPeriodInput(String(config.period));
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }, [indicators]);
 
   // Hooks - Indicators
   const indicators = useIndicatorState();
@@ -1689,9 +1815,6 @@ export function ChartFullscreenPage({
           onRedo={handleRedo}
           htfBiasEnabled={htfBiasSettings.settings.enabled}
           onToggleHtfBias={() => htfBiasSettings.updateSetting('enabled', !htfBiasSettings.settings.enabled)}
-          squeezeEnabled={sqzSettings.settings.enabled}
-          onToggleSqueeze={(enabled) => sqzSettings.updateSettings({ enabled })}
-          onOpenSqueezeSettings={() => setShowSqueezeSettings(true)}
           vpEnabled={vpSettings.settings.enabled}
           onToggleVolumeProfile={(enabled) => vpSettings.updateSettings({ enabled })}
           onOpenVolumeProfileSettings={() => setShowVPModal(true)}
@@ -1902,6 +2025,8 @@ export function ChartFullscreenPage({
         onCloseOscillatorSelector={() => oscillatorPanel.setShowSelector(false)}
         selectedOscillators={oscillatorPanel.selectedOscillators}
         onToggleOscillator={oscillatorPanel.toggleOscillator}
+        oscillatorConfigs={oscillatorModalConfigs}
+        onUpdateOscillatorConfig={handleUpdateOscillatorConfig}
         showSmcModal={showSmcModal}
         onCloseSmcModal={() => setShowSmcModal(false)}
         fvgSettings={fvgSettings.settings}

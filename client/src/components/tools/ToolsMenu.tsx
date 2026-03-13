@@ -9,14 +9,8 @@ interface ToolsMenuProps {
   divergenceScannerEnabled: boolean;
   onToggleDivergenceScanner: (enabled: boolean) => void;
   onOpenDivergenceSettings?: () => void;
-  superTrendEnabled: boolean;
-  onToggleSuperTrend: (enabled: boolean) => void;
-  onOpenSuperTrendSettings: () => void;
   htfBiasEnabled: boolean;
   onToggleHtfBias: () => void;
-  squeezeEnabled: boolean;
-  onToggleSqueeze: (enabled: boolean) => void;
-  onOpenSqueezeSettings: () => void;
   vpEnabled: boolean;
   onToggleVolumeProfile: (enabled: boolean) => void;
   onOpenVolumeProfileSettings: () => void;
@@ -29,14 +23,8 @@ export function ToolsMenu({
   divergenceScannerEnabled,
   onToggleDivergenceScanner,
   onOpenDivergenceSettings,
-  superTrendEnabled,
-  onToggleSuperTrend,
-  onOpenSuperTrendSettings,
   htfBiasEnabled,
   onToggleHtfBias,
-  squeezeEnabled,
-  onToggleSqueeze,
-  onOpenSqueezeSettings,
   vpEnabled,
   onToggleVolumeProfile,
   onOpenVolumeProfileSettings,
@@ -48,9 +36,7 @@ export function ToolsMenu({
 
   const hasActiveTools =
     divergenceScannerEnabled ||
-    superTrendEnabled ||
     htfBiasEnabled ||
-    squeezeEnabled ||
     vpEnabled ||
     gdsMiniBadgeEnabled;
 
@@ -139,71 +125,6 @@ export function ToolsMenu({
               onCheckedChange={() => onToggleHtfBias()}
               className="shrink-0 data-[state=checked]:bg-blue-600"
             />
-          </div>
-
-          <div className="flex items-center justify-between py-1.5 px-1">
-            <div className="min-w-0 mr-3">
-              <div className="text-sm font-medium text-slate-100 leading-tight">
-                Squeeze
-              </div>
-              <div className="text-xs text-slate-400 leading-tight">
-                Squeeze Momentum (LazyBear)
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              <Switch
-                checked={squeezeEnabled}
-                onCheckedChange={onToggleSqueeze}
-                className="shrink-0 data-[state=checked]:bg-blue-600"
-              />
-              {
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
-                  title="Squeeze Momentum Settings"
-                  onClick={() => {
-                    setOpen(false);
-                    onOpenSqueezeSettings();
-                  }}
-                  data-testid="btn-squeeze-momentum-settings"
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                </Button>
-              }
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between py-1.5 px-1">
-            <div className="min-w-0 mr-3">
-              <div className="text-sm font-medium text-slate-100 leading-tight">
-                SuperTrend
-              </div>
-              <div className="text-xs text-slate-400 leading-tight">
-                Standard, ADX, Keltner
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              <Switch
-                checked={superTrendEnabled}
-                onCheckedChange={onToggleSuperTrend}
-                className="shrink-0 data-[state=checked]:bg-blue-600"
-              />
-              {
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
-                  title="SuperTrend Settings"
-                  onClick={() => {
-                    setOpen(false);
-                    onOpenSuperTrendSettings();
-                  }}
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                </Button>
-              }
-            </div>
           </div>
 
           <div className="flex items-center justify-between py-1.5 px-1">

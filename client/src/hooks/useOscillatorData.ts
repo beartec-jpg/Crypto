@@ -62,6 +62,30 @@ export interface OscillatorData {
   };
 }
 
+export interface OscillatorCalculationSettings {
+  rsiPeriod?: number;
+  macdFast?: number;
+  macdSlow?: number;
+  macdSignal?: number;
+  stochRsiPeriod?: number;
+  mfiPeriod?: number;
+  williamsRPeriod?: number;
+  cciPeriod?: number;
+  adxPeriod?: number;
+}
+
+const DEFAULT_SETTINGS: Required<OscillatorCalculationSettings> = {
+  rsiPeriod: 14,
+  macdFast: 12,
+  macdSlow: 26,
+  macdSignal: 9,
+  stochRsiPeriod: 14,
+  mfiPeriod: 14,
+  williamsRPeriod: 14,
+  cciPeriod: 20,
+  adxPeriod: 14,
+};
+
 // Number of candles to use for volume average calculation
 const VOLUME_AVERAGE_PERIOD = 20;
 
@@ -70,8 +94,13 @@ const VOLUME_AVERAGE_PERIOD = 20;
  * @param candles - Array of candlestick data
  * @returns Calculated oscillator data (RSI, MACD, Volume, and more)
  */
-export function useOscillatorData(candles: CandleData[]): OscillatorData {
+export function useOscillatorData(
+  candles: CandleData[],
+  settings: OscillatorCalculationSettings = DEFAULT_SETTINGS,
+): OscillatorData {
   return useMemo(() => {
+    const resolved = { ...DEFAULT_SETTINGS, ...settings };
+
     if (candles.length === 0) {
       return {
         rsi: [],
@@ -92,10 +121,10 @@ export function useOscillatorData(candles: CandleData[]): OscillatorData {
     }
 
     // Calculate RSI
-    const rsiData = calculateRSI(candles, 14);
+    const rsiData = calculateRSI(candles, resolved.rsiPeriod);
 
     // Calculate MACD
-    const macdData = calculateMACD(candles, 12, 26, 9);
+    const macdData = calculateMACD(candles, resolved.macdFast, resolved.macdSlow, resolved.macdSignal);
 
     // Calculate average volume for percentage
     const avgVolume = candles.slice(-VOLUME_AVERAGE_PERIOD).reduce((sum, c) => sum + c.volume, 0) / VOLUME_AVERAGE_PERIOD;
@@ -112,16 +141,16 @@ export function useOscillatorData(candles: CandleData[]): OscillatorData {
       macd: macdData,
       volume: volumeData,
       avgVolume,
-      stochRsi: calculateStochasticRSI(candles, 14, 14, 3, 3),
-      williamsR: calculateWilliamsR(candles, 14),
-      cci: calculateCCI(candles, 20),
-      adx: calculateADX(candles, 14),
+      stochRsi: calculateStochasticRSI(candles, resolved.stochRsiPeriod, resolved.stochRsiPeriod, 3, 3),
+      williamsR: calculateWilliamsR(candles, resolved.williamsRPeriod),
+      cci: calculateCCI(candles, resolved.cciPeriod),
+      adx: calculateADX(candles, resolved.adxPeriod),
       obv: calculateOBV(candles),
-      mfi: calculateMFI(candles, 14),
+      mfi: calculateMFI(candles, resolved.mfiPeriod),
       cmf: calculateCMF(candles, 20),
       tsi: calculateTSI(candles, 25, 13, 7),
       klinger: calculateKlingerOscillator(candles, 34, 55, 13),
       waddah: calculateWaddahAttarExplosion(candles, 150, 20, 2),
     };
-  }, [candles]);
+  }, [candles, settings]);
 }

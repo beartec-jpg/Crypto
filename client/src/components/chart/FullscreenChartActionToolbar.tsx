@@ -71,10 +71,6 @@ interface FullscreenChartActionToolbarProps {
   htfBiasEnabled: boolean;
   onToggleHtfBias: () => void;
 
-  squeezeEnabled: boolean;
-  onToggleSqueeze: (enabled: boolean) => void;
-  onOpenSqueezeSettings: () => void;
-
   vpEnabled: boolean;
   onToggleVolumeProfile: (enabled: boolean) => void;
   onOpenVolumeProfileSettings: () => void;
@@ -135,9 +131,6 @@ export function FullscreenChartActionToolbar({
   onRedo,
   htfBiasEnabled,
   onToggleHtfBias,
-  squeezeEnabled,
-  onToggleSqueeze,
-  onOpenSqueezeSettings,
   vpEnabled,
   onToggleVolumeProfile,
   onOpenVolumeProfileSettings,
@@ -168,6 +161,9 @@ export function FullscreenChartActionToolbar({
         elderImpulseShow={elderImpulseShow}
         onElderImpulseToggle={onElderImpulseToggle}
         onOpenEmaSma={onOpenEmaSma}
+        superTrendEnabled={superTrendEnabled}
+        onToggleSuperTrend={onToggleSuperTrend}
+        onOpenSuperTrendSettings={onOpenSuperTrendSettings}
         fvgSettings={fvgSettings}
         onFVGSettingsChange={onFVGSettingsChange}
         obSettings={obSettings}
@@ -189,14 +185,8 @@ export function FullscreenChartActionToolbar({
         divergenceScannerEnabled={divergenceScannerEnabled}
         onToggleDivergenceScanner={onToggleDivergenceScanner}
         onOpenDivergenceSettings={onOpenDivergenceSettings}
-        superTrendEnabled={superTrendEnabled}
-        onToggleSuperTrend={onToggleSuperTrend}
-        onOpenSuperTrendSettings={onOpenSuperTrendSettings}
         htfBiasEnabled={htfBiasEnabled}
         onToggleHtfBias={onToggleHtfBias}
-        squeezeEnabled={squeezeEnabled}
-        onToggleSqueeze={onToggleSqueeze}
-        onOpenSqueezeSettings={onOpenSqueezeSettings}
         vpEnabled={vpEnabled}
         onToggleVolumeProfile={onToggleVolumeProfile}
         onOpenVolumeProfileSettings={onOpenVolumeProfileSettings}

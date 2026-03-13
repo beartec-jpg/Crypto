@@ -7,6 +7,7 @@ import { SuperTrendSettingsModal } from '@/components/modals/SuperTrendSettingsM
 import { VWAPSettingsModal } from '@/components/modals/VWAPSettingsModal';
 import { DrawingSettingsModal } from '@/components/modals/DrawingSettingsModal';
 import { DrawingSelectionModal } from '@/components/drawings/DrawingSelectionModal';
+import type { OscillatorModalConfig } from '@/components/modals/OscillatorSelectorModal';
 
 interface FullscreenChartModalsProps {
   selectedDrawingId: string | null;
@@ -37,6 +38,8 @@ interface FullscreenChartModalsProps {
   onCloseOscillatorSelector: () => void;
   selectedOscillators: Set<string>;
   onToggleOscillator: (id: string, enabled: boolean) => void;
+  oscillatorConfigs: Record<string, OscillatorModalConfig>;
+  onUpdateOscillatorConfig: (id: string, config: OscillatorModalConfig) => void;
 
   showSmcModal: boolean;
   onCloseSmcModal: () => void;
@@ -98,6 +101,8 @@ export function FullscreenChartModals({
   onCloseOscillatorSelector,
   selectedOscillators,
   onToggleOscillator,
+  oscillatorConfigs,
+  onUpdateOscillatorConfig,
   showSmcModal,
   onCloseSmcModal,
   fvgSettings,
@@ -167,6 +172,8 @@ export function FullscreenChartModals({
         onClose={onCloseOscillatorSelector}
         selectedOscillators={selectedOscillators}
         onToggleOscillator={onToggleOscillator}
+        oscillatorConfigs={oscillatorConfigs}
+        onUpdateOscillatorConfig={onUpdateOscillatorConfig}
       />
 
       <SMCSettingsModal

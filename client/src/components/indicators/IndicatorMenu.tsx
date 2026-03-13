@@ -46,6 +46,9 @@ interface IndicatorMenuProps {
   elderImpulseShow: boolean;
   onElderImpulseToggle: (show: boolean) => void;
   onOpenEmaSma: () => void;
+  superTrendEnabled: boolean;
+  onToggleSuperTrend: (enabled: boolean) => void;
+  onOpenSuperTrendSettings: () => void;
   // SMC
   fvgSettings: FVGSettings;
   onFVGSettingsChange: (s: FVGSettings) => void;
@@ -107,6 +110,9 @@ export function IndicatorMenu({
   elderImpulseShow,
   onElderImpulseToggle,
   onOpenEmaSma,
+  superTrendEnabled,
+  onToggleSuperTrend,
+  onOpenSuperTrendSettings,
   fvgSettings,
   onFVGSettingsChange,
   obSettings,
@@ -132,6 +138,7 @@ export function IndicatorMenu({
     (emaShow ? 1 : 0) +
     (smaShow ? 1 : 0) +
     (vwapShow ? 1 : 0) +
+    (superTrendEnabled ? 1 : 0) +
     (elderImpulseShow ? 1 : 0) +
     (fvgSettings.enabled ? 1 : 0) +
     (obSettings.enabled ? 1 : 0) +
@@ -193,7 +200,7 @@ export function IndicatorMenu({
               value="mas"
               className="flex-1 text-xs data-[state=active]:bg-slate-800 data-[state=active]:text-white text-slate-400"
             >
-              MAs
+              Trend
             </TabsTrigger>
             <TabsTrigger
               value="smc"
@@ -232,7 +239,7 @@ export function IndicatorMenu({
             </div>
           </TabsContent>
 
-          {/* MAs Tab */}
+          {/* Trend Tab */}
           <TabsContent value="mas" className="m-0 p-2">
             <div className="flex items-center justify-between mb-1 px-1">
               <span className="text-xs text-slate-400 font-medium uppercase tracking-wide">
@@ -286,6 +293,23 @@ export function IndicatorMenu({
                   className="h-5 w-5 text-slate-500 hover:text-white hover:bg-slate-800"
                   title="Configure VWAP settings"
                   onClick={() => { setOpen(false); onOpenVwapSettings(); }}
+                >
+                  <Settings className="h-3 w-3" />
+                </Button>
+              </div>
+              <IndicatorRow
+                label="SuperTrend"
+                description="Standard, ADX, Keltner"
+                checked={superTrendEnabled}
+                onCheckedChange={onToggleSuperTrend}
+              />
+              <div className="flex items-center justify-end px-1 -mt-1 mb-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 text-slate-500 hover:text-white hover:bg-slate-800"
+                  title="Configure SuperTrend settings"
+                  onClick={() => { setOpen(false); onOpenSuperTrendSettings(); }}
                 >
                   <Settings className="h-3 w-3" />
                 </Button>
