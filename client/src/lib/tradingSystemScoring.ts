@@ -210,6 +210,38 @@ function scoreSmoothedMacdTurn(
   return 0;
 }
 
+function scoreSmoothedRsiLevelContext(
+  lastRsi: number | undefined,
+  rsiHistory: number[] | undefined,
+): number {
+  if (lastRsi === undefined) return 0;
+
+  let contextRsi = lastRsi;
+
+  // Smooth context using recent RSI values to avoid abrupt step changes.
+  if (rsiHistory && rsiHistory.length >= 5) {
+    const r0 = rsiHistory[rsiHistory.length - 1];
+    const r1 = rsiHistory[rsiHistory.length - 2];
+    const r2 = rsiHistory[rsiHistory.length - 3];
+    const r3 = rsiHistory[rsiHistory.length - 4];
+    const r4 = rsiHistory[rsiHistory.length - 5];
+    contextRsi = (r0 * 0.35) + (r1 * 0.25) + (r2 * 0.2) + (r3 * 0.12) + (r4 * 0.08);
+  }
+
+  // Neutral dead-zone around 50 RSI.
+  if (contextRsi >= 46 && contextRsi <= 54) return 0;
+
+  // Oversold side (bullish context).
+  if (contextRsi < 46) {
+    const dist = 46 - contextRsi;
+    return clamp(Math.round(Math.min(100, (dist / 26) * 100)));
+  }
+
+  // Overbought side (bearish context).
+  const dist = contextRsi - 54;
+  return clamp(-Math.round(Math.min(100, (dist / 26) * 100)));
+}
+
 function mapWeightedConditions(
   systemId: string,
   granularConditions: GranularCondition[],
@@ -2273,7 +2305,7 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
     htfBearish,
   );
 
-  const rsiLevelScore = lastRsi !== undefined ? scoreRSI(lastRsi) : 0;
+  const rsiLevelScore = scoreSmoothedRsiLevelContext(lastRsi, rsiHistory);
 
   const rsiTurnScore = scoreSmoothedRsiTurn(lastRsi, prevRsi, rsiHistory);
 
@@ -2354,7 +2386,7 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
       name: 'RSI Level Context',
       score: rsiLevelScore,
       value: lastRsi !== undefined ? `RSI: ${lastRsi.toFixed(1)}` : undefined,
-      description: 'Oversold/overbought context from RSI.',
+      description: 'Smoothed RSI location context (continuous oversold/overbought bias).',
     },
     {
       id: 'rsiTurn',
@@ -2387,66 +2419,77 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
     };
   });
 
-  const toBullishMagnitude = (condition: ScoredCondition): number => {
-    const score = condition.score ?? 0;
-    if (condition.id === 'bearishDivergence') return 0;
-    return Math.max(0, score);
-  };
+  const bullishCondition = conditions.find(c => c.id === 'bullishDivergence');
+  const bearishCondition = conditions.find(c => c.id === 'bearishDivergence');
 
-  const toBearishMagnitude = (condition: ScoredCondition): number => {
-    const score = condition.score ?? 0;
-    if (condition.id === 'bullishDivergence') return 0;
-    return Math.abs(Math.min(0, score));
-  };
+  const bullishEnabled = (bullishCondition?.userWeight ?? 0) > 0;
+  const bearishEnabled = (bearishCondition?.userWeight ?? 0) > 0;
 
-  const setupScore = (
-    setup: 'bullish' | 'bearish',
-  ): number => {
-    const active = conditions.filter(c => (c.userWeight ?? 0) > 0);
-    if (active.length === 0) return 0;
+  const bullishBasePct = bullishEnabled ? Math.max(0, bullishCondition?.score ?? 0) : 0;
+  const bearishBasePct = bearishEnabled ? Math.abs(Math.min(0, bearishCondition?.score ?? 0)) : 0;
 
-    const weightedMagnitude = active.reduce((sum, c) => {
-      const mag = setup === 'bullish' ? toBullishMagnitude(c) : toBearishMagnitude(c);
-      return sum + (mag * (c.userWeight ?? 0));
-    }, 0);
-
-    const totalWeight = active.reduce((sum, c) => sum + (c.userWeight ?? 0), 0);
-    if (totalWeight === 0) return 0;
-
-    return Math.round(weightedMagnitude / totalWeight);
-  };
-
-  const bullishSetupScore = setupScore('bullish');
-  const bearishSetupScore = setupScore('bearish');
-
-  const latestBullTime = directionalDiv.latestBullish?.time ?? -Infinity;
-  const latestBearTime = directionalDiv.latestBearish?.time ?? -Infinity;
+  const latestBullTime = bullishEnabled ? (directionalDiv.latestBullish?.time ?? -Infinity) : -Infinity;
+  const latestBearTime = bearishEnabled ? (directionalDiv.latestBearish?.time ?? -Infinity) : -Infinity;
 
   const activeSetupDirection: 'bullish' | 'bearish' | null =
     Number.isFinite(latestBullTime) || Number.isFinite(latestBearTime)
       ? (latestBullTime >= latestBearTime ? 'bullish' : 'bearish')
-      : scannerDivergence.score > 0
+      : scannerDivergence.score > 0 && bullishEnabled
         ? 'bullish'
-        : scannerDivergence.score < 0
+        : scannerDivergence.score < 0 && bearishEnabled
           ? 'bearish'
-          : bullishSetupScore > bearishSetupScore
+          : bullishBasePct > bearishBasePct
             ? 'bullish'
-            : bearishSetupScore > bullishSetupScore
+            : bearishBasePct > bullishBasePct
               ? 'bearish'
               : null;
 
-  const overallScore = activeSetupDirection === 'bullish'
-    ? bullishSetupScore
+  const baseDivergencePct = activeSetupDirection === 'bullish'
+    ? bullishBasePct
     : activeSetupDirection === 'bearish'
-      ? -bearishSetupScore
+      ? bearishBasePct
       : 0;
 
+  const levelMultiplier = (level: WeightLevel): number => {
+    if (level <= 0) return 1.0;
+    if (level === 1) return 1.1;
+    if (level === 2) return 1.2;
+    return 1.3;
+  };
+
+  const confluenceIds = ['smtDivergence', 'divergenceNet', 'rsiLevel', 'rsiTurn', 'macdTurn'];
+  const activeSign = activeSetupDirection === 'bearish' ? -1 : 1;
+
+  let totalMultiplier = 1.0;
+  const appliedBoosts: string[] = [];
+
+  if (activeSetupDirection) {
+    for (const condition of conditions) {
+      if (!confluenceIds.includes(condition.id)) continue;
+      const level = (condition.userWeight ?? 0) as WeightLevel;
+      if (level <= 0) continue;
+
+      const score = condition.score ?? 0;
+      const isAligned = score !== 0 && Math.sign(score) === activeSign;
+      const isMeaningful = Math.abs(score) >= 20;
+      if (!isAligned || !isMeaningful) continue;
+
+      const mult = levelMultiplier(level);
+      totalMultiplier *= mult;
+      appliedBoosts.push(`${condition.name} x${mult.toFixed(2)}`);
+    }
+  }
+
+  const boostedBase = Math.round(baseDivergencePct * totalMultiplier);
+  const overallScore = activeSetupDirection === 'bearish' ? -boostedBase : boostedBase;
+
   const reasoning: string[] = [
-    `Bull Setup: ${bullishSetupScore}%`,
-    `Bear Setup: ${bearishSetupScore}%`,
-    activeSetupDirection
-      ? `Active Setup: ${activeSetupDirection === 'bullish' ? 'Bullish' : 'Bearish'} (${activeSetupDirection === 'bullish' ? '+' : '-'}${Math.abs(overallScore)})`
-      : 'Active Setup: Neutral',
+    `Bull Base Divergence: ${bullishBasePct}%`,
+    `Bear Base Divergence: ${bearishBasePct}%`,
+    `Base (${activeSetupDirection ?? 'neutral'}): ${baseDivergencePct}%`,
+    `Confluence Multiplier: x${totalMultiplier.toFixed(2)}` +
+      (appliedBoosts.length > 0 ? ` (${appliedBoosts.join(', ')})` : ' (no aligned boosts)'),
+    `Final: ${overallScore > 0 ? '+' : ''}${overallScore}`,
   ];
 
   return buildEvaluation('divergence-master', conditions, overallScore, reasoning);
