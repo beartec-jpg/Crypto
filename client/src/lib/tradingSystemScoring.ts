@@ -159,6 +159,57 @@ function scoreSmoothedRsiTurn(
   return 0;
 }
 
+function scoreSmoothedMacdTurn(
+  macdHistogram: number | undefined,
+  prevMacdHistogram: number | undefined,
+  macdNow: number | undefined,
+  sigNow: number | undefined,
+  macdPrev: number | undefined,
+  sigPrev: number | undefined,
+  macdHistHistory: number[] | undefined,
+): number {
+  // Prefer multi-bar histogram smoothing to avoid flat/zero flicker.
+  if (macdHistHistory && macdHistHistory.length >= 5) {
+    const h0 = macdHistHistory[macdHistHistory.length - 1];
+    const h1 = macdHistHistory[macdHistHistory.length - 2];
+    const h2 = macdHistHistory[macdHistHistory.length - 3];
+    const h3 = macdHistHistory[macdHistHistory.length - 4];
+    const h4 = macdHistHistory[macdHistHistory.length - 5];
+
+    const d1 = h0 - h1;
+    const d2 = h1 - h2;
+    const d3 = h2 - h3;
+    const d4 = h3 - h4;
+
+    const smoothedDelta = (d1 * 0.4) + (d2 * 0.3) + (d3 * 0.2) + (d4 * 0.1);
+    const recentAbsAvg = (Math.abs(d1) + Math.abs(d2) + Math.abs(d3) + Math.abs(d4)) / 4;
+
+    // Dynamic range keeps sensitivity proportional to actual histogram movement.
+    const dynamicRange = Math.max(0.0015, recentAbsAvg * 3.5);
+
+    // Ignore tiny histogram noise.
+    if (Math.abs(smoothedDelta) < 0.00035) return 0;
+
+    return normalizeByRange(smoothedDelta, dynamicRange);
+  }
+
+  // Fallback to current/previous histogram delta.
+  if (macdHistogram !== undefined && prevMacdHistogram !== undefined) {
+    const delta = macdHistogram - prevMacdHistogram;
+    if (Math.abs(delta) < 0.0005) return 0;
+    return normalizeByRange(delta, 0.01);
+  }
+
+  // Final fallback to MACD-signal spread acceleration.
+  if (macdPrev !== undefined && sigPrev !== undefined && macdNow !== undefined && sigNow !== undefined) {
+    const spreadDelta = (macdNow - sigNow) - (macdPrev - sigPrev);
+    if (Math.abs(spreadDelta) < 0.0005) return 0;
+    return normalizeByRange(spreadDelta, 0.012);
+  }
+
+  return 0;
+}
+
 function mapWeightedConditions(
   systemId: string,
   granularConditions: GranularCondition[],
@@ -2199,6 +2250,7 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
     macdPrev,
     macdHistogram,
     prevMacdHistogram,
+    macdHistHistory,
     sigNow,
     sigPrev,
     smtDivergence,
@@ -2225,12 +2277,15 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
 
   const rsiTurnScore = scoreSmoothedRsiTurn(lastRsi, prevRsi, rsiHistory);
 
-  const macdTurnScore =
-    macdHistogram !== undefined && prevMacdHistogram !== undefined
-      ? normalizeByRange(macdHistogram - prevMacdHistogram, 0.4)
-      : macdPrev !== undefined && sigPrev !== undefined && macdNow !== undefined && sigNow !== undefined
-        ? normalizeByRange((macdNow - sigNow) - (macdPrev - sigPrev), 0.4)
-        : 0;
+  const macdTurnScore = scoreSmoothedMacdTurn(
+    macdHistogram,
+    prevMacdHistogram,
+    macdNow,
+    sigNow,
+    macdPrev,
+    sigPrev,
+    macdHistHistory,
+  );
 
   // SMT divergence as additional divergence type (primary but can be confluence with single-asset)
   let smtDivScore = 0;
@@ -2311,7 +2366,7 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
       id: 'macdTurn',
       name: 'MACD Turn',
       score: macdTurnScore,
-      description: 'Turning momentum in MACD structure.',
+      description: 'Smoothed MACD turn (multi-bar histogram momentum with noise filter).',
     },
   ];
 
