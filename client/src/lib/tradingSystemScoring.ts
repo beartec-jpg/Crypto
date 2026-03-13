@@ -124,6 +124,41 @@ function scorePercentMove(current: number, previous: number, rangePct = 2): numb
   return normalizeByRange(pct, rangePct);
 }
 
+function scoreSmoothedRsiTurn(
+  lastRsi: number | undefined,
+  prevRsi: number | undefined,
+  rsiHistory: number[] | undefined,
+): number {
+  // Prefer multi-bar smoothing to reduce single-candle RSI flicker.
+  if (rsiHistory && rsiHistory.length >= 4) {
+    const r0 = rsiHistory[rsiHistory.length - 1];
+    const r1 = rsiHistory[rsiHistory.length - 2];
+    const r2 = rsiHistory[rsiHistory.length - 3];
+    const r3 = rsiHistory[rsiHistory.length - 4];
+
+    const d1 = r0 - r1;
+    const d2 = r1 - r2;
+    const d3 = r2 - r3;
+
+    // Weighted recent slope with short memory.
+    const smoothedDelta = (d1 * 0.5) + (d2 * 0.3) + (d3 * 0.2);
+
+    // Ignore micro-moves that should be considered noise.
+    if (Math.abs(smoothedDelta) < 0.35) return 0;
+
+    return normalizeByRange(smoothedDelta, 6);
+  }
+
+  // Fallback when history is unavailable.
+  if (prevRsi !== undefined && lastRsi !== undefined) {
+    const delta = lastRsi - prevRsi;
+    if (Math.abs(delta) < 0.5) return 0;
+    return normalizeByRange(delta, 10);
+  }
+
+  return 0;
+}
+
 function mapWeightedConditions(
   systemId: string,
   granularConditions: GranularCondition[],
@@ -2159,6 +2194,7 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
     htfBearish,
     lastRsi,
     prevRsi,
+    rsiHistory,
     macdNow,
     macdPrev,
     macdHistogram,
@@ -2187,10 +2223,7 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
 
   const rsiLevelScore = lastRsi !== undefined ? scoreRSI(lastRsi) : 0;
 
-  const rsiTurnScore =
-    prevRsi !== undefined && lastRsi !== undefined
-      ? normalizeByRange(lastRsi - prevRsi, 8)
-      : 0;
+  const rsiTurnScore = scoreSmoothedRsiTurn(lastRsi, prevRsi, rsiHistory);
 
   const macdTurnScore =
     macdHistogram !== undefined && prevMacdHistogram !== undefined
@@ -2272,7 +2305,7 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
       id: 'rsiTurn',
       name: 'RSI Turn',
       score: rsiTurnScore,
-      description: 'Momentum turn in RSI slope.',
+      description: 'Smoothed RSI turn (multi-bar slope with noise filter).',
     },
     {
       id: 'macdTurn',
