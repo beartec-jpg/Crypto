@@ -8,9 +8,9 @@
  *
  * Cascade logic (from multiTimeframeDivergenceScoring.ts):
  *   - 1 active TF  → ×1.0 (no bonus)
- *   - 2 consecutive TFs → ×1.25
- *   - 3 consecutive TFs → ×1.5
- *   - 4+ consecutive TFs → ×2.0
+ *   - 2 consecutive TFs → ×1.5
+ *   - 3 consecutive TFs → ×2.5
+ *   - 4+ consecutive TFs → ×4.0
  */
 
 import { useState, useEffect, useMemo } from 'react';

@@ -187,9 +187,9 @@ describe('useMultiTimeframeDivergenceScanner', () => {
     );
 
     const bonusForLevel = (level: number) => {
-      if (level >= 4) return 2.0;
-      if (level === 3) return 1.5;
-      if (level === 2) return 1.25;
+      if (level >= 4) return 4.0;
+      if (level === 3) return 2.5;
+      if (level === 2) return 1.5;
       return 1.0;
     };
 

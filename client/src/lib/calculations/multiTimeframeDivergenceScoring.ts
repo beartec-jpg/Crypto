@@ -60,14 +60,14 @@ export interface MultiTimeframeDivergenceResult {
 /**
  * Returns the cascade multiplier for a given number of consecutively active timeframes.
  * - 0 or 1: ×1.0
- * - 2:      ×1.25
- * - 3:      ×1.5
- * - 4+:     ×2.0
+ * - 2:      ×1.5
+ * - 3:      ×2.5
+ * - 4+:     ×4.0
  */
 export function getCascadeBonus(consecutiveCount: number): number {
-  if (consecutiveCount >= 4) return 2.0;
-  if (consecutiveCount === 3) return 1.5;
-  if (consecutiveCount === 2) return 1.25;
+  if (consecutiveCount >= 4) return 4.0;
+  if (consecutiveCount === 3) return 2.5;
+  if (consecutiveCount === 2) return 1.5;
   return 1.0;
 }
 
