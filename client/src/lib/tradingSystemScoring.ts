@@ -237,6 +237,8 @@ export interface RawSmcFVG {
 export interface RawSmcOrderBlock {
   top: number;
   bottom: number;
+  effectiveTop?: number;    // Effective zone top (adjusted for partial mitigation)
+  effectiveBottom?: number; // Effective zone bottom (adjusted for partial mitigation)
   type: 'bullish' | 'bearish';
   /** Unix timestamp when OB was formed — used as look-ahead guard. */
   time?: number;
@@ -308,6 +310,8 @@ export function buildSmcZoneInputs(
       .map(ob => ({
         high: ob.top,
         low: ob.bottom,
+        effectiveTop: ob.effectiveTop,
+        effectiveBottom: ob.effectiveBottom,
         type: ob.type,
         mitigated: ob.mitigated === true &&
           (ob.mitigationTime === undefined || currentTime === undefined || ob.mitigationTime <= currentTime),
@@ -382,7 +386,7 @@ export interface ScoringInput {
   /** SMC Fair Value Gaps for Smart Money scoring */
   fvgs?: Array<{ high: number; low: number; filled: boolean; type: 'bullish' | 'bearish'; swept?: boolean; sweepIndex?: number; sweepPrice?: number }>;
   /** SMC Order Blocks for Smart Money scoring */
-  orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean; swept?: boolean; sweepIndex?: number; sweepPrice?: number }>;
+  orderBlocks?: Array<{ high: number; low: number; effectiveTop?: number; effectiveBottom?: number; type: 'bullish' | 'bearish'; mitigated?: boolean; swept?: boolean; sweepIndex?: number; sweepPrice?: number }>;
   /** Breaker blocks (former OBs that flipped polarity) for Smart Money scoring */
   breakers?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean; conversionIndex?: number; conversionPrice?: number }>;
   /** Liquidity zones for Smart Money scoring */
@@ -884,7 +888,7 @@ function scoreFVGProximity(currentPrice: number, previousPrice: number, fvgs?: A
  *   - Bullish OB: only valid when price is above the zone (approaching down) or inside from above
  *   - Bearish OB: only valid when price is below the zone (approaching up) or inside from below
  */
-function scoreOrderBlockProximity(currentPrice: number, previousPrice: number, orderBlocks?: Array<{ high: number; low: number; type: 'bullish' | 'bearish'; mitigated?: boolean }>): number {
+function scoreOrderBlockProximity(currentPrice: number, previousPrice: number, orderBlocks?: Array<{ high: number; low: number; effectiveTop?: number; effectiveBottom?: number; type: 'bullish' | 'bearish'; mitigated?: boolean }>): number {
   if (!orderBlocks || orderBlocks.length === 0) return 0;
 
   // Only score active (unmitigated) order blocks
@@ -892,11 +896,15 @@ function scoreOrderBlockProximity(currentPrice: number, previousPrice: number, o
   if (activeOBs.length === 0) return 0;
 
   const scores = activeOBs.map(ob => {
-    const proximity = scoreZoneProximity(currentPrice, ob.high, ob.low, 0.5);
+    // Use effective boundaries if available, otherwise fall back to original
+    const zoneTop = ob.effectiveTop ?? ob.high;
+    const zoneBottom = ob.effectiveBottom ?? ob.low;
 
-    const isInsideZone = currentPrice >= ob.low && currentPrice <= ob.high;
-    const isAboveZone = currentPrice > ob.high;
-    const isBelowZone = currentPrice < ob.low;
+    const proximity = scoreZoneProximity(currentPrice, zoneTop, zoneBottom, 0.5);
+
+    const isInsideZone = currentPrice >= zoneBottom && currentPrice <= zoneTop;
+    const isAboveZone = currentPrice > zoneTop;
+    const isBelowZone = currentPrice < zoneBottom;
 
     // Inside a zone always scores full magnitude (±100).
     // When outside, keep directional approach validation.

@@ -10,6 +10,10 @@ export interface OrderBlock {
   top: number;              // Candle high
   bottom: number;           // Candle low
 
+  // Effective zone boundaries (adjusted for partial mitigation)
+  effectiveTop: number;     // Starts same as top, shrinks as mitigation occurs
+  effectiveBottom: number;  // Starts same as bottom, shrinks as mitigation occurs
+
   // Extreme OB zone (wick only - more precise entry)
   extremeTop: number;       // For bullish: open, For bearish: high
   extremeBottom: number;    // For bullish: low, For bearish: close
