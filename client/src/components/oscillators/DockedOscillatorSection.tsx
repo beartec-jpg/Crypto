@@ -11,11 +11,9 @@ import { WaddahExplosionPanel } from '@/components/indicators/oscillators/Waddah
 import { CMFPanel } from '@/components/indicators/oscillators/CMFPanel';
 import { TSIPanel } from '@/components/indicators/oscillators/TSIPanel';
 import { KlingerPanel } from '@/components/indicators/oscillators/KlingerPanel';
-import { SqueezeMomentumPanel } from '@/components/oscillators/SqueezeMomentumPanel';
 import { SMCDebugTable } from '@/components/tradingSystems/SMCDebugTable';
 import { OSCILLATOR_PANEL_HEIGHT_PER, MOBILE_NAV_HEIGHT, TOP_TOOLBAR_HEIGHT } from '@/lib/constants/layout';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
-import type { SqueezeMomentumValue, SqueezeMomentumSettings } from '@/types/squeezeMomentum';
 import type { ScoringInput } from '@/lib/tradingSystemScoring';
 import type { SystemEvaluation } from '@/types/systemScoring';
 
@@ -42,8 +40,6 @@ interface DockedOscillatorSectionProps {
   totalPercentage?: number;
   perOscillatorPercentage?: number;
   mainChartVisibleRange?: any;
-  sqzData?: SqueezeMomentumValue[];
-  sqzSettings?: SqueezeMomentumSettings;
   smartMoneyPanelData?: {
     scoringInput: ScoringInput | null;
     evaluation: SystemEvaluation | null;
@@ -64,16 +60,13 @@ export function DockedOscillatorSection({
   totalPercentage = 0,
   perOscillatorPercentage = 0,
   mainChartVisibleRange,
-  sqzData,
-  sqzSettings,
   smartMoneyPanelData,
 }: DockedOscillatorSectionProps) {
   const dockedOscillatorsCount = Array.from(selectedOscillators).filter(
     osc => !poppedOutOscillators.has(osc) && !miniOscillators?.has(osc)
   ).length;
-  const hasSqueeze = sqzSettings?.enabled && sqzData && sqzData.length > 0;
 
-  if (dockedOscillatorsCount === 0 && !hasSqueeze) return null;
+  if (dockedOscillatorsCount === 0) return null;
 
   return (
     <div 
@@ -333,16 +326,6 @@ export function DockedOscillatorSection({
                 </>
               )}
             </div>
-          </div>
-        )}
-
-        {hasSqueeze && sqzData && sqzSettings && (
-          <div style={{ height: `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <SqueezeMomentumPanel
-              data={sqzData}
-              settings={sqzSettings}
-              mainChartVisibleRange={mainChartVisibleRange}
-            />
           </div>
         )}
       </div>

@@ -64,8 +64,6 @@ import type { TimeframeKey } from '@/lib/calculations/multiTimeframeDivergenceSc
 import { WaveOverlayStack } from '@/components/elliottWave/WaveOverlayStack';
 import { useHTFBias } from '@/hooks/useHTFBias';
 import { useHTFBiasSettings } from '@/hooks/useHTFBiasSettings';
-import { useSqueezeMomentumSettings } from '@/hooks/useSqueezeMomentumSettings';
-import { useSqueezeMomentum } from '@/hooks/useSqueezeMomentum';
 import { useTradingSystem, type TradingSystemCallbacks } from '@/hooks/useTradingSystem';
 import { TRADING_SYSTEMS, type TradingSystemId } from '@/types/tradingSystems';
 import { useMultiSystemConfluence, type ConfluenceResult } from '@/hooks/useMultiSystemConfluence';
@@ -223,9 +221,6 @@ export function ChartFullscreenPage({
   const [divergenceScannerEnabled, setDivergenceScannerEnabled] = useState(false);
   const [selectedDivergencePoint, setSelectedDivergencePoint] = useState<DivergencePoint | null>(null);
   const [showDivergenceSettings, setShowDivergenceSettings] = useState(false);
-
-  // Squeeze Momentum state
-  const [showSqueezeSettings, setShowSqueezeSettings] = useState(false);
   // Volume Profile state
   const [showVPModal, setShowVPModal] = useState(false);
   // Alerts state
@@ -572,10 +567,6 @@ export function ChartFullscreenPage({
     timeframes: htfBiasSettings.settings.timeframes,
     enabled: htfBiasSettings.settings.enabled,
   });
-
-  // Hooks - Squeeze Momentum
-  const sqzSettings = useSqueezeMomentumSettings();
-  const sqzData = useSqueezeMomentum(effectiveCandles, sqzSettings.settings);
   // Hooks - Volume Profile
   const vpSettings = useVolumeProfileSettings();
   const visibleRange = useVisibleRange(vpSettings.settings.updateOnPan ? chartRef.current : null);
@@ -621,7 +612,6 @@ export function ChartFullscreenPage({
       superTrendSettings.updateSettings({ standard: { ...superTrendSettings.settings.standard, enabled } });
     },
     setVolumeProfileEnabled: (enabled) => vpSettings.updateSettings({ enabled }),
-    setSqueezeEnabled: (enabled) => sqzSettings.updateSettings({ enabled }),
     setDivergenceScannerEnabled: setDivergenceScannerEnabled,
     setHTFBiasEnabled: (enabled) => htfBiasSettings.updateSetting('enabled', enabled),
     setSessionSeparatorsEnabled: (enabled) => bosSettings.updateSetting('showSessions', enabled),
@@ -640,9 +630,6 @@ export function ChartFullscreenPage({
     const signalByTime = new Map<number, number>(oscillatorData.macd.signal.map(point => [Number(point.time), point.value]));
     const superTrendByTime = new Map<number, 'bullish' | 'bearish'>(
       superTrendData.standard.map(point => [Number(point.time), point.trend])
-    );
-    const sqzByTime = new Map<number, { sqzOff: boolean; value: number }>(
-      sqzData.map(point => [Number(point.time), { sqzOff: point.sqzOff, value: point.value }])
     );
 
     // Avoid look-ahead in historical mode: current HTF panel state should not
@@ -695,7 +682,6 @@ export function ChartFullscreenPage({
         }
       }
 
-      const sqzValue = sqzByTime.get(currentTime);
       const divergencePointsForCandle = divergencePoints.filter(point => {
         const ageSeconds = currentTime - Number(point.time);
         return ageSeconds >= divergenceConfirmationSeconds;
@@ -711,8 +697,6 @@ export function ChartFullscreenPage({
         sigPrev: signalByTime.get(prevTime),
         stTrend: superTrendByTime.get(currentTime),
         latestStructureDirection,
-        sqzOff: sqzValue?.sqzOff,
-        sqzValue: sqzValue?.value,
         htfBullish,
         htfBearish,
         rsi: rsiByTime.get(currentTime),
@@ -773,7 +757,6 @@ export function ChartFullscreenPage({
     superTrendData.standard,
     structureBreaks,
     swingPoints,
-    sqzData,
     htfBiasEntries,
     conditionWeightsVersion,
     divergencePoints,
@@ -885,7 +868,6 @@ export function ChartFullscreenPage({
     const stLatest = superTrendData.standard[superTrendData.standard.length - 1];
     const stTrend = stLatest?.trend;
     const latestStructureBreak = structureBreaks[structureBreaks.length - 1];
-    const latestSqz = sqzData[sqzData.length - 1];
     const avgVolume = calculateAverageVolume(effectiveCandles as Array<{ volume: number }>, effectiveCandles.length - 1, 20);
     const shortTermMA = calculateSimpleMovingAverage(effectiveCandles as Array<{ close: number }>, effectiveCandles.length - 1, 9);
     const longTermMA = calculateSimpleMovingAverage(effectiveCandles as Array<{ close: number }>, effectiveCandles.length - 1, 21);
@@ -913,8 +895,6 @@ export function ChartFullscreenPage({
       sigPrev,
       stTrend,
       latestStructureDirection: latestStructureBreak?.direction,
-      sqzOff: latestSqz?.sqzOff,
-      sqzValue: latestSqz?.value,
       htfBullish,
       htfBearish,
       rsi: lastRsi,
@@ -965,7 +945,6 @@ export function ChartFullscreenPage({
     superTrendData,
     structureBreaks,
     swingPoints,
-    sqzData,
     htfBiasEntries,
     conditionWeightsVersion,
     historicalSystemSignalEvents.length,
@@ -997,7 +976,6 @@ export function ChartFullscreenPage({
     const stLatest = superTrendData.standard[superTrendData.standard.length - 1];
     const stTrend = stLatest?.trend;
     const latestStructureBreak = structureBreaks[structureBreaks.length - 1];
-    const latestSqz = sqzData[sqzData.length - 1];
     const avgVolume = calculateAverageVolume(effectiveCandles as Array<{ volume: number }>, effectiveCandles.length - 1, 20);
     const shortTermMA = calculateSimpleMovingAverage(effectiveCandles as Array<{ close: number }>, effectiveCandles.length - 1, 9);
     const longTermMA = calculateSimpleMovingAverage(effectiveCandles as Array<{ close: number }>, effectiveCandles.length - 1, 21);
@@ -1024,8 +1002,6 @@ export function ChartFullscreenPage({
       sigPrev,
       stTrend,
       latestStructureDirection: latestStructureBreak?.direction,
-      sqzOff: latestSqz?.sqzOff,
-      sqzValue: latestSqz?.value,
       htfBullish,
       htfBearish,
       rsi: lastRsi,
@@ -1069,7 +1045,6 @@ export function ChartFullscreenPage({
     superTrendData,
     structureBreaks,
     swingPoints,
-    sqzData,
     htfBiasEntries,
     divergencePoints,
     fvgs,
@@ -1142,7 +1117,6 @@ export function ChartFullscreenPage({
       oscillatorData,
       superTrendStandard: superTrendData.standard,
       structureBreaks,
-      sqzData,
       htfBiasEntries,
       divergencePoints,
       fvgs,
@@ -1161,7 +1135,6 @@ export function ChartFullscreenPage({
     oscillatorData,
     superTrendData.standard,
     structureBreaks,
-    sqzData,
     htfBiasEntries,
     divergencePoints,
     fvgs,
@@ -1263,7 +1236,6 @@ export function ChartFullscreenPage({
     oscillatorData,
     superTrendData,
     structureBreaks,
-    sqzData,
     htfBiasEntries,
     divergencePoints,
     fvgs.map(fvg => ({ high: fvg.top, low: fvg.bottom, filled: fvg.mitigated, type: fvg.type })),
@@ -1932,11 +1904,6 @@ export function ChartFullscreenPage({
           onCloseDivergenceSettings={() => setShowDivergenceSettings(false)}
           divergenceSettings={divSettings.settings}
           onDivergenceSettingsChange={divSettings.updateSettings}
-          showSqueezeSettings={showSqueezeSettings}
-          onCloseSqueezeSettings={() => setShowSqueezeSettings(false)}
-          squeezeSettings={sqzSettings.settings}
-          onSqueezeSettingsChange={sqzSettings.updateSettings}
-          onResetSqueezeSettings={sqzSettings.resetSettings}
         />
 
         {/* Drawing Renderer */}
@@ -1994,8 +1961,6 @@ export function ChartFullscreenPage({
         totalPercentage={oscillatorPanel.totalPercentage}
         perOscillatorPercentage={oscillatorPanel.perOscillatorPercentage}
         mainChartVisibleRange={mainChartVisibleRange}
-        sqzData={sqzData}
-        sqzSettings={sqzSettings.settings}
         smartMoneyPanelData={smartMoneyPanelData}
       />
       

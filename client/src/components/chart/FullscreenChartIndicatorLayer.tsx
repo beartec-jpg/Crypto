@@ -14,7 +14,6 @@ import { ElderImpulseRenderer } from '@/components/indicators/ElderImpulseRender
 import { DivergenceRenderer } from '@/components/divergence/DivergenceRenderer';
 import { DivergenceBadgePopup } from '@/components/divergence/DivergenceBadgePopup';
 import { DivergenceSettingsModal } from '@/components/divergence/DivergenceSettingsModal';
-import { SqueezeMomentumSettingsModal } from '@/components/modals/SqueezeMomentumSettingsModal';
 import { getConditionWeights } from '@/lib/conditionWeights';
 
 interface FullscreenChartIndicatorLayerProps {
@@ -71,12 +70,6 @@ interface FullscreenChartIndicatorLayerProps {
   onCloseDivergenceSettings: () => void;
   divergenceSettings: any;
   onDivergenceSettingsChange: (value: any) => void;
-
-  showSqueezeSettings: boolean;
-  onCloseSqueezeSettings: () => void;
-  squeezeSettings: any;
-  onSqueezeSettingsChange: (value: any) => void;
-  onResetSqueezeSettings: () => void;
 }
 
 export function FullscreenChartIndicatorLayer({
@@ -128,11 +121,6 @@ export function FullscreenChartIndicatorLayer({
   onCloseDivergenceSettings,
   divergenceSettings,
   onDivergenceSettingsChange,
-  showSqueezeSettings,
-  onCloseSqueezeSettings,
-  squeezeSettings,
-  onSqueezeSettingsChange,
-  onResetSqueezeSettings,
 }: FullscreenChartIndicatorLayerProps) {
   return (
     <>
@@ -259,14 +247,6 @@ export function FullscreenChartIndicatorLayer({
         onClose={onCloseDivergenceSettings}
         settings={divergenceSettings}
         onSettingsChange={onDivergenceSettingsChange}
-      />
-
-      <SqueezeMomentumSettingsModal
-        isOpen={showSqueezeSettings}
-        onClose={onCloseSqueezeSettings}
-        settings={squeezeSettings}
-        onSettingsChange={onSqueezeSettingsChange}
-        onReset={onResetSqueezeSettings}
       />
     </>
   );
