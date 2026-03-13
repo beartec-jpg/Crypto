@@ -1744,7 +1744,8 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       boostedScore *= (1 + sweepBoost);
     }
 
-    if ((weights.divergenceConfluence ?? 0) > 0 && Math.abs(divergenceFinalScore) >= 20) {
+    const divWeight = weights.divergenceConfluence ?? 0;
+    if (divWeight > 0 && Math.abs(divergenceFinalScore) >= 20) {
       const structureIsBullish = latestStructureDirection === 'bullish';
       const divergenceIsBullish = divergenceFinalScore > 0;
       const isAligned = latestStructureDirection
@@ -1753,20 +1754,33 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
 
       const divergenceFactor = Math.abs(divergenceFinalScore) / 100;
       if (isAligned) {
-        const divBoost = divergenceFactor * 0.2;
+        // Weight 1: +20% max, Weight 2: +40% max, Weight 3: +60% max
+        const divBoost = divergenceFactor * 0.2 * divWeight;
         boostedScore *= (1 + divBoost);
       } else {
-        const divPenalty = divergenceFactor * 0.35;
-        boostedScore *= Math.max(0.55, 1 - divPenalty);
+        // Weight 1: -35% max, Weight 2: -70% max, Weight 3: -100% max (capped)
+        const basePenalty = divergenceFactor * 0.35;
+        const scaledPenalty = Math.min(1.0, basePenalty * divWeight);
+        boostedScore *= Math.max(0, 1 - scaledPenalty);
       }
     }
 
-    if (autoFibScore >= 40) {
-      const fibBoost = (autoFibScore / 100) * 0.15;
-      boostedScore *= (1 + fibBoost);
-    } else if (autoFibScore < 0) {
-      const fibPenalty = (Math.abs(autoFibScore) / 100) * 0.12;
-      boostedScore *= Math.max(0.7, 1 - fibPenalty);
+    if (autoFibWeight > 0) {
+      // Weight multiplier: 1 = 1x, 2 = 2x, 3 = 3x
+      const weightMultiplier = autoFibWeight;
+
+      if (autoFibScore >= 40) {
+        // OTE zone (61.8-78.6%): strong boost, scaled by weight
+        // Weight 1: +15%, Weight 2: +30%, Weight 3: +45%
+        const fibBoost = (autoFibScore / 100) * 0.15 * weightMultiplier;
+        boostedScore *= (1 + fibBoost);
+      } else if (autoFibScore < 0) {
+        // Above 50% zone: penalty scaled by weight
+        // Weight 1: -12%, Weight 2: -24%, Weight 3: -50% (capped)
+        const basePenalty = (Math.abs(autoFibScore) / 100) * 0.12;
+        const scaledPenalty = Math.min(0.5, basePenalty * weightMultiplier);
+        boostedScore *= Math.max(0.5, 1 - scaledPenalty);
+      }
     }
 
     // Inducement sequence (sweep → MSS/CHoCH → zone): highest-conviction bonus, up to +25%
@@ -1888,8 +1902,8 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
           : latestStructureDirection &&
             ((latestStructureDirection === 'bullish' && divergenceFinalScore < 0) ||
               (latestStructureDirection === 'bearish' && divergenceFinalScore > 0))
-          ? `${divergenceSource} (trend-opposing, up to -${Math.round((Math.abs(divergenceFinalScore) / 100) * 35)}% penalty)`
-          : `${divergenceSource} (trend-aligned, +${Math.round((Math.abs(divergenceFinalScore) / 100) * 20)}% boost)`,
+          ? `${divergenceSource} (trend-opposing, up to -${Math.round(Math.min(100, (Math.abs(divergenceFinalScore) / 100) * 35 * (weights.divergenceConfluence ?? 0)))}% penalty)`
+          : `${divergenceSource} (trend-aligned, +${Math.round((Math.abs(divergenceFinalScore) / 100) * 20 * (weights.divergenceConfluence ?? 0))}% boost)`,
     },
     {
       id: 'autoFibConfluence',
@@ -1901,9 +1915,9 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       weightedScore: Math.round(autoFibScore) * autoFibWeight,
       value: autoFibScore > 0 ? `${Math.round(autoFibScore)}/100` : undefined,
       description: autoFibScore >= 40
-        ? `${isCounterTrend ? 'Secondary' : 'Primary'} fib in OTE region (+${Math.round((autoFibScore / 100) * 15)}% boost)`
+        ? `${isCounterTrend ? 'Secondary' : 'Primary'} fib in OTE region (+${Math.round((autoFibScore / 100) * 15 * autoFibWeight)}% boost)`
         : autoFibScore < 0
-        ? `${isCounterTrend ? 'Secondary' : 'Primary'} fib above 50% retracement (up to -${Math.round((Math.abs(autoFibScore) / 100) * 12)}% penalty)`
+        ? `${isCounterTrend ? 'Secondary' : 'Primary'} fib above 50% retracement (up to -${Math.round(Math.min(50, (Math.abs(autoFibScore) / 100) * 12 * autoFibWeight))}% penalty)`
         : `${isCounterTrend ? 'Secondary' : 'Primary'} fib neutral`,
     },
     {
