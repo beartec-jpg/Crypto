@@ -47,4 +47,8 @@ export interface DivergencePoint {
   mtfCascadeLevel?: number;        // 0-4, consecutive TF activation count
   mtfCascadeBonus?: number;        // 1.0 | 1.25 | 1.5 | 2.0 multiplier
   mtfActiveTimeframes?: string[];  // e.g. ['15m','1h','4h']
+  mtfEnabledCount?: number;        // Total number of user-enabled timeframes for divergence scanning
+  // Per-oscillator MTF breakdown: which TFs each oscillator confirmed on
+  // e.g. { 'MACD': ['15m', '1h', '4h'], 'RSI': ['15m'] }
+  oscillatorTfBreakdown?: Record<string, string[]>;
 }

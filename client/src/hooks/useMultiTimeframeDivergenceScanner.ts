@@ -165,6 +165,8 @@ export function useMultiTimeframeDivergenceScanner(
       const sign = type === 'bullish' ? 1 : -1;
       const activeTimeframes: TimeframeKey[] = [];
       const baseScores: Partial<Record<TimeframeKey, number>> = {};
+      // Build per-oscillator TF breakdown: which TFs each oscillator confirmed on
+      const oscillatorTfBreakdown: Record<string, string[]> = {};
 
       for (const tf of enabledTimeframes) {
         const tfDivs = perTfDivergences[tf] ?? [];
@@ -174,10 +176,22 @@ export function useMultiTimeframeDivergenceScanner(
           // Use the most indicator-confluent divergence as the base score proxy.
           const best = typed.reduce((a, b) => (b.count > a.count ? b : a));
           baseScores[tf] = sign * (best.count / MAX_OSCILLATOR_COUNT) * 100;
+          // Aggregate all unique oscillators confirmed on this TF
+          for (const div of typed) {
+            for (const ind of div.indicators) {
+              if (!oscillatorTfBreakdown[ind]) oscillatorTfBreakdown[ind] = [];
+              if (!oscillatorTfBreakdown[ind].includes(tf)) {
+                oscillatorTfBreakdown[ind].push(tf);
+              }
+            }
+          }
         }
       }
 
-      return calculateMTFDivergenceScore(enabledTimeframes, activeTimeframes, baseScores);
+      return {
+        ...calculateMTFDivergenceScore(enabledTimeframes, activeTimeframes, baseScores),
+        oscillatorTfBreakdown,
+      };
     };
 
     return {
@@ -222,8 +236,10 @@ export function useMultiTimeframeDivergenceScanner(
           mtfCascadeLevel: cascade.cascadeLevel,
           mtfCascadeBonus: cascade.cascadeBonus,
           mtfActiveTimeframes: cascade.activeTimeframes,
+          mtfEnabledCount: enabledTimeframes.length,
+          oscillatorTfBreakdown: cascade.oscillatorTfBreakdown,
         };
       }),
-    [primaryDivs, cascadeByType],
+    [primaryDivs, cascadeByType, enabledTimeframes],
   );
 }

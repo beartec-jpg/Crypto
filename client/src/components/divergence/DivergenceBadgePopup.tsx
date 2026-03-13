@@ -130,14 +130,23 @@ export function DivergenceBadgePopup({ point, onClose }: DivergenceBadgePopupPro
       {/* Single-Asset Indicators */}
       <div className="border-t border-slate-700 pt-2 space-y-1">
         <div className="text-xs font-semibold text-slate-400 mb-1">Oscillators</div>
-        {point.indicators.map(ind => (
-          <div key={ind} className="flex items-center gap-2 text-xs">
-            <span className={point.type === 'bullish' ? 'text-green-400' : 'text-red-400'}>
-              ✓
-            </span>
-            <span className="text-slate-200">{ind}</span>
-          </div>
-        ))}
+        {point.indicators.map(ind => {
+          const tfList = point.oscillatorTfBreakdown?.[ind] ?? [];
+          const enabledCount = point.mtfEnabledCount ?? 1;
+          return (
+            <div key={ind} className="flex justify-between items-center text-xs">
+              <div className="flex items-center gap-2">
+                <span className={point.type === 'bullish' ? 'text-green-400' : 'text-red-400'}>
+                  ✓
+                </span>
+                <span className="text-slate-200">{ind}</span>
+              </div>
+              {enabledCount > 1 && (
+                <span className="text-slate-400">{tfList.length}/{enabledCount}</span>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Close button */}
