@@ -184,11 +184,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const results = await Promise.all(fetchPromises);
     events = results.flat();
 
+    console.log(`Aggregated events: ${events.length} total`);
+    if (events.length === 0) {
+      console.warn(`⚠️ No liquidation events found for ${symbolStr} from any exchange`);
+    }
+
     events.sort((a, b) => b.timestamp - a.timestamp);
     events = events.slice(0, limitNum);
 
     const binanceCount = events.filter(e => e.exchange === 'binance').length;
     const bybitCount = events.filter(e => e.exchange === 'bybit').length;
+
+    console.log(`Breakdown: Binance=${binanceCount}, Bybit=${bybitCount}`);
 
     let currentPrice = events.length > 0 ? events[0].price : 0;
     if (currentPrice === 0) {
@@ -211,6 +218,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       exchangeStats: {
         binance: binanceCount,
         bybit: bybitCount
+      },
+      _diagnostic: {
+        sourcesQueried: exchangeFilter === 'all' ? ['binance', 'bybit'] : [exchangeFilter],
+        binanceQueried: exchangeFilter === 'all' || exchangeFilter === 'binance',
+        bybitQueried: exchangeFilter === 'all' || exchangeFilter === 'bybit',
+        note: events.length === 0 ? 'No liquidations found - normal if none occurred in requested timeframe' : undefined
       }
     });
   } catch (error: any) {

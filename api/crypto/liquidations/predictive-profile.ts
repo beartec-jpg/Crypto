@@ -40,6 +40,19 @@ interface RealtimeLiquidationResponse {
     timestamp: number;
     exchange: 'binance' | 'bybit';
   }>;
+  totalEvents?: number;
+  recentCount?: number;
+  exchangeStats?: {
+    binance: number;
+    bybit: number;
+  };
+}
+
+interface RealtimeEventStats {
+  events: BinanceForceOrder[];
+  totalCount: number;
+  binanceCount: number;
+  bybitCount: number;
 }
 
 interface ExtendedHistoryResponse {
@@ -652,17 +665,29 @@ function toForceOrderFromRealtimeEvent(event: {
 async function fetchRealtimeLiquidationEvents(
   req: VercelRequest,
   symbol: string,
-): Promise<BinanceForceOrder[]> {
+): Promise<RealtimeEventStats> {
   const origin = getRequestOrigin(req);
-  if (!origin) return [];
+  if (!origin) return { events: [], totalCount: 0, binanceCount: 0, bybitCount: 0 };
 
   const url = `${origin}/api/crypto/liquidations/realtime?symbol=${symbol}&limit=300&exchange=all`;
   const data = await safeFetchJson<RealtimeLiquidationResponse>(url);
-  if (!data?.events || !Array.isArray(data.events)) return [];
+  if (!data?.events || !Array.isArray(data.events)) {
+    return { events: [], totalCount: 0, binanceCount: 0, bybitCount: 0 };
+  }
 
-  return data.events
+  const events = data.events
     .filter((e) => Number.isFinite(e.price) && Number.isFinite(e.quantity) && Number.isFinite(e.timestamp))
     .map(toForceOrderFromRealtimeEvent);
+
+  const binanceCount = data.exchangeStats?.binance || 0;
+  const bybitCount = data.exchangeStats?.bybit || 0;
+
+  return {
+    events,
+    totalCount: data.totalEvents || events.length,
+    binanceCount,
+    bybitCount,
+  };
 }
 
 function findClosestIndex(levels: PriceLevelScore[], targetPrice: number): number {
@@ -1179,14 +1204,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    const realtimeOrders = await trackFn(
+    const realtimeStats = await trackFn(
       diagnostics,
       'realtime-liquidations',
       () => fetchRealtimeLiquidationEvents(req, symbol),
-      (v) => Array.isArray(v) && v.length > 0,
-      (v) => Array.isArray(v) ? v.length : 0,
+      (v) => v.totalCount > 0,
+      (v) => v.totalCount,
       true,
     );
+
+    const realtimeOrders = realtimeStats?.events || [];
 
     const openInterestQty = toNumber(oiData?.openInterest, 0);
     let openInterestUsd = internalMetrics.openInterestUsd > 0
@@ -1347,8 +1374,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           openInterestUsd,
           longShortRatio,
           fundingRate,
-          forceOrderCount: 0,
-          realtimeOrderCount: Array.isArray(realtimeOrders) ? realtimeOrders.length : 0,
+          forceOrderCount: realtimeStats?.binanceCount || 0,
+          realtimeOrderCount: realtimeStats?.totalCount || 0,
           mergedForceOrderCount: recentForceOrders.length,
           depthBidLevels: effectiveDepth?.bids?.length || 0,
           depthAskLevels: effectiveDepth?.asks?.length || 0,
