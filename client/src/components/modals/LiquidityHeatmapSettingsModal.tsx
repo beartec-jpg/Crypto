@@ -58,8 +58,6 @@ function SliderRow({ label, value, min, max, step, displayValue, onChange }: Sli
   );
 }
 
-const EXCHANGES = ['Binance', 'OKX', 'Bybit', 'dYdX', 'BitMEX'];
-
 export function LiquidityHeatmapSettingsModal({
   isOpen,
   onClose,
@@ -94,20 +92,8 @@ export function LiquidityHeatmapSettingsModal({
 
             <div className="py-2">
               <Label className="text-sm text-slate-300 mb-1 block">Exchange</Label>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {EXCHANGES.map((ex) => (
-                  <button
-                    key={ex}
-                    onClick={() => update('exchange', ex)}
-                    className={`px-3 py-1 rounded text-xs font-semibold transition-all ${
-                      settings.exchange === ex
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                    }`}
-                  >
-                    {ex}
-                  </button>
-                ))}
+              <div className="mt-1 inline-flex items-center rounded bg-blue-600/20 border border-blue-500/40 px-2.5 py-1 text-xs font-semibold text-blue-300">
+                Aggregated (Binance + fallback sources)
               </div>
             </div>
 

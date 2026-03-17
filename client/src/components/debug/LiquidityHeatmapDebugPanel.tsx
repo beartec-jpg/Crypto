@@ -207,11 +207,15 @@ function Divider() {
 /* ── Endpoint Health Section ──────────────────────────────────────── */
 
 function EndpointHealthSection({ diagnostics }: { diagnostics: EndpointDiagnostic[] }) {
-  const visible = diagnostics.filter((d) => !d.ok || !d.optional);
+  const optionalFailureCount = diagnostics.filter((d) => d.optional && !d.ok).length;
+  const visible = diagnostics.filter((d) => !(d.optional && !d.ok));
 
   return (
     <section>
       <p className="text-slate-500 uppercase tracking-wide mb-0.5">Endpoint Health</p>
+      {optionalFailureCount > 0 && (
+        <p className="text-[10px] text-yellow-300 mb-1">{optionalFailureCount} optional source probes failed (non-blocking)</p>
+      )}
       <div className="space-y-0.5 max-h-36 overflow-y-auto pr-1">
         {visible.map((d, i) => {
           const isSlow = d.ms > 3000;

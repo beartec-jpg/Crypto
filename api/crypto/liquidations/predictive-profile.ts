@@ -40,6 +40,27 @@ interface RealtimeLiquidationResponse {
   }>;
 }
 
+interface ExtendedHistoryResponse {
+  candles?: Array<{ close?: number; time?: number }>;
+}
+
+interface OpenInterestResponse {
+  current?: number | { value?: number };
+  source?: string;
+}
+
+interface FundingRateResponse {
+  current?: number;
+  rate?: number;
+  source?: string;
+}
+
+interface LongShortRatioResponse {
+  ratio?: number;
+  current?: { ratio?: number };
+  source?: string;
+}
+
 interface PredictiveLevel {
   price: number;
   liquidationValue: number;
@@ -73,10 +94,12 @@ interface RollingSnapshot {
 const rollingSnapshots = new Map<string, RollingSnapshot>();
 const priceCache = new Map<string, { price: number; timestamp: number }>();
 const lastSuccessfulPriceCache = new Map<string, { price: number; timestamp: number }>();
+const binanceProbeCooldownUntil = new Map<string, number>();
 const FORCE_ORDER_CACHE_WINDOW_MS = 10 * 60 * 1000;
 const FLOW_HALFLIFE_MS = 3 * 60 * 1000;
 const PRICE_CACHE_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
 const SUCCESSFUL_PRICE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+const BINANCE_PROBE_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
 
 const COINGECKO_ID_MAP: Record<string, string> = {
   BTC: 'bitcoin',
@@ -246,6 +269,64 @@ function isBinanceReachable(diagnostics: EndpointDiagnostic[]): boolean {
   );
 }
 
+async function fetchInternalAggregatedMetrics(
+  req: VercelRequest,
+  symbol: string,
+  diagnostics: EndpointDiagnostic[],
+): Promise<{ price: number; openInterestUsd: number; longShortRatio: number; fundingRate: number }> {
+  const origin = getRequestOrigin(req);
+  if (!origin) {
+    diagnostics.push({
+      endpoint: 'internal-origin',
+      url: '',
+      ok: false,
+      status: null,
+      ms: 0,
+      error: 'missing_request_origin',
+    });
+    return { price: 0, openInterestUsd: 0, longShortRatio: 0, fundingRate: 0 };
+  }
+
+  const [historyR, oiR, fundingR, lsR] = await Promise.all([
+    fetchTracked<ExtendedHistoryResponse>(
+      'internal-extended-history',
+      `${origin}/api/crypto/extended-history?symbol=${symbol}&timeframe=1m&limit=2`,
+      { timeoutMs: 12000 },
+    ),
+    fetchTracked<OpenInterestResponse>(
+      'internal-open-interest',
+      `${origin}/api/crypto/orderflow/open-interest?symbol=${symbol}&interval=1h`,
+      { timeoutMs: 12000 },
+    ),
+    fetchTracked<FundingRateResponse>(
+      'internal-funding-rate',
+      `${origin}/api/crypto/orderflow/funding-rate?symbol=${symbol}&interval=1h`,
+      { timeoutMs: 12000 },
+    ),
+    fetchTracked<LongShortRatioResponse>(
+      'internal-long-short-ratio',
+      `${origin}/api/crypto/orderflow/long-short-ratio?symbol=${symbol}&interval=1h`,
+      { timeoutMs: 12000 },
+    ),
+  ]);
+
+  diagnostics.push(historyR.diag, oiR.diag, fundingR.diag, lsR.diag);
+
+  const lastClose = Number(historyR.data?.candles?.[historyR.data?.candles?.length ? historyR.data.candles.length - 1 : 0]?.close || 0);
+  const oiRaw = typeof oiR.data?.current === 'number'
+    ? oiR.data.current
+    : Number((oiR.data?.current as { value?: number } | undefined)?.value || 0);
+  const ratio = Number(lsR.data?.ratio || lsR.data?.current?.ratio || 0);
+  const funding = Number(fundingR.data?.rate || fundingR.data?.current || 0);
+
+  return {
+    price: Number.isFinite(lastClose) ? lastClose : 0,
+    openInterestUsd: Number.isFinite(oiRaw) ? oiRaw : 0,
+    longShortRatio: Number.isFinite(ratio) ? ratio : 0,
+    fundingRate: Number.isFinite(funding) ? funding : 0,
+  };
+}
+
 function setPriceCache(symbol: string, price: number): void {
   if (price > 0) {
     priceCache.set(symbol, { price, timestamp: Date.now() });
@@ -283,38 +364,50 @@ function baseSymbol(symbol: string): string {
 
 async function fetchPriceFromMultipleSources(symbol: string, diagnostics: EndpointDiagnostic[]): Promise<number> {
   const base = baseSymbol(symbol);
+  const now = Date.now();
+  const cooldown = binanceProbeCooldownUntil.get(symbol) || 0;
+  const skipBinance = now < cooldown;
+
+  let hadBinanceSuccess = false;
+  let hadBinanceAttemptFailure = false;
 
   // 1. Binance Futures ticker
-  {
+  if (!skipBinance) {
     const url = `https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`;
     const { data, diag } = await fetchTracked<{ price: string }>('binance-futures-price', url);
+    diag.optional = true;
     diagnostics.push(diag);
     if (data?.price) {
       const price = toNumber(data.price, 0);
-      if (price > 0) { setPriceCache(symbol, price); return price; }
+      if (price > 0) { hadBinanceSuccess = true; setPriceCache(symbol, price); return price; }
     }
+    hadBinanceAttemptFailure = true;
   }
 
   // 2. Binance Spot ticker
-  {
+  if (!skipBinance) {
     const url = `https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`;
     const { data, diag } = await fetchTracked<{ price: string }>('binance-spot-price', url);
+    diag.optional = true;
     diagnostics.push(diag);
     if (data?.price) {
       const price = toNumber(data.price, 0);
-      if (price > 0) { setPriceCache(symbol, price); return price; }
+      if (price > 0) { hadBinanceSuccess = true; setPriceCache(symbol, price); return price; }
     }
+    hadBinanceAttemptFailure = true;
   }
 
   // 3. Binance Premium/Mark price
-  {
+  if (!skipBinance) {
     const url = `https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${symbol}`;
     const { data, diag } = await fetchTracked<{ markPrice?: string; indexPrice?: string }>('binance-mark-price', url);
+    diag.optional = true;
     diagnostics.push(diag);
     const markPrice = toNumber(data?.markPrice, 0);
-    if (markPrice > 0) { setPriceCache(symbol, markPrice); return markPrice; }
+    if (markPrice > 0) { hadBinanceSuccess = true; setPriceCache(symbol, markPrice); return markPrice; }
     const indexPrice = toNumber(data?.indexPrice, 0);
-    if (indexPrice > 0) { setPriceCache(symbol, indexPrice); return indexPrice; }
+    if (indexPrice > 0) { hadBinanceSuccess = true; setPriceCache(symbol, indexPrice); return indexPrice; }
+    hadBinanceAttemptFailure = true;
   }
 
   // 4. Bybit linear ticker
@@ -323,6 +416,7 @@ async function fetchPriceFromMultipleSources(symbol: string, diagnostics: Endpoi
     const { data, diag } = await fetchTracked<{
       result?: { list?: Array<{ lastPrice?: string; markPrice?: string; indexPrice?: string }> };
     }>('bybit-ticker', url);
+    diag.optional = true;
     diagnostics.push(diag);
     const ticker = data?.result?.list?.[0];
     const bybitLast = toNumber(ticker?.lastPrice, 0);
@@ -334,12 +428,26 @@ async function fetchPriceFromMultipleSources(symbol: string, diagnostics: Endpoi
   }
 
   // 5. Binance Spot Klines (public endpoint, less geo-blocked than ticker)
-  {
+  if (!skipBinance) {
     const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1m&limit=1`;
     const { data, diag } = await fetchTracked<number[][]>('binance-spot-klines', url);
+    diag.optional = true;
     diagnostics.push(diag);
     const klineClose = toNumber(data?.[0]?.[4], 0); // index 4 = close price
-    if (klineClose > 0) { setPriceCache(symbol, klineClose); return klineClose; }
+    if (klineClose > 0) { hadBinanceSuccess = true; setPriceCache(symbol, klineClose); return klineClose; }
+    hadBinanceAttemptFailure = true;
+  }
+
+  if (skipBinance) {
+    diagnostics.push({
+      endpoint: 'binance-price-probes-skipped',
+      url: '',
+      ok: true,
+      status: null,
+      ms: 0,
+      optional: true,
+      error: 'cooldown_active',
+    });
   }
 
   // 6. CoinGecko (free public API, no geo restrictions, no API key required)
@@ -348,6 +456,7 @@ async function fetchPriceFromMultipleSources(symbol: string, diagnostics: Endpoi
     if (geckoId) {
       const url = `https://api.coingecko.com/api/v3/simple/price?ids=${geckoId}&vs_currencies=usd`;
       const { data, diag } = await fetchTracked<Record<string, { usd: number }>>('coingecko-price', url);
+      diag.optional = false;
       diagnostics.push(diag);
       const geckoPrice = toNumber(data?.[geckoId]?.usd, 0);
       if (geckoPrice > 0) { setPriceCache(symbol, geckoPrice); return geckoPrice; }
@@ -359,6 +468,7 @@ async function fetchPriceFromMultipleSources(symbol: string, diagnostics: Endpoi
         status: null,
         ms: 0,
         error: `no_coingecko_id_for_${base}`,
+        optional: false,
       });
     }
   }
@@ -366,11 +476,15 @@ async function fetchPriceFromMultipleSources(symbol: string, diagnostics: Endpoi
   // 7. Cache fallback (up to 24 hours)
   const cached = getPriceCacheOrNull(symbol);
   if (cached) {
-    diagnostics.push({ endpoint: 'price-cache', url: '', ok: true, status: null, ms: 0, dataPoints: 1 });
+    diagnostics.push({ endpoint: 'price-cache', url: '', ok: true, status: null, ms: 0, dataPoints: 1, optional: false });
     return cached;
   }
 
-  diagnostics.push({ endpoint: 'price-cache', url: '', ok: false, status: null, ms: 0, error: 'cache_cold' });
+  if (!hadBinanceSuccess && hadBinanceAttemptFailure) {
+    binanceProbeCooldownUntil.set(symbol, now + BINANCE_PROBE_COOLDOWN_MS);
+  }
+
+  diagnostics.push({ endpoint: 'price-cache', url: '', ok: false, status: null, ms: 0, error: 'cache_cold', optional: false });
   return 0;
 }
 
@@ -836,16 +950,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       diagnostics.push({ endpoint: 'coinglass-config', url: '', ok: false, status: null, ms: 0, error: 'COINGLASS_API_KEY_not_configured', optional: true });
     }
 
-    let currentPrice = await fetchPriceFromMultipleSources(symbol, diagnostics);
+    const internalMetrics = await fetchInternalAggregatedMetrics(req, symbol, diagnostics);
+    let currentPrice = internalMetrics.price > 0
+      ? internalMetrics.price
+      : await fetchPriceFromMultipleSources(symbol, diagnostics);
 
     const canUseBinanceSuite = isBinanceReachable(diagnostics);
+    const needsBinanceSuite = !(
+      internalMetrics.openInterestUsd > 0
+      && internalMetrics.longShortRatio > 0
+      && Number.isFinite(internalMetrics.fundingRate)
+    );
 
     let oiData: { openInterest: string } | null = null;
     let ratioData: Array<{ longShortRatio: string }> | null = null;
     let fundingData: { lastFundingRate: string } | null = null;
     let depthData: BinanceDepth | null = null;
 
-    if (canUseBinanceSuite) {
+    if (canUseBinanceSuite && needsBinanceSuite) {
       const [oiResult, ratioResult, fundingResult, depthResult] = await Promise.all([
         fetchTracked<{ openInterest: string }>(
           'binance-oi',
@@ -881,7 +1003,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         status: null,
         ms: 0,
         optional: true,
-        error: 'binance_unreachable_using_fallbacks',
+        error: needsBinanceSuite ? 'binance_unreachable_using_fallbacks' : 'internal_aggregated_endpoints_used',
       });
     }
 
@@ -895,9 +1017,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
 
     const openInterestQty = toNumber(oiData?.openInterest, 0);
-    let openInterestUsd = openInterestQty * currentPrice;
-    let longShortRatio = toNumber((ratioData as any)?.[0]?.longShortRatio, 1);
-    let fundingRate = toNumber((fundingData as any)?.lastFundingRate, 0);
+    let openInterestUsd = internalMetrics.openInterestUsd > 0
+      ? internalMetrics.openInterestUsd
+      : openInterestQty * currentPrice;
+    let longShortRatio = internalMetrics.longShortRatio > 0
+      ? internalMetrics.longShortRatio
+      : toNumber((ratioData as any)?.[0]?.longShortRatio, 1);
+    let fundingRate = Number.isFinite(internalMetrics.fundingRate) && internalMetrics.fundingRate !== 0
+      ? internalMetrics.fundingRate
+      : toNumber((fundingData as any)?.lastFundingRate, 0);
 
     const [coinalyzeOiUsd, coinalyzeLs, coinalyzeFunding, coinglassOiUsd, coinglassLs, coinglassFunding, coinalyzeMap] = await Promise.all([
       trackFn(diagnostics, 'coinalyze-oi', () => fetchCoinalyzeOpenInterestUsd(symbol, Math.max(currentPrice, 1)), (v) => (v as number) > 0, undefined, true),

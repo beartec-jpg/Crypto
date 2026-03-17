@@ -5,7 +5,7 @@ export interface LiquidityHeatmapSettings {
   enabled: boolean;
 
   // Data source
-  exchange: string;              // Default: 'Binance'
+  exchange: string;              // Fixed: 'Aggregated'
   range: CoinglassRange;         // Coinglass range value - default: '7d'
   syncToChartTimeframe: boolean; // Auto-select range based on chart TF - default: true
 
@@ -53,7 +53,7 @@ export interface LiquidityHeatmapData {
 
 export const DEFAULT_LIQUIDITY_HEATMAP_SETTINGS: LiquidityHeatmapSettings = {
   enabled: false,
-  exchange: 'Binance',
+  exchange: 'Aggregated',
   range: '7d',
   syncToChartTimeframe: true,
   showHeatmap: true,

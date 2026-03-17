@@ -8,7 +8,11 @@ function loadSettings(): LiquidityHeatmapSettings {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      return { ...DEFAULT_LIQUIDITY_HEATMAP_SETTINGS, ...JSON.parse(stored) };
+      return {
+        ...DEFAULT_LIQUIDITY_HEATMAP_SETTINGS,
+        ...JSON.parse(stored),
+        exchange: 'Aggregated',
+      };
     }
   } catch (e) {
     // Ignore parse errors
@@ -36,13 +40,14 @@ export function useLiquidityHeatmapSettings(): UseLiquidityHeatmapSettingsReturn
   const [settings, setSettingsState] = useState<LiquidityHeatmapSettings>(loadSettings);
 
   const setSettings = useCallback((newSettings: LiquidityHeatmapSettings) => {
-    saveSettings(newSettings);
-    setSettingsState(newSettings);
+    const normalized = { ...newSettings, exchange: 'Aggregated' };
+    saveSettings(normalized);
+    setSettingsState(normalized);
   }, []);
 
   const updateSettings = useCallback((partial: Partial<LiquidityHeatmapSettings>) => {
     setSettingsState((prev) => {
-      const updated = { ...prev, ...partial };
+      const updated = { ...prev, ...partial, exchange: 'Aggregated' };
       saveSettings(updated);
       return updated;
     });
@@ -50,7 +55,7 @@ export function useLiquidityHeatmapSettings(): UseLiquidityHeatmapSettingsReturn
 
   const updateSetting = useCallback(<K extends keyof LiquidityHeatmapSettings>(key: K, value: LiquidityHeatmapSettings[K]) => {
     setSettingsState((prev) => {
-      const updated = { ...prev, [key]: value };
+      const updated = { ...prev, [key]: value, exchange: 'Aggregated' };
       saveSettings(updated);
       return updated;
     });
