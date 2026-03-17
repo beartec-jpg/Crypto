@@ -27,9 +27,14 @@ interface ServerHeatmapResponse {
 
 /**
  * Normalize symbol for display/debugging purposes.
+ * Strips quote currency suffix so the server receives base coin only.
+ * e.g. XRPUSDT → XRP, BTC/USDT → BTC, ETH-BUSD → ETH
  */
 function normalizeSymbol(symbol: string): string {
-  return symbol.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+  return symbol
+    .replace(/[^A-Z0-9]/gi, '')
+    .toUpperCase()
+    .replace(/(?:USDT|BUSD|USD|PERP)$/, '');
 }
 
 /**

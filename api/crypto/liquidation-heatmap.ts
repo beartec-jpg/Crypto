@@ -26,10 +26,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Normalize symbol (strip non-alphanumeric, uppercase)
-    const normalizedSymbol = symbol.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+    // Strip quote currency suffix so API receives base coin only (e.g. XRPUSDT → XRP)
+    const normalizedSymbol = symbol
+      .replace(/[^A-Z0-9]/gi, '')
+      .toUpperCase()
+      .replace(/(?:USDT|BUSD|USD|PERP)$/, '');
 
-    const url = `https://open-api.coinglass.com/api/futures/liquidation/heatmap/model2?symbol=${normalizedSymbol}&exchange=${exchange}&range=${range}`;
+    const url = `https://open-api-v4.coinglass.com/api/futures/liquidation/aggregated-heatmap/model3?symbol=${normalizedSymbol}&range=${range}`;
 
     const response = await fetch(url, {
       method: 'GET',
@@ -54,7 +57,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       data: data.data,
       meta: {
         symbol: normalizedSymbol,
-        exchange,
+        exchange: 'Aggregated',
         range,
         timestamp: Date.now()
       }
