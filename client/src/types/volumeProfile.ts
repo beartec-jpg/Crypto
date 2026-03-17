@@ -24,7 +24,7 @@ export interface VolumeProfileSettings {
   valueAreaPercent: number; // VA % (default: 70)
 
   // Display
-  position: SidebarPosition; // Sidebar position: 'left' | 'right' | 'auto' (auto entwines with predictive liquidation) - default: 'auto'
+  position: SidebarPosition; // Sidebar position: 'left' | 'right'. If both indicators share a side, they entwine.
   width: number;            // Width % (default: 15)
   showPOC: boolean;         // Highlight POC line (default: true)
   showValueArea: boolean;   // Show VA high/low (default: true)
@@ -47,7 +47,7 @@ export const DEFAULT_VOLUME_PROFILE_SETTINGS: VolumeProfileSettings = {
   enabled: false,
   rowCount: 24,
   valueAreaPercent: 70,
-  position: 'auto',
+  position: 'left',
   width: 15,
   showPOC: true,
   showValueArea: true,

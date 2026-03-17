@@ -146,34 +146,25 @@ export function FullscreenChartIndicatorLayer({
   onDivergenceSettingsChange,
 }: FullscreenChartIndicatorLayerProps) {
   // Determine sidebar positioning logic
-  // Both auto + both enabled → share (entwine)
-  // Otherwise → explicit positioning
+  // If both enabled and assigned to same side, share (entwine).
+  // Default split is VP left and LIQ right.
   const vpEnabled = Boolean(vpSettings?.enabled);
   const lhEnabled = Boolean(lhSettings?.enabled);
-  const vpPosition = vpSettings?.position ?? 'auto';
-  const lhPosition = lhSettings?.position ?? 'auto';
+  const vpPosition: 'left' | 'right' = vpSettings?.position === 'right' ? 'right' : 'left';
+  const lhPosition: 'left' | 'right' = lhSettings?.position === 'left' ? 'left' : 'right';
 
-  const shouldShareSidebar = vpEnabled && lhEnabled && vpPosition === 'auto' && lhPosition === 'auto';
+  const shouldShareSidebar = vpEnabled && lhEnabled && vpPosition === lhPosition;
   
   let vpRenderSide: 'left' | 'right' = 'right';
   let lhRenderSide: 'left' | 'right' = 'right';
   
   if (shouldShareSidebar) {
     // Share sidebar - alternate rendering (entwine)
-    vpRenderSide = 'right';
-    lhRenderSide = 'right';
+    vpRenderSide = vpPosition;
+    lhRenderSide = lhPosition;
   } else {
-    // Explicit positioning
-    vpRenderSide = vpPosition === 'left' ? 'left' : vpPosition === 'right' ? 'right' : 'right';
-    lhRenderSide = lhPosition === 'left' ? 'left' : lhPosition === 'right' ? 'right' : 'right';
-    
-    // If only one is enabled, use its explicit position
-    if (!vpEnabled && lhEnabled) {
-      lhRenderSide = lhPosition === 'left' ? 'left' : lhPosition === 'right' ? 'right' : 'right';
-    }
-    if (vpEnabled && !lhEnabled) {
-      vpRenderSide = vpPosition === 'left' ? 'left' : vpPosition === 'right' ? 'right' : 'right';
-    }
+    vpRenderSide = vpPosition;
+    lhRenderSide = lhPosition;
   }
 
   const sharedSidebarWidth = typeof vpSettings?.width === 'number' ? vpSettings.width : 22;

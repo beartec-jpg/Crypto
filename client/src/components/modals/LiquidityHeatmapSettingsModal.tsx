@@ -186,7 +186,7 @@ export function LiquidityHeatmapSettingsModal({
             <div className="py-2">
               <Label className="text-sm text-slate-300 mb-1 block">Position</Label>
               <div className="flex gap-2 mt-1">
-                {(['auto', 'left', 'right'] as const).map((pos) => (
+                {(['left', 'right'] as const).map((pos) => (
                   <button
                     key={pos}
                     onClick={() => update('position', pos)}
@@ -200,7 +200,7 @@ export function LiquidityHeatmapSettingsModal({
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-slate-500 mt-1">Auto: Entwine with Volume Profile if both enabled</p>
+              <p className="text-xs text-slate-500 mt-1">If Predictive Liquidation and Volume Profile are set to the same side, they combine (entwined).</p>
             </div>
           </div>
 

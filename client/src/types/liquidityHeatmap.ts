@@ -1,5 +1,5 @@
 export type CoinglassRange = '12h' | '24h' | '3d' | '7d' | '30d' | '90d' | '180d' | '1y';
-export type SidebarPosition = 'left' | 'right' | 'auto';
+export type SidebarPosition = 'left' | 'right';
 
 export interface LiquidityHeatmapSettings {
   enabled: boolean;
@@ -30,7 +30,7 @@ export interface LiquidityHeatmapSettings {
   biasWeight: number;      // Default: 0.15
 
   // Layout
-  position: SidebarPosition; // Sidebar position: 'left' | 'right' | 'auto' (auto entwines with volume profile) - default: 'auto'
+  position: SidebarPosition; // Sidebar position: 'left' | 'right'. If both indicators share a side, they entwine.
 
   // Developer
   showDebugPanel: boolean; // Show debug/stats panel - default: false
@@ -68,7 +68,7 @@ export const DEFAULT_LIQUIDITY_HEATMAP_SETTINGS: LiquidityHeatmapSettings = {
   orderbookWeight: 0.25,
   liqFlowWeight: 0.2,
   biasWeight: 0.15,
-  position: 'auto',
+  position: 'right',
   showDebugPanel: false,
 };
 

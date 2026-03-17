@@ -45,7 +45,7 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
       const vpWidth = chartWidth * (this._settings.width / 100);
       const isSharedSidebar = this._stackSection !== 'full';
       const laneWidth = vpWidth;
-      const effectivePosition = this._settings.position === 'auto' ? 'right' : this._settings.position;
+      const effectivePosition = this._settings.position;
       const sidebarStart = effectivePosition === 'right' ? chartWidth - vpWidth : 0;
       const xStart = sidebarStart;
 
@@ -96,18 +96,22 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
           color = this._settings.pocColor;
         }
 
+        const barStartX = effectivePosition === 'right'
+          ? xStart + laneWidth - barWidth
+          : xStart;
+
         ctx.fillStyle = color;
-        ctx.fillRect(xStart, yDraw, barWidth, Math.max(barHeight - 1, 1));
+        ctx.fillRect(barStartX, yDraw, barWidth, Math.max(barHeight - 1, 1));
 
         // Draw volume text label
         if (barWidth > 30 && barHeight > 10) {
           ctx.save();
           ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
           ctx.font = '9px sans-serif';
-          ctx.textAlign = effectivePosition === 'right' ? 'left' : 'right';
-          const textX = effectivePosition === 'right' 
-            ? xStart + 3 
-            : xStart + barWidth - 3;
+          ctx.textAlign = effectivePosition === 'right' ? 'right' : 'left';
+          const textX = effectivePosition === 'right'
+            ? barStartX + barWidth - 3
+            : barStartX + 3;
           const textY = yDraw + barHeight / 2 + 3;
           ctx.fillText(formatVolume(row.volume), textX, textY);
           ctx.restore();
