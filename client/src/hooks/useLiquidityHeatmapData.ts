@@ -3,12 +3,19 @@ import type { CoinglassRange, LiquidityHeatmapData, LiquidityHeatmapSettings } f
 import { fetchLiquidationHeatmap } from '@/services/coinglassApi';
 import { mapChartIntervalToRange } from '@/lib/liquidityTimeframeMapping';
 
+export interface LiquidityHeatmapDebugInfo {
+  lastRequestUrl: string;
+  lastRequestTime: number | null;
+  normalizedSymbol: string;
+}
+
 interface UseLiquidityHeatmapDataReturn {
   data: LiquidityHeatmapData | null;
   isLoading: boolean;
   error: string | null;
   refetch: () => void;
   effectiveRange: CoinglassRange;
+  debugInfo: LiquidityHeatmapDebugInfo;
 }
 
 export function useLiquidityHeatmapData(
@@ -19,6 +26,11 @@ export function useLiquidityHeatmapData(
   const [data, setData] = useState<LiquidityHeatmapData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<LiquidityHeatmapDebugInfo>({
+    lastRequestUrl: '',
+    lastRequestTime: null,
+    normalizedSymbol: '',
+  });
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fetchCountRef = useRef(0);
 
@@ -38,7 +50,12 @@ export function useLiquidityHeatmapData(
     setError(null);
     try {
       const result = await fetchLiquidationHeatmap(symbol, settings.exchange, effectiveRange);
-      setData(result);
+      setData(result.data);
+      setDebugInfo({
+        lastRequestUrl: result.requestUrl,
+        lastRequestTime: Date.now(),
+        normalizedSymbol: result.normalizedSymbol,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to fetch liquidation data');
     } finally {
@@ -80,5 +97,5 @@ export function useLiquidityHeatmapData(
     };
   }, [settings.enabled, settings.autoRefresh, settings.refreshInterval, fetchData]);
 
-  return { data, isLoading, error, refetch: fetchData, effectiveRange };
+  return { data, isLoading, error, refetch: fetchData, effectiveRange, debugInfo };
 }

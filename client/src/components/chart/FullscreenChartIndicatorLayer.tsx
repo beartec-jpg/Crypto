@@ -11,12 +11,14 @@ import { VolumeProfileRenderer } from '@/components/indicators/VolumeProfileRend
 import { VolumeProfileSettingsModal } from '@/components/modals/VolumeProfileSettingsModal';
 import { LiquidityHeatmapRenderer } from '@/components/indicators/LiquidityHeatmapRenderer';
 import { LiquidityHeatmapSettingsModal } from '@/components/modals/LiquidityHeatmapSettingsModal';
+import { LiquidityHeatmapDebugPanel } from '@/components/debug/LiquidityHeatmapDebugPanel';
 import { SuperTrendRenderer } from '@/components/indicators/SuperTrendRenderer';
 import { ElderImpulseRenderer } from '@/components/indicators/ElderImpulseRenderer';
 import { DivergenceRenderer } from '@/components/divergence/DivergenceRenderer';
 import { DivergenceBadgePopup } from '@/components/divergence/DivergenceBadgePopup';
 import { DivergenceSettingsModal } from '@/components/divergence/DivergenceSettingsModal';
 import { getConditionWeights } from '@/lib/conditionWeights';
+import type { LiquidityHeatmapDebugInfo } from '@/hooks/useLiquidityHeatmapData';
 
 interface FullscreenChartIndicatorLayerProps {
   chart: any;
@@ -66,6 +68,9 @@ interface FullscreenChartIndicatorLayerProps {
   showLHModal: boolean;
   onCloseLHModal: () => void;
   onLHSettingsChange: (value: any) => void;
+  lhIsLoading: boolean;
+  lhError: string | null;
+  lhDebugInfo: LiquidityHeatmapDebugInfo;
 
   superTrendData: any;
   superTrendSettings: any;
@@ -125,6 +130,9 @@ export function FullscreenChartIndicatorLayer({
   showLHModal,
   onCloseLHModal,
   onLHSettingsChange,
+  lhIsLoading,
+  lhError,
+  lhDebugInfo,
   superTrendData,
   superTrendSettings,
   divergenceScannerEnabled,
@@ -233,6 +241,18 @@ export function FullscreenChartIndicatorLayer({
         settings={lhSettings}
         effectiveRange={lhEffectiveRange}
       />
+
+      {lhSettings?.enabled && lhSettings?.showDebugPanel && (
+        <LiquidityHeatmapDebugPanel
+          data={liquidityHeatmapData}
+          isLoading={lhIsLoading}
+          error={lhError}
+          effectiveRange={lhEffectiveRange}
+          settings={lhSettings}
+          symbol={symbol}
+          debugInfo={lhDebugInfo}
+        />
+      )}
 
       <SuperTrendRenderer
         chart={chart}

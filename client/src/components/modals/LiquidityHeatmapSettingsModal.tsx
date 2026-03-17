@@ -233,6 +233,19 @@ export function LiquidityHeatmapSettingsModal({
               />
             )}
           </div>
+
+          {/* Developer */}
+          <div className="border-t border-slate-700 pt-2">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Developer</p>
+
+            <SettingRow label="Show Debug Panel">
+              <Switch
+                checked={settings.showDebugPanel}
+                onCheckedChange={(v) => update('showDebugPanel', v)}
+                className="data-[state=checked]:bg-amber-500"
+              />
+            </SettingRow>
+          </div>
         </div>
 
         <div className="flex justify-end pt-2 border-t border-slate-700">

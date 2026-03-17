@@ -21,6 +21,9 @@ export interface LiquidityHeatmapSettings {
   // Behavior
   autoRefresh: boolean;    // Auto-refresh data - default: true
   refreshInterval: number; // Refresh interval in seconds - default: 60
+
+  // Developer
+  showDebugPanel: boolean; // Show debug/stats panel - default: false
 }
 
 export interface LiquidityLevel {
@@ -51,6 +54,7 @@ export const DEFAULT_LIQUIDITY_HEATMAP_SETTINGS: LiquidityHeatmapSettings = {
   shortLiquidationColor: '#22c55e',
   autoRefresh: true,
   refreshInterval: 60,
+  showDebugPanel: false,
 };
 
 export const COINGLASS_RANGES: { value: CoinglassRange; label: string }[] = [
