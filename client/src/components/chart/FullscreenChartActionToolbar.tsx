@@ -74,6 +74,9 @@ interface FullscreenChartActionToolbarProps {
   vpEnabled: boolean;
   onToggleVolumeProfile: (enabled: boolean) => void;
   onOpenVolumeProfileSettings: () => void;
+  liquidityHeatmapEnabled: boolean;
+  onToggleLiquidityHeatmap: (enabled: boolean) => void;
+  onOpenLiquidityHeatmapSettings: () => void;
   gdsMiniBadgeEnabled: boolean;
   onToggleGdsMiniBadge: (enabled: boolean) => void;
 
@@ -134,6 +137,9 @@ export function FullscreenChartActionToolbar({
   vpEnabled,
   onToggleVolumeProfile,
   onOpenVolumeProfileSettings,
+  liquidityHeatmapEnabled,
+  onToggleLiquidityHeatmap,
+  onOpenLiquidityHeatmapSettings,
   gdsMiniBadgeEnabled,
   onToggleGdsMiniBadge,
   activeSystem,
@@ -190,6 +196,9 @@ export function FullscreenChartActionToolbar({
         vpEnabled={vpEnabled}
         onToggleVolumeProfile={onToggleVolumeProfile}
         onOpenVolumeProfileSettings={onOpenVolumeProfileSettings}
+        liquidityHeatmapEnabled={liquidityHeatmapEnabled}
+        onToggleLiquidityHeatmap={onToggleLiquidityHeatmap}
+        onOpenLiquidityHeatmapSettings={onOpenLiquidityHeatmapSettings}
         gdsMiniBadgeEnabled={gdsMiniBadgeEnabled}
         onToggleGdsMiniBadge={onToggleGdsMiniBadge}
       />

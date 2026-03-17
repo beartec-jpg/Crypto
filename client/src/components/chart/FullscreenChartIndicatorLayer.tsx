@@ -9,6 +9,8 @@ import { PDZoneRenderer } from '@/components/indicators/PDZoneRenderer';
 import { AutoFibRenderer } from '@/components/indicators/AutoFibRenderer';
 import { VolumeProfileRenderer } from '@/components/indicators/VolumeProfileRenderer';
 import { VolumeProfileSettingsModal } from '@/components/modals/VolumeProfileSettingsModal';
+import { LiquidityHeatmapRenderer } from '@/components/indicators/LiquidityHeatmapRenderer';
+import { LiquidityHeatmapSettingsModal } from '@/components/modals/LiquidityHeatmapSettingsModal';
 import { SuperTrendRenderer } from '@/components/indicators/SuperTrendRenderer';
 import { ElderImpulseRenderer } from '@/components/indicators/ElderImpulseRenderer';
 import { DivergenceRenderer } from '@/components/divergence/DivergenceRenderer';
@@ -57,6 +59,12 @@ interface FullscreenChartIndicatorLayerProps {
   showVPModal: boolean;
   onCloseVPModal: () => void;
   onVPSettingsChange: (value: any) => void;
+
+  liquidityHeatmapData: any;
+  lhSettings: any;
+  showLHModal: boolean;
+  onCloseLHModal: () => void;
+  onLHSettingsChange: (value: any) => void;
 
   superTrendData: any;
   superTrendSettings: any;
@@ -110,6 +118,11 @@ export function FullscreenChartIndicatorLayer({
   showVPModal,
   onCloseVPModal,
   onVPSettingsChange,
+  liquidityHeatmapData,
+  lhSettings,
+  showLHModal,
+  onCloseLHModal,
+  onLHSettingsChange,
   superTrendData,
   superTrendSettings,
   divergenceScannerEnabled,
@@ -211,6 +224,13 @@ export function FullscreenChartIndicatorLayer({
         settings={vpSettings}
       />
 
+      <LiquidityHeatmapRenderer
+        chart={chart}
+        candleSeries={candleSeries}
+        data={liquidityHeatmapData}
+        settings={lhSettings}
+      />
+
       <SuperTrendRenderer
         chart={chart}
         candleSeries={candleSeries}
@@ -240,6 +260,13 @@ export function FullscreenChartIndicatorLayer({
         onClose={onCloseVPModal}
         settings={vpSettings}
         onSettingsChange={onVPSettingsChange}
+      />
+
+      <LiquidityHeatmapSettingsModal
+        isOpen={showLHModal}
+        onClose={onCloseLHModal}
+        settings={lhSettings}
+        onSettingsChange={onLHSettingsChange}
       />
 
       <DivergenceSettingsModal

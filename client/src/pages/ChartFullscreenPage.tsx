@@ -42,6 +42,8 @@ import { useSuperTrendCalculation } from '@/hooks/useSuperTrendCalculation';
 import { useVolumeProfileSettings } from '@/hooks/useVolumeProfileSettings';
 import { useVisibleRange } from '@/hooks/useVisibleRange';
 import { useVolumeProfileCalculation } from '@/hooks/useVolumeProfileCalculation';
+import { useLiquidityHeatmapSettings } from '@/hooks/useLiquidityHeatmapSettings';
+import { useLiquidityHeatmapData } from '@/hooks/useLiquidityHeatmapData';
 import { useFVGSettings } from '@/hooks/useFVGSettings';
 import { useFVGDetection } from '@/hooks/useFVGDetection';
 import { useOrderBlockSettings } from '@/hooks/useOrderBlockSettings';
@@ -223,6 +225,8 @@ export function ChartFullscreenPage({
   const [showDivergenceSettings, setShowDivergenceSettings] = useState(false);
   // Volume Profile state
   const [showVPModal, setShowVPModal] = useState(false);
+  // Liquidity Heatmap state
+  const [showLHModal, setShowLHModal] = useState(false);
   // Alerts state
   const [showAlertSettings, setShowAlertSettings] = useState(false);
   const [showDrawingAlertSettings, setShowDrawingAlertSettings] = useState(false);
@@ -571,6 +575,10 @@ export function ChartFullscreenPage({
   const vpSettings = useVolumeProfileSettings();
   const visibleRange = useVisibleRange(vpSettings.settings.updateOnPan ? chartRef.current : null);
   const volumeProfileData = useVolumeProfileCalculation(effectiveCandles, visibleRange, vpSettings.settings);
+
+  // Hooks - Liquidity Heatmap
+  const lhSettings = useLiquidityHeatmapSettings();
+  const liquidityHeatmapDataResult = useLiquidityHeatmapData(symbol, lhSettings.settings);
 
   // Hooks - Trading Systems
   const tradingSystemCallbacks: TradingSystemCallbacks = {
@@ -1790,6 +1798,9 @@ export function ChartFullscreenPage({
           vpEnabled={vpSettings.settings.enabled}
           onToggleVolumeProfile={(enabled) => vpSettings.updateSettings({ enabled })}
           onOpenVolumeProfileSettings={() => setShowVPModal(true)}
+          liquidityHeatmapEnabled={lhSettings.settings.enabled}
+          onToggleLiquidityHeatmap={(enabled) => lhSettings.updateSettings({ enabled })}
+          onOpenLiquidityHeatmapSettings={() => setShowLHModal(true)}
           gdsMiniBadgeEnabled={showGdsMiniBadge}
           onToggleGdsMiniBadge={setShowGdsMiniBadge}
           activeSystem={tradingSystem.activeSystem}
@@ -1893,6 +1904,11 @@ export function ChartFullscreenPage({
           showVPModal={showVPModal}
           onCloseVPModal={() => setShowVPModal(false)}
           onVPSettingsChange={vpSettings.setSettings}
+          liquidityHeatmapData={liquidityHeatmapDataResult.data}
+          lhSettings={lhSettings.settings}
+          showLHModal={showLHModal}
+          onCloseLHModal={() => setShowLHModal(false)}
+          onLHSettingsChange={lhSettings.setSettings}
           superTrendData={superTrendData}
           superTrendSettings={superTrendSettings.settings}
           divergenceScannerEnabled={divergenceScannerEnabled}
