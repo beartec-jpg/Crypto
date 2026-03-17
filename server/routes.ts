@@ -1359,6 +1359,62 @@ const requireCryptoAuth: RequestHandler = async (req: Request, res: Response, ne
     }
   });
 
+  // Liquidation Heatmap endpoint (for client-side heatmap overlay)
+  app.get("/api/crypto/liquidation-heatmap", async (req, res) => {
+    try {
+      const symbol = (req.query.symbol as string)?.toUpperCase() || 'BTCUSDT';
+      const exchange = (req.query.exchange as string) || 'Binance';
+      const range = (req.query.range as string) || '7d';
+
+      const apiKey = process.env.COINGLASS_API_KEY;
+      if (!apiKey) {
+        return res.status(503).json({
+          error: 'Coinglass API not configured',
+          message: 'COINGLASS_API_KEY environment variable required'
+        });
+      }
+
+      const normalizedSymbol = symbol.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+      const url = `https://open-api.coinglass.com/api/futures/liquidation/heatmap/model2?symbol=${normalizedSymbol}&exchange=${exchange}&range=${range}`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'CG-API-KEY': apiKey
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Coinglass API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.code !== '0') {
+        throw new Error(`Coinglass API returned error: ${data.msg}`);
+      }
+
+      res.json({
+        code: '0',
+        data: data.data,
+        meta: {
+          symbol: normalizedSymbol,
+          exchange,
+          range,
+          timestamp: Date.now()
+        }
+      });
+
+    } catch (error: any) {
+      console.error('Error fetching liquidation heatmap:', error);
+      res.status(500).json({
+        error: 'Failed to fetch liquidation heatmap',
+        message: error.message
+      });
+    }
+  });
+
   // CoinGlass Aggregated Orderbook Bid/Ask endpoint
   const orderbookCache = new Map<string, { data: any; timestamp: number }>();
   const ORDERBOOK_CACHE_TTL = 10 * 60 * 1000; // 10 minutes

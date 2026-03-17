@@ -1,7 +1,7 @@
 import type { CoinglassRange, LiquidityHeatmapData } from '@/types/liquidityHeatmap';
 
-const API_BASE = 'https://open-api.coinglass.com';
-const API_KEY = import.meta.env.VITE_COINGLASS_API_KEY as string | undefined;
+// Use server-side proxy instead of direct Coinglass API call
+const API_BASE = '/api/crypto';
 
 interface CoinglassHeatmapRow {
   p: number;   // price
@@ -9,28 +9,24 @@ interface CoinglassHeatmapRow {
   sv: number;  // short liquidation value (USD)
 }
 
-interface CoinglassHeatmapResponse {
+interface ServerHeatmapResponse {
   code: string;
-  msg: string;
   data: {
     priceList: number[];
     liqList: CoinglassHeatmapRow[];
   };
-}
-
-function buildHeaders(): HeadersInit {
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
+  meta: {
+    symbol: string;
+    exchange: string;
+    range: string;
+    timestamp: number;
   };
-  if (API_KEY) {
-    headers['CG-API-KEY'] = API_KEY;
-  }
-  return headers;
+  error?: string;
+  message?: string;
 }
 
 /**
- * Map a Coinglass symbol (e.g. "BTCUSDT") to the format Coinglass expects.
- * Strip exchange-specific suffixes added by the chart app.
+ * Normalize symbol for display/debugging purposes.
  */
 function normalizeSymbol(symbol: string): string {
   return symbol.replace(/[^A-Z0-9]/gi, '').toUpperCase();
@@ -46,8 +42,8 @@ export interface FetchLiquidationHeatmapResult {
 }
 
 /**
- * Fetch liquidation heatmap data for a given symbol and exchange.
- * Uses the `/api/futures/liquidation/heatmap/model2` endpoint.
+ * Fetch liquidation heatmap data via server-side proxy.
+ * This keeps the API key secure on the server.
  */
 export async function fetchLiquidationHeatmap(
   symbol: string,
@@ -55,7 +51,7 @@ export async function fetchLiquidationHeatmap(
   range: CoinglassRange,
 ): Promise<FetchLiquidationHeatmapResult> {
   const normalised = normalizeSymbol(symbol);
-  const url = new URL(`${API_BASE}/api/futures/liquidation/heatmap/model2`);
+  const url = new URL(`${API_BASE}/liquidation-heatmap`, window.location.origin);
   url.searchParams.set('symbol', normalised);
   url.searchParams.set('exchange', exchange);
   url.searchParams.set('range', range);
@@ -64,23 +60,46 @@ export async function fetchLiquidationHeatmap(
 
   const response = await fetch(requestUrl, {
     method: 'GET',
-    headers: buildHeaders(),
+    headers: {
+      'Content-Type': 'application/json',
+    },
   });
 
   if (!response.ok) {
-    throw new Error(`Coinglass API error: ${response.status} ${response.statusText}`);
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Server error: ${response.status} ${response.statusText}`);
   }
 
-  const json: CoinglassHeatmapResponse = await response.json();
+  const json: ServerHeatmapResponse = await response.json();
 
   if (json.code !== '0') {
-    throw new Error(`Coinglass API returned error: ${json.msg}`);
+    throw new Error(json.message || 'Server returned error');
   }
 
-  return { data: transformHeatmapResponse(json), requestUrl, normalizedSymbol: normalised };
+  return {
+    data: transformHeatmapResponse(json),
+    requestUrl,
+    normalizedSymbol: json.meta?.symbol || normalised,
+  };
 }
 
-function transformHeatmapResponse(json: CoinglassHeatmapResponse): LiquidityHeatmapData {
+/**
+ * Check if the server-side API key is configured.
+ * This is used by the debug panel.
+ */
+export async function checkApiKeyStatus(): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE}/liquidation-heatmap?symbol=BTCUSDT&exchange=Binance&range=7d`);
+    if (response.status === 503) {
+      return false; // API key not configured
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function transformHeatmapResponse(json: ServerHeatmapResponse): LiquidityHeatmapData {
   const rows = json.data?.liqList ?? [];
 
   let maxLongLiq = 0;
