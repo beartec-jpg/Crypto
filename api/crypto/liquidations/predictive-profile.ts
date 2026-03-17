@@ -824,6 +824,28 @@ async function fetchCoinglassOpenInterestUsd(symbol: string): Promise<number> {
   }
 }
 
+async function fetchCoinglassLiquidationHistoryCount(symbol: string): Promise<number> {
+  const key = process.env.COINGLASS_API_KEY;
+  if (!key) return 0;
+
+  const url = `https://open-api-v4.coinglass.com/api/futures/liquidation/history?exchange=Binance&symbol=${baseSymbol(symbol)}&interval=4h&limit=30`;
+  try {
+    const response = await fetch(url, {
+      headers: { accept: 'application/json', 'CG-API-KEY': key },
+      signal: AbortSignal.timeout(7000),
+    });
+    if (!response.ok) return 0;
+    const json = await response.json();
+    const rows = Array.isArray(json?.data) ? json.data : [];
+    return rows.filter((row: any) =>
+      toNumber(row?.long_liquidation_usd ?? row?.longLiquidationUsd, 0) > 0
+      || toNumber(row?.short_liquidation_usd ?? row?.shortLiquidationUsd, 0) > 0,
+    ).length;
+  } catch {
+    return 0;
+  }
+}
+
 function applyPredictedMapComponent(
   levels: PriceLevelScore[],
   currentPrice: number,
@@ -854,6 +876,23 @@ async function fetchCoinalyzeLiquidationMap(symbol: string): Promise<Array<{ pri
     .map((l: any) => ({ price: toNumber(l.price), value: toNumber(l.liquidation_value) }))
     .filter((l: { price: number; value: number }) => l.price > 0 && l.value > 0)
     .slice(0, 200);
+}
+
+async function fetchCoinalyzeLiquidationHistoryCount(symbol: string): Promise<number> {
+  const key = process.env.COINALYZE_API_KEY;
+  if (!key) return 0;
+
+  const coinalyzeSymbol = `${symbol}_PERP.A`;
+  const to = Math.floor(Date.now() / 1000);
+  const from = to - (48 * 60 * 60);
+  const url = `https://api.coinalyze.net/v1/liquidation-history?symbols=${coinalyzeSymbol}&interval=4hour&from=${from}&to=${to}`;
+
+  const data = await safeFetchJson<any[]>(url + `&api_key=${key}`);
+  const history = data?.[0]?.history;
+  if (!Array.isArray(history)) return 0;
+
+  // Count only points with actual liquidation activity.
+  return history.filter((p: any) => toNumber(p?.l, 0) > 0 || toNumber(p?.s, 0) > 0).length;
 }
 
 function buildPriceLevels(
@@ -1255,7 +1294,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? internalMetrics.fundingRate
       : toNumber((fundingData as any)?.lastFundingRate, 0);
 
-    const [coinalyzeOiUsd, coinalyzeLs, coinalyzeFunding, coinglassOiUsd, coinglassLs, coinglassFunding, coinalyzeMap] = await Promise.all([
+    const [coinalyzeOiUsd, coinalyzeLs, coinalyzeFunding, coinglassOiUsd, coinglassLs, coinglassFunding, coinalyzeMap, coinalyzeLiqHistoryCount, coinglassLiqHistoryCount] = await Promise.all([
       trackFn(diagnostics, 'coinalyze-oi', () => fetchCoinalyzeOpenInterestUsd(symbol, Math.max(currentPrice, 1)), (v) => (v as number) > 0, undefined, true),
       trackFn(diagnostics, 'coinalyze-ls-ratio', () => fetchCoinalyzeLongShortRatio(symbol), (v) => (v as number) > 0 && (v as number) !== 1, undefined, true),
       trackFn(diagnostics, 'coinalyze-funding', () => fetchCoinalyzeFundingRate(symbol), (v) => (v as number) !== 0, undefined, true),
@@ -1270,7 +1309,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         (v) => Array.isArray(v) ? v.length : 0,
         true,
       ),
+      trackFn(
+        diagnostics,
+        'coinalyze-liq-history',
+        () => fetchCoinalyzeLiquidationHistoryCount(symbol),
+        (v) => (v as number) > 0,
+        (v) => Number(v) || 0,
+        true,
+      ),
+      trackFn(
+        diagnostics,
+        'coinglass-liq-history',
+        () => fetchCoinglassLiquidationHistoryCount(symbol),
+        (v) => (v as number) > 0,
+        (v) => Number(v) || 0,
+        true,
+      ),
     ]);
+
+    const coinalyzeFallbackCount = Math.max(
+      Number(coinalyzeLiqHistoryCount) || 0,
+      Array.isArray(coinalyzeMap) ? coinalyzeMap.length : 0,
+    );
+    const coinglassFallbackCount = Number(coinglassLiqHistoryCount) || 0;
+    const effectiveRealtimeCount = realtimeStats?.totalCount || 0;
+    const effectiveBinanceCount = realtimeStats?.binanceCount || 0;
+    const keyedFallbackCount = Math.max(coinalyzeFallbackCount, coinglassFallbackCount);
+    const effectiveSourceCount = effectiveRealtimeCount > 0
+      ? effectiveRealtimeCount
+      : keyedFallbackCount;
 
     // If price is still 0, try to estimate from Coinalyze map median
     if (currentPrice <= 0 && Array.isArray(coinalyzeMap) && coinalyzeMap.length > 0) {
@@ -1403,9 +1470,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           openInterestUsd,
           longShortRatio,
           fundingRate,
-          forceOrderCount: realtimeStats?.binanceCount || 0,
-          realtimeOrderCount: realtimeStats?.totalCount || 0,
-          mergedForceOrderCount: recentForceOrders.length,
+          forceOrderCount: effectiveBinanceCount > 0 ? effectiveBinanceCount : keyedFallbackCount,
+          realtimeOrderCount: effectiveSourceCount,
+          mergedForceOrderCount: recentForceOrders.length > 0 ? recentForceOrders.length : effectiveSourceCount,
           depthBidLevels: effectiveDepth?.bids?.length || 0,
           depthAskLevels: effectiveDepth?.asks?.length || 0,
           coinalyzeMapLevels: Array.isArray(coinalyzeMap) ? coinalyzeMap.length : 0,
