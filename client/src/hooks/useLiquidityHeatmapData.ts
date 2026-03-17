@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { CoinglassRange, LiquidityHeatmapData, LiquidityHeatmapSettings } from '@/types/liquidityHeatmap';
 import { fetchPredictiveLiquidationProfile } from '@/services/predictiveLiquidationApi';
+import type { EndpointDiagnostic } from '@/services/predictiveLiquidationApi';
 import { mapChartIntervalToRange } from '@/lib/liquidityTimeframeMapping';
 
 export interface LiquidityHeatmapDebugInfo {
@@ -17,6 +18,7 @@ export interface LiquidityHeatmapDebugInfo {
     depthAskLevels: number;
     cacheWarm: boolean;
   };
+  diagnostics: EndpointDiagnostic[];
 }
 
 interface UseLiquidityHeatmapDataReturn {
@@ -50,6 +52,7 @@ export function useLiquidityHeatmapData(
       depthAskLevels: 0,
       cacheWarm: false,
     },
+    diagnostics: [],
   });
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fetchCountRef = useRef(0);
@@ -81,7 +84,16 @@ export function useLiquidityHeatmapData(
         lastRequestTime: Date.now(),
         normalizedSymbol: result.normalizedSymbol,
         source: result.source,
-        stats: result.debugStats,
+        stats: {
+          forceOrderCount: result.debugStats.forceOrderCount,
+          realtimeOrderCount: result.debugStats.realtimeOrderCount,
+          mergedForceOrderCount: result.debugStats.mergedForceOrderCount,
+          coinalyzeMapLevels: result.debugStats.coinalyzeMapLevels,
+          depthBidLevels: result.debugStats.depthBidLevels,
+          depthAskLevels: result.debugStats.depthAskLevels,
+          cacheWarm: result.debugStats.cacheWarm,
+        },
+        diagnostics: result.debugStats.diagnostics,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to fetch liquidation data');

@@ -2,6 +2,16 @@ import type { CoinglassRange, LiquidityHeatmapData } from '@/types/liquidityHeat
 
 const API_BASE = '/api/crypto/liquidations';
 
+export interface EndpointDiagnostic {
+  endpoint: string;
+  url: string;
+  ok: boolean;
+  status: number | null;
+  ms: number;
+  error?: string;
+  dataPoints?: number;
+}
+
 interface PredictiveApiResponse {
   code: string;
   data: LiquidityHeatmapData;
@@ -18,6 +28,7 @@ interface PredictiveApiResponse {
       depthAskLevels?: number;
       cacheWarm?: boolean;
     };
+    diagnostics?: EndpointDiagnostic[];
   };
   error?: string;
 }
@@ -40,6 +51,7 @@ export interface PredictiveDebugStats {
   depthBidLevels: number;
   depthAskLevels: number;
   cacheWarm: boolean;
+  diagnostics: EndpointDiagnostic[];
 }
 
 export interface FetchPredictiveLiquidationResult {
@@ -142,6 +154,7 @@ async function fetchLegacyPredictedFallback(normalizedSymbol: string): Promise<F
       depthBidLevels: 0,
       depthAskLevels: 0,
       cacheWarm: false,
+      diagnostics: [],
     },
   };
 }
@@ -199,6 +212,7 @@ export async function fetchPredictiveLiquidationProfile(
       depthBidLevels: Number(json.meta?.inputs?.depthBidLevels || 0),
       depthAskLevels: Number(json.meta?.inputs?.depthAskLevels || 0),
       cacheWarm: Boolean(json.meta?.inputs?.cacheWarm),
+      diagnostics: Array.isArray(json.meta?.diagnostics) ? json.meta.diagnostics : [],
     },
   };
 }
