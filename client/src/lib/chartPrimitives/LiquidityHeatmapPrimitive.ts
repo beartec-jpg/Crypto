@@ -8,7 +8,8 @@ import type {
   ISeriesApi,
   SeriesType,
 } from 'lightweight-charts';
-import type { LiquidityHeatmapData, LiquidityHeatmapSettings } from '@/types/liquidityHeatmap';
+import type { CoinglassRange, LiquidityHeatmapData, LiquidityHeatmapSettings } from '@/types/liquidityHeatmap';
+import { getRangeLabel } from '@/lib/liquidityTimeframeMapping';
 
 type RequestUpdateCallback = () => void;
 
@@ -24,17 +25,20 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
   private _settings: LiquidityHeatmapSettings;
   private _series: ISeriesApi<SeriesType> | null;
   private _chart: IChartApi | null;
+  private _effectiveRange: CoinglassRange;
 
   constructor(
     data: LiquidityHeatmapData | null,
     settings: LiquidityHeatmapSettings,
     series: ISeriesApi<SeriesType> | null,
     chart: IChartApi | null,
+    effectiveRange: CoinglassRange,
   ) {
     this._data = data;
     this._settings = settings;
     this._series = series;
     this._chart = chart;
+    this._effectiveRange = effectiveRange;
   }
 
   draw(target: any) {
@@ -127,6 +131,26 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
         for (const l of topLong) drawLine(l, longRgb);
         for (const l of topShort) drawLine(l, shortRgb);
       }
+
+      // Range indicator badge in top-right corner
+      if (this._settings.showRangeIndicator) {
+        const badge = `LIQ: ${getRangeLabel(this._effectiveRange)}`;
+        ctx.save();
+        ctx.font = 'bold 10px sans-serif';
+        const textWidth = ctx.measureText(badge).width;
+        const padding = 4;
+        const badgeWidth = textWidth + padding * 2;
+        const badgeHeight = 16;
+        const x = chartWidth - badgeWidth - 6;
+        const y = 6;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+        ctx.beginPath();
+        ctx.roundRect(x, y, badgeWidth, badgeHeight, 3);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+        ctx.fillText(badge, x + padding, y + badgeHeight - 4);
+        ctx.restore();
+      }
     });
   }
 }
@@ -156,6 +180,7 @@ class LiquidityHeatmapPaneView implements IPrimitivePaneView {
       this._primitive.getSettings(),
       this._series,
       this._chart,
+      this._primitive.getEffectiveRange(),
     );
   }
 }
@@ -164,13 +189,15 @@ export class LiquidityHeatmapPrimitive implements ISeriesPrimitive<Time> {
   private _paneViews: LiquidityHeatmapPaneView[];
   private _data: LiquidityHeatmapData | null;
   private _settings: LiquidityHeatmapSettings;
+  private _effectiveRange: CoinglassRange;
   private _series: ISeriesApi<SeriesType> | null = null;
   private _chart: IChartApi | null = null;
   private _requestUpdate?: RequestUpdateCallback;
 
-  constructor(data: LiquidityHeatmapData | null, settings: LiquidityHeatmapSettings) {
+  constructor(data: LiquidityHeatmapData | null, settings: LiquidityHeatmapSettings, effectiveRange: CoinglassRange = '7d') {
     this._data = data;
     this._settings = settings;
+    this._effectiveRange = effectiveRange;
     this._paneViews = [new LiquidityHeatmapPaneView(this)];
   }
 
@@ -202,9 +229,14 @@ export class LiquidityHeatmapPrimitive implements ISeriesPrimitive<Time> {
     return this._settings;
   }
 
-  update(data: LiquidityHeatmapData | null, settings: LiquidityHeatmapSettings) {
+  getEffectiveRange(): CoinglassRange {
+    return this._effectiveRange;
+  }
+
+  update(data: LiquidityHeatmapData | null, settings: LiquidityHeatmapSettings, effectiveRange: CoinglassRange = '7d') {
     this._data = data;
     this._settings = settings;
+    this._effectiveRange = effectiveRange;
     this._requestUpdate?.();
   }
 }

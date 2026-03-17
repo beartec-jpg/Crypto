@@ -1,17 +1,20 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import type { LiquidityHeatmapData, LiquidityHeatmapSettings } from '@/types/liquidityHeatmap';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import type { CoinglassRange, LiquidityHeatmapData, LiquidityHeatmapSettings } from '@/types/liquidityHeatmap';
 import { fetchLiquidationHeatmap } from '@/services/coinglassApi';
+import { mapChartIntervalToRange } from '@/lib/liquidityTimeframeMapping';
 
 interface UseLiquidityHeatmapDataReturn {
   data: LiquidityHeatmapData | null;
   isLoading: boolean;
   error: string | null;
   refetch: () => void;
+  effectiveRange: CoinglassRange;
 }
 
 export function useLiquidityHeatmapData(
   symbol: string,
   settings: LiquidityHeatmapSettings,
+  chartInterval: string,
 ): UseLiquidityHeatmapDataReturn {
   const [data, setData] = useState<LiquidityHeatmapData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -19,20 +22,29 @@ export function useLiquidityHeatmapData(
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fetchCountRef = useRef(0);
 
+  // Determine effective range: auto-mapped from chart interval or manual override
+  const effectiveRange: CoinglassRange = useMemo(
+    () =>
+      settings.syncToChartTimeframe
+        ? mapChartIntervalToRange(chartInterval)
+        : settings.range,
+    [settings.syncToChartTimeframe, chartInterval, settings.range],
+  );
+
   const fetchData = useCallback(async () => {
     if (!settings.enabled || !symbol) return;
 
     setIsLoading(true);
     setError(null);
     try {
-      const result = await fetchLiquidationHeatmap(symbol, settings.exchange, settings.lookbackDays);
+      const result = await fetchLiquidationHeatmap(symbol, settings.exchange, effectiveRange);
       setData(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to fetch liquidation data');
     } finally {
       setIsLoading(false);
     }
-  }, [symbol, settings.enabled, settings.exchange, settings.lookbackDays]);
+  }, [symbol, settings.enabled, settings.exchange, effectiveRange]);
 
   // Trigger fetch when enabled or key settings change
   useEffect(() => {
@@ -44,7 +56,7 @@ export function useLiquidityHeatmapData(
 
     fetchCountRef.current += 1;
     fetchData();
-  }, [settings.enabled, settings.exchange, settings.lookbackDays, symbol, fetchData]);
+  }, [settings.enabled, settings.exchange, effectiveRange, symbol, fetchData]);
 
   // Auto-refresh interval
   useEffect(() => {
@@ -68,5 +80,5 @@ export function useLiquidityHeatmapData(
     };
   }, [settings.enabled, settings.autoRefresh, settings.refreshInterval, fetchData]);
 
-  return { data, isLoading, error, refetch: fetchData };
+  return { data, isLoading, error, refetch: fetchData, effectiveRange };
 }

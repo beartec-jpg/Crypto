@@ -1,4 +1,4 @@
-import type { LiquidityHeatmapData } from '@/types/liquidityHeatmap';
+import type { CoinglassRange, LiquidityHeatmapData } from '@/types/liquidityHeatmap';
 
 const API_BASE = 'https://open-api.coinglass.com';
 const API_KEY = import.meta.env.VITE_COINGLASS_API_KEY as string | undefined;
@@ -43,13 +43,13 @@ function normalizeSymbol(symbol: string): string {
 export async function fetchLiquidationHeatmap(
   symbol: string,
   exchange: string,
-  lookbackDays: number,
+  range: CoinglassRange,
 ): Promise<LiquidityHeatmapData> {
   const normalised = normalizeSymbol(symbol);
   const url = new URL(`${API_BASE}/api/futures/liquidation/heatmap/model2`);
   url.searchParams.set('symbol', normalised);
   url.searchParams.set('exchange', exchange);
-  url.searchParams.set('range', String(lookbackDays));
+  url.searchParams.set('range', range);
 
   const response = await fetch(url.toString(), {
     method: 'GET',

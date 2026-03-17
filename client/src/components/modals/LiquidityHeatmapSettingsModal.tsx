@@ -4,13 +4,16 @@ import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { LiquidityHeatmapSettings } from '@/types/liquidityHeatmap';
+import type { CoinglassRange, LiquidityHeatmapSettings } from '@/types/liquidityHeatmap';
+import { COINGLASS_RANGES } from '@/types/liquidityHeatmap';
+import { getRangeLabel } from '@/lib/liquidityTimeframeMapping';
 
 interface LiquidityHeatmapSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: LiquidityHeatmapSettings;
   onSettingsChange: (settings: LiquidityHeatmapSettings) => void;
+  effectiveRange: CoinglassRange;
 }
 
 interface SettingRowProps {
@@ -62,6 +65,7 @@ export function LiquidityHeatmapSettingsModal({
   onClose,
   settings,
   onSettingsChange,
+  effectiveRange,
 }: LiquidityHeatmapSettingsModalProps) {
   function update<K extends keyof LiquidityHeatmapSettings>(key: K, value: LiquidityHeatmapSettings[K]) {
     onSettingsChange({ ...settings, [key]: value });
@@ -107,15 +111,38 @@ export function LiquidityHeatmapSettingsModal({
               </div>
             </div>
 
-            <SliderRow
-              label="Lookback Days"
-              value={settings.lookbackDays}
-              min={1}
-              max={7}
-              step={1}
-              displayValue={`${settings.lookbackDays}d`}
-              onChange={(v) => update('lookbackDays', v)}
-            />
+            <SettingRow label="Sync to Chart Timeframe">
+              <Switch
+                checked={settings.syncToChartTimeframe}
+                onCheckedChange={(v) => update('syncToChartTimeframe', v)}
+                className="data-[state=checked]:bg-blue-600"
+              />
+            </SettingRow>
+
+            <div className="py-2">
+              <div className="flex items-center justify-between mb-1">
+                <Label className={`text-sm ${settings.syncToChartTimeframe ? 'text-slate-500' : 'text-slate-300'}`}>
+                  Range
+                </Label>
+                {settings.syncToChartTimeframe && (
+                  <span className="text-xs text-blue-400 font-semibold">
+                    Auto: {getRangeLabel(effectiveRange)}
+                  </span>
+                )}
+              </div>
+              <select
+                value={settings.range}
+                onChange={(e) => update('range', e.target.value as CoinglassRange)}
+                disabled={settings.syncToChartTimeframe}
+                className={`w-full rounded px-3 py-1.5 text-sm border border-slate-600 bg-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                  settings.syncToChartTimeframe ? 'opacity-40 cursor-not-allowed' : ''
+                }`}
+              >
+                {COINGLASS_RANGES.map(({ value, label }) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Display */}
@@ -134,6 +161,14 @@ export function LiquidityHeatmapSettingsModal({
               <Switch
                 checked={settings.showLiquidationLevels}
                 onCheckedChange={(v) => update('showLiquidationLevels', v)}
+                className="data-[state=checked]:bg-blue-600"
+              />
+            </SettingRow>
+
+            <SettingRow label="Show Range Indicator">
+              <Switch
+                checked={settings.showRangeIndicator}
+                onCheckedChange={(v) => update('showRangeIndicator', v)}
                 className="data-[state=checked]:bg-blue-600"
               />
             </SettingRow>
