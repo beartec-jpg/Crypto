@@ -12,8 +12,6 @@ interface LiquidityHeatmapDebugPanelProps {
   debugInfo: LiquidityHeatmapDebugInfo;
 }
 
-const API_KEY_PRESENT = !!import.meta.env.VITE_COINGLASS_API_KEY;
-
 function formatValue(usd: number): string {
   if (usd >= 1_000_000_000) return `$${(usd / 1_000_000_000).toFixed(2)}B`;
   if (usd >= 1_000_000) return `$${(usd / 1_000_000).toFixed(2)}M`;
@@ -71,6 +69,16 @@ export function LiquidityHeatmapDebugPanel({
     statusText = 'No data';
   }
 
+  // Derive API key status from fetch result rather than client-side env var
+  let apiKeyStatus: string;
+  if (data) {
+    apiKeyStatus = '✅ Present';
+  } else if (error && (error.toLowerCase().includes('api key') || error.toLowerCase().includes('not configured'))) {
+    apiKeyStatus = '❌ Missing';
+  } else {
+    apiKeyStatus = '⚠️ Unknown';
+  }
+
   return (
     <div
       className="absolute bottom-4 left-4 z-50 text-xs font-mono select-none"
@@ -92,7 +100,7 @@ export function LiquidityHeatmapDebugPanel({
           <section>
             <p className="text-slate-500 uppercase tracking-wide mb-0.5">Status</p>
             <Row label="Status" value={`${statusIcon} ${statusText}`} />
-            <Row label="API Key" value={API_KEY_PRESENT ? '✅ Present' : '❌ Missing'} />
+            <Row label="API Key" value={apiKeyStatus} />
             <Row label="Last Request" value={timeAgo(debugInfo.lastRequestTime)} />
             {error && (
               <Row label="Error" value={error} valueClass="text-red-400 break-all" />
