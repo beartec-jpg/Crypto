@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { CoinglassRange, LiquidityHeatmapData, LiquidityHeatmapSettings } from '@/types/liquidityHeatmap';
 import { fetchLiquidationHeatmap } from '@/services/coinglassApi';
 import { mapChartIntervalToRange } from '@/lib/liquidityTimeframeMapping';
@@ -23,9 +23,13 @@ export function useLiquidityHeatmapData(
   const fetchCountRef = useRef(0);
 
   // Determine effective range: auto-mapped from chart interval or manual override
-  const effectiveRange: CoinglassRange = settings.syncToChartTimeframe
-    ? mapChartIntervalToRange(chartInterval)
-    : settings.range;
+  const effectiveRange: CoinglassRange = useMemo(
+    () =>
+      settings.syncToChartTimeframe
+        ? mapChartIntervalToRange(chartInterval)
+        : settings.range,
+    [settings.syncToChartTimeframe, chartInterval, settings.range],
+  );
 
   const fetchData = useCallback(async () => {
     if (!settings.enabled || !symbol) return;

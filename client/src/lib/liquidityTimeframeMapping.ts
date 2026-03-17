@@ -3,6 +3,9 @@ import type { CoinglassRange } from '@/types/liquidityHeatmap';
 /**
  * Maps a chart interval string to the most appropriate Coinglass range.
  * The goal is to show liquidation data that's relevant to what's visible on the chart.
+ *
+ * Supported interval formats: `<number>[m|h|d|w]` (e.g. `1m`, `5m`, `1h`, `4h`, `1d`, `1w`).
+ * Defaults to `'7d'` for any unrecognised format.
  */
 export function mapChartIntervalToRange(interval: string): CoinglassRange {
   // Normalize interval to lowercase
