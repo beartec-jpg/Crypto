@@ -62,6 +62,7 @@ interface FullscreenChartIndicatorLayerProps {
 
   liquidityHeatmapData: any;
   lhSettings: any;
+  lhEffectiveRange: any;
   showLHModal: boolean;
   onCloseLHModal: () => void;
   onLHSettingsChange: (value: any) => void;
@@ -120,6 +121,7 @@ export function FullscreenChartIndicatorLayer({
   onVPSettingsChange,
   liquidityHeatmapData,
   lhSettings,
+  lhEffectiveRange,
   showLHModal,
   onCloseLHModal,
   onLHSettingsChange,
@@ -229,6 +231,7 @@ export function FullscreenChartIndicatorLayer({
         candleSeries={candleSeries}
         data={liquidityHeatmapData}
         settings={lhSettings}
+        effectiveRange={lhEffectiveRange}
       />
 
       <SuperTrendRenderer
@@ -267,6 +270,7 @@ export function FullscreenChartIndicatorLayer({
         onClose={onCloseLHModal}
         settings={lhSettings}
         onSettingsChange={onLHSettingsChange}
+        effectiveRange={lhEffectiveRange}
       />
 
       <DivergenceSettingsModal

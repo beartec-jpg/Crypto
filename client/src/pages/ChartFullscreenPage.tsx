@@ -578,7 +578,7 @@ export function ChartFullscreenPage({
 
   // Hooks - Liquidity Heatmap
   const lhSettings = useLiquidityHeatmapSettings();
-  const liquidityHeatmapDataResult = useLiquidityHeatmapData(symbol, lhSettings.settings);
+  const liquidityHeatmapDataResult = useLiquidityHeatmapData(symbol, lhSettings.settings, timeframe);
 
   // Hooks - Trading Systems
   const tradingSystemCallbacks: TradingSystemCallbacks = {
@@ -1906,6 +1906,7 @@ export function ChartFullscreenPage({
           onVPSettingsChange={vpSettings.setSettings}
           liquidityHeatmapData={liquidityHeatmapDataResult.data}
           lhSettings={lhSettings.settings}
+          lhEffectiveRange={liquidityHeatmapDataResult.effectiveRange}
           showLHModal={showLHModal}
           onCloseLHModal={() => setShowLHModal(false)}
           onLHSettingsChange={lhSettings.setSettings}

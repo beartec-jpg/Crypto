@@ -1,14 +1,18 @@
+export type CoinglassRange = '12h' | '24h' | '3d' | '7d' | '30d' | '90d' | '180d' | '1y';
+
 export interface LiquidityHeatmapSettings {
   enabled: boolean;
 
   // Data source
-  exchange: string;       // Default: 'Binance'
-  lookbackDays: number;   // Default: 7 (max for Hobbyist tier)
+  exchange: string;              // Default: 'Binance'
+  range: CoinglassRange;         // Coinglass range value - default: '7d'
+  syncToChartTimeframe: boolean; // Auto-select range based on chart TF - default: true
 
   // Display
   showHeatmap: boolean;            // Show heatmap overlay - default: true
   showLiquidationLevels: boolean;  // Draw lines at key levels - default: true
   opacity: number;                 // Heatmap opacity 0-100 - default: 50
+  showRangeIndicator: boolean;     // Show badge indicating current data range - default: true
 
   // Colors
   longLiquidationColor: string;   // Default: '#ef4444' (red)
@@ -37,12 +41,25 @@ export interface LiquidityHeatmapData {
 export const DEFAULT_LIQUIDITY_HEATMAP_SETTINGS: LiquidityHeatmapSettings = {
   enabled: false,
   exchange: 'Binance',
-  lookbackDays: 7,
+  range: '7d',
+  syncToChartTimeframe: true,
   showHeatmap: true,
   showLiquidationLevels: true,
   opacity: 50,
+  showRangeIndicator: true,
   longLiquidationColor: '#ef4444',
   shortLiquidationColor: '#22c55e',
   autoRefresh: true,
   refreshInterval: 60,
 };
+
+export const COINGLASS_RANGES: { value: CoinglassRange; label: string }[] = [
+  { value: '12h', label: '12 Hours' },
+  { value: '24h', label: '24 Hours' },
+  { value: '3d', label: '3 Days' },
+  { value: '7d', label: '7 Days' },
+  { value: '30d', label: '30 Days' },
+  { value: '90d', label: '90 Days' },
+  { value: '180d', label: '180 Days' },
+  { value: '1y', label: '1 Year' },
+];
