@@ -104,14 +104,28 @@ async function fetchBinanceLiquidations(
 async function fetchBybitLiquidations(symbol: string): Promise<{ events: LiquidationEvent[]; diagnostic: SourceDiagnostic }> {
   try {
     const bybitSymbol = symbol.replace('USDT', '');
-    const url = `https://api.bybit.com/v5/market/recent-trade?category=linear&symbol=${bybitSymbol}USDT&limit=100`;
-    const response = await fetch(url, {
+    const primaryUrl = `https://api.bybit.com/v5/market/recent-trade?category=linear&symbol=${bybitSymbol}USDT&limit=100`;
+    const fallbackUrl = `https://api.bytick.com/v5/market/recent-trade?category=linear&symbol=${bybitSymbol}USDT&limit=100`;
+    const requestHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      Accept: 'application/json',
+      Referer: 'https://www.bybit.com/',
+    };
+
+    let response = await fetch(primaryUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        Accept: 'application/json',
-        Referer: 'https://www.bybit.com/',
+        ...requestHeaders,
       },
     });
+
+    // Some server IP ranges are blocked on api.bybit.com; retry on the official mirror host.
+    if (!response.ok && (response.status === 403 || response.status === 451 || response.status >= 500)) {
+      response = await fetch(fallbackUrl, {
+        headers: {
+          ...requestHeaders,
+        },
+      });
+    }
     
     if (!response.ok) {
       console.error('Bybit API error:', response.status, response.statusText);
