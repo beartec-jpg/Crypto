@@ -160,6 +160,35 @@ async function fetchPriceFromMultipleSources(symbol: string): Promise<number> {
     if (price > 0) return price;
   }
 
+  // Try Binance spot ticker
+  const binanceSpotPrice = await safeFetchJson<{ price: string }>(`https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`, 2);
+  if (binanceSpotPrice?.price) {
+    const price = toNumber(binanceSpotPrice.price, 0);
+    if (price > 0) return price;
+  }
+
+  // Try Binance premium index/mark price
+  const binancePremium = await safeFetchJson<{ markPrice?: string; indexPrice?: string; lastFundingRate?: string }>(
+    `https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${symbol}`,
+    2,
+  );
+  const markPrice = toNumber(binancePremium?.markPrice, 0);
+  if (markPrice > 0) return markPrice;
+  const indexPrice = toNumber(binancePremium?.indexPrice, 0);
+  if (indexPrice > 0) return indexPrice;
+
+  // Try Bybit linear ticker
+  const bybit = await safeFetchJson<{
+    result?: { list?: Array<{ lastPrice?: string; markPrice?: string; indexPrice?: string }> };
+  }>(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol}`, 2);
+  const bybitTicker = bybit?.result?.list?.[0];
+  const bybitLast = toNumber(bybitTicker?.lastPrice, 0);
+  if (bybitLast > 0) return bybitLast;
+  const bybitMark = toNumber(bybitTicker?.markPrice, 0);
+  if (bybitMark > 0) return bybitMark;
+  const bybitIndex = toNumber(bybitTicker?.indexPrice, 0);
+  if (bybitIndex > 0) return bybitIndex;
+
   // Fallback to cache
   const cached = getPriceCacheOrNull(symbol);
   if (cached) return cached;

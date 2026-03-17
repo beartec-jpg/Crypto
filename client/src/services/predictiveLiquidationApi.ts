@@ -8,6 +8,7 @@ interface PredictiveApiResponse {
   meta?: {
     symbol?: string;
     source?: string;
+    note?: string;
     inputs?: {
       forceOrderCount?: number;
       realtimeOrderCount?: number;
@@ -79,7 +80,7 @@ export async function fetchPredictiveLiquidationProfile(
 
   const json = await response.json() as PredictiveApiResponse;
   if (json.code !== '0' || !json.data) {
-    throw new Error(json.error || 'Predictive profile unavailable');
+    throw new Error(json.error || json.meta?.note || 'Predictive profile unavailable');
   }
 
   return {
