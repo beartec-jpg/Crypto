@@ -596,7 +596,14 @@ export function ChartFullscreenPage({
 
   // Hooks - Liquidity Heatmap
   const lhSettings = useLiquidityHeatmapSettings();
-  const liquidityHeatmapDataResult = useLiquidityHeatmapData(symbol, lhSettings.settings, timeframe);
+  const lhVisibleRange = useVisibleRange(chartRef.current);
+  const liquidityHeatmapDataResult = useLiquidityHeatmapData(
+    symbol,
+    lhSettings.settings,
+    timeframe,
+    effectiveCandles,
+    lhVisibleRange,
+  );
 
   // Hooks - Trading Systems
   const tradingSystemCallbacks: TradingSystemCallbacks = {
