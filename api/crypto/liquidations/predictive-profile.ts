@@ -13,6 +13,8 @@ interface PriceLevelScore {
     orderbookShort: number;
     liqFlowLong: number;
     liqFlowShort: number;
+    buildupLong: number;
+    buildupShort: number;
   };
 }
 
@@ -41,7 +43,7 @@ interface RealtimeLiquidationResponse {
 }
 
 interface ExtendedHistoryResponse {
-  candles?: Array<{ close?: number; time?: number }>;
+  candles?: Array<{ open?: number; high?: number; low?: number; close?: number; volume?: number; time?: number }>;
 }
 
 interface OpenInterestResponse {
@@ -295,7 +297,15 @@ async function fetchInternalAggregatedMetrics(
   symbol: string,
   diagnostics: EndpointDiagnostic[],
   anchorTimeMs: number | null,
-): Promise<{ price: number; openInterestUsd: number; longShortRatio: number; fundingRate: number }> {
+  visibleWindow?: { fromMs: number; toMs: number },
+  chartInterval?: string,
+): Promise<{
+  price: number;
+  openInterestUsd: number;
+  longShortRatio: number;
+  fundingRate: number;
+  candles: Array<{ open?: number; high?: number; low?: number; close?: number; volume?: number; time?: number }>;
+}> {
   const origin = getRequestOrigin(req);
   if (!origin) {
     diagnostics.push({
@@ -306,13 +316,26 @@ async function fetchInternalAggregatedMetrics(
       ms: 0,
       error: 'missing_request_origin',
     });
-    return { price: 0, openInterestUsd: 0, longShortRatio: 0, fundingRate: 0 };
+    return { price: 0, openInterestUsd: 0, longShortRatio: 0, fundingRate: 0, candles: [] };
   }
+
+  const historyTimeframe = chartInterval || '1m';
+  const visibleDurationMs = visibleWindow && visibleWindow.toMs > visibleWindow.fromMs
+    ? visibleWindow.toMs - visibleWindow.fromMs
+    : 0;
+  const intervalSeconds = intervalToSeconds(historyTimeframe);
+  const historyLimit = clamp(
+    visibleDurationMs > 0 ? Math.ceil(visibleDurationMs / (intervalSeconds * 1000)) + 12 : 300,
+    60,
+    1000,
+  );
+  const historyEndTime = visibleWindow?.toMs || anchorTimeMs || 0;
+  const historyUrl = `${origin}/api/crypto/extended-history?symbol=${symbol}&timeframe=${encodeURIComponent(historyTimeframe)}&limit=${historyLimit}${historyEndTime ? `&endTime=${Math.floor(historyEndTime / 1000)}` : ''}`;
 
   const [historyR, oiR, fundingR, lsR] = await Promise.all([
     fetchTracked<ExtendedHistoryResponse>(
       'internal-extended-history',
-      `${origin}/api/crypto/extended-history?symbol=${symbol}&timeframe=1m&limit=300${anchorTimeMs ? `&endTime=${Math.floor(anchorTimeMs / 1000)}` : ''}`,
+      historyUrl,
       { timeoutMs: 12000 },
     ),
     fetchTracked<OpenInterestResponse>(
@@ -335,6 +358,14 @@ async function fetchInternalAggregatedMetrics(
   diagnostics.push(historyR.diag, oiR.diag, fundingR.diag, lsR.diag);
 
   const candles = Array.isArray(historyR.data?.candles) ? historyR.data.candles : [];
+  const filteredCandles = visibleWindow && visibleWindow.toMs > visibleWindow.fromMs
+    ? candles.filter((point) => {
+        const tsSec = Number(point.time || 0);
+        if (!Number.isFinite(tsSec) || tsSec <= 0) return false;
+        const tsMs = tsSec * 1000;
+        return tsMs >= visibleWindow.fromMs && tsMs <= visibleWindow.toMs;
+      })
+    : candles;
   const historicalClose = anchorTimeMs
     ? pickHistoricalValue(
         candles,
@@ -376,6 +407,7 @@ async function fetchInternalAggregatedMetrics(
     openInterestUsd: Number.isFinite(oiRaw) ? oiRaw : 0,
     longShortRatio: Number.isFinite(ratio) ? ratio : 0,
     fundingRate: Number.isFinite(funding) ? funding : 0,
+    candles: filteredCandles,
   };
 }
 
@@ -812,11 +844,67 @@ function buildPriceLevels(
         orderbookShort: 0,
         liqFlowLong: 0,
         liqFlowShort: 0,
+        buildupLong: 0,
+        buildupShort: 0,
       },
     });
   }
 
   return levels;
+}
+
+function intervalToSeconds(interval: string): number {
+  const mapping: Record<string, number> = {
+    '1m': 60,
+    '3m': 180,
+    '5m': 300,
+    '15m': 900,
+    '30m': 1800,
+    '1h': 3600,
+    '2h': 7200,
+    '4h': 14400,
+    '6h': 21600,
+    '12h': 43200,
+    '1d': 86400,
+    '1w': 604800,
+  };
+  return mapping[interval] || 3600;
+}
+
+function applyBuildupComponent(
+  levels: PriceLevelScore[],
+  candles: Array<{ open?: number; high?: number; low?: number; close?: number; volume?: number; time?: number }>,
+  currentPrice: number,
+) {
+  if (!Array.isArray(candles) || candles.length === 0) return;
+
+  for (const candle of candles) {
+    const low = toNumber(candle.low, 0);
+    const high = toNumber(candle.high, 0);
+    const open = toNumber(candle.open, 0);
+    const close = toNumber(candle.close, 0);
+    const volume = toNumber(candle.volume, 0);
+    if (low <= 0 || high <= low || volume <= 0) continue;
+
+    const candleRange = high - low;
+    const directionalBias = close >= open ? 0.55 : 0.45;
+
+    for (const level of levels) {
+      const halfStep = levels.length > 1 ? Math.abs(levels[1].price - levels[0].price) * 0.5 : currentPrice * 0.002;
+      const bandLow = level.price - halfStep;
+      const bandHigh = level.price + halfStep;
+      const overlap = Math.min(high, bandHigh) - Math.max(low, bandLow);
+      if (overlap <= 0) continue;
+
+      const weight = overlap / candleRange;
+      const notional = level.price * volume * weight;
+      if (level.price < currentPrice) {
+        level.components.buildupLong += notional * (1 - directionalBias * 0.35);
+      } else {
+        level.components.buildupShort += notional * (directionalBias + 0.1);
+      }
+    }
+  }
 }
 
 function applyOpenInterestComponent(
@@ -921,6 +1009,8 @@ function computeScores(
   const maxBookShort = maxComponent(levels, l => l.components.orderbookShort);
   const maxFlowLong = maxComponent(levels, l => l.components.liqFlowLong);
   const maxFlowShort = maxComponent(levels, l => l.components.liqFlowShort);
+  const maxBuildupLong = maxComponent(levels, l => l.components.buildupLong);
+  const maxBuildupShort = maxComponent(levels, l => l.components.buildupShort);
 
   const lsBias = clamp((longShortRatio - 1) * 0.7, -0.45, 0.45);
   const fundingBias = clamp(fundingRate * 120, -0.35, 0.35);
@@ -938,16 +1028,18 @@ function computeScores(
     const bookShortNorm = maxBookShort > 0 ? level.components.orderbookShort / maxBookShort : 0;
     const flowLongNorm = maxFlowLong > 0 ? level.components.liqFlowLong / maxFlowLong : 0;
     const flowShortNorm = maxFlowShort > 0 ? level.components.liqFlowShort / maxFlowShort : 0;
+    const buildupLongNorm = maxBuildupLong > 0 ? level.components.buildupLong / maxBuildupLong : 0;
+    const buildupShortNorm = maxBuildupShort > 0 ? level.components.buildupShort / maxBuildupShort : 0;
 
     const longScore =
       oiLongNorm * weights.oi +
-      bookLongNorm * weights.orderbook +
+      ((bookLongNorm * 0.45) + (buildupLongNorm * 0.55)) * weights.orderbook +
       flowLongNorm * weights.liqFlow +
       longBias * weights.bias;
 
     const shortScore =
       oiShortNorm * weights.oi +
-      bookShortNorm * weights.orderbook +
+      ((bookShortNorm * 0.45) + (buildupShortNorm * 0.55)) * weights.orderbook +
       flowShortNorm * weights.liqFlow +
       shortBias * weights.bias;
 
@@ -988,6 +1080,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const symbol = normalizeSymbol(String(req.query.symbol || 'BTCUSDT'));
     const range = String(req.query.range || '7d');
     const anchorTimeMs = toNumber(req.query.anchorTime, 0) > 0 ? toNumber(req.query.anchorTime, 0) * 1000 : null;
+    const visibleFromTimeMs = toNumber(req.query.visibleFromTime, 0) > 0 ? toNumber(req.query.visibleFromTime, 0) * 1000 : 0;
+    const visibleToTimeMs = toNumber(req.query.visibleToTime, 0) > 0 ? toNumber(req.query.visibleToTime, 0) * 1000 : 0;
+    const visibleTimeWindow = visibleToTimeMs > visibleFromTimeMs
+      ? { fromMs: visibleFromTimeMs, toMs: visibleToTimeMs }
+      : undefined;
+    const chartInterval = String(req.query.chartInterval || '1m');
     const visibleMinPrice = toNumber(req.query.visibleMinPrice, 0);
     const visibleMaxPrice = toNumber(req.query.visibleMaxPrice, 0);
     const visibleBounds = visibleMaxPrice > visibleMinPrice && visibleMinPrice > 0
@@ -1017,7 +1115,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       diagnostics.push({ endpoint: 'coinglass-config', url: '', ok: false, status: null, ms: 0, error: 'COINGLASS_API_KEY_not_configured', optional: true });
     }
 
-    const internalMetrics = await fetchInternalAggregatedMetrics(req, symbol, diagnostics, anchorTimeMs);
+    const internalMetrics = await fetchInternalAggregatedMetrics(
+      req,
+      symbol,
+      diagnostics,
+      anchorTimeMs,
+      visibleTimeWindow,
+      chartInterval,
+    );
     let currentPrice = internalMetrics.price > 0
       ? internalMetrics.price
       : await fetchPriceFromMultipleSources(symbol, diagnostics);
@@ -1192,6 +1297,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     applyLiqFlowComponent(levels, recentForceOrders, now);
     applyPredictedMapComponent(levels, currentPrice, coinalyzeMap);
     applyOrderbookComponent(levels, currentPrice, effectiveDepth);
+    applyBuildupComponent(levels, internalMetrics.candles, currentPrice);
 
     const predictiveLevels = computeScores(levels, openInterestUsd, fundingRate, longShortRatio, weights);
 
@@ -1254,6 +1360,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           coinalyzeFunding,
           coinglassFunding,
           cacheWarm: Boolean(cachedSnapshot),
+          visibleWindowCandleCount: internalMetrics.candles.length,
+          chartInterval,
         },
         diagnostics,
       },

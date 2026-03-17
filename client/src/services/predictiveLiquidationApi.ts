@@ -173,6 +173,8 @@ export async function fetchPredictiveLiquidationProfile(
   weights: PredictiveWeights,
   anchorTime?: number,
   visiblePriceBounds?: { min: number; max: number },
+  visibleTimeWindow?: { from: number; to: number },
+  chartInterval?: string,
 ): Promise<FetchPredictiveLiquidationResult> {
   const normalizedSymbol = normalizeSymbol(symbol);
   const url = new URL(`${API_BASE}/predictive-profile`, window.location.origin);
@@ -188,6 +190,13 @@ export async function fetchPredictiveLiquidationProfile(
   if (visiblePriceBounds && Number.isFinite(visiblePriceBounds.min) && Number.isFinite(visiblePriceBounds.max) && visiblePriceBounds.max > visiblePriceBounds.min) {
     url.searchParams.set('visibleMinPrice', String(visiblePriceBounds.min));
     url.searchParams.set('visibleMaxPrice', String(visiblePriceBounds.max));
+  }
+  if (visibleTimeWindow && Number.isFinite(visibleTimeWindow.from) && Number.isFinite(visibleTimeWindow.to) && visibleTimeWindow.to > visibleTimeWindow.from) {
+    url.searchParams.set('visibleFromTime', String(Math.floor(visibleTimeWindow.from)));
+    url.searchParams.set('visibleToTime', String(Math.floor(visibleTimeWindow.to)));
+  }
+  if (chartInterval) {
+    url.searchParams.set('chartInterval', chartInterval);
   }
 
   const requestUrl = url.toString();

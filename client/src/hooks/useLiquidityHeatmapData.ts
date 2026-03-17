@@ -123,7 +123,7 @@ export function useLiquidityHeatmapData(
         orderbookWeight: settings.orderbookWeight,
         liqFlowWeight: settings.liqFlowWeight,
         biasWeight: settings.biasWeight,
-      }, anchorTime, visiblePriceBounds);
+      }, anchorTime, visiblePriceBounds, visibleRange || undefined, chartInterval);
       setRawData(result.data);
       setDebugInfo({
         lastRequestUrl: `${result.requestUrl}&source=${result.source}`,
