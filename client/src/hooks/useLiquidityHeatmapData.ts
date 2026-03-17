@@ -31,6 +31,21 @@ interface UseLiquidityHeatmapDataReturn {
   debugInfo: LiquidityHeatmapDebugInfo;
 }
 
+function mapVisibleWindowToRange(visibleRange: { from: number; to: number } | null): CoinglassRange {
+  if (!visibleRange) return '24h';
+  const seconds = Math.max(0, Number(visibleRange.to) - Number(visibleRange.from));
+  const hours = seconds / 3600;
+
+  if (hours <= 12) return '12h';
+  if (hours <= 24) return '24h';
+  if (hours <= 72) return '3d';
+  if (hours <= 24 * 7) return '7d';
+  if (hours <= 24 * 30) return '30d';
+  if (hours <= 24 * 90) return '90d';
+  if (hours <= 24 * 180) return '180d';
+  return '1y';
+}
+
 export function useLiquidityHeatmapData(
   symbol: string,
   settings: LiquidityHeatmapSettings,
@@ -69,13 +84,20 @@ export function useLiquidityHeatmapData(
     [settings.syncToChartTimeframe, chartInterval, settings.range],
   );
 
+  // Screen-scoped range: follows currently visible candle window.
+  // This is what drives API fetch so LIQ behaves like VP while panning/zooming.
+  const requestRange: CoinglassRange = useMemo(
+    () => mapVisibleWindowToRange(visibleRange) || effectiveRange,
+    [visibleRange, effectiveRange],
+  );
+
   const fetchData = useCallback(async () => {
     if (!settings.enabled || !symbol) return;
 
     setIsLoading(true);
     setError(null);
     try {
-      const result = await fetchPredictiveLiquidationProfile(symbol, effectiveRange, {
+      const result = await fetchPredictiveLiquidationProfile(symbol, requestRange, {
         oiWeight: settings.oiWeight,
         orderbookWeight: settings.orderbookWeight,
         liqFlowWeight: settings.liqFlowWeight,
@@ -111,7 +133,7 @@ export function useLiquidityHeatmapData(
     settings.orderbookWeight,
     settings.liqFlowWeight,
     settings.biasWeight,
-    effectiveRange,
+    requestRange,
   ]);
 
   const data = useMemo(() => {
@@ -184,7 +206,7 @@ export function useLiquidityHeatmapData(
     settings.orderbookWeight,
     settings.liqFlowWeight,
     settings.biasWeight,
-    effectiveRange,
+    requestRange,
     symbol,
     fetchData,
   ]);
@@ -211,5 +233,5 @@ export function useLiquidityHeatmapData(
     };
   }, [settings.enabled, settings.autoRefresh, settings.refreshInterval, fetchData]);
 
-  return { data, isLoading, error, refetch: fetchData, effectiveRange, debugInfo };
+  return { data, isLoading, error, refetch: fetchData, effectiveRange: requestRange, debugInfo };
 }
