@@ -12,22 +12,27 @@ import type { VolumeProfileData, VolumeProfileSettings } from '@/types/volumePro
 
 type RequestUpdateCallback = () => void;
 
+type StackSection = 'full' | 'top' | 'bottom';
+
 class VolumeProfileRenderer implements IPrimitivePaneRenderer {
   private _data: VolumeProfileData;
   private _settings: VolumeProfileSettings;
   private _series: ISeriesApi<SeriesType> | null;
   private _chart: IChartApi | null;
+  private _stackSection: StackSection;
 
   constructor(
     data: VolumeProfileData,
     settings: VolumeProfileSettings,
     series: ISeriesApi<SeriesType> | null,
-    chart: IChartApi | null
+    chart: IChartApi | null,
+    stackSection: StackSection,
   ) {
     this._data = data;
     this._settings = settings;
     this._series = series;
     this._chart = chart;
+    this._stackSection = stackSection;
   }
 
   draw(target: any) {
@@ -38,7 +43,16 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
       const chartWidth: number = scope.mediaSize.width;
 
       const vpWidth = chartWidth * (this._settings.width / 100);
-      const xStart = this._settings.side === 'right' ? chartWidth - vpWidth : 0;
+      const isSharedSidebar = this._stackSection !== 'full';
+      const laneWidth = vpWidth;
+      const sidebarStart = this._settings.side === 'right' ? chartWidth - vpWidth : 0;
+      const xStart = sidebarStart;
+
+      const shouldDrawRow = (rowIndex: number): boolean => {
+        if (!isSharedSidebar) return true;
+        const isEven = rowIndex % 2 === 0;
+        return this._stackSection === 'top' ? isEven : !isEven;
+      };
 
       const maxVolume = Math.max(...this._data.rows.map(r => r.volume));
       if (maxVolume === 0) return;
@@ -55,7 +69,9 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
       };
 
       // Draw histogram bars
-      for (const row of this._data.rows) {
+      for (let rowIndex = 0; rowIndex < this._data.rows.length; rowIndex++) {
+        if (!shouldDrawRow(rowIndex)) continue;
+        const row = this._data.rows[rowIndex];
         const yBottom = this._series!.priceToCoordinate(row.price);
         const yTop = priceStep > 0
           ? this._series!.priceToCoordinate(row.price + priceStep)
@@ -65,7 +81,7 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
         const barHeight = yTop !== null ? Math.abs(yTop - yBottom) : 4;
         const yDraw = yTop !== null ? Math.min(yTop, yBottom) : yBottom - 2;
 
-        const barWidth = (row.volume / maxVolume) * vpWidth;
+        const barWidth = (row.volume / maxVolume) * laneWidth;
 
         // Determine color
         let color = this._settings.volumeColor;
@@ -161,6 +177,16 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
           ctx.restore();
         }
       }
+
+      if (isSharedSidebar) {
+        ctx.save();
+        const label = 'VOL';
+        const labelY = this._stackSection === 'top' ? 12 : 24;
+        ctx.fillStyle = 'rgba(226, 232, 240, 0.75)';
+        ctx.font = 'bold 9px sans-serif';
+        ctx.fillText(label, xStart + 4, labelY);
+        ctx.restore();
+      }
     });
   }
 }
@@ -190,7 +216,8 @@ class VolumeProfilePaneView implements IPrimitivePaneView {
       data,
       this._primitive.getSettings(),
       this._series,
-      this._chart
+      this._chart,
+      this._primitive.getStackSection(),
     );
   }
 }
@@ -199,13 +226,15 @@ export class VolumeProfilePrimitive implements ISeriesPrimitive<Time> {
   private _paneViews: VolumeProfilePaneView[];
   private _data: VolumeProfileData | null;
   private _settings: VolumeProfileSettings;
+  private _stackSection: StackSection;
   private _series: ISeriesApi<SeriesType> | null = null;
   private _chart: IChartApi | null = null;
   private _requestUpdate?: RequestUpdateCallback;
 
-  constructor(data: VolumeProfileData | null, settings: VolumeProfileSettings) {
+  constructor(data: VolumeProfileData | null, settings: VolumeProfileSettings, stackSection: StackSection = 'full') {
     this._data = data;
     this._settings = settings;
+    this._stackSection = stackSection;
     this._paneViews = [new VolumeProfilePaneView(this)];
   }
 
@@ -237,9 +266,14 @@ export class VolumeProfilePrimitive implements ISeriesPrimitive<Time> {
     return this._settings;
   }
 
-  update(data: VolumeProfileData | null, settings: VolumeProfileSettings) {
+  getStackSection(): StackSection {
+    return this._stackSection;
+  }
+
+  update(data: VolumeProfileData | null, settings: VolumeProfileSettings, stackSection: StackSection = 'full') {
     this._data = data;
     this._settings = settings;
+    this._stackSection = stackSection;
     this._requestUpdate?.();
   }
 }

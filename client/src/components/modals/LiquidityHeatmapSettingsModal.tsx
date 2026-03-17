@@ -75,12 +75,12 @@ export function LiquidityHeatmapSettingsModal({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[480px] bg-slate-900 border-slate-700 text-white max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-white">Liquidity Heatmap Settings</DialogTitle>
+          <DialogTitle className="text-white">Predictive Liquidation Settings</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           {/* Enable/Disable */}
-          <SettingRow label="Enable Liquidity Heatmap">
+          <SettingRow label="Enable Predictive Liquidation Profile">
             <Switch
               checked={settings.enabled}
               onCheckedChange={(v) => update('enabled', v)}
@@ -232,6 +232,46 @@ export function LiquidityHeatmapSettingsModal({
                 onChange={(v) => update('refreshInterval', v)}
               />
             )}
+
+            <div className="pt-2 border-t border-slate-800 mt-2">
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Scoring Weights</p>
+              <SliderRow
+                label="Open Interest"
+                value={settings.oiWeight}
+                min={0}
+                max={1}
+                step={0.01}
+                displayValue={settings.oiWeight.toFixed(2)}
+                onChange={(v) => update('oiWeight', v)}
+              />
+              <SliderRow
+                label="Orderbook Walls"
+                value={settings.orderbookWeight}
+                min={0}
+                max={1}
+                step={0.01}
+                displayValue={settings.orderbookWeight.toFixed(2)}
+                onChange={(v) => update('orderbookWeight', v)}
+              />
+              <SliderRow
+                label="Liq Flow"
+                value={settings.liqFlowWeight}
+                min={0}
+                max={1}
+                step={0.01}
+                displayValue={settings.liqFlowWeight.toFixed(2)}
+                onChange={(v) => update('liqFlowWeight', v)}
+              />
+              <SliderRow
+                label="Funding + L/S Bias"
+                value={settings.biasWeight}
+                min={0}
+                max={1}
+                step={0.01}
+                displayValue={settings.biasWeight.toFixed(2)}
+                onChange={(v) => update('biasWeight', v)}
+              />
+            </div>
           </div>
 
           {/* Developer */}

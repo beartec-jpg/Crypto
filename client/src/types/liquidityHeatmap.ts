@@ -22,6 +22,12 @@ export interface LiquidityHeatmapSettings {
   autoRefresh: boolean;    // Auto-refresh data - default: true
   refreshInterval: number; // Refresh interval in seconds - default: 60
 
+  // Predictive scoring weights (must sum conceptually to 1, API normalizes)
+  oiWeight: number;        // Default: 0.4
+  orderbookWeight: number; // Default: 0.25
+  liqFlowWeight: number;   // Default: 0.2
+  biasWeight: number;      // Default: 0.15
+
   // Developer
   showDebugPanel: boolean; // Show debug/stats panel - default: false
 }
@@ -54,6 +60,10 @@ export const DEFAULT_LIQUIDITY_HEATMAP_SETTINGS: LiquidityHeatmapSettings = {
   shortLiquidationColor: '#22c55e',
   autoRefresh: true,
   refreshInterval: 60,
+  oiWeight: 0.4,
+  orderbookWeight: 0.25,
+  liqFlowWeight: 0.2,
+  biasWeight: 0.15,
   showDebugPanel: false,
 };
 

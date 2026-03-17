@@ -145,6 +145,10 @@ export function FullscreenChartIndicatorLayer({
   divergenceSettings,
   onDivergenceSettingsChange,
 }: FullscreenChartIndicatorLayerProps) {
+  const isSharedSidebar = Boolean(vpSettings?.enabled && lhSettings?.enabled);
+  const sharedSidebarSide: 'left' | 'right' = vpSettings?.side === 'left' ? 'left' : 'right';
+  const sharedSidebarWidth = typeof vpSettings?.width === 'number' ? vpSettings.width : 22;
+
   return (
     <>
       <MovingAverages
@@ -232,6 +236,7 @@ export function FullscreenChartIndicatorLayer({
         candleSeries={candleSeries}
         data={volumeProfileData}
         settings={vpSettings}
+        stackSection={isSharedSidebar ? 'top' : 'full'}
       />
 
       <LiquidityHeatmapRenderer
@@ -240,6 +245,9 @@ export function FullscreenChartIndicatorLayer({
         data={liquidityHeatmapData}
         settings={lhSettings}
         effectiveRange={lhEffectiveRange}
+        stackSection={isSharedSidebar ? 'bottom' : 'full'}
+        profileSide={sharedSidebarSide}
+        profileWidthPercent={sharedSidebarWidth}
       />
 
       {lhSettings?.enabled && lhSettings?.showDebugPanel && (

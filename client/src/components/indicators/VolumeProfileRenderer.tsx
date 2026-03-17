@@ -3,21 +3,24 @@ import { IChartApi, ISeriesApi } from 'lightweight-charts';
 import { VolumeProfilePrimitive } from '@/lib/chartPrimitives/VolumeProfilePrimitive';
 import type { VolumeProfileData, VolumeProfileSettings } from '@/types/volumeProfile';
 
+type StackSection = 'full' | 'top' | 'bottom';
+
 interface VolumeProfileRendererProps {
   chart: IChartApi | null;
   candleSeries: ISeriesApi<'Candlestick'> | null;
   data: VolumeProfileData | null;
   settings: VolumeProfileSettings;
+  stackSection?: StackSection;
 }
 
-export function VolumeProfileRenderer({ chart, candleSeries, data, settings }: VolumeProfileRendererProps) {
+export function VolumeProfileRenderer({ chart, candleSeries, data, settings, stackSection = 'full' }: VolumeProfileRendererProps) {
   const primitiveRef = useRef<VolumeProfilePrimitive | null>(null);
 
   // Create/destroy primitive when chart or series changes or when enabled toggled
   useEffect(() => {
     if (!chart || !candleSeries || !settings.enabled) return;
 
-    const primitive = new VolumeProfilePrimitive(data, settings);
+    const primitive = new VolumeProfilePrimitive(data, settings, stackSection);
     try {
       candleSeries.attachPrimitive(primitive);
       primitiveRef.current = primitive;
@@ -34,14 +37,14 @@ export function VolumeProfileRenderer({ chart, candleSeries, data, settings }: V
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chart, candleSeries, settings.enabled]);
+  }, [chart, candleSeries, settings.enabled, stackSection]);
 
   // Update data and settings without recreating the primitive
   useEffect(() => {
     if (primitiveRef.current) {
-      primitiveRef.current.update(data, settings);
+      primitiveRef.current.update(data, settings, stackSection);
     }
-  }, [data, settings]);
+  }, [data, settings, stackSection]);
 
   return null;
 }

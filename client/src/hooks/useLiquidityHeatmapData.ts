@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { CoinglassRange, LiquidityHeatmapData, LiquidityHeatmapSettings } from '@/types/liquidityHeatmap';
-import { fetchLiquidationHeatmap } from '@/services/coinglassApi';
+import { fetchPredictiveLiquidationProfile } from '@/services/predictiveLiquidationApi';
 import { mapChartIntervalToRange } from '@/lib/liquidityTimeframeMapping';
 
 export interface LiquidityHeatmapDebugInfo {
@@ -49,10 +49,15 @@ export function useLiquidityHeatmapData(
     setIsLoading(true);
     setError(null);
     try {
-      const result = await fetchLiquidationHeatmap(symbol, settings.exchange, effectiveRange);
+      const result = await fetchPredictiveLiquidationProfile(symbol, effectiveRange, {
+        oiWeight: settings.oiWeight,
+        orderbookWeight: settings.orderbookWeight,
+        liqFlowWeight: settings.liqFlowWeight,
+        biasWeight: settings.biasWeight,
+      });
       setData(result.data);
       setDebugInfo({
-        lastRequestUrl: result.requestUrl,
+        lastRequestUrl: `${result.requestUrl}&source=${result.source}`,
         lastRequestTime: Date.now(),
         normalizedSymbol: result.normalizedSymbol,
       });
@@ -61,7 +66,16 @@ export function useLiquidityHeatmapData(
     } finally {
       setIsLoading(false);
     }
-  }, [symbol, settings.enabled, settings.exchange, effectiveRange]);
+  }, [
+    symbol,
+    settings.enabled,
+    settings.exchange,
+    settings.oiWeight,
+    settings.orderbookWeight,
+    settings.liqFlowWeight,
+    settings.biasWeight,
+    effectiveRange,
+  ]);
 
   // Trigger fetch when enabled or key settings change
   useEffect(() => {
@@ -73,7 +87,17 @@ export function useLiquidityHeatmapData(
 
     fetchCountRef.current += 1;
     fetchData();
-  }, [settings.enabled, settings.exchange, effectiveRange, symbol, fetchData]);
+  }, [
+    settings.enabled,
+    settings.exchange,
+    settings.oiWeight,
+    settings.orderbookWeight,
+    settings.liqFlowWeight,
+    settings.biasWeight,
+    effectiveRange,
+    symbol,
+    fetchData,
+  ]);
 
   // Auto-refresh interval
   useEffect(() => {

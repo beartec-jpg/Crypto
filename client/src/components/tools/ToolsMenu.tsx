@@ -177,10 +177,10 @@ export function ToolsMenu({
           <div className="flex items-center justify-between py-1.5 px-1">
             <div className="min-w-0 mr-3">
               <div className="text-sm font-medium text-slate-100 leading-tight">
-                Liquidity Heatmap
+                Predictive Liquidation
               </div>
               <div className="text-xs text-slate-400 leading-tight">
-                Liquidation levels and buildup zones
+                Profile bars with bullish and bearish zones
               </div>
             </div>
             <div className="flex items-center gap-1">
