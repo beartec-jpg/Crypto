@@ -22,6 +22,16 @@ interface PredictiveApiResponse {
   error?: string;
 }
 
+interface LegacyPredictedResponse {
+  symbol?: string;
+  source?: string;
+  timestamp?: number;
+  priceList?: number[];
+  liquidationMatrix?: number[][];
+  available?: boolean;
+  error?: string;
+}
+
 export interface PredictiveDebugStats {
   forceOrderCount: number;
   realtimeOrderCount: number;
@@ -45,6 +55,95 @@ interface PredictiveWeights {
   orderbookWeight: number;
   liqFlowWeight: number;
   biasWeight: number;
+}
+
+function mapLegacyPredictedToHeatmapData(payload: LegacyPredictedResponse): LiquidityHeatmapData {
+  const prices = Array.isArray(payload.priceList) ? payload.priceList : [];
+  const matrix = Array.isArray(payload.liquidationMatrix) ? payload.liquidationMatrix : [];
+
+  const midpoint = prices.length > 0
+    ? prices[Math.floor(prices.length / 2)]
+    : 0;
+
+  const levels = prices
+    .map((price, idx) => {
+      const value = Number(matrix[idx]?.[0] ?? 0);
+      if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(value) || value <= 0) return null;
+      return {
+        price,
+        liquidationValue: value,
+        side: price < midpoint ? 'long' as const : 'short' as const,
+      };
+    })
+    .filter((l): l is { price: number; liquidationValue: number; side: 'long' | 'short' } => Boolean(l));
+
+  let maxLongPrice = 0;
+  let maxShortPrice = 0;
+  let maxLongValue = 0;
+  let maxShortValue = 0;
+  let totalLongLiquidation = 0;
+  let totalShortLiquidation = 0;
+
+  for (const level of levels) {
+    if (level.side === 'long') {
+      totalLongLiquidation += level.liquidationValue;
+      if (level.liquidationValue > maxLongValue) {
+        maxLongValue = level.liquidationValue;
+        maxLongPrice = level.price;
+      }
+    } else {
+      totalShortLiquidation += level.liquidationValue;
+      if (level.liquidationValue > maxShortValue) {
+        maxShortValue = level.liquidationValue;
+        maxShortPrice = level.price;
+      }
+    }
+  }
+
+  return {
+    levels,
+    maxLongPrice,
+    maxShortPrice,
+    totalLongLiquidation,
+    totalShortLiquidation,
+    lastUpdated: Number(payload.timestamp || Date.now()),
+  };
+}
+
+async function fetchLegacyPredictedFallback(normalizedSymbol: string): Promise<FetchPredictiveLiquidationResult> {
+  const fallbackUrl = new URL(`${API_BASE}/predicted`, window.location.origin);
+  fallbackUrl.searchParams.set('symbol', normalizedSymbol);
+  fallbackUrl.searchParams.set('interval', '4h');
+
+  const response = await fetch(fallbackUrl.toString(), {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Fallback predicted request failed: ${response.status}`);
+  }
+
+  const json = await response.json() as LegacyPredictedResponse;
+  if (!json.available || !Array.isArray(json.priceList) || json.priceList.length === 0) {
+    throw new Error(json.error || 'Fallback predicted data unavailable');
+  }
+
+  return {
+    data: mapLegacyPredictedToHeatmapData(json),
+    requestUrl: fallbackUrl.toString(),
+    normalizedSymbol,
+    source: `fallback-${json.source || 'predicted'}`,
+    debugStats: {
+      forceOrderCount: 0,
+      realtimeOrderCount: 0,
+      mergedForceOrderCount: 0,
+      coinalyzeMapLevels: Array.isArray(json.priceList) ? json.priceList.length : 0,
+      depthBidLevels: 0,
+      depthAskLevels: 0,
+      cacheWarm: false,
+    },
+  };
 }
 
 function normalizeSymbol(symbol: string): string {
@@ -80,7 +179,11 @@ export async function fetchPredictiveLiquidationProfile(
 
   const json = await response.json() as PredictiveApiResponse;
   if (json.code !== '0' || !json.data) {
-    throw new Error(json.error || json.meta?.note || 'Predictive profile unavailable');
+    try {
+      return await fetchLegacyPredictedFallback(normalizedSymbol);
+    } catch {
+      throw new Error(json.error || json.meta?.note || 'Predictive profile unavailable');
+    }
   }
 
   return {
