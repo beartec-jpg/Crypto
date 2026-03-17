@@ -169,21 +169,13 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
             ctx.save();
             ctx.fillStyle = 'rgba(250, 204, 21, 0.95)';
             ctx.fillRect(markerX, y - 3, markerWidth, 6);
-            ctx.strokeStyle = 'rgba(250, 204, 21, 0.95)';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([6, 4]);
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(chartWidth, y);
-            ctx.stroke();
-            ctx.setLineDash([]);
 
-            const label = `MAX LIQ ${formatUsdCompact(maxLevel.totalValue)}`;
+            const label = `MAX ${formatUsdCompact(maxLevel.totalValue)}`;
             ctx.font = 'bold 9px sans-serif';
             ctx.fillStyle = 'rgba(250, 204, 21, 1)';
             ctx.textAlign = isRightSide ? 'right' : 'left';
             const labelX = isRightSide ? laneEnd - 4 : laneStart + 4;
-            ctx.fillText(label, labelX, y - 6);
+            ctx.fillText(label, labelX, y + 3);
             ctx.restore();
           }
         }
@@ -207,23 +199,19 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
           if (y === null) return;
 
           ctx.save();
-          ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.85)`;
-          ctx.lineWidth = 1;
-          ctx.setLineDash([4, 4]);
-          ctx.beginPath();
-          ctx.moveTo(0, y);
-          ctx.lineTo(chartWidth, y);
-          ctx.stroke();
-          ctx.setLineDash([]);
+          const tickWidth = Math.min(18, Math.max(8, Math.round(laneWidth * 0.08)));
+          const tickX = isRightSide ? laneStart : laneEnd - tickWidth;
+          ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.95)`;
+          ctx.fillRect(tickX, y - 1, tickWidth, 2);
 
-          // Label with USD value
-          const label = formatUsdCompact(level.liquidationValue);
+          const sidePrefix = level.side === 'long' ? 'L' : 'S';
+          const label = `${sidePrefix} ${formatUsdCompact(level.liquidationValue)}`;
 
           ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.9)`;
           ctx.font = 'bold 9px sans-serif';
           ctx.textAlign = isRightSide ? 'right' : 'left';
           const labelX = isRightSide ? laneEnd - 4 : laneStart + 4;
-          ctx.fillText(label, labelX, y - 3);
+          ctx.fillText(label, labelX, y + 3);
           ctx.restore();
         };
 
