@@ -80,6 +80,10 @@ interface FullscreenChartActionToolbarProps {
   gdsMiniBadgeEnabled: boolean;
   onToggleGdsMiniBadge: (enabled: boolean) => void;
 
+  rewindEnabled: boolean;
+  onToggleRewind: (enabled: boolean) => void;
+  onOpenRewindSettings: () => void;
+
   activeSystem: TradingSystemId | null;
   onActivateSystem: (systemId: TradingSystemId) => void;
   onDeactivateSystem: () => void;
@@ -142,6 +146,9 @@ export function FullscreenChartActionToolbar({
   onOpenLiquidityHeatmapSettings,
   gdsMiniBadgeEnabled,
   onToggleGdsMiniBadge,
+  rewindEnabled,
+  onToggleRewind,
+  onOpenRewindSettings,
   activeSystem,
   onActivateSystem,
   onDeactivateSystem,
@@ -201,6 +208,9 @@ export function FullscreenChartActionToolbar({
         onOpenLiquidityHeatmapSettings={onOpenLiquidityHeatmapSettings}
         gdsMiniBadgeEnabled={gdsMiniBadgeEnabled}
         onToggleGdsMiniBadge={onToggleGdsMiniBadge}
+        rewindEnabled={rewindEnabled}
+        onToggleRewind={onToggleRewind}
+        onOpenRewindSettings={onOpenRewindSettings}
       />
 
       <div className="w-px h-6 bg-slate-700" />
