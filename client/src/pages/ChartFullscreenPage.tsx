@@ -265,6 +265,8 @@ export function ChartFullscreenPage({
   // Rewind: null = live, number = candle index to rewind to
   // Rewind state - null means LIVE
   const [rewindPosition, setRewindPosition] = useState<number | null>(null);
+  // Rewind settings hook - placed here so handleToggleRewind can reference it
+  const rewindSettings = useRewindSettings();
 
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -359,7 +361,8 @@ export function ChartFullscreenPage({
       // When disabling, return to live mode
       setRewindPosition(null);
     } else if (rewindSettings.settings.autoPlay) {
-      // When enabling with autoPlay, start from beginning of available candles
+      // When enabling with autoPlay, start at the midpoint of available candles
+      // (minimum 50 candles so indicators have enough history to calculate)
       setRewindPosition(Math.max(50, Math.floor(candles.length / 2)));
     }
   }, [rewindSettings, candles.length]);
@@ -594,9 +597,6 @@ export function ChartFullscreenPage({
   // Hooks - Liquidity Heatmap
   const lhSettings = useLiquidityHeatmapSettings();
   const liquidityHeatmapDataResult = useLiquidityHeatmapData(symbol, lhSettings.settings, timeframe);
-
-  // Hooks - Rewind
-  const rewindSettings = useRewindSettings();
 
   // Hooks - Trading Systems
   const tradingSystemCallbacks: TradingSystemCallbacks = {
