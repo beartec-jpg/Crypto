@@ -52,7 +52,7 @@ export function LiquidityHeatmapDebugPanel({
   symbol,
   debugInfo,
 }: LiquidityHeatmapDebugPanelProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
 
   const longLevels = data?.levels.filter((l) => l.side === 'long') ?? [];
   const shortLevels = data?.levels.filter((l) => l.side === 'short') ?? [];
@@ -83,7 +83,7 @@ export function LiquidityHeatmapDebugPanel({
   return (
     <div
       className="absolute bottom-4 left-4 z-50 text-xs font-mono select-none"
-      style={{ maxWidth: 320 }}
+      style={{ width: 360, maxWidth: 'min(360px, 42vw)' }}
     >
       {/* Header / toggle */}
       <button
@@ -96,7 +96,7 @@ export function LiquidityHeatmapDebugPanel({
       </button>
 
       {!collapsed && (
-        <div className="bg-slate-900/90 border border-t-0 border-slate-600 rounded-b px-2 py-1 space-y-2">
+        <div className="bg-slate-900/90 border border-t-0 border-slate-600 rounded-b px-2 py-1 space-y-2 max-h-[48vh] overflow-y-auto">
           {/* Connection status */}
           <section>
             <p className="text-slate-500 uppercase tracking-wide mb-0.5">Status</p>
@@ -207,15 +207,17 @@ function Divider() {
 /* ── Endpoint Health Section ──────────────────────────────────────── */
 
 function EndpointHealthSection({ diagnostics }: { diagnostics: EndpointDiagnostic[] }) {
+  const visible = diagnostics.filter((d) => !d.ok || !d.optional);
+
   return (
     <section>
       <p className="text-slate-500 uppercase tracking-wide mb-0.5">Endpoint Health</p>
-      <div className="space-y-0.5">
-        {diagnostics.map((d, i) => {
+      <div className="space-y-0.5 max-h-36 overflow-y-auto pr-1">
+        {visible.map((d, i) => {
           const isSlow = d.ms > 3000;
-          const icon = !d.ok ? '❌' : isSlow ? '⚠️' : '✅';
+          const icon = !d.ok ? (d.optional ? '⚠️' : '❌') : isSlow ? '⚠️' : '✅';
           const msColor = isSlow ? 'text-yellow-400' : d.ok ? 'text-slate-400' : 'text-red-400';
-          const nameColor = d.ok ? 'text-slate-200' : 'text-red-400';
+          const nameColor = d.ok ? 'text-slate-200' : (d.optional ? 'text-yellow-300' : 'text-red-400');
           const msText = d.ms > 0 ? `${d.ms}ms` : '';
           const countText = d.dataPoints !== undefined ? ` (${d.dataPoints})` : '';
           const errorText = !d.ok && d.error ? ` ${d.error}` : '';
@@ -223,7 +225,7 @@ function EndpointHealthSection({ diagnostics }: { diagnostics: EndpointDiagnosti
           return (
             <div key={i} className="flex items-start gap-1 leading-5">
               <span className="shrink-0">{icon}</span>
-              <span className={`shrink-0 ${nameColor}`} style={{ minWidth: 120 }}>{d.endpoint}</span>
+              <span className={`shrink-0 ${nameColor}`} style={{ minWidth: 130 }}>{d.endpoint}</span>
               <span className="flex-1 text-right truncate">
                 {msText && <span className={msColor}>{msText}</span>}
                 {countText && <span className="text-slate-400">{countText}</span>}
@@ -232,6 +234,7 @@ function EndpointHealthSection({ diagnostics }: { diagnostics: EndpointDiagnosti
             </div>
           );
         })}
+        {visible.length === 0 && <p className="text-slate-400 italic">No critical endpoint issues</p>}
       </div>
     </section>
   );

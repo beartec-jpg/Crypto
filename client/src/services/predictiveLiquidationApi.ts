@@ -10,6 +10,7 @@ export interface EndpointDiagnostic {
   ms: number;
   error?: string;
   dataPoints?: number;
+  optional?: boolean;
 }
 
 interface PredictiveApiResponse {

@@ -61,6 +61,7 @@ interface EndpointDiagnostic {
   ms: number;
   error?: string;
   dataPoints?: number;
+  optional?: boolean;
 }
 
 interface RollingSnapshot {
@@ -215,6 +216,7 @@ async function trackFn<T>(
   fn: () => Promise<T>,
   isOk: (v: T) => boolean = (v) => v !== null && v !== undefined,
   getCount?: (v: T) => number,
+  optional = false,
 ): Promise<T> {
   const start = Date.now();
   try {
@@ -228,13 +230,20 @@ async function trackFn<T>(
       status: ok ? 200 : null,
       ms,
       dataPoints: getCount ? getCount(result) : undefined,
+      optional,
     });
     return result;
   } catch (e: any) {
     const ms = Date.now() - start;
-    diagnostics.push({ endpoint, url: endpoint, ok: false, status: null, ms, error: e?.message || 'error' });
+    diagnostics.push({ endpoint, url: endpoint, ok: false, status: null, ms, error: e?.message || 'error', optional });
     return null as unknown as T;
   }
+}
+
+function isBinanceReachable(diagnostics: EndpointDiagnostic[]): boolean {
+  return diagnostics.some(
+    (d) => d.endpoint.startsWith('binance-') && d.ok,
+  );
 }
 
 function setPriceCache(symbol: string, price: number): void {
@@ -821,43 +830,60 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const hasCoinalyzeKey = Boolean(process.env.COINALYZE_API_KEY);
     const hasCoinglassKey = Boolean(process.env.COINGLASS_API_KEY);
     if (!hasCoinalyzeKey) {
-      diagnostics.push({ endpoint: 'coinalyze-config', url: '', ok: false, status: null, ms: 0, error: 'COINALYZE_API_KEY_not_configured' });
+      diagnostics.push({ endpoint: 'coinalyze-config', url: '', ok: false, status: null, ms: 0, error: 'COINALYZE_API_KEY_not_configured', optional: true });
     }
     if (!hasCoinglassKey) {
-      diagnostics.push({ endpoint: 'coinglass-config', url: '', ok: false, status: null, ms: 0, error: 'COINGLASS_API_KEY_not_configured' });
+      diagnostics.push({ endpoint: 'coinglass-config', url: '', ok: false, status: null, ms: 0, error: 'COINGLASS_API_KEY_not_configured', optional: true });
     }
 
     let currentPrice = await fetchPriceFromMultipleSources(symbol, diagnostics);
 
-    // Fetch remaining data in parallel – regardless of price result
-    const [oiResult, ratioResult, fundingResult, depthResult] = await Promise.all([
-      fetchTracked<{ openInterest: string }>(
-        'binance-oi',
-        `https://fapi.binance.com/fapi/v1/openInterest?symbol=${symbol}`,
-      ),
-      fetchTracked<Array<{ longShortRatio: string }>>(
-        'binance-ls-ratio',
-        `https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=5m&limit=1`,
-      ),
-      fetchTracked<{ lastFundingRate: string }>(
-        'binance-funding',
-        `https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${symbol}`,
-      ),
-      fetchTracked<BinanceDepth>(
-        'binance-depth',
-        `https://fapi.binance.com/fapi/v1/depth?symbol=${symbol}&limit=100`,
-      ),
-    ]);
+    const canUseBinanceSuite = isBinanceReachable(diagnostics);
 
-    const oiData = oiResult.data;
-    const ratioData = ratioResult.data;
-    const fundingData = fundingResult.data;
-    const depthData = depthResult.data;
+    let oiData: { openInterest: string } | null = null;
+    let ratioData: Array<{ longShortRatio: string }> | null = null;
+    let fundingData: { lastFundingRate: string } | null = null;
+    let depthData: BinanceDepth | null = null;
 
-    // Annotate depth diag with data point count
-    if (depthResult.diag.ok) depthResult.diag.dataPoints = depthResult.data?.bids?.length ?? 0;
-    if (ratioResult.diag.ok) ratioResult.diag.dataPoints = Array.isArray(ratioResult.data) ? ratioResult.data.length : 0;
-    diagnostics.push(oiResult.diag, ratioResult.diag, fundingResult.diag, depthResult.diag);
+    if (canUseBinanceSuite) {
+      const [oiResult, ratioResult, fundingResult, depthResult] = await Promise.all([
+        fetchTracked<{ openInterest: string }>(
+          'binance-oi',
+          `https://fapi.binance.com/fapi/v1/openInterest?symbol=${symbol}`,
+        ),
+        fetchTracked<Array<{ longShortRatio: string }>>(
+          'binance-ls-ratio',
+          `https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=5m&limit=1`,
+        ),
+        fetchTracked<{ lastFundingRate: string }>(
+          'binance-funding',
+          `https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${symbol}`,
+        ),
+        fetchTracked<BinanceDepth>(
+          'binance-depth',
+          `https://fapi.binance.com/fapi/v1/depth?symbol=${symbol}&limit=100`,
+        ),
+      ]);
+
+      oiData = oiResult.data;
+      ratioData = ratioResult.data;
+      fundingData = fundingResult.data;
+      depthData = depthResult.data;
+
+      if (depthResult.diag.ok) depthResult.diag.dataPoints = depthResult.data?.bids?.length ?? 0;
+      if (ratioResult.diag.ok) ratioResult.diag.dataPoints = Array.isArray(ratioResult.data) ? ratioResult.data.length : 0;
+      diagnostics.push(oiResult.diag, ratioResult.diag, fundingResult.diag, depthResult.diag);
+    } else {
+      diagnostics.push({
+        endpoint: 'binance-suite-skipped',
+        url: '',
+        ok: true,
+        status: null,
+        ms: 0,
+        optional: true,
+        error: 'binance_unreachable_using_fallbacks',
+      });
+    }
 
     const realtimeOrders = await trackFn(
       diagnostics,
@@ -865,6 +891,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       () => fetchRealtimeLiquidationEvents(req, symbol),
       (v) => Array.isArray(v) && v.length > 0,
       (v) => Array.isArray(v) ? v.length : 0,
+      true,
     );
 
     const openInterestQty = toNumber(oiData?.openInterest, 0);
@@ -873,18 +900,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let fundingRate = toNumber((fundingData as any)?.lastFundingRate, 0);
 
     const [coinalyzeOiUsd, coinalyzeLs, coinalyzeFunding, coinglassOiUsd, coinglassLs, coinglassFunding, coinalyzeMap] = await Promise.all([
-      trackFn(diagnostics, 'coinalyze-oi', () => fetchCoinalyzeOpenInterestUsd(symbol, Math.max(currentPrice, 1)), (v) => (v as number) > 0),
-      trackFn(diagnostics, 'coinalyze-ls-ratio', () => fetchCoinalyzeLongShortRatio(symbol), (v) => (v as number) > 0 && (v as number) !== 1),
-      trackFn(diagnostics, 'coinalyze-funding', () => fetchCoinalyzeFundingRate(symbol), (v) => (v as number) !== 0),
-      trackFn(diagnostics, 'coinglass-oi', () => fetchCoinglassOpenInterestUsd(symbol), (v) => (v as number) > 0),
-      trackFn(diagnostics, 'coinglass-ls-ratio', () => fetchCoinglassLongShortRatio(symbol), (v) => (v as number) > 0 && (v as number) !== 1),
-      trackFn(diagnostics, 'coinglass-funding', () => fetchCoinglassFundingRate(symbol), (v) => (v as number) !== 0),
+      trackFn(diagnostics, 'coinalyze-oi', () => fetchCoinalyzeOpenInterestUsd(symbol, Math.max(currentPrice, 1)), (v) => (v as number) > 0, undefined, true),
+      trackFn(diagnostics, 'coinalyze-ls-ratio', () => fetchCoinalyzeLongShortRatio(symbol), (v) => (v as number) > 0 && (v as number) !== 1, undefined, true),
+      trackFn(diagnostics, 'coinalyze-funding', () => fetchCoinalyzeFundingRate(symbol), (v) => (v as number) !== 0, undefined, true),
+      trackFn(diagnostics, 'coinglass-oi', () => fetchCoinglassOpenInterestUsd(symbol), (v) => (v as number) > 0, undefined, true),
+      trackFn(diagnostics, 'coinglass-ls-ratio', () => fetchCoinglassLongShortRatio(symbol), (v) => (v as number) > 0 && (v as number) !== 1, undefined, true),
+      trackFn(diagnostics, 'coinglass-funding', () => fetchCoinglassFundingRate(symbol), (v) => (v as number) !== 0, undefined, true),
       trackFn(
         diagnostics,
         'coinalyze-liq-map',
         () => fetchCoinalyzeLiquidationMap(symbol),
         (v) => Array.isArray(v) && v.length > 0,
         (v) => Array.isArray(v) ? v.length : 0,
+        true,
       ),
     ]);
 
