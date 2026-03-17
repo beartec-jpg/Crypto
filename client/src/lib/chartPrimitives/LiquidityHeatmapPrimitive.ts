@@ -181,7 +181,9 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
             const label = `MAX LIQ ${formatUsdCompact(maxLevel.totalValue)}`;
             ctx.font = 'bold 9px sans-serif';
             ctx.fillStyle = 'rgba(250, 204, 21, 1)';
-            ctx.fillText(label, 6, y - 6);
+            ctx.textAlign = isRightSide ? 'right' : 'left';
+            const labelX = isRightSide ? laneEnd - 4 : laneStart + 4;
+            ctx.fillText(label, labelX, y - 6);
             ctx.restore();
           }
         }
@@ -219,7 +221,9 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
 
           ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.9)`;
           ctx.font = 'bold 9px sans-serif';
-          ctx.fillText(label, 4, y - 3);
+          ctx.textAlign = isRightSide ? 'right' : 'left';
+          const labelX = isRightSide ? laneEnd - 4 : laneStart + 4;
+          ctx.fillText(label, labelX, y - 3);
           ctx.restore();
         };
 
