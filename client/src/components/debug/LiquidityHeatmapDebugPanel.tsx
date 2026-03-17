@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { LiquidityHeatmapData, LiquidityHeatmapSettings, CoinglassRange } from '@/types/liquidityHeatmap';
 import type { LiquidityHeatmapDebugInfo } from '@/hooks/useLiquidityHeatmapData';
+import type { EndpointDiagnostic } from '@/services/predictiveLiquidationApi';
 
 interface LiquidityHeatmapDebugPanelProps {
   data: LiquidityHeatmapData | null;
@@ -168,6 +169,13 @@ export function LiquidityHeatmapDebugPanel({
             />
             <Row label="Cache Warm" value={debugInfo.stats.cacheWarm ? 'Yes' : 'No'} />
           </section>
+
+          {debugInfo.diagnostics.length > 0 && (
+            <>
+              <Divider />
+              <EndpointHealthSection diagnostics={debugInfo.diagnostics} />
+            </>
+          )}
         </div>
       )}
     </div>
@@ -194,4 +202,37 @@ function Row({ label, value, valueClass = 'text-slate-200', title }: RowProps) {
 
 function Divider() {
   return <hr className="border-slate-700" />;
+}
+
+/* ── Endpoint Health Section ──────────────────────────────────────── */
+
+function EndpointHealthSection({ diagnostics }: { diagnostics: EndpointDiagnostic[] }) {
+  return (
+    <section>
+      <p className="text-slate-500 uppercase tracking-wide mb-0.5">Endpoint Health</p>
+      <div className="space-y-0.5">
+        {diagnostics.map((d, i) => {
+          const isSlow = d.ms > 3000;
+          const icon = !d.ok ? '❌' : isSlow ? '⚠️' : '✅';
+          const msColor = isSlow ? 'text-yellow-400' : d.ok ? 'text-slate-400' : 'text-red-400';
+          const nameColor = d.ok ? 'text-slate-200' : 'text-red-400';
+          const msText = d.ms > 0 ? `${d.ms}ms` : '';
+          const countText = d.dataPoints !== undefined ? ` (${d.dataPoints})` : '';
+          const errorText = !d.ok && d.error ? ` ${d.error}` : '';
+
+          return (
+            <div key={i} className="flex items-start gap-1 leading-5">
+              <span className="shrink-0">{icon}</span>
+              <span className={`shrink-0 ${nameColor}`} style={{ minWidth: 120 }}>{d.endpoint}</span>
+              <span className="flex-1 text-right truncate">
+                {msText && <span className={msColor}>{msText}</span>}
+                {countText && <span className="text-slate-400">{countText}</span>}
+                {errorText && <span className="text-red-400 ml-1 truncate" title={d.error}>{errorText.length > 20 ? errorText.slice(0, 20) + '…' : errorText}</span>}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 }

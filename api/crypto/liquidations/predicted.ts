@@ -1,80 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-interface LiquidationLevel {
-  price: number;
-  liqValue: number;
-}
-
-async function fetchCoinglassLiquidationMap(symbol: string): Promise<{ priceList: number[], liquidationMatrix: number[][], source: string }> {
-  const coinglassKey = process.env.COINGLASS_API_KEY;
-  
-  if (!coinglassKey) {
-    console.log('No Coinglass API key configured');
-    return { priceList: [], liquidationMatrix: [], source: 'unavailable' };
-  }
-  
-  try {
-    const coinglassSymbol = symbol.replace('USDT', '');
-    const url = `https://open-api.coinglass.com/public/v2/liquidation_map?symbol=${coinglassSymbol}`;
-    
-    const response = await fetch(url, {
-      headers: {
-        'coinglassSecret': coinglassKey
-      }
-    });
-    
-    if (!response.ok) {
-      console.error('Coinglass API error:', response.status, response.statusText);
-      return { priceList: [], liquidationMatrix: [], source: 'api_error' };
-    }
-    
-    const data = await response.json();
-    
-    if (data.code !== '0' || !data.data) {
-      console.log('Coinglass returned no data:', data.msg || 'unknown');
-      return { priceList: [], liquidationMatrix: [], source: 'no_data' };
-    }
-
-    const levels: LiquidationLevel[] = [];
-    
-    if (data.data.longLevels && Array.isArray(data.data.longLevels)) {
-      data.data.longLevels.forEach((level: any) => {
-        if (level.price && level.liqValue) {
-          levels.push({
-            price: parseFloat(level.price),
-            liqValue: parseFloat(level.liqValue)
-          });
-        }
-      });
-    }
-    
-    if (data.data.shortLevels && Array.isArray(data.data.shortLevels)) {
-      data.data.shortLevels.forEach((level: any) => {
-        if (level.price && level.liqValue) {
-          levels.push({
-            price: parseFloat(level.price),
-            liqValue: parseFloat(level.liqValue)
-          });
-        }
-      });
-    }
-
-    if (levels.length === 0) {
-      return { priceList: [], liquidationMatrix: [], source: 'empty_levels' };
-    }
-
-    levels.sort((a, b) => a.price - b.price);
-    
-    const priceList = levels.map(l => l.price);
-    const liquidationMatrix = levels.map(l => [l.liqValue]);
-    
-    return { priceList, liquidationMatrix, source: 'coinglass' };
-  } catch (error) {
-    console.error('Error fetching Coinglass data:', error);
-    return { priceList: [], liquidationMatrix: [], source: 'fetch_error' };
-  }
-}
-
 async function fetchCoinalyzeLiquidations(symbol: string): Promise<{ priceList: number[], liquidationMatrix: number[][], source: string }> {
   const coinalyzeKey = process.env.COINALYZE_API_KEY;
   
@@ -131,11 +56,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log(`Fetching predicted liquidations for ${symbolStr}`);
 
-    let result = await fetchCoinglassLiquidationMap(symbolStr);
-    
-    if (result.priceList.length === 0) {
-      result = await fetchCoinalyzeLiquidations(symbolStr);
-    }
+    const result = await fetchCoinalyzeLiquidations(symbolStr);
 
     return res.status(200).json({
       symbol: symbolStr,
