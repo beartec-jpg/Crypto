@@ -19,6 +19,9 @@ interface ToolsMenuProps {
   onOpenLiquidityHeatmapSettings: () => void;
   gdsMiniBadgeEnabled: boolean;
   onToggleGdsMiniBadge: (enabled: boolean) => void;
+  rewindEnabled: boolean;
+  onToggleRewind: (enabled: boolean) => void;
+  onOpenRewindSettings: () => void;
   className?: string;
 }
 
@@ -36,6 +39,9 @@ export function ToolsMenu({
   onOpenLiquidityHeatmapSettings,
   gdsMiniBadgeEnabled,
   onToggleGdsMiniBadge,
+  rewindEnabled,
+  onToggleRewind,
+  onOpenRewindSettings,
   className,
 }: ToolsMenuProps) {
   const [open, setOpen] = useState(false);
@@ -45,7 +51,8 @@ export function ToolsMenu({
     htfBiasEnabled ||
     vpEnabled ||
     liquidityHeatmapEnabled ||
-    gdsMiniBadgeEnabled;
+    gdsMiniBadgeEnabled ||
+    rewindEnabled;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -212,6 +219,37 @@ export function ToolsMenu({
               onCheckedChange={onToggleGdsMiniBadge}
               className="shrink-0 data-[state=checked]:bg-blue-600"
             />
+          </div>
+
+          <div className="flex items-center justify-between py-1.5 px-1">
+            <div className="min-w-0 mr-3">
+              <div className="text-sm font-medium text-slate-100 leading-tight">
+                Chart Rewind
+              </div>
+              <div className="text-xs text-slate-400 leading-tight">
+                Historical playback mode
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <Switch
+                checked={rewindEnabled}
+                onCheckedChange={onToggleRewind}
+                className="shrink-0 data-[state=checked]:bg-blue-600"
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
+                title="Chart Rewind Settings"
+                onClick={() => {
+                  setOpen(false);
+                  onOpenRewindSettings();
+                }}
+                data-testid="btn-rewind-settings"
+              >
+                <Settings className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
         </div>
       </PopoverContent>

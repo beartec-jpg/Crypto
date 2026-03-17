@@ -76,6 +76,7 @@ import { scoreSystem, buildSmcZoneInputs, type ScoringInput } from '@/lib/tradin
 import { runTradingSystemBacktest, type BacktestResult } from '@/lib/tradingSystemBacktest';
 import { AlertSettingsDialog } from '@/components/AlertSettingsDialog';
 import { DrawingAlertSettings } from '@/components/modals/DrawingAlertSettings';
+import { RewindSettingsModal } from '@/components/modals/RewindSettingsModal';
 import type { OscillatorModalConfig } from '@/components/modals/OscillatorSelectorModal';
 import { useGDSMarketMetrics } from '@/hooks/indicators/useGDSMarketMetrics';
 import { useGenuineDemandScore } from '@/hooks/indicators/useGenuineDemandScore';
@@ -84,6 +85,7 @@ import { findMaximumOpportunityZones, type OpportunityZone } from '@/lib/conflue
 import { getConditionWeights } from '@/lib/conditionWeights';
 import type { IPriceLine } from 'lightweight-charts';
 import { RewindControls } from '@/components/chart/RewindControls';
+import { useRewindSettings } from '@/hooks/useRewindSettings';
 // Defensive import: ensures Button is included in the ChartPage chunk scope.
 // Child components (DrawingMenu, IndicatorMenu, ToolsMenu, TradingSystemsMenu)
 // all use Button, but Vite's production scope-hoisting can drop the binding
@@ -227,6 +229,8 @@ export function ChartFullscreenPage({
   const [showVPModal, setShowVPModal] = useState(false);
   // Liquidity Heatmap state
   const [showLHModal, setShowLHModal] = useState(false);
+  // Rewind modal state
+  const [showRewindModal, setShowRewindModal] = useState(false);
   // Alerts state
   const [showAlertSettings, setShowAlertSettings] = useState(false);
   const [showDrawingAlertSettings, setShowDrawingAlertSettings] = useState(false);
@@ -261,6 +265,8 @@ export function ChartFullscreenPage({
   // Rewind: null = live, number = candle index to rewind to
   // Rewind state - null means LIVE
   const [rewindPosition, setRewindPosition] = useState<number | null>(null);
+  // Rewind settings hook - placed here so handleToggleRewind can reference it
+  const rewindSettings = useRewindSettings();
 
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -348,6 +354,18 @@ export function ChartFullscreenPage({
   const handleGoLive = useCallback(() => {
     setRewindPosition(null);
   }, []);
+
+  const handleToggleRewind = useCallback((enabled: boolean) => {
+    rewindSettings.updateSetting('enabled', enabled);
+    if (!enabled) {
+      // When disabling, return to live mode
+      setRewindPosition(null);
+    } else if (rewindSettings.settings.autoPlay) {
+      // When enabling with autoPlay, start at the midpoint of available candles
+      // (minimum 50 candles so indicators have enough history to calculate)
+      setRewindPosition(Math.max(50, Math.floor(candles.length / 2)));
+    }
+  }, [rewindSettings, candles.length]);
 
   // Hooks - Indicators
   const indicators = useIndicatorState();
@@ -1803,6 +1821,9 @@ export function ChartFullscreenPage({
           onOpenLiquidityHeatmapSettings={() => setShowLHModal(true)}
           gdsMiniBadgeEnabled={showGdsMiniBadge}
           onToggleGdsMiniBadge={setShowGdsMiniBadge}
+          rewindEnabled={rewindSettings.settings.enabled}
+          onToggleRewind={handleToggleRewind}
+          onOpenRewindSettings={() => setShowRewindModal(true)}
           activeSystem={tradingSystem.activeSystem}
           onActivateSystem={tradingSystem.activateSystem}
           onDeactivateSystem={tradingSystem.deactivateSystem}
@@ -2059,13 +2080,23 @@ export function ChartFullscreenPage({
         />
       )}
 
-      {/* Rewind Controls */}
-      <RewindControls
-        currentPosition={rewindPosition}
-        totalCandles={candles.length}
-        onStepBack={handleStepBack}
-        onStepForward={handleStepForward}
-        onGoLive={handleGoLive}
+      {/* Rewind Controls - show when rewind is active OR when controls are enabled and in rewind mode */}
+      {rewindSettings.settings.showControls && (
+        <RewindControls
+          currentPosition={rewindPosition}
+          totalCandles={candles.length}
+          onStepBack={handleStepBack}
+          onStepForward={handleStepForward}
+          onGoLive={handleGoLive}
+        />
+      )}
+
+      {/* Rewind Settings Modal */}
+      <RewindSettingsModal
+        isOpen={showRewindModal}
+        onClose={() => setShowRewindModal(false)}
+        settings={rewindSettings.settings}
+        onSettingsChange={rewindSettings.setSettings}
       />
     </div>
   );
