@@ -61,9 +61,11 @@ interface RollingSnapshot {
 
 const rollingSnapshots = new Map<string, RollingSnapshot>();
 const priceCache = new Map<string, { price: number; timestamp: number }>();
+const lastSuccessfulPriceCache = new Map<string, { price: number; timestamp: number }>();
 const FORCE_ORDER_CACHE_WINDOW_MS = 10 * 60 * 1000;
 const FLOW_HALFLIFE_MS = 3 * 60 * 1000;
 const PRICE_CACHE_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
+const SUCCESSFUL_PRICE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 const RANGE_TO_PERCENT: Record<string, number> = {
   '12h': 0.03,
@@ -92,13 +94,13 @@ function normalizeSymbol(input: string): string {
   return `${cleaned}USDT`;
 }
 
-async function safeFetchJson<T>(url: string, retries = 2): Promise<T | null> {
+async function safeFetchJson<T>(url: string, retries = 3): Promise<T | null> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      const response = await fetch(url, { signal: AbortSignal.timeout(4000) });
       if (!response.ok) {
         if (attempt < retries) {
-          await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+          await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
           continue;
         }
         return null;
@@ -106,7 +108,7 @@ async function safeFetchJson<T>(url: string, retries = 2): Promise<T | null> {
       return await response.json() as T;
     } catch {
       if (attempt < retries) {
-        await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+        await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
         continue;
       }
       return null;
@@ -118,22 +120,51 @@ async function safeFetchJson<T>(url: string, retries = 2): Promise<T | null> {
 function setPriceCache(symbol: string, price: number): void {
   if (price > 0) {
     priceCache.set(symbol, { price, timestamp: Date.now() });
+    lastSuccessfulPriceCache.set(symbol, { price, timestamp: Date.now() });
   }
 }
 
 function getPriceCacheOrNull(symbol: string): number | null {
+  // Check recent cache (1 hour)
   const cached = priceCache.get(symbol);
-  if (!cached) return null;
-  const age = Date.now() - cached.timestamp;
-  if (age > PRICE_CACHE_MAX_AGE_MS) {
+  if (cached) {
+    const age = Date.now() - cached.timestamp;
+    if (age <= PRICE_CACHE_MAX_AGE_MS) {
+      return cached.price;
+    }
     priceCache.delete(symbol);
-    return null;
   }
-  return cached.price;
+  
+  // Fall back to last successful price (24 hours)
+  const lastSuccess = lastSuccessfulPriceCache.get(symbol);
+  if (lastSuccess) {
+    const age = Date.now() - lastSuccess.timestamp;
+    if (age <= SUCCESSFUL_PRICE_CACHE_MAX_AGE_MS) {
+      return lastSuccess.price;
+    }
+    lastSuccessfulPriceCache.delete(symbol);
+  }
+  
+  return null;
 }
 
 function baseSymbol(symbol: string): string {
   return symbol.replace(/USDT$/, '').replace(/BUSD$/, '');
+}
+
+async function fetchPriceFromMultipleSources(symbol: string): Promise<number> {
+  // Try Binance first
+  const binancePrice = await safeFetchJson<{ price: string }>(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`, 2);
+  if (binancePrice?.price) {
+    const price = toNumber(binancePrice.price, 0);
+    if (price > 0) return price;
+  }
+
+  // Fallback to cache
+  const cached = getPriceCacheOrNull(symbol);
+  if (cached) return cached;
+
+  return 0;
 }
 
 function parseWeight(value: unknown, fallback: number): number {
@@ -585,8 +616,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       bias: parseWeight(req.query.biasWeight, 0.15),
     });
 
-    const [priceData, oiData, ratioData, fundingData, forceOrders, depthData, realtimeOrders] = await Promise.all([
-      safeFetchJson<{ price: string }>(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`),
+    // Fetch price first with retries, as it's critical
+    let currentPrice = await fetchPriceFromMultipleSources(symbol);
+    
+    // If still no price, fail gracefully
+    if (currentPrice <= 0) {
+      return res.status(200).json({
+        code: '1',
+        data: {
+          levels: [],
+          maxLongPrice: 0,
+          maxShortPrice: 0,
+          totalLongLiquidation: 0,
+          totalShortLiquidation: 0,
+          lastUpdated: Date.now(),
+        },
+        meta: {
+          symbol,
+          range,
+          source: 'predictive-binance',
+          note: 'price_unavailable_and_no_cache',
+        },
+      });
+    }
+
+    // Now fetch remaining data in parallel
+    const [oiData, ratioData, fundingData, forceOrders, depthData, realtimeOrders] = await Promise.all([
       safeFetchJson<{ openInterest: string }>(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${symbol}`),
       safeFetchJson<Array<{ longShortRatio: string }>>(
         `https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=5m&limit=1`
@@ -596,33 +651,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       safeFetchJson<BinanceDepth>(`https://fapi.binance.com/fapi/v1/depth?symbol=${symbol}&limit=100`),
       fetchRealtimeLiquidationEvents(req, symbol),
     ]);
-
-    let currentPrice = toNumber(priceData?.price, 0);
-    // Fallback to price cache if fetch failed
-    if (currentPrice <= 0) {
-      const cachedPrice = getPriceCacheOrNull(symbol);
-      if (cachedPrice) {
-        currentPrice = cachedPrice;
-      } else {
-        return res.status(200).json({
-          code: '1',
-          data: {
-            levels: [],
-            maxLongPrice: 0,
-            maxShortPrice: 0,
-            totalLongLiquidation: 0,
-            totalShortLiquidation: 0,
-            lastUpdated: Date.now(),
-          },
-          meta: {
-            symbol,
-            range,
-            source: 'predictive-binance',
-            note: 'price_unavailable',
-          },
-        });
-      }
-    }
 
     const openInterestQty = toNumber(oiData?.openInterest, 0);
     let openInterestUsd = openInterestQty * currentPrice;
