@@ -113,7 +113,7 @@ export function LiquidityHeatmapDebugPanel({
           <section>
             <p className="text-slate-500 uppercase tracking-wide mb-0.5">Request</p>
             <Row label="Symbol" value={`${symbol} → ${debugInfo.normalizedSymbol || '—'}`} />
-            <Row label="Exchange" value={settings.exchange} />
+            <Row label="Exchange" value="Aggregated" />
             <Row
               label="Range"
               value={`${effectiveRange}${settings.syncToChartTimeframe ? ' (auto)' : ' (manual)'}`}
