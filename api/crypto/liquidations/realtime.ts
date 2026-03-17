@@ -105,7 +105,13 @@ async function fetchBybitLiquidations(symbol: string): Promise<{ events: Liquida
   try {
     const bybitSymbol = symbol.replace('USDT', '');
     const url = `https://api.bybit.com/v5/market/recent-trade?category=linear&symbol=${bybitSymbol}USDT&limit=100`;
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        Accept: 'application/json',
+        Referer: 'https://www.bybit.com/',
+      },
+    });
     
     if (!response.ok) {
       console.error('Bybit API error:', response.status, response.statusText);
