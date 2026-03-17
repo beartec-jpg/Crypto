@@ -14,6 +14,9 @@ interface ToolsMenuProps {
   vpEnabled: boolean;
   onToggleVolumeProfile: (enabled: boolean) => void;
   onOpenVolumeProfileSettings: () => void;
+  liquidityHeatmapEnabled: boolean;
+  onToggleLiquidityHeatmap: (enabled: boolean) => void;
+  onOpenLiquidityHeatmapSettings: () => void;
   gdsMiniBadgeEnabled: boolean;
   onToggleGdsMiniBadge: (enabled: boolean) => void;
   className?: string;
@@ -28,6 +31,9 @@ export function ToolsMenu({
   vpEnabled,
   onToggleVolumeProfile,
   onOpenVolumeProfileSettings,
+  liquidityHeatmapEnabled,
+  onToggleLiquidityHeatmap,
+  onOpenLiquidityHeatmapSettings,
   gdsMiniBadgeEnabled,
   onToggleGdsMiniBadge,
   className,
@@ -38,6 +44,7 @@ export function ToolsMenu({
     divergenceScannerEnabled ||
     htfBiasEnabled ||
     vpEnabled ||
+    liquidityHeatmapEnabled ||
     gdsMiniBadgeEnabled;
 
   return (
@@ -157,6 +164,37 @@ export function ToolsMenu({
                   <Settings className="h-3.5 w-3.5" />
                 </Button>
               }
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between py-1.5 px-1">
+            <div className="min-w-0 mr-3">
+              <div className="text-sm font-medium text-slate-100 leading-tight">
+                Liquidity Heatmap
+              </div>
+              <div className="text-xs text-slate-400 leading-tight">
+                Liquidation levels and buildup zones
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <Switch
+                checked={liquidityHeatmapEnabled}
+                onCheckedChange={onToggleLiquidityHeatmap}
+                className="shrink-0 data-[state=checked]:bg-blue-600"
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
+                title="Liquidity Heatmap Settings"
+                onClick={() => {
+                  setOpen(false);
+                  onOpenLiquidityHeatmapSettings();
+                }}
+                data-testid="btn-liquidity-heatmap-settings"
+              >
+                <Settings className="h-3.5 w-3.5" />
+              </Button>
             </div>
           </div>
 
