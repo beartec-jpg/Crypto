@@ -37,6 +37,15 @@ function normalizeSymbol(symbol: string): string {
 }
 
 /**
+ * Result shape that includes the heatmap data plus debug metadata.
+ */
+export interface FetchLiquidationHeatmapResult {
+  data: LiquidityHeatmapData;
+  requestUrl: string;
+  normalizedSymbol: string;
+}
+
+/**
  * Fetch liquidation heatmap data for a given symbol and exchange.
  * Uses the `/api/futures/liquidation/heatmap/model2` endpoint.
  */
@@ -44,14 +53,16 @@ export async function fetchLiquidationHeatmap(
   symbol: string,
   exchange: string,
   range: CoinglassRange,
-): Promise<LiquidityHeatmapData> {
+): Promise<FetchLiquidationHeatmapResult> {
   const normalised = normalizeSymbol(symbol);
   const url = new URL(`${API_BASE}/api/futures/liquidation/heatmap/model2`);
   url.searchParams.set('symbol', normalised);
   url.searchParams.set('exchange', exchange);
   url.searchParams.set('range', range);
 
-  const response = await fetch(url.toString(), {
+  const requestUrl = url.toString();
+
+  const response = await fetch(requestUrl, {
     method: 'GET',
     headers: buildHeaders(),
   });
@@ -66,7 +77,7 @@ export async function fetchLiquidationHeatmap(
     throw new Error(`Coinglass API returned error: ${json.msg}`);
   }
 
-  return transformHeatmapResponse(json);
+  return { data: transformHeatmapResponse(json), requestUrl, normalizedSymbol: normalised };
 }
 
 function transformHeatmapResponse(json: CoinglassHeatmapResponse): LiquidityHeatmapData {

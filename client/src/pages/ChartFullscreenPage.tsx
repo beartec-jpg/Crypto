@@ -1910,6 +1910,9 @@ export function ChartFullscreenPage({
           showLHModal={showLHModal}
           onCloseLHModal={() => setShowLHModal(false)}
           onLHSettingsChange={lhSettings.setSettings}
+          lhIsLoading={liquidityHeatmapDataResult.isLoading}
+          lhError={liquidityHeatmapDataResult.error}
+          lhDebugInfo={liquidityHeatmapDataResult.debugInfo}
           superTrendData={superTrendData}
           superTrendSettings={superTrendSettings.settings}
           divergenceScannerEnabled={divergenceScannerEnabled}
