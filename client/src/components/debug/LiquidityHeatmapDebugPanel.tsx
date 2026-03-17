@@ -208,7 +208,7 @@ function Divider() {
 
 function EndpointHealthSection({ diagnostics }: { diagnostics: EndpointDiagnostic[] }) {
   const optionalFailureCount = diagnostics.filter((d) => d.optional && !d.ok).length;
-  const visible = diagnostics.filter((d) => !(d.optional && !d.ok));
+  const visible = diagnostics;
 
   return (
     <section>

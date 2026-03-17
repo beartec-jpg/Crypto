@@ -46,6 +46,13 @@ interface RealtimeLiquidationResponse {
     binance: number;
     bybit: number;
   };
+  sourceDiagnostics?: Array<{
+    source: 'binance' | 'bybit';
+    ok: boolean;
+    status: number | null;
+    count: number;
+    error?: string;
+  }>;
 }
 
 interface RealtimeEventStats {
@@ -53,6 +60,13 @@ interface RealtimeEventStats {
   totalCount: number;
   binanceCount: number;
   bybitCount: number;
+  sourceDiagnostics: Array<{
+    source: 'binance' | 'bybit';
+    ok: boolean;
+    status: number | null;
+    count: number;
+    error?: string;
+  }>;
 }
 
 interface ExtendedHistoryResponse {
@@ -667,12 +681,12 @@ async function fetchRealtimeLiquidationEvents(
   symbol: string,
 ): Promise<RealtimeEventStats> {
   const origin = getRequestOrigin(req);
-  if (!origin) return { events: [], totalCount: 0, binanceCount: 0, bybitCount: 0 };
+  if (!origin) return { events: [], totalCount: 0, binanceCount: 0, bybitCount: 0, sourceDiagnostics: [] };
 
   const url = `${origin}/api/crypto/liquidations/realtime?symbol=${symbol}&limit=300&exchange=all`;
   const data = await safeFetchJson<RealtimeLiquidationResponse>(url);
   if (!data?.events || !Array.isArray(data.events)) {
-    return { events: [], totalCount: 0, binanceCount: 0, bybitCount: 0 };
+    return { events: [], totalCount: 0, binanceCount: 0, bybitCount: 0, sourceDiagnostics: [] };
   }
 
   const events = data.events
@@ -687,6 +701,7 @@ async function fetchRealtimeLiquidationEvents(
     totalCount: data.totalEvents || events.length,
     binanceCount,
     bybitCount,
+    sourceDiagnostics: Array.isArray(data.sourceDiagnostics) ? data.sourceDiagnostics : [],
   };
 }
 
@@ -1214,6 +1229,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
 
     const realtimeOrders = realtimeStats?.events || [];
+    if (Array.isArray(realtimeStats?.sourceDiagnostics)) {
+      for (const srcDiag of realtimeStats.sourceDiagnostics) {
+        diagnostics.push({
+          endpoint: `realtime-${srcDiag.source}`,
+          url: `realtime-${srcDiag.source}`,
+          ok: srcDiag.ok,
+          status: srcDiag.status,
+          ms: 0,
+          dataPoints: srcDiag.count,
+          optional: true,
+          error: srcDiag.error,
+        });
+      }
+    }
 
     const openInterestQty = toNumber(oiData?.openInterest, 0);
     let openInterestUsd = internalMetrics.openInterestUsd > 0

@@ -18,24 +18,57 @@ interface HeatmapData {
   exchanges: string[];
 }
 
-async function fetchBinanceLiquidations(symbol: string, limit: number): Promise<LiquidationEvent[]> {
+interface SourceDiagnostic {
+  source: 'binance' | 'bybit';
+  ok: boolean;
+  status: number | null;
+  count: number;
+  error?: string;
+}
+
+async function fetchBinanceLiquidations(
+  symbol: string,
+  limit: number,
+): Promise<{ events: LiquidationEvent[]; diagnostic: SourceDiagnostic }> {
   try {
     const url = `https://fapi.binance.com/fapi/v1/allForceOrders?symbol=${symbol}&limit=${limit}`;
     const response = await fetch(url);
     
     if (!response.ok) {
-      console.error('Binance API error:', response.status, response.statusText);
-      return [];
+      const errText = await response.text().catch(() => 'binance_non_200');
+      const error = errText.includes('out of maintenance')
+        ? 'binance_force_orders_endpoint_maintenance'
+        : `binance_http_${response.status}`;
+      console.error('Binance API error:', response.status, response.statusText, error);
+      return {
+        events: [],
+        diagnostic: {
+          source: 'binance',
+          ok: false,
+          status: response.status,
+          count: 0,
+          error,
+        },
+      };
     }
     
     const data = await response.json();
     
     if (!Array.isArray(data)) {
       console.error('Binance returned non-array data');
-      return [];
+      return {
+        events: [],
+        diagnostic: {
+          source: 'binance',
+          ok: false,
+          status: response.status,
+          count: 0,
+          error: 'binance_invalid_payload',
+        },
+      };
     }
-    
-    return data.map((order: any) => ({
+
+    const events = data.map((order: any) => ({
       symbol: order.symbol,
       side: order.side as 'BUY' | 'SELL',
       price: parseFloat(order.price),
@@ -43,13 +76,32 @@ async function fetchBinanceLiquidations(symbol: string, limit: number): Promise<
       timestamp: order.time,
       exchange: 'binance' as const
     }));
+
+    return {
+      events,
+      diagnostic: {
+        source: 'binance',
+        ok: true,
+        status: response.status,
+        count: events.length,
+      },
+    };
   } catch (error) {
     console.error('Error fetching Binance liquidations:', error);
-    return [];
+    return {
+      events: [],
+      diagnostic: {
+        source: 'binance',
+        ok: false,
+        status: null,
+        count: 0,
+        error: error instanceof Error ? error.message : 'binance_network_error',
+      },
+    };
   }
 }
 
-async function fetchBybitLiquidations(symbol: string): Promise<LiquidationEvent[]> {
+async function fetchBybitLiquidations(symbol: string): Promise<{ events: LiquidationEvent[]; diagnostic: SourceDiagnostic }> {
   try {
     const bybitSymbol = symbol.replace('USDT', '');
     const url = `https://api.bybit.com/v5/market/recent-trade?category=linear&symbol=${bybitSymbol}USDT&limit=100`;
@@ -57,17 +109,35 @@ async function fetchBybitLiquidations(symbol: string): Promise<LiquidationEvent[
     
     if (!response.ok) {
       console.error('Bybit API error:', response.status, response.statusText);
-      return [];
+      return {
+        events: [],
+        diagnostic: {
+          source: 'bybit',
+          ok: false,
+          status: response.status,
+          count: 0,
+          error: `bybit_http_${response.status}`,
+        },
+      };
     }
     
     const data = await response.json();
     
     if (data.retCode !== 0 || !data.result?.list) {
-      return [];
+      return {
+        events: [],
+        diagnostic: {
+          source: 'bybit',
+          ok: false,
+          status: response.status,
+          count: 0,
+          error: `bybit_retcode_${String(data.retCode)}`,
+        },
+      };
     }
 
-    return data.result.list
-      .filter((trade: any) => parseFloat(trade.size) > 0.1)
+    const events = data.result.list
+      .filter((trade: any) => Number.isFinite(parseFloat(trade.size)) && parseFloat(trade.size) > 0)
       .slice(0, 50)
       .map((trade: any) => ({
         symbol: symbol,
@@ -77,9 +147,28 @@ async function fetchBybitLiquidations(symbol: string): Promise<LiquidationEvent[
         timestamp: parseInt(trade.time),
         exchange: 'bybit' as const
       }));
+
+    return {
+      events,
+      diagnostic: {
+        source: 'bybit',
+        ok: true,
+        status: response.status,
+        count: events.length,
+      },
+    };
   } catch (error) {
     console.error('Error fetching Bybit data:', error);
-    return [];
+    return {
+      events: [],
+      diagnostic: {
+        source: 'bybit',
+        ok: false,
+        status: null,
+        count: 0,
+        error: error instanceof Error ? error.message : 'bybit_network_error',
+      },
+    };
   }
 }
 
@@ -171,18 +260,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     let events: LiquidationEvent[] = [];
 
-    const fetchPromises: Promise<LiquidationEvent[]>[] = [];
+    const sourceFetches: Promise<{ events: LiquidationEvent[]; diagnostic: SourceDiagnostic }>[] = [];
 
     if (exchangeFilter === 'all' || exchangeFilter === 'binance') {
-      fetchPromises.push(fetchBinanceLiquidations(symbolStr, limitNum));
+      sourceFetches.push(fetchBinanceLiquidations(symbolStr, limitNum));
     }
 
     if (exchangeFilter === 'all' || exchangeFilter === 'bybit') {
-      fetchPromises.push(fetchBybitLiquidations(symbolStr));
+      sourceFetches.push(fetchBybitLiquidations(symbolStr));
     }
 
-    const results = await Promise.all(fetchPromises);
-    events = results.flat();
+    const results = await Promise.all(sourceFetches);
+    const sourceDiagnostics = results.map((r) => r.diagnostic);
+    events = results.flatMap((r) => r.events);
 
     console.log(`Aggregated events: ${events.length} total`);
     if (events.length === 0) {
@@ -219,6 +309,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         binance: binanceCount,
         bybit: bybitCount
       },
+      sourceDiagnostics,
       _diagnostic: {
         sourcesQueried: exchangeFilter === 'all' ? ['binance', 'bybit'] : [exchangeFilter],
         binanceQueried: exchangeFilter === 'all' || exchangeFilter === 'binance',
