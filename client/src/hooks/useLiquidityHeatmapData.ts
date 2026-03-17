@@ -91,6 +91,27 @@ export function useLiquidityHeatmapData(
     [visibleRange, effectiveRange],
   );
 
+  const anchorTime = useMemo(() => {
+    if (candles.length === 0) return undefined;
+    const last = candles[candles.length - 1];
+    const time = Number(last?.time);
+    if (!Number.isFinite(time) || time <= 0) return undefined;
+    return time;
+  }, [candles]);
+
+  const visiblePriceBounds = useMemo(() => {
+    if (!visibleRange || candles.length === 0) return undefined;
+    const visibleCandles = candles.filter(
+      (c) => Number(c.time) >= visibleRange.from && Number(c.time) <= visibleRange.to,
+    );
+    if (visibleCandles.length === 0) return undefined;
+    const min = Math.min(...visibleCandles.map((c) => Number(c.low)));
+    const max = Math.max(...visibleCandles.map((c) => Number(c.high)));
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return undefined;
+    const pad = (max - min) * 0.02;
+    return { min: min - pad, max: max + pad };
+  }, [candles, visibleRange]);
+
   const fetchData = useCallback(async () => {
     if (!settings.enabled || !symbol) return;
 
@@ -102,7 +123,7 @@ export function useLiquidityHeatmapData(
         orderbookWeight: settings.orderbookWeight,
         liqFlowWeight: settings.liqFlowWeight,
         biasWeight: settings.biasWeight,
-      });
+      }, anchorTime, visiblePriceBounds);
       setRawData(result.data);
       setDebugInfo({
         lastRequestUrl: `${result.requestUrl}&source=${result.source}`,
@@ -134,6 +155,8 @@ export function useLiquidityHeatmapData(
     settings.liqFlowWeight,
     settings.biasWeight,
     requestRange,
+    anchorTime,
+    visiblePriceBounds,
   ]);
 
   const data = useMemo(() => {

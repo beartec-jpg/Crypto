@@ -171,6 +171,8 @@ export async function fetchPredictiveLiquidationProfile(
   symbol: string,
   range: CoinglassRange,
   weights: PredictiveWeights,
+  anchorTime?: number,
+  visiblePriceBounds?: { min: number; max: number },
 ): Promise<FetchPredictiveLiquidationResult> {
   const normalizedSymbol = normalizeSymbol(symbol);
   const url = new URL(`${API_BASE}/predictive-profile`, window.location.origin);
@@ -180,6 +182,13 @@ export async function fetchPredictiveLiquidationProfile(
   url.searchParams.set('orderbookWeight', String(weights.orderbookWeight));
   url.searchParams.set('liqFlowWeight', String(weights.liqFlowWeight));
   url.searchParams.set('biasWeight', String(weights.biasWeight));
+  if (anchorTime && Number.isFinite(anchorTime) && anchorTime > 0) {
+    url.searchParams.set('anchorTime', String(Math.floor(anchorTime)));
+  }
+  if (visiblePriceBounds && Number.isFinite(visiblePriceBounds.min) && Number.isFinite(visiblePriceBounds.max) && visiblePriceBounds.max > visiblePriceBounds.min) {
+    url.searchParams.set('visibleMinPrice', String(visiblePriceBounds.min));
+    url.searchParams.set('visibleMaxPrice', String(visiblePriceBounds.max));
+  }
 
   const requestUrl = url.toString();
   const response = await fetch(requestUrl, {

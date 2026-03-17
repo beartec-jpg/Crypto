@@ -47,18 +47,39 @@ interface ExtendedHistoryResponse {
 interface OpenInterestResponse {
   current?: number | { value?: number };
   source?: string;
+  history?: Array<{ timestamp?: number; value?: number }>;
 }
 
 interface FundingRateResponse {
   current?: number;
   rate?: number;
   source?: string;
+  history?: Array<{ timestamp?: number; value?: number }>;
 }
 
 interface LongShortRatioResponse {
   ratio?: number;
   current?: { ratio?: number };
   source?: string;
+  history?: Array<{ timestamp?: number; ratio?: number }>;
+}
+
+function pickHistoricalValue<T>(
+  points: T[] | undefined,
+  anchorTimeMs: number | null,
+  getTimestamp: (point: T) => number,
+  getValue: (point: T) => number,
+): number {
+  if (!Array.isArray(points) || points.length === 0 || !anchorTimeMs) return 0;
+  let bestTs = -Infinity;
+  let bestValue = 0;
+  for (const point of points) {
+    const ts = getTimestamp(point);
+    if (!Number.isFinite(ts) || ts > anchorTimeMs || ts < bestTs) continue;
+    bestTs = ts;
+    bestValue = getValue(point);
+  }
+  return Number.isFinite(bestValue) ? bestValue : 0;
 }
 
 interface PredictiveLevel {
@@ -273,6 +294,7 @@ async function fetchInternalAggregatedMetrics(
   req: VercelRequest,
   symbol: string,
   diagnostics: EndpointDiagnostic[],
+  anchorTimeMs: number | null,
 ): Promise<{ price: number; openInterestUsd: number; longShortRatio: number; fundingRate: number }> {
   const origin = getRequestOrigin(req);
   if (!origin) {
@@ -290,7 +312,7 @@ async function fetchInternalAggregatedMetrics(
   const [historyR, oiR, fundingR, lsR] = await Promise.all([
     fetchTracked<ExtendedHistoryResponse>(
       'internal-extended-history',
-      `${origin}/api/crypto/extended-history?symbol=${symbol}&timeframe=1m&limit=2`,
+      `${origin}/api/crypto/extended-history?symbol=${symbol}&timeframe=1m&limit=300${anchorTimeMs ? `&endTime=${Math.floor(anchorTimeMs / 1000)}` : ''}`,
       { timeoutMs: 12000 },
     ),
     fetchTracked<OpenInterestResponse>(
@@ -312,12 +334,42 @@ async function fetchInternalAggregatedMetrics(
 
   diagnostics.push(historyR.diag, oiR.diag, fundingR.diag, lsR.diag);
 
-  const lastClose = Number(historyR.data?.candles?.[historyR.data?.candles?.length ? historyR.data.candles.length - 1 : 0]?.close || 0);
-  const oiRaw = typeof oiR.data?.current === 'number'
+  const candles = Array.isArray(historyR.data?.candles) ? historyR.data.candles : [];
+  const historicalClose = anchorTimeMs
+    ? pickHistoricalValue(
+        candles,
+        anchorTimeMs,
+        (point) => Number(point.time || 0) * 1000,
+        (point) => Number(point.close || 0),
+      )
+    : 0;
+  const lastClose = historicalClose || Number(candles[candles.length - 1]?.close || 0);
+
+  const historicalOi = pickHistoricalValue(
+    oiR.data?.history,
+    anchorTimeMs,
+    (point) => Number(point.timestamp || 0),
+    (point) => Number(point.value || 0),
+  );
+  const oiRaw = historicalOi || (typeof oiR.data?.current === 'number'
     ? oiR.data.current
-    : Number((oiR.data?.current as { value?: number } | undefined)?.value || 0);
-  const ratio = Number(lsR.data?.ratio || lsR.data?.current?.ratio || 0);
-  const funding = Number(fundingR.data?.rate || fundingR.data?.current || 0);
+    : Number((oiR.data?.current as { value?: number } | undefined)?.value || 0));
+
+  const historicalRatio = pickHistoricalValue(
+    lsR.data?.history,
+    anchorTimeMs,
+    (point) => Number(point.timestamp || 0),
+    (point) => Number(point.ratio || 0),
+  );
+  const ratio = historicalRatio || Number(lsR.data?.ratio || lsR.data?.current?.ratio || 0);
+
+  const historicalFunding = pickHistoricalValue(
+    fundingR.data?.history,
+    anchorTimeMs,
+    (point) => Number(point.timestamp || 0),
+    (point) => Number(point.value || 0),
+  );
+  const funding = historicalFunding || Number(fundingR.data?.rate || fundingR.data?.current || 0);
 
   return {
     price: Number.isFinite(lastClose) ? lastClose : 0,
@@ -732,10 +784,19 @@ async function fetchCoinalyzeLiquidationMap(symbol: string): Promise<Array<{ pri
     .slice(0, 200);
 }
 
-function buildPriceLevels(currentPrice: number, range: string, binCount = 48): PriceLevelScore[] {
+function buildPriceLevels(
+  currentPrice: number,
+  range: string,
+  binCount = 48,
+  visibleBounds?: { min: number; max: number } | null,
+): PriceLevelScore[] {
   const rangePct = RANGE_TO_PERCENT[range] ?? RANGE_TO_PERCENT['7d'];
-  const minPrice = currentPrice * (1 - rangePct);
-  const maxPrice = currentPrice * (1 + rangePct);
+  const minPrice = visibleBounds && Number.isFinite(visibleBounds.min)
+    ? visibleBounds.min
+    : currentPrice * (1 - rangePct);
+  const maxPrice = visibleBounds && Number.isFinite(visibleBounds.max)
+    ? visibleBounds.max
+    : currentPrice * (1 + rangePct);
   const step = (maxPrice - minPrice) / Math.max(binCount - 1, 1);
 
   const levels: PriceLevelScore[] = [];
@@ -926,6 +987,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const symbol = normalizeSymbol(String(req.query.symbol || 'BTCUSDT'));
     const range = String(req.query.range || '7d');
+    const anchorTimeMs = toNumber(req.query.anchorTime, 0) > 0 ? toNumber(req.query.anchorTime, 0) * 1000 : null;
+    const visibleMinPrice = toNumber(req.query.visibleMinPrice, 0);
+    const visibleMaxPrice = toNumber(req.query.visibleMaxPrice, 0);
+    const visibleBounds = visibleMaxPrice > visibleMinPrice && visibleMinPrice > 0
+      ? { min: visibleMinPrice, max: visibleMaxPrice }
+      : null;
     const now = Date.now();
     const cacheKey = buildCacheKey(symbol, range);
     const cachedSnapshot = rollingSnapshots.get(cacheKey);
@@ -950,7 +1017,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       diagnostics.push({ endpoint: 'coinglass-config', url: '', ok: false, status: null, ms: 0, error: 'COINGLASS_API_KEY_not_configured', optional: true });
     }
 
-    const internalMetrics = await fetchInternalAggregatedMetrics(req, symbol, diagnostics);
+    const internalMetrics = await fetchInternalAggregatedMetrics(req, symbol, diagnostics, anchorTimeMs);
     let currentPrice = internalMetrics.price > 0
       ? internalMetrics.price
       : await fetchPriceFromMultipleSources(symbol, diagnostics);
@@ -1119,7 +1186,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    const levels = buildPriceLevels(currentPrice, range, 48);
+    const levels = buildPriceLevels(currentPrice, range, 48, visibleBounds);
 
     applyOpenInterestComponent(levels, currentPrice, openInterestUsd, longShortRatio);
     applyLiqFlowComponent(levels, recentForceOrders, now);
