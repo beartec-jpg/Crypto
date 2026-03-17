@@ -182,6 +182,26 @@ export function LiquidityHeatmapSettingsModal({
               displayValue={`${settings.opacity}%`}
               onChange={(v) => update('opacity', v)}
             />
+
+            <div className="py-2">
+              <Label className="text-sm text-slate-300 mb-1 block">Position</Label>
+              <div className="flex gap-2 mt-1">
+                {(['auto', 'left', 'right'] as const).map((pos) => (
+                  <button
+                    key={pos}
+                    onClick={() => update('position', pos)}
+                    className={`px-3 py-1 rounded text-xs font-semibold transition-all ${
+                      settings.position === pos
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    }`}
+                  >
+                    {pos.charAt(0).toUpperCase() + pos.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Auto: Entwine with Volume Profile if both enabled</p>
+            </div>
           </div>
 
           {/* Colors */}
@@ -225,9 +245,9 @@ export function LiquidityHeatmapSettingsModal({
               <SliderRow
                 label="Refresh Interval"
                 value={settings.refreshInterval}
-                min={60}
-                max={300}
-                step={30}
+                min={15}
+                max={180}
+                step={15}
                 displayValue={`${settings.refreshInterval}s`}
                 onChange={(v) => update('refreshInterval', v)}
               />

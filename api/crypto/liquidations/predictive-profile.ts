@@ -29,6 +29,17 @@ interface BinanceDepth {
   asks: [string, string][];
 }
 
+interface RealtimeLiquidationResponse {
+  events?: Array<{
+    symbol: string;
+    side: 'BUY' | 'SELL';
+    price: number;
+    quantity: number;
+    timestamp: number;
+    exchange: 'binance' | 'bybit';
+  }>;
+}
+
 interface PredictiveLevel {
   price: number;
   liquidationValue: number;
@@ -49,8 +60,10 @@ interface RollingSnapshot {
 }
 
 const rollingSnapshots = new Map<string, RollingSnapshot>();
+const priceCache = new Map<string, { price: number; timestamp: number }>();
 const FORCE_ORDER_CACHE_WINDOW_MS = 10 * 60 * 1000;
 const FLOW_HALFLIFE_MS = 3 * 60 * 1000;
+const PRICE_CACHE_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
 
 const RANGE_TO_PERCENT: Record<string, number> = {
   '12h': 0.03,
@@ -79,14 +92,44 @@ function normalizeSymbol(input: string): string {
   return `${cleaned}USDT`;
 }
 
-async function safeFetchJson<T>(url: string): Promise<T | null> {
-  try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(6000) });
-    if (!response.ok) return null;
-    return await response.json() as T;
-  } catch {
+async function safeFetchJson<T>(url: string, retries = 2): Promise<T | null> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      if (!response.ok) {
+        if (attempt < retries) {
+          await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+          continue;
+        }
+        return null;
+      }
+      return await response.json() as T;
+    } catch {
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+        continue;
+      }
+      return null;
+    }
+  }
+  return null;
+}
+
+function setPriceCache(symbol: string, price: number): void {
+  if (price > 0) {
+    priceCache.set(symbol, { price, timestamp: Date.now() });
+  }
+}
+
+function getPriceCacheOrNull(symbol: string): number | null {
+  const cached = priceCache.get(symbol);
+  if (!cached) return null;
+  const age = Date.now() - cached.timestamp;
+  if (age > PRICE_CACHE_MAX_AGE_MS) {
+    priceCache.delete(symbol);
     return null;
   }
+  return cached.price;
 }
 
 function baseSymbol(symbol: string): string {
@@ -145,6 +188,45 @@ function mergeRecentForceOrders(
   return Array.from(deduped.values())
     .sort((a, b) => b.time - a.time)
     .slice(0, 600);
+}
+
+function getRequestOrigin(req: VercelRequest): string | null {
+  const host = req?.headers?.host;
+  if (!host || typeof host !== 'string') return null;
+  const protoHeader = req?.headers?.['x-forwarded-proto'];
+  const proto = typeof protoHeader === 'string' ? protoHeader : 'https';
+  return `${proto}://${host}`;
+}
+
+function toForceOrderFromRealtimeEvent(event: {
+  side: 'BUY' | 'SELL';
+  price: number;
+  quantity: number;
+  timestamp: number;
+}): BinanceForceOrder {
+  return {
+    side: event.side,
+    price: String(event.price),
+    avgPrice: String(event.price),
+    origQty: String(event.quantity),
+    time: event.timestamp,
+  };
+}
+
+async function fetchRealtimeLiquidationEvents(
+  req: VercelRequest,
+  symbol: string,
+): Promise<BinanceForceOrder[]> {
+  const origin = getRequestOrigin(req);
+  if (!origin) return [];
+
+  const url = `${origin}/api/crypto/liquidations/realtime?symbol=${symbol}&limit=300&exchange=all`;
+  const data = await safeFetchJson<RealtimeLiquidationResponse>(url);
+  if (!data?.events || !Array.isArray(data.events)) return [];
+
+  return data.events
+    .filter((e) => Number.isFinite(e.price) && Number.isFinite(e.quantity) && Number.isFinite(e.timestamp))
+    .map(toForceOrderFromRealtimeEvent);
 }
 
 function findClosestIndex(levels: PriceLevelScore[], targetPrice: number): number {
@@ -503,7 +585,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       bias: parseWeight(req.query.biasWeight, 0.15),
     });
 
-    const [priceData, oiData, ratioData, fundingData, forceOrders, depthData] = await Promise.all([
+    const [priceData, oiData, ratioData, fundingData, forceOrders, depthData, realtimeOrders] = await Promise.all([
       safeFetchJson<{ price: string }>(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`),
       safeFetchJson<{ openInterest: string }>(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${symbol}`),
       safeFetchJson<Array<{ longShortRatio: string }>>(
@@ -512,27 +594,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       safeFetchJson<{ lastFundingRate: string }>(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${symbol}`),
       safeFetchJson<BinanceForceOrder[]>(`https://fapi.binance.com/fapi/v1/allForceOrders?symbol=${symbol}&limit=200`),
       safeFetchJson<BinanceDepth>(`https://fapi.binance.com/fapi/v1/depth?symbol=${symbol}&limit=100`),
+      fetchRealtimeLiquidationEvents(req, symbol),
     ]);
 
-    const currentPrice = toNumber(priceData?.price, 0);
+    let currentPrice = toNumber(priceData?.price, 0);
+    // Fallback to price cache if fetch failed
     if (currentPrice <= 0) {
-      return res.status(200).json({
-        code: '1',
-        data: {
-          levels: [],
-          maxLongPrice: 0,
-          maxShortPrice: 0,
-          totalLongLiquidation: 0,
-          totalShortLiquidation: 0,
-          lastUpdated: Date.now(),
-        },
-        meta: {
-          symbol,
-          range,
-          source: 'predictive-binance',
-          note: 'price_unavailable',
-        },
-      });
+      const cachedPrice = getPriceCacheOrNull(symbol);
+      if (cachedPrice) {
+        currentPrice = cachedPrice;
+      } else {
+        return res.status(200).json({
+          code: '1',
+          data: {
+            levels: [],
+            maxLongPrice: 0,
+            maxShortPrice: 0,
+            totalLongLiquidation: 0,
+            totalShortLiquidation: 0,
+            lastUpdated: Date.now(),
+          },
+          meta: {
+            symbol,
+            range,
+            source: 'predictive-binance',
+            note: 'price_unavailable',
+          },
+        });
+      }
     }
 
     const openInterestQty = toNumber(oiData?.openInterest, 0);
@@ -573,7 +662,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const recentForceOrders = mergeRecentForceOrders(
       now,
-      Array.isArray(forceOrders) ? forceOrders : [],
+      [
+        ...(Array.isArray(forceOrders) ? forceOrders : []),
+        ...(Array.isArray(realtimeOrders) ? realtimeOrders : []),
+      ],
       cachedSnapshot?.forceOrders || [],
     );
 
@@ -602,6 +694,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     applyOrderbookComponent(levels, currentPrice, effectiveDepth);
 
     const predictiveLevels = computeScores(levels, openInterestUsd, fundingRate, longShortRatio, weights);
+
+    // Update price cache for fallback
+    setPriceCache(symbol, currentPrice);
 
     let totalLongLiquidation = 0;
     let totalShortLiquidation = 0;
@@ -647,6 +742,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           longShortRatio,
           fundingRate,
           forceOrderCount: Array.isArray(forceOrders) ? forceOrders.length : 0,
+          realtimeOrderCount: Array.isArray(realtimeOrders) ? realtimeOrders.length : 0,
           mergedForceOrderCount: recentForceOrders.length,
           depthBidLevels: effectiveDepth?.bids?.length || 0,
           depthAskLevels: effectiveDepth?.asks?.length || 0,

@@ -1,3 +1,5 @@
+import type { SidebarPosition } from './liquidityHeatmap';
+
 export interface VolumeProfileRow {
   price: number;       // Price level
   volume: number;      // Total volume at this price
@@ -22,7 +24,7 @@ export interface VolumeProfileSettings {
   valueAreaPercent: number; // VA % (default: 70)
 
   // Display
-  side: 'left' | 'right';   // Position (default: 'right')
+  position: SidebarPosition; // Sidebar position: 'left' | 'right' | 'auto' (auto entwines with predictive liquidation) - default: 'auto'
   width: number;            // Width % (default: 15)
   showPOC: boolean;         // Highlight POC line (default: true)
   showValueArea: boolean;   // Show VA high/low (default: true)
@@ -45,7 +47,7 @@ export const DEFAULT_VOLUME_PROFILE_SETTINGS: VolumeProfileSettings = {
   enabled: false,
   rowCount: 24,
   valueAreaPercent: 70,
-  side: 'right',
+  position: 'auto',
   width: 15,
   showPOC: true,
   showValueArea: true,

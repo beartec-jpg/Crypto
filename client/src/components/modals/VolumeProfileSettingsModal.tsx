@@ -114,20 +114,21 @@ export function VolumeProfileSettingsModal({
             <div className="py-2">
               <Label className="text-sm text-slate-300 mb-1 block">Position</Label>
               <div className="flex gap-2 mt-1">
-                {(['left', 'right'] as const).map((side) => (
+                {(['auto', 'left', 'right'] as const).map((pos) => (
                   <button
-                    key={side}
-                    onClick={() => update('side', side)}
+                    key={pos}
+                    onClick={() => update('position', pos)}
                     className={`px-3 py-1 rounded text-xs font-semibold transition-all ${
-                      settings.side === side
+                      settings.position === pos
                         ? 'bg-blue-600 text-white'
                         : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                     }`}
                   >
-                    {side.charAt(0).toUpperCase() + side.slice(1)}
+                    {pos.charAt(0).toUpperCase() + pos.slice(1)}
                   </button>
                 ))}
               </div>
+              <p className="text-xs text-slate-500 mt-1">Auto: Entwine with Predictive Liquidation if both enabled</p>
             </div>
 
             <SliderRow

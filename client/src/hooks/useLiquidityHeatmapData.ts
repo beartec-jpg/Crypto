@@ -7,6 +7,16 @@ export interface LiquidityHeatmapDebugInfo {
   lastRequestUrl: string;
   lastRequestTime: number | null;
   normalizedSymbol: string;
+  source: string;
+  stats: {
+    forceOrderCount: number;
+    realtimeOrderCount: number;
+    mergedForceOrderCount: number;
+    coinalyzeMapLevels: number;
+    depthBidLevels: number;
+    depthAskLevels: number;
+    cacheWarm: boolean;
+  };
 }
 
 interface UseLiquidityHeatmapDataReturn {
@@ -30,6 +40,16 @@ export function useLiquidityHeatmapData(
     lastRequestUrl: '',
     lastRequestTime: null,
     normalizedSymbol: '',
+    source: '—',
+    stats: {
+      forceOrderCount: 0,
+      realtimeOrderCount: 0,
+      mergedForceOrderCount: 0,
+      coinalyzeMapLevels: 0,
+      depthBidLevels: 0,
+      depthAskLevels: 0,
+      cacheWarm: false,
+    },
   });
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fetchCountRef = useRef(0);
@@ -60,6 +80,8 @@ export function useLiquidityHeatmapData(
         lastRequestUrl: `${result.requestUrl}&source=${result.source}`,
         lastRequestTime: Date.now(),
         normalizedSymbol: result.normalizedSymbol,
+        source: result.source,
+        stats: result.debugStats,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to fetch liquidation data');
@@ -108,7 +130,7 @@ export function useLiquidityHeatmapData(
 
     if (!settings.enabled || !settings.autoRefresh) return;
 
-    const ms = Math.max(settings.refreshInterval, 60) * 1000;
+    const ms = Math.max(settings.refreshInterval, 15) * 1000;
     intervalRef.current = setInterval(() => {
       fetchData();
     }, ms);

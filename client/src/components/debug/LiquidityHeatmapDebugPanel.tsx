@@ -101,6 +101,7 @@ export function LiquidityHeatmapDebugPanel({
             <p className="text-slate-500 uppercase tracking-wide mb-0.5">Status</p>
             <Row label="Status" value={`${statusIcon} ${statusText}`} />
             <Row label="API Key" value={apiKeyStatus} />
+            <Row label="Source" value={debugInfo.source || '—'} />
             <Row label="Last Request" value={timeAgo(debugInfo.lastRequestTime)} />
             {error && (
               <Row label="Error" value={error} valueClass="text-red-400 break-all" />
@@ -150,6 +151,22 @@ export function LiquidityHeatmapDebugPanel({
             ) : (
               <p className="text-slate-400 italic">{isLoading ? 'Fetching…' : 'No data yet'}</p>
             )}
+          </section>
+
+          <Divider />
+
+          {/* Source mix details */}
+          <section>
+            <p className="text-slate-500 uppercase tracking-wide mb-0.5">Source Mix</p>
+            <Row label="REST Liqs" value={String(debugInfo.stats.forceOrderCount)} />
+            <Row label="Realtime Liqs" value={String(debugInfo.stats.realtimeOrderCount)} />
+            <Row label="Merged Liqs" value={String(debugInfo.stats.mergedForceOrderCount)} />
+            <Row label="Coinalyze Map" value={String(debugInfo.stats.coinalyzeMapLevels)} />
+            <Row
+              label="Depth"
+              value={`${debugInfo.stats.depthBidLevels} bids / ${debugInfo.stats.depthAskLevels} asks`}
+            />
+            <Row label="Cache Warm" value={debugInfo.stats.cacheWarm ? 'Yes' : 'No'} />
           </section>
         </div>
       )}

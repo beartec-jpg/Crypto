@@ -145,8 +145,37 @@ export function FullscreenChartIndicatorLayer({
   divergenceSettings,
   onDivergenceSettingsChange,
 }: FullscreenChartIndicatorLayerProps) {
-  const isSharedSidebar = Boolean(vpSettings?.enabled && lhSettings?.enabled);
-  const sharedSidebarSide: 'left' | 'right' = vpSettings?.side === 'left' ? 'left' : 'right';
+  // Determine sidebar positioning logic
+  // Both auto + both enabled → share (entwine)
+  // Otherwise → explicit positioning
+  const vpEnabled = Boolean(vpSettings?.enabled);
+  const lhEnabled = Boolean(lhSettings?.enabled);
+  const vpPosition = vpSettings?.position ?? 'auto';
+  const lhPosition = lhSettings?.position ?? 'auto';
+
+  const shouldShareSidebar = vpEnabled && lhEnabled && vpPosition === 'auto' && lhPosition === 'auto';
+  
+  let vpRenderSide: 'left' | 'right' = 'right';
+  let lhRenderSide: 'left' | 'right' = 'right';
+  
+  if (shouldShareSidebar) {
+    // Share sidebar - alternate rendering (entwine)
+    vpRenderSide = 'right';
+    lhRenderSide = 'right';
+  } else {
+    // Explicit positioning
+    vpRenderSide = vpPosition === 'left' ? 'left' : vpPosition === 'right' ? 'right' : 'right';
+    lhRenderSide = lhPosition === 'left' ? 'left' : lhPosition === 'right' ? 'right' : 'right';
+    
+    // If only one is enabled, use its explicit position
+    if (!vpEnabled && lhEnabled) {
+      lhRenderSide = lhPosition === 'left' ? 'left' : lhPosition === 'right' ? 'right' : 'right';
+    }
+    if (vpEnabled && !lhEnabled) {
+      vpRenderSide = vpPosition === 'left' ? 'left' : vpPosition === 'right' ? 'right' : 'right';
+    }
+  }
+
   const sharedSidebarWidth = typeof vpSettings?.width === 'number' ? vpSettings.width : 22;
 
   return (
@@ -236,7 +265,7 @@ export function FullscreenChartIndicatorLayer({
         candleSeries={candleSeries}
         data={volumeProfileData}
         settings={vpSettings}
-        stackSection={isSharedSidebar ? 'top' : 'full'}
+        stackSection={shouldShareSidebar ? 'top' : 'full'}
       />
 
       <LiquidityHeatmapRenderer
@@ -245,8 +274,8 @@ export function FullscreenChartIndicatorLayer({
         data={liquidityHeatmapData}
         settings={lhSettings}
         effectiveRange={lhEffectiveRange}
-        stackSection={isSharedSidebar ? 'bottom' : 'full'}
-        profileSide={sharedSidebarSide}
+        stackSection={shouldShareSidebar ? 'bottom' : 'full'}
+        profileSide={lhRenderSide}
         profileWidthPercent={sharedSidebarWidth}
       />
 

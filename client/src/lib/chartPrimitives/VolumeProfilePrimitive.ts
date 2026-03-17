@@ -45,7 +45,8 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
       const vpWidth = chartWidth * (this._settings.width / 100);
       const isSharedSidebar = this._stackSection !== 'full';
       const laneWidth = vpWidth;
-      const sidebarStart = this._settings.side === 'right' ? chartWidth - vpWidth : 0;
+      const effectivePosition = this._settings.position === 'auto' ? 'right' : this._settings.position;
+      const sidebarStart = effectivePosition === 'right' ? chartWidth - vpWidth : 0;
       const xStart = sidebarStart;
 
       const shouldDrawRow = (rowIndex: number): boolean => {
@@ -103,8 +104,8 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
           ctx.save();
           ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
           ctx.font = '9px sans-serif';
-          ctx.textAlign = this._settings.side === 'right' ? 'left' : 'right';
-          const textX = this._settings.side === 'right' 
+          ctx.textAlign = effectivePosition === 'right' ? 'left' : 'right';
+          const textX = effectivePosition === 'right' 
             ? xStart + 3 
             : xStart + barWidth - 3;
           const textY = yDraw + barHeight / 2 + 3;

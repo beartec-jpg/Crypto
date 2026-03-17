@@ -8,8 +8,27 @@ interface PredictiveApiResponse {
   meta?: {
     symbol?: string;
     source?: string;
+    inputs?: {
+      forceOrderCount?: number;
+      realtimeOrderCount?: number;
+      mergedForceOrderCount?: number;
+      coinalyzeMapLevels?: number;
+      depthBidLevels?: number;
+      depthAskLevels?: number;
+      cacheWarm?: boolean;
+    };
   };
   error?: string;
+}
+
+export interface PredictiveDebugStats {
+  forceOrderCount: number;
+  realtimeOrderCount: number;
+  mergedForceOrderCount: number;
+  coinalyzeMapLevels: number;
+  depthBidLevels: number;
+  depthAskLevels: number;
+  cacheWarm: boolean;
 }
 
 export interface FetchPredictiveLiquidationResult {
@@ -17,6 +36,7 @@ export interface FetchPredictiveLiquidationResult {
   requestUrl: string;
   normalizedSymbol: string;
   source: string;
+  debugStats: PredictiveDebugStats;
 }
 
 interface PredictiveWeights {
@@ -67,5 +87,14 @@ export async function fetchPredictiveLiquidationProfile(
     requestUrl,
     normalizedSymbol,
     source: json.meta?.source || 'predictive-profile',
+    debugStats: {
+      forceOrderCount: Number(json.meta?.inputs?.forceOrderCount || 0),
+      realtimeOrderCount: Number(json.meta?.inputs?.realtimeOrderCount || 0),
+      mergedForceOrderCount: Number(json.meta?.inputs?.mergedForceOrderCount || 0),
+      coinalyzeMapLevels: Number(json.meta?.inputs?.coinalyzeMapLevels || 0),
+      depthBidLevels: Number(json.meta?.inputs?.depthBidLevels || 0),
+      depthAskLevels: Number(json.meta?.inputs?.depthAskLevels || 0),
+      cacheWarm: Boolean(json.meta?.inputs?.cacheWarm),
+    },
   };
 }
