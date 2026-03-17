@@ -481,7 +481,6 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
     // Check subscription first (most reliable), then preferences, then state
     const currentTier = subscription?.tier || preferences?.tier || userTier;
     const normalizedTier = normalizeTier(currentTier);
-    console.log(`🔍 hasMinimumTier check: currentTier=${currentTier}, normalized=${normalizedTier}`);
     return ['intermediate', 'pro', 'elite'].includes(normalizedTier);
   };
 
