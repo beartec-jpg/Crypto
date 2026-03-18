@@ -26,59 +26,122 @@ interface BybitAccountRatioEntry {
   sellRatio?: string;
 }
 
-async function safeFetch<T>(url: string): Promise<T | null> {
+interface FetchResult<T> {
+  data: T | null;
+  error?: string;
+  status?: number;
+}
+
+async function safeFetch<T>(url: string, label: string): Promise<FetchResult<T>> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) return null;
-    return await res.json() as T;
-  } catch {
-    return null;
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.warn(`[collect-liq] ${label} failed: HTTP ${res.status} - ${body.slice(0, 200)}`);
+      return { data: null, error: `HTTP ${res.status}`, status: res.status };
+    }
+    const json = await res.json() as T;
+    return { data: json };
+  } catch (err: any) {
+    console.warn(`[collect-liq] ${label} error: ${err?.message || err}`);
+    return { data: null, error: err?.message || String(err) };
   }
 }
 
-async function fetchBybitMarketData(symbol: string): Promise<{
+interface MarketDataDiagnostics {
+  ticker: { ok: boolean; price?: number; error?: string };
+  oi: { ok: boolean; value?: number; error?: string };
+  funding: { ok: boolean; rate?: number; error?: string };
+  depth: { ok: boolean; bids?: number; asks?: number; error?: string };
+  ratio: { ok: boolean; longShort?: number; error?: string };
+  liquidations: { ok: boolean; count?: number; error?: string };
+  baseUrl: string;
+}
+
+interface MarketDataResult {
   price: number;
   openInterestUsd: number;
   fundingRate: number;
   longShortRatio: number;
   depthBids: [string, string][];
   depthAsks: [string, string][];
-} | null> {
-  const [tickerData, oiData, fundingData, depthData, ratioData] = await Promise.all([
-    safeFetch<{ result?: { list?: BybitTicker[] } }>(
-      `https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol}`,
-    ),
-    safeFetch<{ result?: { list?: BybitOIEntry[] } }>(
-      `https://api.bybit.com/v5/market/open-interest?category=linear&symbol=${symbol}&intervalTime=5min&limit=1`,
-    ),
-    safeFetch<{ result?: { list?: BybitFundingEntry[] } }>(
-      `https://api.bybit.com/v5/market/funding/history?category=linear&symbol=${symbol}&limit=1`,
-    ),
-    safeFetch<{ result?: BybitOrderbook }>(
-      `https://api.bybit.com/v5/market/orderbook?category=linear&symbol=${symbol}&limit=100`,
-    ),
-    safeFetch<{ result?: { list?: BybitAccountRatioEntry[] } }>(
-      `https://api.bybit.com/v5/market/account-ratio?category=linear&symbol=${symbol}&period=1d&limit=1`,
-    ),
-  ]);
+  diagnostics: MarketDataDiagnostics;
+}
 
-  const ticker = tickerData?.result?.list?.[0];
-  const price = parseFloat(ticker?.lastPrice || ticker?.markPrice || '0');
-  if (price <= 0) return null;
+const BYBIT_BASE_URLS = ['https://api.bybit.com', 'https://api2.bybit.com'];
 
-  const oiQty = parseFloat(oiData?.result?.list?.[0]?.openInterest || '0');
-  const openInterestUsd = oiQty * price;
+async function fetchBybitMarketData(symbol: string): Promise<MarketDataResult | null> {
+  for (const baseUrl of BYBIT_BASE_URLS) {
+    const isRetry = baseUrl !== BYBIT_BASE_URLS[0];
+    if (isRetry) {
+      console.log(`[collect-liq] Trying fallback base URL: ${baseUrl} for ${symbol}`);
+    }
 
-  const fundingRate = parseFloat(fundingData?.result?.list?.[0]?.fundingRate || '0');
+    const [tickerResult, oiResult, fundingResult, depthResult, ratioResult] = await Promise.all([
+      safeFetch<{ result?: { list?: BybitTicker[] } }>(
+        `${baseUrl}/v5/market/tickers?category=linear&symbol=${symbol}`,
+        `${symbol} ticker${isRetry ? ' (fallback)' : ''}`,
+      ),
+      safeFetch<{ result?: { list?: BybitOIEntry[] } }>(
+        `${baseUrl}/v5/market/open-interest?category=linear&symbol=${symbol}&intervalTime=5min&limit=1`,
+        `${symbol} OI${isRetry ? ' (fallback)' : ''}`,
+      ),
+      safeFetch<{ result?: { list?: BybitFundingEntry[] } }>(
+        `${baseUrl}/v5/market/funding/history?category=linear&symbol=${symbol}&limit=1`,
+        `${symbol} funding${isRetry ? ' (fallback)' : ''}`,
+      ),
+      safeFetch<{ result?: BybitOrderbook }>(
+        `${baseUrl}/v5/market/orderbook?category=linear&symbol=${symbol}&limit=100`,
+        `${symbol} depth${isRetry ? ' (fallback)' : ''}`,
+      ),
+      safeFetch<{ result?: { list?: BybitAccountRatioEntry[] } }>(
+        `${baseUrl}/v5/market/account-ratio?category=linear&symbol=${symbol}&period=1d&limit=1`,
+        `${symbol} ratio${isRetry ? ' (fallback)' : ''}`,
+      ),
+    ]);
 
-  const buyRatio = parseFloat(ratioData?.result?.list?.[0]?.buyRatio || '0');
-  const sellRatio = parseFloat(ratioData?.result?.list?.[0]?.sellRatio || '0');
-  const longShortRatio = sellRatio > 0 ? buyRatio / sellRatio : 1;
+    console.log(`[collect-liq] ${symbol} (${baseUrl}) raw results:`, JSON.stringify({
+      ticker: tickerResult.error ?? 'ok',
+      oi: oiResult.error ?? 'ok',
+      funding: fundingResult.error ?? 'ok',
+      depth: depthResult.error ?? 'ok',
+      ratio: ratioResult.error ?? 'ok',
+    }));
 
-  const depthBids: [string, string][] = depthData?.result?.b ?? [];
-  const depthAsks: [string, string][] = depthData?.result?.a ?? [];
+    const ticker = tickerResult.data?.result?.list?.[0];
+    const price = parseFloat(ticker?.lastPrice || ticker?.markPrice || '0');
 
-  return { price, openInterestUsd, fundingRate, longShortRatio, depthBids, depthAsks };
+    if (price <= 0) {
+      console.warn(`[collect-liq] ${symbol} price is ${price} from ${baseUrl} — ${tickerResult.error ? 'fetch failed' : 'API returned no price'}. ${isRetry ? 'All base URLs exhausted.' : 'Will try fallback.'}`);
+      if (!isRetry) continue;
+      return null;
+    }
+
+    const oiQty = parseFloat(oiResult.data?.result?.list?.[0]?.openInterest || '0');
+    const openInterestUsd = oiQty * price;
+    const fundingRate = parseFloat(fundingResult.data?.result?.list?.[0]?.fundingRate || '0');
+    const buyRatio = parseFloat(ratioResult.data?.result?.list?.[0]?.buyRatio || '0');
+    const sellRatio = parseFloat(ratioResult.data?.result?.list?.[0]?.sellRatio || '0');
+    const longShortRatio = sellRatio > 0 ? buyRatio / sellRatio : 1;
+    const depthBids: [string, string][] = depthResult.data?.result?.b ?? [];
+    const depthAsks: [string, string][] = depthResult.data?.result?.a ?? [];
+
+    const diagnostics: MarketDataDiagnostics = {
+      baseUrl,
+      ticker: tickerResult.error ? { ok: false, error: tickerResult.error } : { ok: true, price },
+      oi: oiResult.error ? { ok: false, error: oiResult.error } : { ok: true, value: openInterestUsd },
+      funding: fundingResult.error ? { ok: false, error: fundingResult.error } : { ok: true, rate: fundingRate },
+      depth: depthResult.error ? { ok: false, error: depthResult.error } : { ok: true, bids: depthBids.length, asks: depthAsks.length },
+      ratio: ratioResult.error ? { ok: false, error: ratioResult.error } : { ok: true, longShort: longShortRatio },
+      liquidations: { ok: false },
+    };
+
+    console.log(`[collect-liq] ${symbol} market data OK — price: ${price}, OI: ${openInterestUsd}, funding: ${fundingRate}, ls: ${longShortRatio}, bids: ${depthBids.length}, asks: ${depthAsks.length}`);
+
+    return { price, openInterestUsd, fundingRate, longShortRatio, depthBids, depthAsks, diagnostics };
+  }
+
+  return null;
 }
 
 async function fetchBybitLiquidations(symbol: string): Promise<Array<{
@@ -89,10 +152,11 @@ async function fetchBybitLiquidations(symbol: string): Promise<Array<{
   valueUsd: number;
 }>> {
   // Bybit v5/market/liquidation endpoint
-  const data = await safeFetch<{ result?: { list?: Array<{ side?: string; price?: string; qty?: string; updatedTime?: string }> } }>(
+  const result = await safeFetch<{ result?: { list?: Array<{ side?: string; price?: string; qty?: string; updatedTime?: string }> } }>(
     `https://api.bybit.com/v5/market/liquidation?category=linear&symbol=${symbol}&limit=200`,
+    `${symbol} liquidations`,
   );
-  const list = data?.result?.list;
+  const list = result.data?.result?.list;
   if (!Array.isArray(list)) return [];
 
   return list
@@ -135,6 +199,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     let totalSnapshots = 0;
     let totalOrders = 0;
+    const diagnosticsMap: Record<string, MarketDataDiagnostics> = {};
 
     for (const symbol of symbols) {
       // 2. Fetch market data from Bybit
@@ -143,6 +208,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.warn(`[collect-liq] No market data for ${symbol}, skipping`);
         continue;
       }
+
+      const { diagnostics } = marketData;
 
       // Round snapshot_time to the nearest minute to deduplicate
       const snapshotTime = new Date(Math.floor(Date.now() / 60000) * 60000);
@@ -168,6 +235,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // 4. Fetch and insert liquidation events
       const liquidations = await fetchBybitLiquidations(symbol);
+      diagnostics.liquidations = { ok: true, count: liquidations.length };
+      console.log(`[collect-liq] ${symbol} liquidations fetched: ${liquidations.length}`);
+
       for (const liq of liquidations) {
         await sql`
           INSERT INTO liq_force_orders
@@ -185,6 +255,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         `;
         totalOrders++;
       }
+
+      diagnosticsMap[symbol] = diagnostics;
+      console.log(`[collect-liq] ${symbol} diagnostics:`, JSON.stringify(diagnostics));
     }
 
     // 5. Cleanup old data — run only on the first minute of each hour to reduce DB load
@@ -200,6 +273,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       snapshots: totalSnapshots,
       orders: totalOrders,
       timestamp: new Date().toISOString(),
+      diagnostics: diagnosticsMap,
     });
   } catch (error: any) {
     console.error('[collect-liq] Error:', error);
