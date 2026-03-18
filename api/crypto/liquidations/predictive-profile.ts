@@ -1,6 +1,8 @@
 type VercelRequest = any;
 type VercelResponse = any;
 declare const process: { env: Record<string, string | undefined> };
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { neon: _neonConnect } = require('@neondatabase/serverless') as { neon: (url: string) => any };
 
 interface PriceLevelScore {
   price: number;
@@ -313,9 +315,9 @@ async function trackFn<T>(
   }
 }
 
-function isBinanceReachable(diagnostics: EndpointDiagnostic[]): boolean {
+function isExchangeReachable(diagnostics: EndpointDiagnostic[]): boolean {
   return diagnostics.some(
-    (d) => d.endpoint.startsWith('binance-') && d.ok,
+    (d) => (d.endpoint.startsWith('bybit-') || d.endpoint.startsWith('binance-')) && d.ok,
   );
 }
 
@@ -482,46 +484,7 @@ async function fetchPriceFromMultipleSources(symbol: string, diagnostics: Endpoi
   let hadBinanceSuccess = false;
   let hadBinanceAttemptFailure = false;
 
-  // 1. Binance Futures ticker
-  if (!skipBinance) {
-    const url = `https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`;
-    const { data, diag } = await fetchTracked<{ price: string }>('binance-futures-price', url);
-    diag.optional = true;
-    diagnostics.push(diag);
-    if (data?.price) {
-      const price = toNumber(data.price, 0);
-      if (price > 0) { hadBinanceSuccess = true; setPriceCache(symbol, price); return price; }
-    }
-    hadBinanceAttemptFailure = true;
-  }
-
-  // 2. Binance Spot ticker
-  if (!skipBinance) {
-    const url = `https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`;
-    const { data, diag } = await fetchTracked<{ price: string }>('binance-spot-price', url);
-    diag.optional = true;
-    diagnostics.push(diag);
-    if (data?.price) {
-      const price = toNumber(data.price, 0);
-      if (price > 0) { hadBinanceSuccess = true; setPriceCache(symbol, price); return price; }
-    }
-    hadBinanceAttemptFailure = true;
-  }
-
-  // 3. Binance Premium/Mark price
-  if (!skipBinance) {
-    const url = `https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${symbol}`;
-    const { data, diag } = await fetchTracked<{ markPrice?: string; indexPrice?: string }>('binance-mark-price', url);
-    diag.optional = true;
-    diagnostics.push(diag);
-    const markPrice = toNumber(data?.markPrice, 0);
-    if (markPrice > 0) { hadBinanceSuccess = true; setPriceCache(symbol, markPrice); return markPrice; }
-    const indexPrice = toNumber(data?.indexPrice, 0);
-    if (indexPrice > 0) { hadBinanceSuccess = true; setPriceCache(symbol, indexPrice); return indexPrice; }
-    hadBinanceAttemptFailure = true;
-  }
-
-  // 4. Bybit linear ticker
+  // 1. Bybit linear ticker (primary — almost never geo-blocked)
   {
     const url = `https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol}`;
     const { data, diag } = await fetchTracked<{
@@ -536,6 +499,45 @@ async function fetchPriceFromMultipleSources(symbol: string, diagnostics: Endpoi
     if (bybitMark > 0) { setPriceCache(symbol, bybitMark); return bybitMark; }
     const bybitIndex = toNumber(ticker?.indexPrice, 0);
     if (bybitIndex > 0) { setPriceCache(symbol, bybitIndex); return bybitIndex; }
+  }
+
+  // 2. Binance Futures ticker (optional fallback)
+  if (!skipBinance) {
+    const url = `https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`;
+    const { data, diag } = await fetchTracked<{ price: string }>('binance-futures-price', url);
+    diag.optional = true;
+    diagnostics.push(diag);
+    if (data?.price) {
+      const price = toNumber(data.price, 0);
+      if (price > 0) { hadBinanceSuccess = true; setPriceCache(symbol, price); return price; }
+    }
+    hadBinanceAttemptFailure = true;
+  }
+
+  // 3. Binance Spot ticker
+  if (!skipBinance) {
+    const url = `https://api.binance.com/api/v3/ticker/price?symbol=${symbol}`;
+    const { data, diag } = await fetchTracked<{ price: string }>('binance-spot-price', url);
+    diag.optional = true;
+    diagnostics.push(diag);
+    if (data?.price) {
+      const price = toNumber(data.price, 0);
+      if (price > 0) { hadBinanceSuccess = true; setPriceCache(symbol, price); return price; }
+    }
+    hadBinanceAttemptFailure = true;
+  }
+
+  // 4. Binance Premium/Mark price
+  if (!skipBinance) {
+    const url = `https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${symbol}`;
+    const { data, diag } = await fetchTracked<{ markPrice?: string; indexPrice?: string }>('binance-mark-price', url);
+    diag.optional = true;
+    diagnostics.push(diag);
+    const markPrice = toNumber(data?.markPrice, 0);
+    if (markPrice > 0) { hadBinanceSuccess = true; setPriceCache(symbol, markPrice); return markPrice; }
+    const indexPrice = toNumber(data?.indexPrice, 0);
+    if (indexPrice > 0) { hadBinanceSuccess = true; setPriceCache(symbol, indexPrice); return indexPrice; }
+    hadBinanceAttemptFailure = true;
   }
 
   // 5. Binance Spot Klines (public endpoint, less geo-blocked than ticker)
@@ -1174,6 +1176,69 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const cacheKey = buildCacheKey(symbol, range);
     const cachedSnapshot = rollingSnapshots.get(cacheKey);
 
+    // ── DB cache check: return pre-computed profile if fresh (<3 min old) ──────
+    // Only use DB cache when anchorTime is not set (live mode), as historical
+    // anchor requests require precise per-candle computation.
+    if (!anchorTimeMs && process.env.DATABASE_URL) {
+      try {
+        const dbSql = _neonConnect(process.env.DATABASE_URL);
+        // Normalize chart_interval for DB cache: cron pre-computes profiles for '1h', '4h', '1d' only.
+        // Any finer interval (e.g. '5m', '15m', '30m') is served from the '1h' pre-computed profile,
+        // which is a reasonable approximation for the live computation fallback that follows.
+        const dbInterval = ['4h', '1d'].includes(chartInterval) ? chartInterval : '1h';
+        const cached = await dbSql`
+          SELECT levels_json, meta_json, computed_at, expires_at
+          FROM liq_computed_profiles
+          WHERE symbol = ${symbol}
+            AND range = ${range}
+            AND chart_interval = ${dbInterval}
+            AND expires_at > NOW()
+          LIMIT 1
+        `;
+        if (cached.length > 0 && Array.isArray(cached[0].levels_json) && cached[0].levels_json.length > 0) {
+          const profile = cached[0];
+          const meta = profile.meta_json || {};
+          return res.status(200).json({
+            code: '0',
+            data: {
+              levels: profile.levels_json,
+              maxLongPrice: 0,
+              maxShortPrice: 0,
+              totalLongLiquidation: 0,
+              totalShortLiquidation: 0,
+              lastUpdated: new Date(profile.computed_at).getTime(),
+            },
+            meta: {
+              symbol,
+              range,
+              source: 'db-cache',
+              weights: { oi: 0.4, orderbook: 0.25, liqFlow: 0.2, bias: 0.15 },
+              inputs: {
+                currentPrice: meta.currentPrice || 0,
+                openInterestUsd: meta.openInterestUsd || 0,
+                longShortRatio: meta.longShortRatio || 1,
+                fundingRate: meta.fundingRate || 0,
+                forceOrderCount: meta.forceOrderCount || 0,
+                realtimeOrderCount: meta.forceOrderCount || 0,
+                mergedForceOrderCount: meta.forceOrderCount || 0,
+                depthBidLevels: meta.depthBidLevels || 0,
+                depthAskLevels: meta.depthAskLevels || 0,
+                coinalyzeMapLevels: 0,
+                cacheWarm: true,
+                visibleWindowCandleCount: 0,
+                chartInterval,
+              },
+              diagnostics: [{ endpoint: 'db-cache-hit', url: '', ok: true, status: 200, ms: 0, dataPoints: profile.levels_json.length }],
+            },
+          });
+        }
+      } catch (dbErr: any) {
+        // DB cache miss is non-fatal — fall through to live computation
+        console.warn('[predictive-profile] DB cache lookup failed:', dbErr?.message);
+      }
+    }
+    // ── End DB cache check ─────────────────────────────────────────────────────
+
     const weights = normalizeWeights({
       oi: parseWeight(req.query.oiWeight, 0.4),
       orderbook: parseWeight(req.query.orderbookWeight, 0.25),
@@ -1206,7 +1271,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? internalMetrics.price
       : await fetchPriceFromMultipleSources(symbol, diagnostics);
 
-    const canUseBinanceSuite = isBinanceReachable(diagnostics);
+    const canUseExchangeSuite = isExchangeReachable(diagnostics);
     const needsBinanceSuite = !(
       internalMetrics.openInterestUsd > 0
       && internalMetrics.longShortRatio > 0
@@ -1218,46 +1283,121 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let fundingData: { lastFundingRate: string } | null = null;
     let depthData: BinanceDepth | null = null;
 
-    if (canUseBinanceSuite && needsBinanceSuite) {
-      const [oiResult, ratioResult, fundingResult, depthResult] = await Promise.all([
-        fetchTracked<{ openInterest: string }>(
-          'binance-oi',
-          `https://fapi.binance.com/fapi/v1/openInterest?symbol=${symbol}`,
+    if (canUseExchangeSuite && needsBinanceSuite) {
+      // Bybit-first suite: OI, funding, depth from Bybit; fall back to Binance if Bybit fails
+      const [bybitOiResult, bybitFundingResult, bybitDepthResult, bybitRatioResult] = await Promise.all([
+        fetchTracked<{ result?: { list?: Array<{ openInterest?: string }> } }>(
+          'bybit-oi',
+          `https://api.bybit.com/v5/market/open-interest?category=linear&symbol=${symbol}&intervalTime=5min&limit=1`,
         ),
-        fetchTracked<Array<{ longShortRatio: string }>>(
-          'binance-ls-ratio',
-          `https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=5m&limit=1`,
+        fetchTracked<{ result?: { list?: Array<{ fundingRate?: string }> } }>(
+          'bybit-funding',
+          `https://api.bybit.com/v5/market/funding/history?category=linear&symbol=${symbol}&limit=1`,
         ),
-        fetchTracked<{ lastFundingRate: string }>(
-          'binance-funding',
-          `https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${symbol}`,
+        fetchTracked<{ result?: { b?: [string, string][]; a?: [string, string][] } }>(
+          'bybit-depth',
+          `https://api.bybit.com/v5/market/orderbook?category=linear&symbol=${symbol}&limit=100`,
         ),
-        fetchTracked<BinanceDepth>(
-          'binance-depth',
-          `https://fapi.binance.com/fapi/v1/depth?symbol=${symbol}&limit=100`,
+        fetchTracked<{ result?: { list?: Array<{ buyRatio?: string; sellRatio?: string }> } }>(
+          'bybit-ls-ratio',
+          `https://api.bybit.com/v5/market/account-ratio?category=linear&symbol=${symbol}&period=1d&limit=1`,
         ),
       ]);
 
-      oiData = oiResult.data;
-      ratioData = ratioResult.data;
-      fundingData = fundingResult.data;
-      depthData = depthResult.data;
+      diagnostics.push(bybitOiResult.diag, bybitFundingResult.diag, bybitDepthResult.diag, bybitRatioResult.diag);
 
-      if (depthResult.diag.ok) depthResult.diag.dataPoints = depthResult.data?.bids?.length ?? 0;
-      if (ratioResult.diag.ok) ratioResult.diag.dataPoints = Array.isArray(ratioResult.data) ? ratioResult.data.length : 0;
-      diagnostics.push(oiResult.diag, ratioResult.diag, fundingResult.diag, depthResult.diag);
+      // Map Bybit OI response → internal format
+      const bybitOiValue = toNumber(bybitOiResult.data?.result?.list?.[0]?.openInterest, 0);
+      if (bybitOiValue > 0) {
+        oiData = { openInterest: String(bybitOiValue) };
+      }
+
+      // Map Bybit funding rate
+      const bybitFundingRate = toNumber(bybitFundingResult.data?.result?.list?.[0]?.fundingRate, 0);
+      if (bybitFundingRate !== 0) {
+        fundingData = { lastFundingRate: String(bybitFundingRate) };
+      }
+
+      // Map Bybit orderbook (b=bids, a=asks) → BinanceDepth format
+      if (bybitDepthResult.data?.result) {
+        depthData = {
+          bids: bybitDepthResult.data.result.b ?? [],
+          asks: bybitDepthResult.data.result.a ?? [],
+        };
+        if (bybitDepthResult.diag.ok) bybitDepthResult.diag.dataPoints = depthData.bids.length;
+      }
+
+      // Map Bybit long-short ratio
+      const bybitBuyRatio = toNumber(bybitRatioResult.data?.result?.list?.[0]?.buyRatio, 0);
+      const bybitSellRatio = toNumber(bybitRatioResult.data?.result?.list?.[0]?.sellRatio, 0);
+      if (bybitBuyRatio > 0 && bybitSellRatio > 0) {
+        ratioData = [{ longShortRatio: String(bybitSellRatio > 0 ? bybitBuyRatio / bybitSellRatio : 1) }];
+        if (bybitRatioResult.diag.ok) bybitRatioResult.diag.dataPoints = 1;
+      }
+
+      // Binance fallbacks for any missing data
+      const needsBinanceOi = !oiData;
+      const needsBinanceFunding = !fundingData;
+      const needsBinanceDepth = !depthData;
+      const needsBinanceRatio = !ratioData;
+      const needsAnyBinanceFallback = needsBinanceOi || needsBinanceFunding || needsBinanceDepth || needsBinanceRatio;
+
+      if (needsAnyBinanceFallback) {
+        const binanceFallbacks = await Promise.all([
+          needsBinanceOi ? fetchTracked<{ openInterest: string }>(
+            'binance-oi',
+            `https://fapi.binance.com/fapi/v1/openInterest?symbol=${symbol}`,
+          ) : null,
+          needsBinanceRatio ? fetchTracked<Array<{ longShortRatio: string }>>(
+            'binance-ls-ratio',
+            `https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=5m&limit=1`,
+          ) : null,
+          needsBinanceFunding ? fetchTracked<{ lastFundingRate: string }>(
+            'binance-funding',
+            `https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${symbol}`,
+          ) : null,
+          needsBinanceDepth ? fetchTracked<BinanceDepth>(
+            'binance-depth',
+            `https://fapi.binance.com/fapi/v1/depth?symbol=${symbol}&limit=100`,
+          ) : null,
+        ]);
+
+        const [binanceOiResult, binanceRatioResult, binanceFundingResult, binanceDepthResult] = binanceFallbacks;
+
+        if (binanceOiResult) {
+          diagnostics.push(binanceOiResult.diag);
+          if (binanceOiResult.data) oiData = binanceOiResult.data;
+        }
+        if (binanceRatioResult) {
+          diagnostics.push(binanceRatioResult.diag);
+          if (binanceRatioResult.data) {
+            ratioData = binanceRatioResult.data;
+            if (binanceRatioResult.diag.ok) binanceRatioResult.diag.dataPoints = Array.isArray(binanceRatioResult.data) ? binanceRatioResult.data.length : 0;
+          }
+        }
+        if (binanceFundingResult) {
+          diagnostics.push(binanceFundingResult.diag);
+          if (binanceFundingResult.data) fundingData = binanceFundingResult.data;
+        }
+        if (binanceDepthResult) {
+          diagnostics.push(binanceDepthResult.diag);
+          if (binanceDepthResult.data) {
+            depthData = binanceDepthResult.data;
+            if (binanceDepthResult.diag.ok) binanceDepthResult.diag.dataPoints = binanceDepthResult.data?.bids?.length ?? 0;
+          }
+        }
+      }
     } else {
       diagnostics.push({
-        endpoint: 'binance-suite-skipped',
+        endpoint: 'exchange-suite-skipped',
         url: '',
         ok: true,
         status: null,
         ms: 0,
         optional: true,
-        error: needsBinanceSuite ? 'binance_unreachable_using_fallbacks' : 'internal_aggregated_endpoints_used',
+        error: needsBinanceSuite ? 'exchange_unreachable_using_fallbacks' : 'internal_aggregated_endpoints_used',
       });
     }
-
     const realtimeStats = await trackFn(
       diagnostics,
       'realtime-liquidations',
@@ -1399,11 +1539,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const effectiveDepth = depthData || cachedSnapshot?.depth || null;
 
-    rollingSnapshots.set(cacheKey, {
-      lastUpdated: now,
-      forceOrders: recentForceOrders,
-      depth: effectiveDepth,
-    });
+    // Only persist non-empty data to avoid cache-poisoning with empty arrays
+    if (recentForceOrders.length > 0 || effectiveDepth !== null) {
+      rollingSnapshots.set(cacheKey, {
+        lastUpdated: now,
+        forceOrders: recentForceOrders,
+        depth: effectiveDepth,
+      });
+    }
 
     if (rollingSnapshots.size > 30) {
       const staleBefore = now - FORCE_ORDER_CACHE_WINDOW_MS;
