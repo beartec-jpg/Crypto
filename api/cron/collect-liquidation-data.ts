@@ -187,9 +187,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // 5. Cleanup old data
-    await sql`DELETE FROM liq_market_snapshots WHERE snapshot_time < NOW() - INTERVAL '7 days'`;
-    await sql`DELETE FROM liq_force_orders WHERE event_time < NOW() - INTERVAL '24 hours'`;
+    // 5. Cleanup old data — run only on the first minute of each hour to reduce DB load
+    const currentMinute = new Date().getMinutes();
+    if (currentMinute === 0) {
+      await sql`DELETE FROM liq_market_snapshots WHERE snapshot_time < NOW() - INTERVAL '7 days'`;
+      await sql`DELETE FROM liq_force_orders WHERE event_time < NOW() - INTERVAL '24 hours'`;
+    }
 
     return res.status(200).json({
       ok: true,

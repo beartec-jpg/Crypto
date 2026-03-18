@@ -66,7 +66,9 @@ export class BinanceOrderflowService extends EventEmitter {
           const key = `${timeframe}-${candleTime}`;
 
           const totalVolume = parseFloat(kline[5]);
-          // Bybit doesn't expose taker buy/sell split in kline endpoint; approximate 50/50
+          // Bybit kline endpoint doesn't expose taker buy/sell split (unlike Binance).
+          // We approximate 50/50 for historical candles; live trades via WebSocket provide
+          // accurate directional data once the connection is established.
           const buyVolume = totalVolume * 0.5;
           const sellVolume = totalVolume * 0.5;
 

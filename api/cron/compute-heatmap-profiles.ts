@@ -179,10 +179,14 @@ function computeScores(
   return out;
 }
 
-// ── Main handler ───────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 const RANGES = ['24h', '48h', '7d', '30d', '90d'] as const;
 const CHART_INTERVALS = ['1h', '4h', '1d'] as const;
+
+/** How long a pre-computed profile remains valid. Set to 5 min so that the
+ *  2-min cron always produces a fresh result before the previous expires. */
+const PROFILE_TTL_MS = 5 * 60 * 1000;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const authHeader = req.headers.authorization;
@@ -241,8 +245,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           AND event_time > NOW() - INTERVAL '10 minutes'
         ORDER BY event_time DESC
         LIMIT 600
-      `;
-      const orders: ForceOrder[] = orderRows.map((r: any) => ({
+      `;      const orders: ForceOrder[] = orderRows.map((r: any) => ({
         side: r.side as 'Buy' | 'Sell',
         price: toN(r.price),
         quantity: toN(r.quantity),
@@ -276,7 +279,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             computedAt: new Date().toISOString(),
           };
 
-          const expiresAt = new Date(nowMs + 3 * 60 * 1000); // 3-minute TTL
+          const expiresAt = new Date(nowMs + PROFILE_TTL_MS);
 
           await sql`
             INSERT INTO liq_computed_profiles

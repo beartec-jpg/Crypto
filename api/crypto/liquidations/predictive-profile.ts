@@ -1182,7 +1182,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!anchorTimeMs && process.env.DATABASE_URL) {
       try {
         const dbSql = _neonConnect(process.env.DATABASE_URL);
-        // Normalize chart_interval key — cron uses '1h'/'4h'/'1d' only; map any finer interval to '1h'
+        // Normalize chart_interval for DB cache: cron pre-computes profiles for '1h', '4h', '1d' only.
+        // Any finer interval (e.g. '5m', '15m', '30m') is served from the '1h' pre-computed profile,
+        // which is a reasonable approximation for the live computation fallback that follows.
         const dbInterval = ['4h', '1d'].includes(chartInterval) ? chartInterval : '1h';
         const cached = await dbSql`
           SELECT levels_json, meta_json, computed_at, expires_at
@@ -1269,7 +1271,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? internalMetrics.price
       : await fetchPriceFromMultipleSources(symbol, diagnostics);
 
-    const canUseBinanceSuite = isExchangeReachable(diagnostics);
+    const canUseExchangeSuite = isExchangeReachable(diagnostics);
     const needsBinanceSuite = !(
       internalMetrics.openInterestUsd > 0
       && internalMetrics.longShortRatio > 0
@@ -1281,7 +1283,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let fundingData: { lastFundingRate: string } | null = null;
     let depthData: BinanceDepth | null = null;
 
-    if (canUseBinanceSuite && needsBinanceSuite) {
+    if (canUseExchangeSuite && needsBinanceSuite) {
       // Bybit-first suite: OI, funding, depth from Bybit; fall back to Binance if Bybit fails
       const [bybitOiResult, bybitFundingResult, bybitDepthResult, bybitRatioResult] = await Promise.all([
         fetchTracked<{ result?: { list?: Array<{ openInterest?: string }> } }>(
@@ -1396,7 +1398,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         error: needsBinanceSuite ? 'exchange_unreachable_using_fallbacks' : 'internal_aggregated_endpoints_used',
       });
     }
-
     const realtimeStats = await trackFn(
       diagnostics,
       'realtime-liquidations',
