@@ -1,17 +1,13 @@
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
 
-interface BinanceTrade {
-  e: string;      // Event type
-  E: number;      // Event time
-  s: string;      // Symbol
-  a: number;      // Aggregate trade ID
-  p: string;      // Price
-  q: string;      // Quantity
-  f: number;      // First trade ID
-  l: number;      // Last trade ID
-  T: number;      // Trade time
-  m: boolean;     // Is buyer the market maker? (true = SELL, false = BUY)
+interface BybitTrade {
+  T: number;   // Timestamp (ms)
+  s: string;   // Symbol
+  S: string;   // Side: 'Buy' | 'Sell'
+  v: string;   // Volume (quantity)
+  p: string;   // Price
+  i: string;   // Trade ID
 }
 
 interface Candle {
@@ -37,45 +33,43 @@ export class BinanceOrderflowService extends EventEmitter {
 
   constructor(symbol: string = 'XRPUSDT') {
     super();
-    this.symbol = symbol.toLowerCase();
+    this.symbol = symbol.toUpperCase();
   }
 
   private async fetchHistoricalKlines() {
-    const intervals = ['1m', '5m', '15m', '1h'];
-    const timeframeMap: { [key: string]: number } = {
-      '1m': 60,
-      '5m': 300,
-      '15m': 900,
-      '1h': 3600,
-    };
+    // Bybit interval strings: '1'=1m, '5'=5m, '15'=15m, '60'=1h
+    const intervals = [
+      { bybitInterval: '1', timeframe: 60, label: '1m' },
+      { bybitInterval: '5', timeframe: 300, label: '5m' },
+      { bybitInterval: '15', timeframe: 900, label: '15m' },
+      { bybitInterval: '60', timeframe: 3600, label: '1h' },
+    ];
 
-    console.log(`📊 Fetching historical klines for ${this.symbol.toUpperCase()}...`);
+    console.log(`📊 Fetching historical klines for ${this.symbol} from Bybit...`);
 
-    for (let i = 0; i < intervals.length; i++) {
-      const interval = intervals[i];
-      const timeframe = timeframeMap[interval];
-      
+    for (const { bybitInterval, timeframe, label } of intervals) {
       try {
-        const url = `https://fapi.binance.com/fapi/v1/klines?symbol=${this.symbol.toUpperCase()}&interval=${interval}&limit=100`;
-        const response = await fetch(url);
-        
+        const url = `https://api.bybit.com/v5/market/kline?category=linear&symbol=${this.symbol}&interval=${bybitInterval}&limit=100`;
+        const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+
         if (!response.ok) {
-          console.error(`Failed to fetch ${interval} klines:`, response.statusText);
+          console.error(`Failed to fetch ${label} klines from Bybit:`, response.statusText);
           continue;
         }
 
-        const klines = await response.json();
-        
-        // Parse klines: [openTime, open, high, low, close, volume, closeTime, quoteVolume, trades, takerBuyBase, takerBuyQuote, ignore]
+        const json = await response.json();
+        // Bybit kline list: [timestamp, open, high, low, close, volume, turnover] — newest first
+        const klines: string[][] = json?.result?.list ?? [];
+
         for (const kline of klines) {
-          const candleTime = Math.floor(kline[0] / 1000); // Convert ms to seconds
+          const candleTime = Math.floor(parseInt(kline[0]) / 1000); // ms → seconds
           const key = `${timeframe}-${candleTime}`;
-          
-          // Estimate buy/sell volume (taker buy volume is buying pressure)
+
           const totalVolume = parseFloat(kline[5]);
-          const takerBuyVolume = parseFloat(kline[9]);
-          const takerSellVolume = totalVolume - takerBuyVolume;
-          
+          // Bybit doesn't expose taker buy/sell split in kline endpoint; approximate 50/50
+          const buyVolume = totalVolume * 0.5;
+          const sellVolume = totalVolume * 0.5;
+
           this.candles.set(key, {
             time: candleTime,
             open: parseFloat(kline[1]),
@@ -83,16 +77,16 @@ export class BinanceOrderflowService extends EventEmitter {
             low: parseFloat(kline[3]),
             close: parseFloat(kline[4]),
             volume: totalVolume,
-            buyVolume: takerBuyVolume,
-            sellVolume: takerSellVolume,
-            deltaVolume: takerBuyVolume - takerSellVolume,
-            trades: kline[8],
+            buyVolume,
+            sellVolume,
+            deltaVolume: 0,
+            trades: 0,
           });
         }
-        
-        console.log(`✅ Loaded ${klines.length} ${interval} candles`);
+
+        console.log(`✅ Loaded ${klines.length} ${label} candles from Bybit`);
       } catch (error) {
-        console.error(`Error fetching ${interval} klines:`, error);
+        console.error(`Error fetching ${label} klines from Bybit:`, error);
       }
     }
   }
@@ -102,37 +96,49 @@ export class BinanceOrderflowService extends EventEmitter {
       this.ws.close();
     }
 
-    const url = `wss://fstream.binance.com/ws/${this.symbol}@aggTrade`;
-    console.log(`🔌 Connecting to Binance Futures: ${url}`);
+    const url = `wss://stream.bybit.com/v5/public/linear`;
+    console.log(`🔌 Connecting to Bybit public linear stream: ${url}`);
 
     this.ws = new WebSocket(url);
 
     this.ws.on('open', async () => {
-      console.log(`✅ Connected to Binance Futures: ${this.symbol.toUpperCase()}`);
-      
+      console.log(`✅ Connected to Bybit stream for ${this.symbol}`);
+
+      // Subscribe to public trade feed
+      const subscribeMsg = JSON.stringify({
+        op: 'subscribe',
+        args: [`publicTrade.${this.symbol}`],
+      });
+      this.ws?.send(subscribeMsg);
+
       // Fetch historical data before marking as connected
       await this.fetchHistoricalKlines();
-      
+
       this.isConnected = true;
       this.emit('connected');
     });
 
     this.ws.on('message', (data: Buffer) => {
       try {
-        const trade: BinanceTrade = JSON.parse(data.toString());
-        this.processTrade(trade);
+        const msg = JSON.parse(data.toString());
+        // Bybit sends pong responses and subscription confirmations; skip non-trade messages
+        if (msg.topic && msg.topic.startsWith('publicTrade.') && Array.isArray(msg.data)) {
+          for (const trade of msg.data as BybitTrade[]) {
+            this.processBybitTrade(trade);
+          }
+        }
       } catch (error) {
-        console.error('Error processing trade:', error);
+        console.error('Error processing Bybit trade:', error);
       }
     });
 
     this.ws.on('error', (error) => {
-      console.error('WebSocket error:', error);
+      console.error('Bybit WebSocket error:', error);
       this.isConnected = false;
     });
 
     this.ws.on('close', () => {
-      console.log('❌ Disconnected from Binance');
+      console.log('❌ Disconnected from Bybit');
       this.isConnected = false;
       this.reconnect();
     });
@@ -148,16 +154,16 @@ export class BinanceOrderflowService extends EventEmitter {
     }
 
     this.reconnectTimeout = setTimeout(() => {
-      console.log('🔄 Reconnecting to Binance...');
+      console.log('🔄 Reconnecting to Bybit...');
       this.connect();
     }, 5000);
   }
 
-  private processTrade(trade: BinanceTrade) {
+  private processBybitTrade(trade: BybitTrade) {
     const price = parseFloat(trade.p);
-    const quantity = parseFloat(trade.q);
-    const timestamp = Math.floor(trade.T / 1000); // Convert to seconds
-    const isBuy = !trade.m; // m: true = SELL (buyer is maker), m: false = BUY (buyer is taker)
+    const quantity = parseFloat(trade.v);
+    const timestamp = Math.floor(trade.T / 1000); // ms → seconds
+    const isBuy = trade.S === 'Buy';
 
     // Update candles for each timeframe
     for (const timeframe of this.timeframes) {
@@ -167,7 +173,6 @@ export class BinanceOrderflowService extends EventEmitter {
       let candle = this.candles.get(key);
 
       if (!candle) {
-        // Create new candle
         candle = {
           time: candleTime,
           open: price,
@@ -183,7 +188,6 @@ export class BinanceOrderflowService extends EventEmitter {
         this.candles.set(key, candle);
       }
 
-      // Update candle
       candle.close = price;
       candle.high = Math.max(candle.high, price);
       candle.low = Math.min(candle.low, price);
@@ -198,14 +202,12 @@ export class BinanceOrderflowService extends EventEmitter {
 
       candle.deltaVolume = candle.buyVolume - candle.sellVolume;
 
-      // Emit candle update
       this.emit('candleUpdate', {
         timeframe,
         candle: { ...candle },
       });
     }
 
-    // Clean old candles (keep last 1000 per timeframe)
     this.cleanOldCandles();
   }
 

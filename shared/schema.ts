@@ -1211,3 +1211,58 @@ export const insertTradingSystemAlertSchema = z.object({
 
 export type InsertTradingSystemAlert = z.infer<typeof insertTradingSystemAlertSchema>;
 export type TradingSystemAlert = typeof tradingSystemAlerts.$inferSelect;
+
+// ─── Liquidation Heatmap Tables ───────────────────────────────────────────────
+
+// Which symbols the cron should collect data for
+export const liqTrackedSymbols = pgTable("liq_tracked_symbols", {
+  symbol: text("symbol").primaryKey(),
+  enabled: boolean("enabled").default(true),
+  priority: integer("priority").default(0),
+  addedAt: timestamp("added_at").defaultNow(),
+});
+
+// Periodic market-state snapshots (1 row per symbol per minute)
+export const liqMarketSnapshots = pgTable("liq_market_snapshots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: text("symbol").notNull(),
+  snapshotTime: timestamp("snapshot_time").notNull(),
+  price: doublePrecision("price"),
+  openInterestUsd: doublePrecision("open_interest_usd"),
+  fundingRate: doublePrecision("funding_rate"),
+  longShortRatio: doublePrecision("long_short_ratio"),
+  depthBids: jsonb("depth_bids"),
+  depthAsks: jsonb("depth_asks"),
+  source: text("source").default("bybit"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Individual liquidation events
+export const liqForceOrders = pgTable("liq_force_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: text("symbol").notNull(),
+  side: text("side").notNull(),
+  price: doublePrecision("price").notNull(),
+  quantity: doublePrecision("quantity").notNull(),
+  exchange: text("exchange").notNull(),
+  eventTime: timestamp("event_time").notNull(),
+  valueUsd: doublePrecision("value_usd"),
+  capturedAt: timestamp("captured_at").defaultNow(),
+});
+
+// Pre-computed heatmap profiles (1 row per symbol/range/interval combo)
+export const liqComputedProfiles = pgTable("liq_computed_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: text("symbol").notNull(),
+  range: text("range").notNull(),
+  chartInterval: text("chart_interval").notNull(),
+  levelsJson: jsonb("levels_json"),
+  metaJson: jsonb("meta_json"),
+  computedAt: timestamp("computed_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+});
+
+export type LiqTrackedSymbol = typeof liqTrackedSymbols.$inferSelect;
+export type LiqMarketSnapshot = typeof liqMarketSnapshots.$inferSelect;
+export type LiqForceOrder = typeof liqForceOrders.$inferSelect;
+export type LiqComputedProfile = typeof liqComputedProfiles.$inferSelect;

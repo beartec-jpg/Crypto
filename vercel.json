@@ -13,6 +13,14 @@
     {
       "path": "/api/cron/check-alerts",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/collect-liquidation-data",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/compute-heatmap-profiles",
+      "schedule": "*/2 * * * *"
     }
   ],
   "rewrites": [

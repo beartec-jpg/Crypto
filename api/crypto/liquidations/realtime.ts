@@ -193,9 +193,23 @@ async function fetchBybitLiquidations(symbol: string): Promise<{ events: Liquida
 }
 
 async function getCurrentPrice(symbol: string): Promise<number> {
+  // Try Bybit first (primary, almost never geo-blocked)
+  try {
+    const url = `https://api.bybit.com/v5/market/tickers?category=linear&symbol=${symbol}`;
+    const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (response.ok) {
+      const data = await response.json();
+      const lastPrice = parseFloat(data?.result?.list?.[0]?.lastPrice || '0');
+      if (lastPrice > 0) return lastPrice;
+    }
+  } catch {
+    // fall through to Binance
+  }
+
+  // Binance as fallback
   try {
     const url = `https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`;
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
     if (!response.ok) return 0;
     const data = await response.json();
     return parseFloat(data.price) || 0;
