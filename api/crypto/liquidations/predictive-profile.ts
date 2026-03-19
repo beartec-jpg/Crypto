@@ -150,6 +150,31 @@ const PRICE_CACHE_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
 const SUCCESSFUL_PRICE_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
 const BINANCE_PROBE_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
 
+// ── Response cache for expensive third-party API calls ─────────────────────
+const apiResponseCache = new Map<string, { data: unknown; expiry: number }>();
+const API_RESPONSE_CACHE_TTL_MS = 90_000; // 90 seconds
+
+function getCachedApiResponse<T>(key: string): T | null {
+  const entry = apiResponseCache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiry) {
+    apiResponseCache.delete(key);
+    return null;
+  }
+  return entry.data as T;
+}
+
+function setCachedApiResponse<T>(key: string, data: T): void {
+  apiResponseCache.set(key, { data, expiry: Date.now() + API_RESPONSE_CACHE_TTL_MS });
+  // Evict stale entries if cache grows too large
+  if (apiResponseCache.size > 100) {
+    const now = Date.now();
+    for (const [k, v] of apiResponseCache.entries()) {
+      if (now > v.expiry) apiResponseCache.delete(k);
+    }
+  }
+}
+
 const COINGECKO_ID_MAP: Record<string, string> = {
   BTC: 'bitcoin',
   ETH: 'ethereum',
@@ -212,7 +237,7 @@ function normalizeSymbol(input: string): string {
 async function safeFetchJson<T>(url: string, retries = 3): Promise<T | null> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      const response = await fetch(url, { signal: AbortSignal.timeout(14000) });
       if (!response.ok) {
         if (attempt < retries) {
           await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
@@ -247,7 +272,7 @@ async function fetchTracked<T>(
   const start = Date.now();
   try {
     const fetchOptions: RequestInit = {
-      signal: AbortSignal.timeout(options?.timeoutMs ?? 8000),
+      signal: AbortSignal.timeout(options?.timeoutMs ?? 14000),
     };
     if (options?.headers) {
       fetchOptions.headers = options.headers;
@@ -720,6 +745,10 @@ function findClosestIndex(levels: PriceLevelScore[], targetPrice: number): numbe
 }
 
 async function fetchCoinalyzeOpenInterestUsd(symbol: string, currentPrice: number): Promise<number> {
+  const cacheKey = `coinalyze-oi:${symbol}`;
+  const cached = getCachedApiResponse<number>(cacheKey);
+  if (cached !== null) return cached;
+
   const key = process.env.COINALYZE_API_KEY;
   if (!key || currentPrice <= 0) return 0;
 
@@ -731,10 +760,16 @@ async function fetchCoinalyzeOpenInterestUsd(symbol: string, currentPrice: numbe
   const data = await safeFetchJson<any[]>(url + `&api_key=${key}`);
   const latest = data?.[0]?.history?.[data?.[0]?.history?.length - 1];
   const oiValue = toNumber(latest?.c ?? latest?.v ?? latest?.value, 0);
-  return oiValue * currentPrice;
+  const result = oiValue * currentPrice;
+  if (result > 0) setCachedApiResponse(cacheKey, result);
+  return result;
 }
 
 async function fetchCoinalyzeLongShortRatio(symbol: string): Promise<number> {
+  const cacheKey = `coinalyze-ls:${symbol}`;
+  const cached = getCachedApiResponse<number>(cacheKey);
+  if (cached !== null) return cached;
+
   const key = process.env.COINALYZE_API_KEY;
   if (!key) return 1;
 
@@ -747,10 +782,18 @@ async function fetchCoinalyzeLongShortRatio(symbol: string): Promise<number> {
   const latest = data?.[0]?.history?.[data?.[0]?.history?.length - 1];
   const longRate = toNumber(latest?.longRate ?? latest?.l, 0.5);
   const shortRate = toNumber(latest?.shortRate ?? latest?.s, 0.5);
-  return shortRate > 0 ? longRate / shortRate : 1;
+  const result = shortRate > 0 ? longRate / shortRate : 1;
+  // Only cache meaningful ratios — a ratio of exactly 1 is the default fallback value
+  // (equal longs and shorts) and may indicate no real data was returned.
+  if (result > 0 && result !== 1) setCachedApiResponse(cacheKey, result);
+  return result;
 }
 
 async function fetchCoinalyzeFundingRate(symbol: string): Promise<number> {
+  const cacheKey = `coinalyze-funding:${symbol}`;
+  const cached = getCachedApiResponse<number>(cacheKey);
+  if (cached !== null) return cached;
+
   const key = process.env.COINALYZE_API_KEY;
   if (!key) return 0;
 
@@ -761,10 +804,16 @@ async function fetchCoinalyzeFundingRate(symbol: string): Promise<number> {
 
   const data = await safeFetchJson<any[]>(url + `&api_key=${key}`);
   const latest = data?.[0]?.history?.[data?.[0]?.history?.length - 1];
-  return toNumber(latest?.v ?? latest?.value ?? latest?.fundingRate, 0);
+  const result = toNumber(latest?.v ?? latest?.value ?? latest?.fundingRate, 0);
+  if (result !== 0) setCachedApiResponse(cacheKey, result);
+  return result;
 }
 
 async function fetchCoinglassLongShortRatio(symbol: string): Promise<number> {
+  const cacheKey = `coinglass-ls:${symbol}`;
+  const cached = getCachedApiResponse<number>(cacheKey);
+  if (cached !== null) return cached;
+
   const key = process.env.COINGLASS_API_KEY;
   if (!key) return 1;
 
@@ -779,13 +828,21 @@ async function fetchCoinglassLongShortRatio(symbol: string): Promise<number> {
     const latest = json?.data?.[json?.data?.length - 1];
     const longRate = toNumber(latest?.longRate, 0.5);
     const shortRate = toNumber(latest?.shortRate, 0.5);
-    return shortRate > 0 ? longRate / shortRate : 1;
+    const result = shortRate > 0 ? longRate / shortRate : 1;
+    // Only cache meaningful ratios — a ratio of exactly 1 is the default fallback value
+    // (equal longs and shorts) and may indicate no real data was returned.
+    if (result > 0 && result !== 1) setCachedApiResponse(cacheKey, result);
+    return result;
   } catch {
     return 1;
   }
 }
 
 async function fetchCoinglassFundingRate(symbol: string): Promise<number> {
+  const cacheKey = `coinglass-funding:${symbol}`;
+  const cached = getCachedApiResponse<number>(cacheKey);
+  if (cached !== null) return cached;
+
   const key = process.env.COINGLASS_API_KEY;
   if (!key) return 0;
 
@@ -798,13 +855,19 @@ async function fetchCoinglassFundingRate(symbol: string): Promise<number> {
     if (!response.ok) return 0;
     const json = await response.json();
     const latest = json?.data?.[json?.data?.length - 1];
-    return toNumber(latest?.fundingRate ?? latest?.rate, 0);
+    const result = toNumber(latest?.fundingRate ?? latest?.rate, 0);
+    if (result !== 0) setCachedApiResponse(cacheKey, result);
+    return result;
   } catch {
     return 0;
   }
 }
 
 async function fetchCoinglassOpenInterestUsd(symbol: string): Promise<number> {
+  const cacheKey = `coinglass-oi:${symbol}`;
+  const cached = getCachedApiResponse<number>(cacheKey);
+  if (cached !== null) return cached;
+
   const key = process.env.COINGLASS_API_KEY;
   if (!key) return 0;
 
@@ -817,13 +880,19 @@ async function fetchCoinglassOpenInterestUsd(symbol: string): Promise<number> {
     if (!response.ok) return 0;
     const json = await response.json();
     const latest = json?.data?.[json?.data?.length - 1];
-    return toNumber(latest?.close ?? latest?.open ?? latest?.value, 0);
+    const result = toNumber(latest?.close ?? latest?.open ?? latest?.value, 0);
+    if (result > 0) setCachedApiResponse(cacheKey, result);
+    return result;
   } catch {
     return 0;
   }
 }
 
 async function fetchCoinglassLiquidationHistoryCount(symbol: string): Promise<number> {
+  const cacheKey = `coinglass-liq-history:${symbol}`;
+  const cached = getCachedApiResponse<number>(cacheKey);
+  if (cached !== null) return cached;
+
   const key = process.env.COINGLASS_API_KEY;
   if (!key) return 0;
 
@@ -836,10 +905,12 @@ async function fetchCoinglassLiquidationHistoryCount(symbol: string): Promise<nu
     if (!response.ok) return 0;
     const json = await response.json();
     const rows = Array.isArray(json?.data) ? json.data : [];
-    return rows.filter((row: any) =>
+    const result = rows.filter((row: any) =>
       toNumber(row?.long_liquidation_usd ?? row?.longLiquidationUsd, 0) > 0
       || toNumber(row?.short_liquidation_usd ?? row?.shortLiquidationUsd, 0) > 0,
     ).length;
+    if (result > 0) setCachedApiResponse(cacheKey, result);
+    return result;
   } catch {
     return 0;
   }
@@ -863,6 +934,10 @@ function applyPredictedMapComponent(
 }
 
 async function fetchCoinalyzeLiquidationMap(symbol: string): Promise<Array<{ price: number; value: number }>> {
+  const cacheKey = `coinalyze-liq-map:${symbol}`;
+  const cached = getCachedApiResponse<Array<{ price: number; value: number }>>(cacheKey);
+  if (cached !== null) return cached;
+
   const key = process.env.COINALYZE_API_KEY;
   if (!key) return [];
 
@@ -871,13 +946,19 @@ async function fetchCoinalyzeLiquidationMap(symbol: string): Promise<Array<{ pri
   const data = await safeFetchJson<any[]>(url);
   const levels = data?.[0]?.levels;
   if (!Array.isArray(levels)) return [];
-  return levels
+  const result = levels
     .map((l: any) => ({ price: toNumber(l.price), value: toNumber(l.liquidation_value) }))
     .filter((l: { price: number; value: number }) => l.price > 0 && l.value > 0)
     .slice(0, 200);
+  if (result.length > 0) setCachedApiResponse(cacheKey, result);
+  return result;
 }
 
 async function fetchCoinalyzeLiquidationHistoryCount(symbol: string): Promise<number> {
+  const cacheKey = `coinalyze-liq-history:${symbol}`;
+  const cached = getCachedApiResponse<number>(cacheKey);
+  if (cached !== null) return cached;
+
   const key = process.env.COINALYZE_API_KEY;
   if (!key) return 0;
 
@@ -891,7 +972,9 @@ async function fetchCoinalyzeLiquidationHistoryCount(symbol: string): Promise<nu
   if (!Array.isArray(history)) return 0;
 
   // Count only points with actual liquidation activity.
-  return history.filter((p: any) => toNumber(p?.l, 0) > 0 || toNumber(p?.s, 0) > 0).length;
+  const result = history.filter((p: any) => toNumber(p?.l, 0) > 0 || toNumber(p?.s, 0) > 0).length;
+  if (result > 0) setCachedApiResponse(cacheKey, result);
+  return result;
 }
 
 function buildPriceLevels(
@@ -1563,6 +1646,66 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     applyBuildupComponent(levels, internalMetrics.candles, currentPrice);
 
     const predictiveLevels = computeScores(levels, openInterestUsd, fundingRate, longShortRatio, weights);
+
+    // ── Zero-result DB fallback: if live computation yielded nothing useful,
+    // try to serve a slightly-stale DB profile rather than returning zeros ──
+    const liveHasData = predictiveLevels.some(l => l.liquidationValue > 0);
+    if (!liveHasData && !anchorTimeMs && process.env.DATABASE_URL) {
+      try {
+        const dbSql = _neonConnect(process.env.DATABASE_URL);
+        const dbInterval = ['4h', '1d'].includes(chartInterval) ? chartInterval : '1h';
+        const staleProfile = await dbSql`
+          SELECT levels_json, meta_json, computed_at
+          FROM liq_computed_profiles
+          WHERE symbol = ${symbol}
+            AND range = ${range}
+            AND chart_interval = ${dbInterval}
+            AND computed_at > NOW() - INTERVAL '10 minutes'
+          ORDER BY computed_at DESC
+          LIMIT 1
+        `;
+        if (staleProfile.length > 0 && Array.isArray(staleProfile[0].levels_json) && staleProfile[0].levels_json.length > 0) {
+          const profile = staleProfile[0];
+          const meta = profile.meta_json || {};
+          return res.status(200).json({
+            code: '0',
+            data: {
+              levels: profile.levels_json,
+              maxLongPrice: 0,
+              maxShortPrice: 0,
+              totalLongLiquidation: 0,
+              totalShortLiquidation: 0,
+              lastUpdated: new Date(profile.computed_at).getTime(),
+            },
+            meta: {
+              symbol,
+              range,
+              source: 'db-stale-fallback',
+              weights,
+              inputs: {
+                currentPrice: meta.currentPrice || 0,
+                openInterestUsd: meta.openInterestUsd || 0,
+                longShortRatio: meta.longShortRatio || 1,
+                fundingRate: meta.fundingRate || 0,
+                forceOrderCount: meta.forceOrderCount || 0,
+                realtimeOrderCount: meta.realtimeOrderCount || meta.forceOrderCount || 0,
+                mergedForceOrderCount: meta.mergedForceOrderCount || meta.forceOrderCount || 0,
+                depthBidLevels: meta.depthBidLevels || 0,
+                depthAskLevels: meta.depthAskLevels || 0,
+                coinalyzeMapLevels: 0,
+                cacheWarm: true,
+                chartInterval,
+              },
+              diagnostics,
+            },
+          });
+        }
+      } catch (dbErr: any) {
+        // Log but don't fail — fall through to returning the zero result
+        console.warn('[predictive-profile] DB stale fallback failed:', dbErr?.message);
+      }
+    }
+    // ── End zero-result DB fallback ────────────────────────────────────────
 
     // Update price cache for fallback
     setPriceCache(symbol, currentPrice);
