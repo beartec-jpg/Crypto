@@ -1,8 +1,5 @@
-type VercelRequest = any;
-type VercelResponse = any;
-declare const process: { env: Record<string, string | undefined> };
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { neon: _neonConnect } = require('@neondatabase/serverless') as { neon: (url: string) => any };
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { neon as _neonConnect } from '@neondatabase/serverless';
 
 interface PriceLevelScore {
   price: number;
