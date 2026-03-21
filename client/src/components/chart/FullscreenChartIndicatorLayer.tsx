@@ -277,6 +277,7 @@ export function FullscreenChartIndicatorLayer({
         stackSection={shouldShareSidebar ? 'bottom' : 'full'}
         profileSide={lhRenderSide}
         profileWidthPercent={sharedSidebarWidth}
+        liquidityPivotAnalysis={liquidityPivotAnalysis}
       />
 
       {lhSettings?.enabled && lhSettings?.showDebugPanel && (

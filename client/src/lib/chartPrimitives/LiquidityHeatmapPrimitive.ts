@@ -9,9 +9,16 @@ import type {
   SeriesType,
 } from 'lightweight-charts';
 import type { CoinglassRange, LiquidityHeatmapData, LiquidityHeatmapSettings } from '@/types/liquidityHeatmap';
+import type { PredictedLiquidityPoint, LiquidationZone } from '@/hooks/useLiquidityPivotAnalysis';
 
 type RequestUpdateCallback = () => void;
 type StackSection = 'full' | 'top' | 'bottom';
+type LiquidityPivotAnalysis = {
+  points: PredictedLiquidityPoint[];
+  zones: LiquidationZone[];
+  directionBias: 'long' | 'short' | 'neutral';
+  confidence: number;
+};
 
 function formatUsdCompact(usd: number): string {
   if (usd >= 1e9) return `$${(usd / 1e9).toFixed(1)}B`;
@@ -29,6 +36,7 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
   private _stackSection: StackSection;
   private _profileSide: 'left' | 'right';
   private _profileWidthPercent: number;
+  private _liquidityPivotAnalysis: LiquidityPivotAnalysis | null;
 
   constructor(
     data: LiquidityHeatmapData | null,
@@ -39,6 +47,7 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
     stackSection: StackSection,
     profileSide: 'left' | 'right',
     profileWidthPercent: number,
+    liquidityPivotAnalysis: LiquidityPivotAnalysis | null,
   ) {
     this._data = data;
     this._settings = settings;
@@ -48,6 +57,7 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
     this._stackSection = stackSection;
     this._profileSide = profileSide;
     this._profileWidthPercent = profileWidthPercent;
+    this._liquidityPivotAnalysis = liquidityPivotAnalysis;
   }
 
   draw(target: any) {
@@ -158,6 +168,53 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
       drawPrimaryTarget();
       drawSecondaryTarget();
 
+      if (this._settings.usePivotVolumePrediction && this._liquidityPivotAnalysis?.points?.length) {
+        const zones = this._liquidityPivotAnalysis.zones.slice(0, 4);
+        const topPoints = this._liquidityPivotAnalysis.points.slice(0, 5);
+
+        for (const zone of zones) {
+          const y1 = this._series!.priceToCoordinate(zone.priceFrom);
+          const y2 = this._series!.priceToCoordinate(zone.priceTo);
+          if (y1 === null || y2 === null) continue;
+          const zoneTop = Math.min(y1, y2);
+          const zoneBottom = Math.max(y1, y2);
+          const zoneHeight = Math.max(6, zoneBottom - zoneTop);
+          const zoneAlpha = Math.max(0.08, Math.min(0.28, zone.strength / 400));
+
+          ctx.save();
+          ctx.fillStyle = zone.direction === 'long'
+            ? `rgba(239, 68, 68, ${zoneAlpha.toFixed(3)})`
+            : `rgba(34, 197, 94, ${zoneAlpha.toFixed(3)})`;
+          ctx.fillRect(laneStart, zoneTop, laneWidth, zoneHeight);
+          ctx.strokeStyle = zone.direction === 'long' ? 'rgba(254, 202, 202, 0.35)' : 'rgba(187, 247, 208, 0.35)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(laneStart, zoneTop, laneWidth, zoneHeight);
+          ctx.restore();
+        }
+
+        for (const point of topPoints) {
+          const y = this._series!.priceToCoordinate(point.price);
+          if (y === null) continue;
+          const markerW = Math.max(8, Math.min(22, 8 + Math.round(point.confidence / 10)));
+          const x = isRightSide ? laneEnd - markerW : laneStart;
+
+          ctx.save();
+          ctx.fillStyle = point.direction === 'long'
+            ? 'rgba(239, 68, 68, 0.92)'
+            : point.direction === 'short'
+              ? 'rgba(34, 197, 94, 0.92)'
+              : 'rgba(148, 163, 184, 0.85)';
+          ctx.fillRect(x, y - 1.5, markerW, 3);
+
+          if (point.isPivot || point.isPOC) {
+            ctx.strokeStyle = point.isPOC ? 'rgba(250, 204, 21, 0.95)' : 'rgba(148, 163, 184, 0.95)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x, y - 2.5, markerW, 5);
+          }
+          ctx.restore();
+        }
+      }
+
       if (isSharedSidebar) {
         ctx.save();
         const label = 'LIQ';
@@ -172,7 +229,11 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
       if (this._settings.showRangeIndicator) {
         const longPressure = directionScore >= 50;
         const pressurePct = longPressure ? directionScore : (100 - directionScore);
-        const badge = `LIQ PRESSURE: ${pressurePct.toFixed(0)}% ${longPressure ? 'LONG ▼' : 'SHORT ▲'}`;
+        let badge = `LIQ PRESSURE: ${pressurePct.toFixed(0)}% ${longPressure ? 'LONG ▼' : 'SHORT ▲'}`;
+        if (this._settings.usePivotVolumePrediction && this._liquidityPivotAnalysis) {
+          const predDir = this._liquidityPivotAnalysis.directionBias.toUpperCase();
+          badge = `${badge} | PIVOT: ${predDir} ${this._liquidityPivotAnalysis.confidence}%`;
+        }
         ctx.save();
         ctx.font = 'bold 10px sans-serif';
         const textWidth = ctx.measureText(badge).width;
@@ -222,6 +283,7 @@ class LiquidityHeatmapPaneView implements IPrimitivePaneView {
       this._primitive.getStackSection(),
       this._primitive.getProfileSide(),
       this._primitive.getProfileWidthPercent(),
+      this._primitive.getLiquidityPivotAnalysis(),
     );
   }
 }
@@ -234,6 +296,7 @@ export class LiquidityHeatmapPrimitive implements ISeriesPrimitive<Time> {
   private _stackSection: StackSection;
   private _profileSide: 'left' | 'right';
   private _profileWidthPercent: number;
+  private _liquidityPivotAnalysis: LiquidityPivotAnalysis | null;
   private _series: ISeriesApi<SeriesType> | null = null;
   private _chart: IChartApi | null = null;
   private _requestUpdate?: RequestUpdateCallback;
@@ -245,6 +308,7 @@ export class LiquidityHeatmapPrimitive implements ISeriesPrimitive<Time> {
     stackSection: StackSection = 'full',
     profileSide: 'left' | 'right' = 'right',
     profileWidthPercent = 22,
+    liquidityPivotAnalysis: LiquidityPivotAnalysis | null = null,
   ) {
     this._data = data;
     this._settings = settings;
@@ -252,6 +316,7 @@ export class LiquidityHeatmapPrimitive implements ISeriesPrimitive<Time> {
     this._stackSection = stackSection;
     this._profileSide = profileSide;
     this._profileWidthPercent = profileWidthPercent;
+    this._liquidityPivotAnalysis = liquidityPivotAnalysis;
     this._paneViews = [new LiquidityHeatmapPaneView(this)];
   }
 
@@ -299,6 +364,10 @@ export class LiquidityHeatmapPrimitive implements ISeriesPrimitive<Time> {
     return this._profileWidthPercent;
   }
 
+  getLiquidityPivotAnalysis(): LiquidityPivotAnalysis | null {
+    return this._liquidityPivotAnalysis;
+  }
+
   update(
     data: LiquidityHeatmapData | null,
     settings: LiquidityHeatmapSettings,
@@ -306,6 +375,7 @@ export class LiquidityHeatmapPrimitive implements ISeriesPrimitive<Time> {
     stackSection: StackSection = 'full',
     profileSide: 'left' | 'right' = 'right',
     profileWidthPercent = 22,
+    liquidityPivotAnalysis: LiquidityPivotAnalysis | null = null,
   ) {
     this._data = data;
     this._settings = settings;
@@ -313,6 +383,7 @@ export class LiquidityHeatmapPrimitive implements ISeriesPrimitive<Time> {
     this._stackSection = stackSection;
     this._profileSide = profileSide;
     this._profileWidthPercent = profileWidthPercent;
+    this._liquidityPivotAnalysis = liquidityPivotAnalysis;
     this._requestUpdate?.();
   }
 }

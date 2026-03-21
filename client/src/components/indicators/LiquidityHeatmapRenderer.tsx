@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { IChartApi, ISeriesApi } from 'lightweight-charts';
 import { LiquidityHeatmapPrimitive } from '@/lib/chartPrimitives/LiquidityHeatmapPrimitive';
 import type { CoinglassRange, LiquidityHeatmapData, LiquidityHeatmapSettings } from '@/types/liquidityHeatmap';
+import type { PredictedLiquidityPoint, LiquidationZone } from '@/hooks/useLiquidityPivotAnalysis';
 
 type StackSection = 'full' | 'top' | 'bottom';
 
@@ -14,6 +15,12 @@ interface LiquidityHeatmapRendererProps {
   stackSection?: StackSection;
   profileSide?: 'left' | 'right';
   profileWidthPercent?: number;
+  liquidityPivotAnalysis?: {
+    points: PredictedLiquidityPoint[];
+    zones: LiquidationZone[];
+    directionBias: 'long' | 'short' | 'neutral';
+    confidence: number;
+  };
 }
 
 export function LiquidityHeatmapRenderer({
@@ -25,6 +32,7 @@ export function LiquidityHeatmapRenderer({
   stackSection = 'full',
   profileSide = 'right',
   profileWidthPercent = 22,
+  liquidityPivotAnalysis,
 }: LiquidityHeatmapRendererProps) {
   const primitiveRef = useRef<LiquidityHeatmapPrimitive | null>(null);
 
@@ -39,6 +47,7 @@ export function LiquidityHeatmapRenderer({
       stackSection,
       profileSide,
       profileWidthPercent,
+      liquidityPivotAnalysis,
     );
     try {
       candleSeries.attachPrimitive(primitive);
@@ -70,9 +79,10 @@ export function LiquidityHeatmapRenderer({
         stackSection,
         profileSide,
         profileWidthPercent,
+        liquidityPivotAnalysis,
       );
     }
-  }, [data, settings, effectiveRange, stackSection, profileSide, profileWidthPercent]);
+  }, [data, settings, effectiveRange, stackSection, profileSide, profileWidthPercent, liquidityPivotAnalysis]);
 
   return null;
 }
