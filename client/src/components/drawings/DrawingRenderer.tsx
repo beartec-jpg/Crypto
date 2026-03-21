@@ -18,6 +18,7 @@ interface DrawingRendererProps {
   onPointCommitRef?: React.MutableRefObject<((point: GesturePoint) => void) | null>;
   /** Called instead of standard drawing logic when tool is 'elliott_wave' */
   onElliottWavePoint?: (point: GesturePoint) => void;
+  drawingDefaultsByTool?: Record<string, any>;
 }
 
 export function DrawingRenderer({
@@ -32,6 +33,7 @@ export function DrawingRenderer({
   saveDrawingMutation,
   onPointCommitRef,
   onElliottWavePoint,
+  drawingDefaultsByTool,
 }: DrawingRendererProps) {
   const { toast } = useToast();
 
@@ -49,13 +51,16 @@ export function DrawingRenderer({
     // For horizontal lines, save immediately on first click
     if (currentTool === 'horizontal') {
       const newPoint = { time: point.time as number, price: point.price, snapType: point.snapType };
-      const color = autoColorEnabledRef.current ? getAutoColor([newPoint], candles) : '#3b82f6';
+      const toolDefaults = drawingDefaultsByTool?.[currentTool] || {};
+      const useAutoColor = toolDefaults.autoColor ?? autoColorEnabledRef.current;
+      const fallbackColor = toolDefaults.color || '#3b82f6';
+      const color = useAutoColor ? getAutoColor([newPoint], candles) : fallbackColor;
       
       const newDrawing = {
         id: `drawing-${Date.now()}`,
         type: currentTool,
         points: [newPoint],
-        style: { color, lineWidth: 2 }
+        style: { color, lineWidth: 2, ...toolDefaults, autoColor: useAutoColor }
       };
       
       console.log('[Renderer] Creating horizontal line:', newDrawing);
@@ -78,8 +83,10 @@ export function DrawingRenderer({
       
       // If we have enough points, save the drawing
       if (newPoints.length >= requiredPoints) {
-        // Determine color based on auto-color setting and snap types
-        const color = autoColorEnabledRef.current ? getAutoColor(newPoints, candles) : '#3b82f6';
+        const toolDefaults = drawingDefaultsByTool?.[currentTool] || {};
+        const useAutoColor = toolDefaults.autoColor ?? autoColorEnabledRef.current;
+        const fallbackColor = toolDefaults.color || '#3b82f6';
+        const color = useAutoColor ? getAutoColor(newPoints, candles) : fallbackColor;
         
         // Load saved defaults for fib and channel tools
         let savedDefaults: any = {};
@@ -90,17 +97,20 @@ export function DrawingRenderer({
             if (stored) savedDefaults = JSON.parse(stored);
           } catch (e) {}
         }
+
+        // User-level defaults override local fallback defaults.
+        savedDefaults = { ...savedDefaults, ...toolDefaults };
         
         // For channels, set autoColor based on global setting and default extendRight to true
         const channelStyle = currentTool === 'channel' 
-          ? { autoColor: autoColorEnabledRef.current, labelPosition: 'right' as const, extendRight: true }
+          ? { autoColor: useAutoColor, labelPosition: 'right' as const, extendRight: true }
           : {};
         
         const newDrawing = {
           id: `drawing-${Date.now()}`,
           type: currentTool,
           points: newPoints,
-          style: { color, lineWidth: 2, ...savedDefaults, ...channelStyle }
+          style: { color, lineWidth: 2, ...savedDefaults, ...channelStyle, autoColor: useAutoColor }
         };
         
         console.log('[Renderer] Creating new drawing:', newDrawing);
@@ -117,7 +127,7 @@ export function DrawingRenderer({
       
       return { points: newPoints };
     });
-  }, [drawingMode, activeToolRef, autoColorEnabledRef, candles, setTempDrawing, setDrawings, saveDrawingMutation, onElliottWavePoint, toast]);
+  }, [drawingMode, activeToolRef, autoColorEnabledRef, candles, setTempDrawing, setDrawings, saveDrawingMutation, onElliottWavePoint, drawingDefaultsByTool, toast]);
 
   // Expose handlePointCommit through ref if provided
   useEffect(() => {

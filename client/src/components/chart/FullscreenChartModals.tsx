@@ -15,6 +15,10 @@ interface FullscreenChartModalsProps {
   onCloseSettings: () => void;
   selectedDrawingForModal: any;
   onUpdateDrawing: (updates: { style: any }) => void;
+  autoColorEnabled?: boolean;
+  onAutoColorChange?: (enabled: boolean) => void;
+  onSaveDrawingDefaults?: (payload: { tool: string; style: any }) => void;
+  onResetDrawingDefaults?: (tool: string) => void;
 
   showSelectionModal: boolean;
   nearbyDrawings: any[];
@@ -81,6 +85,10 @@ export function FullscreenChartModals({
   onCloseSettings,
   selectedDrawingForModal,
   onUpdateDrawing,
+  autoColorEnabled,
+  onAutoColorChange,
+  onSaveDrawingDefaults,
+  onResetDrawingDefaults,
   showSelectionModal,
   nearbyDrawings,
   onSelectFromModal,
@@ -140,6 +148,10 @@ export function FullscreenChartModals({
           onClose={onCloseSettings}
           drawing={selectedDrawingForModal}
           onUpdate={onUpdateDrawing}
+          autoColorEnabled={autoColorEnabled}
+          onAutoColorChange={onAutoColorChange}
+          onSaveAsDefault={onSaveDrawingDefaults}
+          onResetDefault={onResetDrawingDefaults}
         />
       )}
 

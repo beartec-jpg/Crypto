@@ -1075,6 +1075,8 @@ export const userSettings = pgTable("user_settings", {
   // Last state
   lastSymbol: varchar("last_symbol").notNull().default("BTCUSDT"),
   lastTimeframe: varchar("last_timeframe").notNull().default("1h"),
+  // Drawing defaults/preferences
+  drawingDefaults: jsonb("drawing_defaults"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1087,6 +1089,7 @@ export const insertUserSettingsSchema = z.object({
   theme: z.string().optional().default("dark"),
   lastSymbol: z.string().optional().default("BTCUSDT"),
   lastTimeframe: z.string().optional().default("1h"),
+  drawingDefaults: z.any().optional().nullable(),
 });
 
 export const userSettingsResponseSchema = z.object({
@@ -1096,6 +1099,7 @@ export const userSettingsResponseSchema = z.object({
   theme: z.string(),
   lastSymbol: z.string(),
   lastTimeframe: z.string(),
+  drawingDefaults: z.any().optional().nullable(),
 });
 
 export type InsertUserSettings = z.infer<typeof insertUserSettingsSchema>;

@@ -238,11 +238,22 @@ function getDistanceToDrawing(
       const right = Math.max(rx1, rx2);
       const top = Math.min(ry1, ry2);
       const bottom = Math.max(ry1, ry2);
+
+      const extendLeft = drawing.style?.extendLeft ?? false;
+      const extendRight = drawing.style?.extendRight ?? false;
+
+      const xWithin = (extendLeft || clickX >= left) && (extendRight || clickX <= right);
+      const yWithin = clickY >= top && clickY <= bottom;
+
+      if (xWithin && yWithin) return 0;
       
-      if (clickX >= left && clickX <= right && clickY >= top && clickY <= bottom) return 0;
-      
-      const rectDx = Math.max(left - clickX, 0, clickX - right);
+      let rectDx = 0;
+      if (!extendLeft && clickX < left) rectDx = left - clickX;
+      if (!extendRight && clickX > right) rectDx = clickX - right;
       const rectDy = Math.max(top - clickY, 0, clickY - bottom);
+
+      if (xWithin) return rectDy;
+
       return Math.sqrt(rectDx * rectDx + rectDy * rectDy);
     }
     

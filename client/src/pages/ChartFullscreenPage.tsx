@@ -86,6 +86,8 @@ import { getConditionWeights } from '@/lib/conditionWeights';
 import type { IPriceLine } from 'lightweight-charts';
 import { RewindControls } from '@/components/chart/RewindControls';
 import { useRewindSettings } from '@/hooks/useRewindSettings';
+import { useUserSettings } from '@/hooks/useUserSettings';
+import { findDrawingsNearClick } from '@/lib/drawingHitDetection';
 // Defensive import: ensures Button is included in the ChartPage chunk scope.
 // Child components (DrawingMenu, IndicatorMenu, ToolsMenu, TradingSystemsMenu)
 // all use Button, but Vite's production scope-hoisting can drop the binding
@@ -206,6 +208,7 @@ export function ChartFullscreenPage({
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [drawingsVisible, setDrawingsVisible] = useState(true);
   const [activeEdit, setActiveEdit] = useState<{ drawingId: string; pointIndex: number; originalDrawing: Drawing } | null>(null);
+  const [moveArmedDrawingId, setMoveArmedDrawingId] = useState<string | null>(null);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [showEmaSmaModal, setShowEmaSmaModal] = useState(false);
   const [showSmcModal, setShowSmcModal] = useState(false);
@@ -271,12 +274,100 @@ export function ChartFullscreenPage({
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const activeToolRef = useRef<ChartDrawingTool>(null);
+  const dragEditStateRef = useRef<{
+    drawingId: string;
+    mode: 'point' | 'move';
+    pointIndex?: number;
+    startLogical: number;
+    startPrice: number;
+    basePoints: Drawing['points'];
+    basePointLogicals: number[];
+    latestPoints: Drawing['points'];
+  } | null>(null);
+  const suppressNextClickRef = useRef(false);
   const autoColorEnabledRef = useRef(true);
   const onPointCommitRef = useRef<((point: GesturePoint) => void) | null>(null);
   const systemSignalMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const systemSignalMarkerHostSeriesRef = useRef<any>(null);
   // Hooks - Elliott Wave tool
   const elliottWave = useElliottWave();
+
+  // User-level persistent settings (including drawing defaults).
+  const { settings: userSettings, updateSettings: updateUserSettings } = useUserSettings();
+
+  const drawingDefaultsByTool = useMemo(() => {
+    const raw = userSettings?.drawingDefaults as any;
+    return (raw?.byTool || {}) as Record<string, any>;
+  }, [userSettings]);
+
+  const [autoColorEnabled, setAutoColorEnabled] = useState(true);
+
+  useEffect(() => {
+    const raw = userSettings?.drawingDefaults as any;
+    const enabled = raw?.autoColorEnabled;
+    if (typeof enabled === 'boolean') {
+      setAutoColorEnabled(enabled);
+    }
+  }, [userSettings]);
+
+  useEffect(() => {
+    autoColorEnabledRef.current = autoColorEnabled;
+  }, [autoColorEnabled]);
+
+  // Hooks - Toast notifications
+  const { toast } = useToast();
+
+  const persistDrawingDefaults = useCallback((payload: { tool: string; style: any }) => {
+    const raw = userSettings?.drawingDefaults as any;
+    const byTool = { ...(raw?.byTool || {}) };
+    byTool[payload.tool] = {
+      ...(byTool[payload.tool] || {}),
+      ...payload.style,
+    };
+
+    updateUserSettings({
+      drawingDefaults: {
+        ...(raw || {}),
+        byTool,
+        autoColorEnabled,
+      },
+    } as any);
+    toast({
+      title: 'Defaults saved',
+      description: `Default style saved for ${payload.tool.replace('_', ' ')}`,
+    });
+  }, [userSettings, autoColorEnabled, updateUserSettings, toast]);
+
+  const resetDrawingDefaults = useCallback((tool: string) => {
+    const raw = userSettings?.drawingDefaults as any;
+    const byTool = { ...(raw?.byTool || {}) };
+    delete byTool[tool];
+
+    updateUserSettings({
+      drawingDefaults: {
+        ...(raw || {}),
+        byTool,
+        autoColorEnabled,
+      },
+    } as any);
+
+    toast({
+      title: 'Defaults reset',
+      description: `Saved default removed for ${tool.replace('_', ' ')}`,
+    });
+  }, [userSettings, autoColorEnabled, updateUserSettings, toast]);
+
+  const handleAutoColorPreferenceChange = useCallback((enabled: boolean) => {
+    setAutoColorEnabled(enabled);
+    const raw = userSettings?.drawingDefaults as any;
+    updateUserSettings({
+      drawingDefaults: {
+        ...(raw || {}),
+        byTool: raw?.byTool || {},
+        autoColorEnabled: enabled,
+      },
+    } as any);
+  }, [userSettings, updateUserSettings]);
 
   // Hooks - Oscillator panel (needed first for totalHeight)
   const oscillatorPanel = useOscillatorPanel();
@@ -1391,9 +1482,6 @@ export function ChartFullscreenPage({
     recordDelete,
   } = useDrawingHistory({ drawingsPersistence, setDrawings });
 
-  // Hooks - Toast notifications
-  const { toast } = useToast();
-
   const {
     ewLabels,
     saveEWLabelMutation,
@@ -1408,6 +1496,278 @@ export function ChartFullscreenPage({
     drawings,
     activeTool,
   });
+
+  const estimatedIntervalSeconds = useMemo(() => {
+    if (candles.length >= 2) {
+      const delta = Number(candles[candles.length - 1].time) - Number(candles[candles.length - 2].time);
+      if (Number.isFinite(delta) && delta > 0) return delta;
+    }
+    return 60;
+  }, [candles]);
+
+  const timeToLogical = useCallback((time: number): number => {
+    const chart = chartRef.current;
+    if (chart) {
+      const x = chart.timeScale().timeToCoordinate(time as Time);
+      if (x !== null) {
+        const logical = chart.timeScale().coordinateToLogical(x);
+        if (logical !== null) return logical;
+      }
+    }
+
+    if (candles.length === 0) return 0;
+    const first = Number(candles[0].time);
+    return (time - first) / estimatedIntervalSeconds;
+  }, [chartRef, candles, estimatedIntervalSeconds]);
+
+  const logicalToTime = useCallback((logical: number): number => {
+    if (candles.length === 0) return 0;
+    const rounded = Math.round(logical);
+
+    if (rounded >= 0 && rounded < candles.length) {
+      return Number(candles[rounded].time);
+    }
+
+    const first = Number(candles[0].time);
+    return first + (rounded * estimatedIntervalSeconds);
+  }, [candles, estimatedIntervalSeconds]);
+
+  const getChartPointFromClient = useCallback((clientX: number, clientY: number) => {
+    if (!chartRef.current || !candleSeriesRef.current || !chartContainerRef.current) return null;
+
+    const rect = chartContainerRef.current.getBoundingClientRect();
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+    const logical = chartRef.current.timeScale().coordinateToLogical(localX);
+    const price = candleSeriesRef.current.coordinateToPrice(localY);
+
+    if (logical === null || price === null) return null;
+    return { logical, price, localX, localY };
+  }, [chartRef, candleSeriesRef, chartContainerRef]);
+
+  const findNearestPointIndex = useCallback((drawing: Drawing, localX: number, localY: number): number | null => {
+    if (!chartRef.current || !candleSeriesRef.current || drawing.points.length === 0) return null;
+
+    const HANDLE_RADIUS = 14;
+    let bestIndex: number | null = null;
+    let bestDistance = Infinity;
+
+    drawing.points.forEach((point, index) => {
+      const x = chartRef.current?.timeScale().timeToCoordinate(point.time as Time);
+      const y = candleSeriesRef.current?.priceToCoordinate(point.price);
+      if (x === null || y === null) return;
+
+      const distance = Math.hypot(localX - x, localY - y);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
+      }
+    });
+
+    return bestDistance <= HANDLE_RADIUS ? bestIndex : null;
+  }, [chartRef, candleSeriesRef]);
+
+  const beginDrawingDrag = useCallback((clientX: number, clientY: number): boolean => {
+    if (activeTool || !drawingInteraction.selectedDrawingId) return false;
+
+    const drawing = drawings.find(d => d.id === drawingInteraction.selectedDrawingId);
+    if (!drawing || drawing.type === 'elliott_wave') return false;
+
+    const chartPoint = getChartPointFromClient(clientX, clientY);
+    if (!chartPoint) return false;
+
+    const pointIndex = findNearestPointIndex(drawing, chartPoint.localX, chartPoint.localY);
+    const basePointLogicals = drawing.points.map(p => timeToLogical(Number(p.time)));
+
+    if (pointIndex !== null) {
+      setActiveEdit({
+        drawingId: drawing.id,
+        pointIndex,
+        originalDrawing: { ...drawing, points: [...drawing.points] },
+      });
+
+      dragEditStateRef.current = {
+        drawingId: drawing.id,
+        mode: 'point',
+        pointIndex,
+        startLogical: chartPoint.logical,
+        startPrice: chartPoint.price,
+        basePoints: drawing.points.map(p => ({ ...p })),
+        basePointLogicals,
+        latestPoints: drawing.points.map(p => ({ ...p })),
+      };
+      return true;
+    }
+
+    if (moveArmedDrawingId !== drawing.id || !chartRef.current || !candleSeriesRef.current) return false;
+
+    const hits = findDrawingsNearClick(
+      chartPoint.localX,
+      chartPoint.localY,
+      [drawing as any],
+      chartRef.current,
+      candleSeriesRef.current,
+    );
+
+    if (hits.length === 0) return false;
+
+    setActiveEdit(null);
+    dragEditStateRef.current = {
+      drawingId: drawing.id,
+      mode: 'move',
+      startLogical: chartPoint.logical,
+      startPrice: chartPoint.price,
+      basePoints: drawing.points.map(p => ({ ...p })),
+      basePointLogicals,
+      latestPoints: drawing.points.map(p => ({ ...p })),
+    };
+
+    return true;
+  }, [
+    activeTool,
+    drawingInteraction.selectedDrawingId,
+    drawings,
+    getChartPointFromClient,
+    findNearestPointIndex,
+    timeToLogical,
+    moveArmedDrawingId,
+    chartRef,
+    candleSeriesRef,
+  ]);
+
+  const updateDrawingDrag = useCallback((clientX: number, clientY: number) => {
+    const drag = dragEditStateRef.current;
+    if (!drag) return;
+
+    const chartPoint = getChartPointFromClient(clientX, clientY);
+    if (!chartPoint) return;
+
+    let nextPoints: Drawing['points'];
+    if (drag.mode === 'point' && typeof drag.pointIndex === 'number') {
+      nextPoints = drag.basePoints.map((point, index) => {
+        if (index !== drag.pointIndex) return { ...point };
+        return {
+          ...point,
+          time: logicalToTime(chartPoint.logical),
+          price: chartPoint.price,
+          snapType: 'none',
+        };
+      });
+    } else {
+      const deltaLogical = chartPoint.logical - drag.startLogical;
+      const deltaPrice = chartPoint.price - drag.startPrice;
+
+      nextPoints = drag.basePoints.map((point, index) => ({
+        ...point,
+        time: logicalToTime(drag.basePointLogicals[index] + deltaLogical),
+        price: point.price + deltaPrice,
+        snapType: 'none',
+      }));
+    }
+
+    drag.latestPoints = nextPoints;
+    setDrawings(previous => previous.map(item => (
+      item.id === drag.drawingId
+        ? { ...item, points: nextPoints }
+        : item
+    )));
+  }, [getChartPointFromClient, logicalToTime]);
+
+  const endDrawingDrag = useCallback(() => {
+    const drag = dragEditStateRef.current;
+    if (!drag) return;
+
+    const drawing = drawings.find(d => d.id === drag.drawingId);
+    if (drawing && !drag.drawingId.startsWith('drawing-') && drawing.type !== 'elliott_wave') {
+      drawingsPersistence.updateDrawing({
+        id: drag.drawingId,
+        updates: { coordinates: { points: drag.latestPoints } },
+      });
+    }
+
+    dragEditStateRef.current = null;
+    setActiveEdit(null);
+    setMoveArmedDrawingId(null);
+  }, [drawings, drawingsPersistence]);
+
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container) return;
+
+    const onMouseDown = (event: MouseEvent) => {
+      if (beginDrawingDrag(event.clientX, event.clientY)) {
+        event.preventDefault();
+      }
+    };
+
+    const onTouchStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!touch) return;
+      if (beginDrawingDrag(touch.clientX, touch.clientY)) {
+        event.preventDefault();
+      }
+    };
+
+    const onMouseMove = (event: MouseEvent) => {
+      if (!dragEditStateRef.current) return;
+      event.preventDefault();
+      updateDrawingDrag(event.clientX, event.clientY);
+    };
+
+    const onTouchMove = (event: TouchEvent) => {
+      if (!dragEditStateRef.current) return;
+      const touch = event.touches[0];
+      if (!touch) return;
+      event.preventDefault();
+      updateDrawingDrag(touch.clientX, touch.clientY);
+    };
+
+    const onPointerEnd = () => {
+      if (!dragEditStateRef.current) return;
+      suppressNextClickRef.current = true;
+      endDrawingDrag();
+    };
+
+    const onClickCapture = (event: MouseEvent) => {
+      if (!suppressNextClickRef.current) return;
+      suppressNextClickRef.current = false;
+      event.stopImmediatePropagation();
+      event.preventDefault();
+    };
+
+    container.addEventListener('mousedown', onMouseDown);
+    container.addEventListener('touchstart', onTouchStart, { passive: false });
+    container.addEventListener('click', onClickCapture, true);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('mouseup', onPointerEnd);
+    window.addEventListener('touchend', onPointerEnd);
+
+    return () => {
+      container.removeEventListener('mousedown', onMouseDown);
+      container.removeEventListener('touchstart', onTouchStart);
+      container.removeEventListener('click', onClickCapture, true);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('mouseup', onPointerEnd);
+      window.removeEventListener('touchend', onPointerEnd);
+    };
+  }, [beginDrawingDrag, updateDrawingDrag, endDrawingDrag]);
+
+  useEffect(() => {
+    if (!moveArmedDrawingId) return;
+    if (drawingInteraction.selectedDrawingId === moveArmedDrawingId) return;
+    setMoveArmedDrawingId(null);
+  }, [moveArmedDrawingId, drawingInteraction.selectedDrawingId]);
+
+  const handleEditMoveDrawing = useCallback(() => {
+    if (!drawingInteraction.selectedDrawingId) return;
+    setMoveArmedDrawingId(drawingInteraction.selectedDrawingId);
+    toast({
+      title: 'Edit mode enabled',
+      description: 'Drag a point to reshape, or drag the drawing to move it.',
+    });
+  }, [drawingInteraction.selectedDrawingId, toast]);
 
   const waveSelection = useWaveSelection({
     drawings,
@@ -1966,6 +2326,7 @@ export function ChartFullscreenPage({
           setDrawings={setDrawings}
           saveDrawingMutation={{ mutate: saveDrawingWithUndo }}
           onPointCommitRef={onPointCommitRef}
+          drawingDefaultsByTool={drawingDefaultsByTool}
           onElliottWavePoint={elliottWave.isActive && elliottWave.isDrawing
             ? (p: GesturePoint) => {
                 elliottWave.placePoint(p.time as number, p.price, p.snapType);
@@ -1992,6 +2353,7 @@ export function ChartFullscreenPage({
           selectedDrawingId={drawingInteraction.selectedDrawingId}
           onOpenDrawingSettings={modalHelpers.handleOpenSettings}
           onOpenDrawingAlerts={handleOpenDrawingAlerts}
+          onMoveDrawing={handleEditMoveDrawing}
           onDeleteDrawing={drawingActions.handleDeleteDrawing}
           onCloseQuickMenu={drawingInteraction.closeQuickMenu}
         />
@@ -2018,6 +2380,10 @@ export function ChartFullscreenPage({
         onCloseSettings={modalHelpers.handleCloseSettings}
         selectedDrawingForModal={modalHelpers.selectedDrawingForModal}
         onUpdateDrawing={drawingActions.handleUpdateDrawing}
+        autoColorEnabled={autoColorEnabled}
+        onAutoColorChange={handleAutoColorPreferenceChange}
+        onSaveDrawingDefaults={persistDrawingDefaults}
+        onResetDrawingDefaults={resetDrawingDefaults}
         showSelectionModal={drawingInteraction.showSelectionModal}
         nearbyDrawings={drawingInteraction.nearbyDrawings}
         onSelectFromModal={drawingInteraction.selectFromModal}

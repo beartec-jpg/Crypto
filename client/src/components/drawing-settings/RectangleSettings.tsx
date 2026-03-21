@@ -15,6 +15,8 @@ export function RectangleSettings({ drawing, onUpdate }: RectangleSettingsProps)
   const label = drawing.style?.label || '';
   const showLabel = drawing.style?.showLabel !== false;
   const labelPosition = drawing.style?.labelPosition || 'right';
+  const extendLeft = drawing.style?.extendLeft || false;
+  const extendRight = drawing.style?.extendRight || false;
 
   // Helper to wrap updates in { style: { ... } } format
   const handleUpdate = (styleUpdates: any) => {
@@ -59,6 +61,31 @@ export function RectangleSettings({ drawing, onUpdate }: RectangleSettingsProps)
             className="flex-1 h-1 bg-slate-600 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-500"
           />
           <span className="text-xs text-slate-300 w-10 text-right">{Math.round(fillOpacity * 100)}%</span>
+        </div>
+      </div>
+
+      {/* Extension Toggles */}
+      <div className="space-y-2">
+        <div className="text-xs text-slate-400 mb-2">Extension</div>
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={extendLeft}
+            onChange={(e) => handleUpdate({ extendLeft: e.target.checked })}
+            className="rounded border-slate-600 w-4 h-4 cursor-pointer"
+            id="rectangle-extend-left"
+          />
+          <label htmlFor="rectangle-extend-left" className="text-xs text-gray-300 cursor-pointer">Extend Left</label>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={extendRight}
+            onChange={(e) => handleUpdate({ extendRight: e.target.checked })}
+            className="rounded border-slate-600 w-4 h-4 cursor-pointer"
+            id="rectangle-extend-right"
+          />
+          <label htmlFor="rectangle-extend-right" className="text-xs text-gray-300 cursor-pointer">Extend Right</label>
         </div>
       </div>
 
@@ -125,28 +152,6 @@ export function RectangleSettings({ drawing, onUpdate }: RectangleSettingsProps)
         </div>
       )}
 
-      {/* Save as Default Button */}
-      <div className="pt-3 border-t border-slate-700">
-        <button
-          onClick={() => {
-            const defaults = {
-              color,
-              opacity,
-              lineWidth,
-              fillOpacity,
-            };
-            localStorage.setItem('rectangleDefaults', JSON.stringify(defaults));
-            // You can add a toast notification here if you have the toast hook
-          }}
-          className="w-full px-3 py-2 rounded text-xs bg-green-600 hover:bg-green-500 text-white flex items-center justify-center gap-2 transition-colors"
-          type="button"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-          Save as Default
-        </button>
-      </div>
     </div>
   );
 }

@@ -57,6 +57,10 @@ const DEFAULT_SETTINGS = {
   theme: 'dark',
   lastSymbol: 'BTCUSDT',
   lastTimeframe: '1h',
+  drawingDefaults: {
+    byTool: {},
+    autoColorEnabled: true,
+  },
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -89,11 +93,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const cryptoUserId = userResult.rows[0].id;
 
+    // One-time safe schema evolution for drawing defaults.
+    await pool.query(
+      `ALTER TABLE user_settings
+       ADD COLUMN IF NOT EXISTS drawing_defaults JSONB DEFAULT '{}'::jsonb`
+    );
+
     if (req.method === 'GET') {
       console.log(`📥 GET /api/users/settings - userId: ${cryptoUserId}`);
 
       const settingsResult = await pool.query(
-        `SELECT default_timeframe, chart_type, sidebar_collapsed, theme, last_symbol, last_timeframe
+        `SELECT default_timeframe, chart_type, sidebar_collapsed, theme, last_symbol, last_timeframe, drawing_defaults
          FROM user_settings WHERE user_id = $1`,
         [cryptoUserId]
       );
@@ -111,6 +121,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         theme: row.theme,
         lastSymbol: row.last_symbol,
         lastTimeframe: row.last_timeframe,
+        drawingDefaults: row.drawing_defaults || DEFAULT_SETTINGS.drawingDefaults,
       };
 
       console.log(`✅ Settings loaded for user ${cryptoUserId}`);
@@ -125,6 +136,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         theme,
         lastSymbol,
         lastTimeframe,
+        drawingDefaults,
       } = req.body;
 
       // Validate chart type
@@ -134,7 +146,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Load existing or use defaults
       const existingResult = await pool.query(
-        `SELECT default_timeframe, chart_type, sidebar_collapsed, theme, last_symbol, last_timeframe
+        `SELECT default_timeframe, chart_type, sidebar_collapsed, theme, last_symbol, last_timeframe, drawing_defaults
          FROM user_settings WHERE user_id = $1`,
         [cryptoUserId]
       );
@@ -147,13 +159,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         theme: theme ?? existing?.theme ?? DEFAULT_SETTINGS.theme,
         lastSymbol: lastSymbol ?? existing?.last_symbol ?? DEFAULT_SETTINGS.lastSymbol,
         lastTimeframe: lastTimeframe ?? existing?.last_timeframe ?? DEFAULT_SETTINGS.lastTimeframe,
+        drawingDefaults: drawingDefaults ?? existing?.drawing_defaults ?? DEFAULT_SETTINGS.drawingDefaults,
       };
 
       console.log(`💾 PUT /api/users/settings - userId: ${cryptoUserId}`);
 
       await pool.query(
-        `INSERT INTO user_settings (id, user_id, default_timeframe, chart_type, sidebar_collapsed, theme, last_symbol, last_timeframe, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+        `INSERT INTO user_settings (id, user_id, default_timeframe, chart_type, sidebar_collapsed, theme, last_symbol, last_timeframe, drawing_defaults, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW(), NOW())
          ON CONFLICT (user_id) DO UPDATE SET
            default_timeframe = EXCLUDED.default_timeframe,
            chart_type = EXCLUDED.chart_type,
@@ -161,6 +174,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
            theme = EXCLUDED.theme,
            last_symbol = EXCLUDED.last_symbol,
            last_timeframe = EXCLUDED.last_timeframe,
+           drawing_defaults = EXCLUDED.drawing_defaults,
            updated_at = NOW()`,
         [
           cryptoUserId,
@@ -170,6 +184,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           merged.theme,
           merged.lastSymbol,
           merged.lastTimeframe,
+          JSON.stringify(merged.drawingDefaults || DEFAULT_SETTINGS.drawingDefaults),
         ]
       );
 

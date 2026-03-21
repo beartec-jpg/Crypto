@@ -1,4 +1,4 @@
-import { Move, Settings, Trash2, Bell } from 'lucide-react';
+import { PenSquare, Settings, Trash2, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface DrawingQuickMenuProps {
@@ -53,8 +53,8 @@ export function DrawingQuickMenu({
               }}
               className="justify-start text-slate-300 hover:text-white hover:bg-slate-800"
             >
-              <Move className="h-4 w-4 mr-2" />
-              Move
+              <PenSquare className="h-4 w-4 mr-2" />
+              Edit / Move
             </Button>
           )}
           

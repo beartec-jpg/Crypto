@@ -10,6 +10,10 @@ export const DEFAULT_USER_SETTINGS: UserSettingsResponse = {
   theme: 'dark',
   lastSymbol: 'BTCUSDT',
   lastTimeframe: '1h',
+  drawingDefaults: {
+    byTool: {},
+    autoColorEnabled: true,
+  },
 };
 
 /**

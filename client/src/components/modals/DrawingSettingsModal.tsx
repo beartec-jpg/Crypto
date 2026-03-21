@@ -20,6 +20,10 @@ interface DrawingSettingsModalProps {
   onClose: () => void;
   drawing: Drawing | null;
   onUpdate: (updates: any) => void;
+  autoColorEnabled?: boolean;
+  onAutoColorChange?: (enabled: boolean) => void;
+  onSaveAsDefault?: (payload: { tool: string; style: any }) => void;
+  onResetDefault?: (tool: string) => void;
 }
 
 /**
@@ -31,7 +35,11 @@ export function DrawingSettingsModal({
   isOpen,
   onClose,
   drawing,
-  onUpdate
+  onUpdate,
+  autoColorEnabled,
+  onAutoColorChange,
+  onSaveAsDefault,
+  onResetDefault,
 }: DrawingSettingsModalProps) {
   if (!drawing) return null;
 
@@ -58,6 +66,10 @@ export function DrawingSettingsModal({
           drawing={drawing}
           onUpdate={onUpdate}
           onClose={onClose}
+          autoColorEnabled={autoColorEnabled}
+          onAutoColorChange={onAutoColorChange}
+          onSaveAsDefault={onSaveAsDefault}
+          onResetDefault={onResetDefault}
         />
       </DialogContent>
     </Dialog>
