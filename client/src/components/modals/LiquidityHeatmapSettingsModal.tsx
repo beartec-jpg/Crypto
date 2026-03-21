@@ -262,6 +262,63 @@ export function LiquidityHeatmapSettingsModal({
             </div>
           </div>
 
+          {/* Predictor */}
+          <div className="border-t border-slate-700 pt-2">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Pivot Predictor</p>
+
+            <SettingRow label="Enable Pivot + Volume Predictor">
+              <Switch
+                checked={settings.usePivotVolumePrediction}
+                onCheckedChange={(v) => update('usePivotVolumePrediction', v)}
+                className="data-[state=checked]:bg-blue-600"
+              />
+            </SettingRow>
+
+            {settings.usePivotVolumePrediction && (
+              <>
+                <SliderRow
+                  label="Pivot Lookback"
+                  value={settings.pivotLookback}
+                  min={2}
+                  max={12}
+                  step={1}
+                  displayValue={`${settings.pivotLookback} bars`}
+                  onChange={(v) => update('pivotLookback', Math.round(v))}
+                />
+
+                <SliderRow
+                  label="Min Confidence"
+                  value={settings.predictionMinConfidence}
+                  min={0}
+                  max={100}
+                  step={1}
+                  displayValue={`${settings.predictionMinConfidence}%`}
+                  onChange={(v) => update('predictionMinConfidence', Math.round(v))}
+                />
+
+                <SliderRow
+                  label="Top Prediction Points"
+                  value={settings.predictionTopNPoints}
+                  min={3}
+                  max={30}
+                  step={1}
+                  displayValue={String(settings.predictionTopNPoints)}
+                  onChange={(v) => update('predictionTopNPoints', Math.round(v))}
+                />
+
+                <SliderRow
+                  label="Price Grouping Threshold"
+                  value={settings.predictionPriceThresholdPct}
+                  min={0.1}
+                  max={2}
+                  step={0.1}
+                  displayValue={`${settings.predictionPriceThresholdPct.toFixed(1)}%`}
+                  onChange={(v) => update('predictionPriceThresholdPct', Number(v.toFixed(1)))}
+                />
+              </>
+            )}
+          </div>
+
           {/* Developer */}
           <div className="border-t border-slate-700 pt-2">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Developer</p>

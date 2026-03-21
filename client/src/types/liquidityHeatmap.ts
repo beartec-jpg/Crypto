@@ -27,6 +27,13 @@ export interface LiquidityHeatmapSettings {
   liqFlowWeight: number;   // Default: 0.2
   biasWeight: number;      // Default: 0.15
 
+  // Pivot + volume + liquidation predictor controls
+  usePivotVolumePrediction: boolean; // Enable confluence predictor mode - default: true
+  pivotLookback: number;             // Pivot swing lookback candles - default: 5
+  predictionMinConfidence: number;   // Minimum confidence threshold 0-100 - default: 40
+  predictionTopNPoints: number;      // Number of top prediction points to keep - default: 15
+  predictionPriceThresholdPct: number; // Price grouping threshold percent - default: 0.5
+
   // Layout
   position: SidebarPosition; // Sidebar position: 'left' | 'right'. If both indicators share a side, they entwine.
 
@@ -73,6 +80,11 @@ export const DEFAULT_LIQUIDITY_HEATMAP_SETTINGS: LiquidityHeatmapSettings = {
   refreshInterval: 60,
   liqFlowWeight: 0.2,
   biasWeight: 0.15,
+  usePivotVolumePrediction: true,
+  pivotLookback: 5,
+  predictionMinConfidence: 40,
+  predictionTopNPoints: 15,
+  predictionPriceThresholdPct: 0.5,
   position: 'right',
   showDebugPanel: false,
 };

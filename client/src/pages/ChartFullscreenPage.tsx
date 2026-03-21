@@ -702,7 +702,13 @@ export function ChartFullscreenPage({
     effectiveCandles,
     volumeProfileData,
     liquidityHeatmapDataResult?.data ?? null,
-    { minConfluenceScore: 40, topNPoints: 15 }
+    {
+      enabled: lhSettings.settings.usePivotVolumePrediction,
+      pivotLookback: lhSettings.settings.pivotLookback,
+      minConfluenceScore: lhSettings.settings.predictionMinConfidence,
+      topNPoints: lhSettings.settings.predictionTopNPoints,
+      priceThresholdPercent: lhSettings.settings.predictionPriceThresholdPct,
+    }
   );
 
   // Hooks - Trading Systems

@@ -212,6 +212,15 @@ export function LiquidityHeatmapDebugPanel({
               <section>
                 <p className="text-slate-500 uppercase tracking-wide mb-0.5">Pivot Analysis Predictions</p>
                 <Row
+                  label="Predictor"
+                  value={settings.usePivotVolumePrediction ? 'Enabled' : 'Disabled'}
+                  valueClass={settings.usePivotVolumePrediction ? 'text-emerald-300' : 'text-slate-400'}
+                />
+                <Row label="Pivot Lookback" value={String(settings.pivotLookback)} />
+                <Row label="Min Confidence" value={`${settings.predictionMinConfidence}%`} />
+                <Row label="Top N" value={String(settings.predictionTopNPoints)} />
+                <Row label="Threshold" value={`${settings.predictionPriceThresholdPct.toFixed(1)}%`} />
+                <Row
                   label="Direction"
                   value={`${liquidityPivotAnalysis.directionBias.toUpperCase()} (${liquidityPivotAnalysis.confidence}% confidence)`}
                   valueClass={

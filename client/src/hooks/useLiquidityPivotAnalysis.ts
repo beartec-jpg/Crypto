@@ -39,8 +39,11 @@ export interface LiquidationZone {
 
 interface UseOptions {
   priceThreshold?: number; // Price range to group nearby levels (default: 0.5% of price)
+  priceThresholdPercent?: number; // Percent threshold when absolute is not provided (default: 0.5)
   minConfluenceScore?: number; // Minimum confidence threshold (default: 40)
   topNPoints?: number; // Return top N points (default: 10)
+  pivotLookback?: number; // Swing detection lookback (default: 5)
+  enabled?: boolean; // Enable predictor (default: true)
 }
 
 /**
@@ -64,11 +67,18 @@ export function useLiquidityPivotAnalysis(
 } {
   const {
     priceThreshold = undefined, // Will be calculated as % of current price
+    priceThresholdPercent = 0.5,
     minConfluenceScore = 40,
     topNPoints = 10,
+    pivotLookback = 5,
+    enabled = true,
   } = options;
 
   return useMemo(() => {
+    if (!enabled) {
+      return { points: [], zones: [], directionBias: 'neutral', confidence: 0 };
+    }
+
     if (!liquidityHeatmap?.levels || liquidityHeatmap.levels.length === 0) {
       return { points: [], zones: [], directionBias: 'neutral', confidence: 0 };
     }
@@ -79,11 +89,10 @@ export function useLiquidityPivotAnalysis(
     }
 
     // Calculate dynamic price threshold if not provided
-    const threshold = priceThreshold ?? currentPrice * 0.005; // 0.5% of current price
+    const threshold = priceThreshold ?? currentPrice * (Math.max(0.01, priceThresholdPercent) / 100);
 
     // ================== STEP 1: DETECT PIVOT LEVELS ==================
-    const pivots = calculateSwings(candles, 5); // Find pivots with 5-candle lookback
-    const pivotPrices = new Set(pivots.map(p => p.value));
+    const pivots = calculateSwings(candles, Math.max(2, Math.floor(pivotLookback)));
     const pivotMap = new Map(
       pivots.map(p => [
         Math.round(p.value / threshold) * threshold, // Normalize to threshold
@@ -145,8 +154,8 @@ export function useLiquidityPivotAnalysis(
 
     // ================== STEP 3: CALCULATE METRICS ==================
     const totalLiquidity = liquidityHeatmap.levels.reduce(
-      (sum, lv) => sum + (lv.longLiquidation || 0) + (lv.shortLiquidation || 0),
-      0
+      (sum, lv) => sum + (lv.liquidationValue || 0),
+      0,
     );
     const totalVolume = volumeProfile?.totalVolume ?? 1;
     const avgVolume = totalVolume / (volumeProfile?.rows?.length ?? 1);
@@ -155,8 +164,14 @@ export function useLiquidityPivotAnalysis(
 
     for (const [, entry] of levelMap) {
       // Sum liquidation at this level
-      const longLiq = entry.liquidations.reduce((s, l) => s + (l.longLiquidation || 0), 0);
-      const shortLiq = entry.liquidations.reduce((s, l) => s + (l.shortLiquidation || 0), 0);
+      const longLiq = entry.liquidations.reduce(
+        (s, l) => s + (l.side === 'long' ? l.liquidationValue || 0 : 0),
+        0,
+      );
+      const shortLiq = entry.liquidations.reduce(
+        (s, l) => s + (l.side === 'short' ? l.liquidationValue || 0 : 0),
+        0,
+      );
       const totalLiq = longLiq + shortLiq;
 
       // Determine direction (which side has more liquidity)
@@ -201,7 +216,10 @@ export function useLiquidityPivotAnalysis(
           Math.min(100, directionalBias) * weights.direction
       );
 
-      const isPOC = volumeProfile?.poc && Math.abs(entry.price - volumeProfile.poc) < threshold * 1.5;
+      const isPOC = Boolean(
+        volumeProfile?.poc !== undefined &&
+        Math.abs(entry.price - volumeProfile.poc) < threshold * 1.5,
+      );
 
       if (confidence >= minConfluenceScore) {
         points.push({
@@ -215,7 +233,7 @@ export function useLiquidityPivotAnalysis(
             directionalBias: Math.min(100, directionalBias),
           },
           isPivot,
-          isPOC: isPOC ?? false,
+          isPOC,
           volumeAtPrice: entry.volumeAtPrice,
           liquidationAtPrice: totalLiq,
           longLiquidation: longLiq,
@@ -265,7 +283,17 @@ export function useLiquidityPivotAnalysis(
       directionBias: overallDirection,
       confidence: overallConfidence,
     };
-  }, [candles, volumeProfile, liquidityHeatmap, minConfluenceScore, topNPoints, priceThreshold]);
+  }, [
+    candles,
+    volumeProfile,
+    liquidityHeatmap,
+    minConfluenceScore,
+    topNPoints,
+    priceThreshold,
+    priceThresholdPercent,
+    pivotLookback,
+    enabled,
+  ]);
 }
 
 /**
