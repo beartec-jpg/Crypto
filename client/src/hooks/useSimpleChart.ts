@@ -26,7 +26,7 @@ export function useSimpleChart({ containerRef, symbol, timeframe }: UseSimpleCha
         horzLines: { color: '#1e293b' },
       },
       width: containerRef.current.clientWidth,
-      height: 400,
+      height: containerRef.current.clientHeight,
       timeScale: {
         rightOffset: 5,
         barSpacing: 6,
@@ -78,6 +78,7 @@ export function useSimpleChart({ containerRef, symbol, timeframe }: UseSimpleCha
       if (containerRef.current && chartRef.current) {
         chartRef.current.applyOptions({
           width: containerRef.current.clientWidth,
+          height: containerRef.current.clientHeight,
         });
       }
     };

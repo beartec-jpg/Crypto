@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
 import { VideoSequencePlayer } from '@/components/trading/VideoSequencePlayer';
@@ -18,16 +18,26 @@ export default function CryptoIndicatorsClean() {
   usePageViewTracking('Crypto Indicators');
   
   const [, navigate] = useLocation();
+  const [selectedSymbol, setSelectedSymbol] = useState(DEFAULT_SYMBOL);
+  const [selectedTimeframe, setSelectedTimeframe] = useState(DEFAULT_TIMEFRAME);
   
   // Video player demo state
   const { targetMarketState, isInitialLoad, setIsInitialLoad } = useMarketStateDemo();
 
   // Fetch candle and CVD data
-  // TODO: Connect to watchlist selection state
   const { candles, cvdData, externalMetrics } = useIndicatorsData({
-    symbol: DEFAULT_SYMBOL,
-    timeframe: DEFAULT_TIMEFRAME,
+    symbol: selectedSymbol,
+    timeframe: selectedTimeframe,
   });
+
+  const handleSelectionChange = useCallback((context: {
+    symbol: string;
+    timeframe: string;
+    watchlist: string[];
+  }) => {
+    setSelectedSymbol(context.symbol);
+    setSelectedTimeframe(context.timeframe);
+  }, []);
 
   // Handler to expand chart to fullscreen - navigate to chart page
   const handleExpandChart = useCallback((context: { 
@@ -78,10 +88,16 @@ export default function CryptoIndicatorsClean() {
             </div>
 
           {/* Watchlist Section */}
-          <CleanWatchlist onExpandChart={handleExpandChart} />
+          <CleanWatchlist onExpandChart={handleExpandChart} onSelectionChange={handleSelectionChange} />
 
           {/* Indicators Section (Oscillators + CVD) */}
-          <IndicatorsSection candles={candles} cvdData={cvdData} externalMetrics={externalMetrics} symbol={DEFAULT_SYMBOL} />
+          <IndicatorsSection
+            candles={candles}
+            cvdData={cvdData}
+            externalMetrics={externalMetrics}
+            symbol={selectedSymbol}
+            showPatternBacktest={false}
+          />
           </div>
 
           {/* Bottom Navigation */}

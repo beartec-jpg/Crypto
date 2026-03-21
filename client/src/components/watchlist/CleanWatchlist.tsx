@@ -13,6 +13,11 @@ interface CleanWatchlistProps {
     timeframe: string;
     watchlist: string[];
   }) => void;
+  onSelectionChange?: (context: {
+    symbol: string;
+    timeframe: string;
+    watchlist: string[];
+  }) => void;
 }
 
 /**
@@ -23,7 +28,7 @@ interface CleanWatchlistProps {
  * - Shows bias settings in a modal triggered from TickerTable header
  * - Keeps CryptoIndicatorsClean free of inline handlers / watchlist logic
  */
-export function CleanWatchlist({ onExpandChart }: CleanWatchlistProps = { onExpandChart: undefined }) {
+export function CleanWatchlist({ onExpandChart, onSelectionChange }: CleanWatchlistProps = { onExpandChart: undefined, onSelectionChange: undefined }) {
   const watchlist = useWatchlistState();
   const biasSettings = useWatchlistBiasSettings();
 
@@ -102,6 +107,14 @@ export function CleanWatchlist({ onExpandChart }: CleanWatchlistProps = { onExpa
       watchlist: watchlist.watchlistTickers
     });
   }, [selectedSymbol, tableTimeframe, watchlist.watchlistTickers, onExpandChart]);
+
+  useEffect(() => {
+    onSelectionChange?.({
+      symbol: selectedSymbol,
+      timeframe: tableTimeframe,
+      watchlist: watchlist.watchlistTickers,
+    });
+  }, [selectedSymbol, tableTimeframe, watchlist.watchlistTickers, onSelectionChange]);
 
   // ----- Render -----
 

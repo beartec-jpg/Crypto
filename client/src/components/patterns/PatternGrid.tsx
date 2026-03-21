@@ -43,12 +43,11 @@ export function PatternCard({ item, expanded, onToggle }: PatternCardProps) {
         {result.score}
       </div>
 
-      {/* Pattern name and stage */}
+      {/* Pattern name */}
       <div className="mt-2 text-center">
         <div className="text-sm font-semibold text-white leading-snug">
           {definition.emoji} {definition.name}
         </div>
-        <div className="text-xs text-slate-400 mt-0.5">{result.stageName}</div>
       </div>
 
       {/* Expanded details (in-place) */}

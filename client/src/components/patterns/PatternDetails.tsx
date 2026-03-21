@@ -9,14 +9,6 @@ function renderStageBars(stage: number): string {
   return `${'▰'.repeat(filled)}${'▱'.repeat(5 - filled)}`;
 }
 
-function confidenceClass(confidence: number): string {
-  if (confidence >= 80) return 'bg-green-500';
-  if (confidence >= 60) return 'bg-emerald-500';
-  if (confidence >= 40) return 'bg-yellow-500';
-  if (confidence >= 25) return 'bg-orange-500';
-  return 'bg-slate-500';
-}
-
 export function PatternDetails({ item }: PatternDetailsProps) {
   const { definition, result } = item;
   const isActive = result.score > 70;
@@ -25,10 +17,7 @@ export function PatternDetails({ item }: PatternDetailsProps) {
     <div className="mt-3 border-t border-slate-700/60 pt-3 space-y-2.5">
       {/* Stage progress */}
       <div>
-        <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
-          <span>Stage Progress</span>
-          <span>{result.stageName}</span>
-        </div>
+        <div className="text-[11px] text-slate-400 mb-1">Stage Progress</div>
         <div className="text-base text-slate-300 font-mono tracking-widest">
           {renderStageBars(result.stage)}
         </div>
@@ -72,25 +61,6 @@ export function PatternDetails({ item }: PatternDetailsProps) {
             </div>
           ))}
         </div>
-      </div>
-
-      {/* Confidence bar */}
-      <div>
-        <div className="flex items-center justify-between text-[11px] text-slate-400">
-          <span>Confidence</span>
-          <span>{result.confidence}%</span>
-        </div>
-        <div className="mt-1 h-1.5 rounded-full bg-slate-800 overflow-hidden">
-          <div
-            className={`h-full ${confidenceClass(result.confidence)}`}
-            style={{ width: `${Math.max(0, Math.min(100, result.confidence))}%` }}
-          />
-        </div>
-      </div>
-
-      {/* Prerequisites */}
-      <div className={`text-[11px] ${result.prerequisitesMet ? 'text-emerald-400' : 'text-slate-500'}`}>
-        {result.prerequisitesMet ? '✓ Prerequisites met' : '✗ Prerequisites not met'}
       </div>
 
       {/* Active recommendation */}
