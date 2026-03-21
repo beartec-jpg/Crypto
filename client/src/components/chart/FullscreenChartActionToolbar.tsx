@@ -6,6 +6,7 @@ import { TradingSystemsMenu } from '@/components/tradingSystems/TradingSystemsMe
 import type { TradingSystemId } from '@/types/tradingSystems';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { Eye, EyeOff } from 'lucide-react';
 
 interface ConfluenceSnapshot {
   score: number;
@@ -62,6 +63,9 @@ interface FullscreenChartActionToolbarProps {
   onOpenSuperTrendSettings: () => void;
 
   onToggleDrawingMode: () => void;
+  drawingsVisible: boolean;
+  onToggleDrawingsVisible: () => void;
+  onDisableAllIndicators: () => void;
 
   canUndo: boolean;
   onUndo: () => void;
@@ -132,6 +136,9 @@ export function FullscreenChartActionToolbar({
   onToggleSuperTrend,
   onOpenSuperTrendSettings,
   onToggleDrawingMode,
+  drawingsVisible,
+  onToggleDrawingsVisible,
+  onDisableAllIndicators,
   canUndo,
   onUndo,
   canRedo,
@@ -239,6 +246,32 @@ export function FullscreenChartActionToolbar({
         data-testid="btn-drawing-toggle"
       >
         {activeTool ? 'Drawing: ON' : 'Drawing: OFF'}
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onToggleDrawingsVisible}
+        className={cn(
+          'px-2 py-1 text-xs font-semibold transition-all',
+          drawingsVisible
+            ? 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
+            : 'bg-amber-600 text-white hover:bg-amber-500'
+        )}
+        title={drawingsVisible ? 'Hide all drawings' : 'Show all drawings'}
+      >
+        {drawingsVisible ? <EyeOff className="mr-1 h-4 w-4" /> : <Eye className="mr-1 h-4 w-4" />}
+        {drawingsVisible ? 'Hide Drawings' : 'Show Drawings'}
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onDisableAllIndicators}
+        className="px-2 py-1 text-xs font-semibold bg-slate-800/90 text-gray-300 hover:bg-slate-700"
+        title="Turn all indicators and oscillators off"
+      >
+        Indicators Off
       </Button>
 
       <Button

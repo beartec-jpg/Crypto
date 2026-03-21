@@ -56,6 +56,13 @@ export function LiquidityHeatmapDebugPanel({
 
   const longLevels = data?.levels.filter((l) => l.side === 'long') ?? [];
   const shortLevels = data?.levels.filter((l) => l.side === 'short') ?? [];
+  const primaryTarget = data?.targetLevels?.find((level) => level.type === 'primary') ?? null;
+  const secondaryTarget = data?.targetLevels?.find((level) => level.type === 'secondary') ?? null;
+  const pressureScore = Number(data?.directionScore ?? debugInfo.stats.directionScore ?? 50);
+  const pressureLabel = pressureScore >= 50
+    ? `${pressureScore.toFixed(1)} LONG pressure`
+    : `${(100 - pressureScore).toFixed(1)} SHORT pressure`;
+  const isFallbackPressure = !data?.targetLevels?.length || !Number.isFinite(Number(data?.directionScore));
 
   let statusIcon = '⏳';
   let statusText = 'Loading…';
@@ -87,7 +94,7 @@ export function LiquidityHeatmapDebugPanel({
     >
       {/* Header / toggle */}
       <button
-        onClick={() => setCollapsed((c) => !c)}
+        onClick={() => setCollapsed((c: boolean) => !c)}
         className="w-full flex items-center justify-between px-2 py-1 rounded-t bg-slate-900/90 border border-slate-600 text-slate-200 hover:bg-slate-800/90 transition-colors"
         title={collapsed ? 'Expand debug panel' : 'Collapse debug panel'}
       >
@@ -141,12 +148,31 @@ export function LiquidityHeatmapDebugPanel({
                 />
                 <Row label="Total Long" value={formatValue(data.totalLongLiquidation)} valueClass="text-red-400" />
                 <Row label="Total Short" value={formatValue(data.totalShortLiquidation)} valueClass="text-green-400" />
-                <Row label="Direction" value={`${Number(data.directionScore ?? debugInfo.stats.directionScore ?? 50).toFixed(1)} / 100`} />
+                <Row label="Pressure" value={pressureLabel} />
+                <Row
+                  label="Pressure Mode"
+                  value={isFallbackPressure ? 'Derived from visible levels' : 'Backend supplied'}
+                  valueClass={isFallbackPressure ? 'text-yellow-300' : 'text-slate-200'}
+                />
                 {data.maxLongPrice > 0 && (
                   <Row label="Max Long @" value={`$${data.maxLongPrice.toLocaleString()}`} valueClass="text-red-400" />
                 )}
                 {data.maxShortPrice > 0 && (
                   <Row label="Max Short @" value={`$${data.maxShortPrice.toLocaleString()}`} valueClass="text-green-400" />
+                )}
+                {primaryTarget && (
+                  <Row
+                    label="Primary Target"
+                    value={`${primaryTarget.side.toUpperCase()} @ $${primaryTarget.price.toLocaleString()} (${formatValue(primaryTarget.liquidationValue)})`}
+                    valueClass="text-amber-300"
+                  />
+                )}
+                {secondaryTarget && (
+                  <Row
+                    label="Secondary Target"
+                    value={`${secondaryTarget.side.toUpperCase()} @ $${secondaryTarget.price.toLocaleString()} (${formatValue(secondaryTarget.liquidationValue)})`}
+                    valueClass="text-teal-300"
+                  />
                 )}
                 <Row label="Data Age" value={timeAgo(data.lastUpdated)} />
               </>

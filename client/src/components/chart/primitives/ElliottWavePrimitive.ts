@@ -134,11 +134,6 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
 
           const dotColor = c.isMidAir ? '#f97316' : color;
 
-          ctx.fillStyle = dotColor;
-          ctx.beginPath();
-          ctx.arc(c.x, c.y, FINAL_POINT_RADIUS, 0, Math.PI * 2);
-          ctx.fill();
-
           const isHigh = isUptrend ? (i % 2 === 1) : (i % 2 === 0);
 
           ctx.fillStyle = dotColor;
@@ -170,12 +165,7 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
           
           const dotColor = c.isMidAir ? '#f97316' : color;
           const isHigh = isUptrend ? (finalIndex % 2 === 1) : (finalIndex % 2 === 0);
-          
-          ctx.fillStyle = dotColor;
-          ctx.beginPath();
-          ctx.arc(c.x, c.y, FINAL_POINT_RADIUS, 0, Math.PI * 2);
-          ctx.fill();
-          
+
           ctx.fillStyle = dotColor;
           ctx.strokeStyle = LABEL_STROKE_COLOR;
           ctx.lineWidth = LABEL_STROKE_WIDTH;

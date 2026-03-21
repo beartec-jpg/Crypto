@@ -67,6 +67,7 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
     target.useMediaCoordinateSpace((scope: any) => {
       const ctx: CanvasRenderingContext2D = scope.context;
       const chartWidth: number = scope.mediaSize.width;
+      const chartHeight: number = scope.mediaSize.height;
       const profileWidth = Math.max(72, Math.min(220, Math.floor(chartWidth * (this._profileWidthPercent / 100))));
       const sidebarStart = this._profileSide === 'right' ? chartWidth - profileWidth : 0;
       const isSharedSidebar = this._stackSection !== 'full';
@@ -98,9 +99,23 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
         const arrow = primaryTarget.side === 'long' ? '▼' : '▲';
         const label = `${arrow} LIQ TARGET ${formatUsdCompact(primaryTarget.liquidationValue)}`;
         ctx.font = 'bold 9px sans-serif';
+        const textWidth = ctx.measureText(label).width;
+        const textPaddingX = 4;
+        const textPaddingY = 2;
+        const textHeight = 11;
+        const rawLabelY = y - 7;
+        const labelY = Math.max(textHeight + 2, Math.min(chartHeight - 4, rawLabelY));
+        const textX = isRightSide ? laneEnd - 4 : laneStart + 4;
+        const bgWidth = textWidth + textPaddingX * 2;
+        const bgHeight = textHeight + textPaddingY * 2;
+        const bgX = isRightSide ? textX - textWidth - textPaddingX : textX - textPaddingX;
+        const bgY = labelY - textHeight;
+
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+        ctx.fillRect(bgX, bgY - textPaddingY, bgWidth, bgHeight);
         ctx.fillStyle = 'rgba(254, 243, 199, 0.98)';
         ctx.textAlign = isRightSide ? 'right' : 'left';
-        ctx.fillText(label, isRightSide ? laneEnd - 4 : laneStart + 4, y - 7);
+        ctx.fillText(label, textX, labelY);
         ctx.restore();
       };
 
@@ -123,9 +138,20 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
         const sideCode = secondaryTarget.side === 'short' ? 'S' : 'L';
         const label = `${arrow} ${sideCode} ${formatUsdCompact(secondaryTarget.liquidationValue)}`;
         ctx.font = 'bold 9px sans-serif';
+        const textWidth = ctx.measureText(label).width;
+        const rawLabelY = y - 5;
+        const labelY = Math.max(11, Math.min(chartHeight - 4, rawLabelY));
+        const textX = isRightSide ? laneEnd - 4 : laneStart + 4;
+        const bgWidth = textWidth + 8;
+        const bgHeight = 15;
+        const bgX = isRightSide ? textX - textWidth - 4 : textX - 4;
+        const bgY = labelY - 11;
+
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+        ctx.fillRect(bgX, bgY, bgWidth, bgHeight);
         ctx.fillStyle = 'rgba(153, 246, 228, 0.92)';
         ctx.textAlign = isRightSide ? 'right' : 'left';
-        ctx.fillText(label, isRightSide ? laneEnd - 4 : laneStart + 4, y - 5);
+        ctx.fillText(label, textX, labelY);
         ctx.restore();
       };
 

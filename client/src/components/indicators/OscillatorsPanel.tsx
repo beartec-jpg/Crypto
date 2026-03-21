@@ -59,7 +59,20 @@ interface ADXData {
 
 interface OscillatorsPanelProps {
   candles: Candle[];
+  activeOscillators?: string[];
+  onActiveOscillatorsChange?: (oscillators: string[]) => void;
 }
+
+export const OSCILLATOR_OPTIONS = [
+  { id: 'rsi', label: 'RSI' },
+  { id: 'macd', label: 'MACD' },
+  { id: 'obv', label: 'OBV' },
+  { id: 'stochRSI', label: 'Stochastic RSI' },
+  { id: 'mfi', label: 'MFI' },
+  { id: 'williamsR', label: 'Williams %R' },
+  { id: 'cci', label: 'CCI' },
+  { id: 'adx', label: 'ADX' },
+] as const;
 
 // Divergence meter constants
 const DIVERGENCE_MAX_STRENGTH = 3;
@@ -73,9 +86,14 @@ const DIVERGENCE_INDICATOR_RADIUS = 6;
  * - Renders oscillator panels with close buttons
  * - Includes divergence detection for RSI, MACD, OBV
  */
-export function OscillatorsPanel({ candles }: OscillatorsPanelProps) {
+export function OscillatorsPanel({
+  candles,
+  activeOscillators: controlledOscillators,
+  onActiveOscillatorsChange,
+}: OscillatorsPanelProps) {
   // Show RSI and MACD by default
-  const [activeOscillators, setActiveOscillators] = useState<string[]>(['rsi', 'macd']);
+  const [internalOscillators, setInternalOscillators] = useState<string[]>(['rsi', 'macd']);
+  const activeOscillators = controlledOscillators ?? internalOscillators;
 
   // Calculate all oscillators from candles
   const calculatedData = {
@@ -90,11 +108,16 @@ export function OscillatorsPanel({ candles }: OscillatorsPanelProps) {
   };
 
   const toggleOscillator = (id: string) => {
-    setActiveOscillators(prev => 
-      prev.includes(id) 
-        ? prev.filter(o => o !== id)
-        : [...prev, id]
-    );
+    const nextOscillators = activeOscillators.includes(id)
+      ? activeOscillators.filter((oscillatorId) => oscillatorId !== id)
+      : [...activeOscillators, id];
+
+    if (onActiveOscillatorsChange) {
+      onActiveOscillatorsChange(nextOscillators);
+      return;
+    }
+
+    setInternalOscillators(nextOscillators);
   };
 
   // Divergence detection
@@ -452,6 +475,12 @@ export function OscillatorsPanel({ candles }: OscillatorsPanelProps) {
               />
             </div>
           )}
+        </div>
+      )}
+
+      {activeOscillators.length === 0 && (
+        <div className="rounded-lg border border-dashed border-slate-700 bg-slate-800/50 px-4 py-6 text-center text-sm text-slate-400">
+          Select one or more oscillators from the dropdown to display them here.
         </div>
       )}
     </>

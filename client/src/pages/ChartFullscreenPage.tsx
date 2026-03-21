@@ -1781,6 +1781,73 @@ export function ChartFullscreenPage({
     activeToolRef.current = null;
   }, []);
 
+  const handleToggleDrawingsVisible = useCallback(() => {
+    setDrawingsVisible((visible: boolean) => !visible);
+  }, []);
+
+  const handleDisableAllIndicators = useCallback(() => {
+    indicators.ema.setShow(false);
+    indicators.sma.setShow(false);
+    indicators.bb.setShow(false);
+    indicators.vwap.setShowSession(false);
+    indicators.vwap.setShowDaily(false);
+    indicators.vwap.setShowWeekly(false);
+    indicators.vwap.setShowMonthly(false);
+    indicators.vwap.setShowRolling(false);
+    indicators.elderImpulse.setShow(false);
+    indicators.rsi.setShow(false);
+    indicators.macd.setShow(false);
+    indicators.stochRSI.setShow(false);
+    indicators.obv.setShow(false);
+    indicators.mfi.setShow(false);
+    indicators.williamsR.setShow(false);
+    indicators.cci.setShow(false);
+    indicators.adx.setShow(false);
+
+    ALL_OSCILLATOR_IDS.forEach((oscillatorId) => {
+      oscillatorPanel.toggleOscillator(oscillatorId, false);
+    });
+
+    setDivergenceScannerEnabled(false);
+    fvgSettings.updateSetting('enabled', false);
+    obSettings.updateSetting('enabled', false);
+    breakerSettings.updateSetting('enabled', false);
+    bosSettings.updateSetting('enabled', false);
+    liquiditySettings.updateSetting('enabled', false);
+    pdZoneSettings.updateSetting('enabled', false);
+    autoFibSettings.updateSettings({ enabled: false });
+    superTrendSettings.updateSettings({
+      standard: { ...superTrendSettings.settings.standard, enabled: false },
+      adx: { ...superTrendSettings.settings.adx, enabled: false },
+      keltner: { ...superTrendSettings.settings.keltner, enabled: false },
+    });
+    vpSettings.updateSettings({ enabled: false });
+    lhSettings.updateSettings({ enabled: false });
+    htfBiasSettings.updateSetting('enabled', false);
+    setShowGdsMiniBadge(false);
+
+    toast({
+      title: 'Indicators disabled',
+      description: 'All chart indicators and oscillators were turned off.',
+    });
+  }, [
+    indicators,
+    oscillatorPanel,
+    setDivergenceScannerEnabled,
+    fvgSettings,
+    obSettings,
+    breakerSettings,
+    bosSettings,
+    liquiditySettings,
+    pdZoneSettings,
+    autoFibSettings,
+    superTrendSettings,
+    vpSettings,
+    lhSettings,
+    htfBiasSettings,
+    toast,
+  ]);
+
   const waveSelection = useWaveSelection({
     drawings,
     candles: candles as Array<{ time: number }>,
@@ -2186,6 +2253,9 @@ export function ChartFullscreenPage({
               activeToolRef.current = 'trendline';
             }
           }}
+          drawingsVisible={drawingsVisible}
+          onToggleDrawingsVisible={handleToggleDrawingsVisible}
+          onDisableAllIndicators={handleDisableAllIndicators}
           canUndo={canUndo}
           onUndo={handleUndo}
           canRedo={canRedo}

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { createSeriesMarkers, type ISeriesMarkersPluginApi, type Time } from 'lightweight-charts';
+import type { ISeriesMarkersPluginApi, Time } from 'lightweight-charts';
 import { ElliottWavePrimitive } from '@/components/chart/primitives/ElliottWavePrimitive';
 import { getDegreeConfiguration } from '@/components/elliottWave/DegreePicker';
 import type { Drawing } from '@/types/drawing';
@@ -33,43 +33,12 @@ export function useElliottWaveRendering({
   const savedEWPrimitivesRef = useRef<Map<string, ElliottWavePrimitive>>(new Map());
 
   useEffect(() => {
-    if (!candleSeriesRef.current || !elliottWave.isActive) {
-      seriesMarkersRef.current?.setMarkers([]);
-      return;
-    }
-
-    const points = elliottWave.points;
-    if (points.length === 0) {
-      seriesMarkersRef.current?.setMarkers([]);
-      return;
-    }
-
-    if (!seriesMarkersRef.current) {
-      seriesMarkersRef.current = createSeriesMarkers(candleSeriesRef.current, []);
-    }
-
-    if (candles.length === 0) {
-      seriesMarkersRef.current.setMarkers([]);
-      return;
-    }
-
-    const lastCandleTime = candles[candles.length - 1].time as number;
-    const markers = points
-      .filter(point => (point.time as number) <= lastCandleTime)
-      .map(point => ({
-        time: point.time as Time,
-        position: 'aboveBar' as 'aboveBar' | 'belowBar',
-        color: '#00CED1',
-        shape: 'circle' as const,
-        size: 2,
-      }));
-
-    seriesMarkersRef.current.setMarkers(markers);
+    seriesMarkersRef.current?.setMarkers([]);
 
     return () => {
       seriesMarkersRef.current?.setMarkers([]);
     };
-  }, [elliottWave.points, elliottWave.isActive, candles, candleSeriesRef]);
+  }, [elliottWave.points, elliottWave.isActive]);
 
   useEffect(() => {
     const series = candleSeriesRef.current;

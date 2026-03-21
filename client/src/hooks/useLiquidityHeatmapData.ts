@@ -5,6 +5,73 @@ import { fetchPredictiveLiquidationProfile } from '@/services/predictiveLiquidat
 import type { EndpointDiagnostic } from '@/services/predictiveLiquidationApi';
 import { mapChartIntervalToRange } from '@/lib/liquidityTimeframeMapping';
 
+function deriveDirectionScore(totalLongLiquidation: number, totalShortLiquidation: number): number {
+  const combined = totalLongLiquidation + totalShortLiquidation;
+  if (combined <= 0) return 50;
+  return Math.max(0, Math.min(100, (totalLongLiquidation / combined) * 100));
+}
+
+function deriveTargetLevels(levels: LiquidityLevel[]): LiquidityHeatmapData['targetLevels'] {
+  if (levels.length === 0) return [];
+
+  let maxLong: LiquidityLevel | null = null;
+  let maxShort: LiquidityLevel | null = null;
+  let totalLong = 0;
+  let totalShort = 0;
+
+  for (const level of levels) {
+    if (level.side === 'long') {
+      totalLong += level.liquidationValue;
+      if (!maxLong || level.liquidationValue > maxLong.liquidationValue) {
+        maxLong = level;
+      }
+    } else {
+      totalShort += level.liquidationValue;
+      if (!maxShort || level.liquidationValue > maxShort.liquidationValue) {
+        maxShort = level;
+      }
+    }
+  }
+
+  const directionScore = deriveDirectionScore(totalLong, totalShort);
+  const primarySide = directionScore >= 50 ? 'long' : 'short';
+  const primaryBase = primarySide === 'long' ? maxLong : maxShort;
+  const secondaryBase = primarySide === 'long' ? maxShort : maxLong;
+
+  return [
+    primaryBase
+      ? {
+          ...primaryBase,
+          type: 'primary',
+          score: directionScore,
+        }
+      : null,
+    secondaryBase
+      ? {
+          ...secondaryBase,
+          type: 'secondary',
+          score: directionScore,
+        }
+      : null,
+  ].filter((level): level is NonNullable<LiquidityHeatmapData['targetLevels']>[number] => Boolean(level));
+}
+
+function enhanceHeatmapData(data: LiquidityHeatmapData): LiquidityHeatmapData {
+  const directionScore = Number.isFinite(Number(data.directionScore))
+    ? Number(data.directionScore)
+    : deriveDirectionScore(data.totalLongLiquidation, data.totalShortLiquidation);
+
+  const inScopeTargets = (data.targetLevels ?? []).filter((target) =>
+    data.levels.some((level) => level.side === target.side && level.price === target.price),
+  );
+
+  return {
+    ...data,
+    directionScore,
+    targetLevels: inScopeTargets.length > 0 ? inScopeTargets : deriveTargetLevels(data.levels),
+  };
+}
+
 export interface LiquidityHeatmapDebugInfo {
   lastRequestUrl: string;
   lastRequestTime: number | null;
@@ -209,7 +276,7 @@ export function useLiquidityHeatmapData(
       }
     }
 
-    return {
+    return enhanceHeatmapData({
       levels,
       targetLevels: rawData.targetLevels,
       directionScore: rawData.directionScore,
@@ -218,7 +285,7 @@ export function useLiquidityHeatmapData(
       totalLongLiquidation,
       totalShortLiquidation,
       lastUpdated: rawData.lastUpdated,
-    };
+    });
   }, [rawData, candles, visibleRange]);
 
   // Trigger fetch when enabled or key settings change
@@ -263,5 +330,12 @@ export function useLiquidityHeatmapData(
     };
   }, [settings.enabled, settings.autoRefresh, settings.refreshInterval, fetchData]);
 
-  return { data, isLoading, error, refetch: fetchData, effectiveRange: requestRange, debugInfo };
+  return {
+    data: data ? enhanceHeatmapData(data) : null,
+    isLoading,
+    error,
+    refetch: fetchData,
+    effectiveRange: requestRange,
+    debugInfo,
+  };
 }
