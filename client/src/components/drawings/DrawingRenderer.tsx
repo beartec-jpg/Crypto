@@ -19,6 +19,7 @@ interface DrawingRendererProps {
   /** Called instead of standard drawing logic when tool is 'elliott_wave' */
   onElliottWavePoint?: (point: GesturePoint) => void;
   drawingDefaultsByTool?: Record<string, any>;
+  onDrawingComplete?: (tool: Exclude<ChartDrawingTool, null>) => void;
 }
 
 export function DrawingRenderer({
@@ -34,8 +35,13 @@ export function DrawingRenderer({
   onPointCommitRef,
   onElliottWavePoint,
   drawingDefaultsByTool,
+  onDrawingComplete,
 }: DrawingRendererProps) {
   const { toast } = useToast();
+
+  const finishDrawing = useCallback((tool: Exclude<ChartDrawingTool, null>) => {
+    queueMicrotask(() => onDrawingComplete?.(tool));
+  }, [onDrawingComplete]);
 
   // Handle point commit from gesture controller
   const handlePointCommit = useCallback((point: GesturePoint) => {
@@ -80,6 +86,10 @@ export function DrawingRenderer({
       console.log('[Renderer] Calling saveDrawingMutation.mutate');
       saveDrawingMutation.mutate(newDrawing);
       toast({ title: 'Drawing Saved', description: `${currentTool === 'text' ? 'text label' : 'horizontal line'} added to chart` });
+
+      if (currentTool === 'text') {
+        finishDrawing(currentTool);
+      }
       
       // Don't accumulate points for single-point tools
       return;
@@ -130,6 +140,10 @@ export function DrawingRenderer({
         console.log('[Renderer] Calling saveDrawingMutation.mutate');
         saveDrawingMutation.mutate(newDrawing);
         toast({ title: 'Drawing Saved', description: `${currentTool.replace('_', ' ')} added to chart` });
+
+        if (currentTool === 'fib_retracement' || currentTool === 'trend_fib') {
+          finishDrawing(currentTool);
+        }
         
         // Reset for next drawing
         return { points: [] };
@@ -137,7 +151,7 @@ export function DrawingRenderer({
       
       return { points: newPoints };
     });
-  }, [drawingMode, activeToolRef, autoColorEnabledRef, candles, setTempDrawing, setDrawings, saveDrawingMutation, onElliottWavePoint, drawingDefaultsByTool, toast]);
+  }, [drawingMode, activeToolRef, autoColorEnabledRef, candles, setTempDrawing, setDrawings, saveDrawingMutation, onElliottWavePoint, drawingDefaultsByTool, toast, finishDrawing]);
 
   // Expose handlePointCommit through ref if provided
   useEffect(() => {

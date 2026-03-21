@@ -1769,6 +1769,18 @@ export function ChartFullscreenPage({
     });
   }, [drawingInteraction.selectedDrawingId, toast]);
 
+  const handleDrawingComplete = useCallback((tool: Exclude<ChartDrawingTool, null>) => {
+    const repeatPlaceTools: ChartDrawingTool[] = ['trendline', 'horizontal', 'rectangle', 'channel'];
+    setTempDrawing(null);
+
+    if (repeatPlaceTools.includes(tool)) {
+      return;
+    }
+
+    setActiveTool(null);
+    activeToolRef.current = null;
+  }, []);
+
   const waveSelection = useWaveSelection({
     drawings,
     candles: candles as Array<{ time: number }>,
@@ -2327,6 +2339,7 @@ export function ChartFullscreenPage({
           saveDrawingMutation={{ mutate: saveDrawingWithUndo }}
           onPointCommitRef={onPointCommitRef}
           drawingDefaultsByTool={drawingDefaultsByTool}
+          onDrawingComplete={handleDrawingComplete}
           onElliottWavePoint={elliottWave.isActive && elliottWave.isDrawing
             ? (p: GesturePoint) => {
                 elliottWave.placePoint(p.time as number, p.price, p.snapType);
