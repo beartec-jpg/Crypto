@@ -74,6 +74,7 @@ export function useLiquidityHeatmapData(
   });
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fetchCountRef = useRef(0);
+  const requestGenerationRef = useRef(0);
 
   // Determine effective range: auto-mapped from chart interval or manual override
   const effectiveRange: CoinglassRange = useMemo(
@@ -115,6 +116,7 @@ export function useLiquidityHeatmapData(
   const fetchData = useCallback(async () => {
     if (!settings.enabled || !symbol) return;
 
+    const generation = ++requestGenerationRef.current;
     setIsLoading(true);
     setError(null);
     try {
@@ -124,6 +126,10 @@ export function useLiquidityHeatmapData(
         liqFlowWeight: settings.liqFlowWeight,
         biasWeight: settings.biasWeight,
       }, anchorTime, visiblePriceBounds, visibleRange || undefined, chartInterval);
+
+      // Ignore stale responses from older overlapping requests.
+      if (generation !== requestGenerationRef.current) return;
+
       setRawData(result.data);
       setDebugInfo({
         lastRequestUrl: `${result.requestUrl}&source=${result.source}`,
@@ -142,8 +148,10 @@ export function useLiquidityHeatmapData(
         diagnostics: result.debugStats.diagnostics,
       });
     } catch (e) {
+      if (generation !== requestGenerationRef.current) return;
       setError(e instanceof Error ? e.message : 'Failed to fetch liquidation data');
     } finally {
+      if (generation !== requestGenerationRef.current) return;
       setIsLoading(false);
     }
   }, [

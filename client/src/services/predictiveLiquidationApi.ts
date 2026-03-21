@@ -202,7 +202,12 @@ export async function fetchPredictiveLiquidationProfile(
   const requestUrl = url.toString();
   const response = await fetch(requestUrl, {
     method: 'GET',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache',
+    },
+    cache: 'no-store',
   });
 
   if (!response.ok) {
