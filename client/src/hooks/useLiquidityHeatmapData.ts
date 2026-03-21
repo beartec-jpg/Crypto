@@ -18,6 +18,7 @@ export interface LiquidityHeatmapDebugInfo {
     depthBidLevels: number;
     depthAskLevels: number;
     cacheWarm: boolean;
+    directionScore: number;
   };
   diagnostics: EndpointDiagnostic[];
 }
@@ -69,6 +70,7 @@ export function useLiquidityHeatmapData(
       depthBidLevels: 0,
       depthAskLevels: 0,
       cacheWarm: false,
+      directionScore: 50,
     },
     diagnostics: [],
   });
@@ -121,8 +123,6 @@ export function useLiquidityHeatmapData(
     setError(null);
     try {
       const result = await fetchPredictiveLiquidationProfile(symbol, requestRange, {
-        oiWeight: settings.oiWeight,
-        orderbookWeight: settings.orderbookWeight,
         liqFlowWeight: settings.liqFlowWeight,
         biasWeight: settings.biasWeight,
       }, anchorTime, visiblePriceBounds, visibleRange || undefined, chartInterval);
@@ -144,6 +144,7 @@ export function useLiquidityHeatmapData(
           depthBidLevels: result.debugStats.depthBidLevels,
           depthAskLevels: result.debugStats.depthAskLevels,
           cacheWarm: result.debugStats.cacheWarm,
+          directionScore: result.debugStats.directionScore,
         },
         diagnostics: result.debugStats.diagnostics,
       });
@@ -158,8 +159,6 @@ export function useLiquidityHeatmapData(
     symbol,
     settings.enabled,
     settings.exchange,
-    settings.oiWeight,
-    settings.orderbookWeight,
     settings.liqFlowWeight,
     settings.biasWeight,
     requestRange,
@@ -212,6 +211,8 @@ export function useLiquidityHeatmapData(
 
     return {
       levels,
+      targetLevels: rawData.targetLevels,
+      directionScore: rawData.directionScore,
       maxLongPrice,
       maxShortPrice,
       totalLongLiquidation,
@@ -233,8 +234,6 @@ export function useLiquidityHeatmapData(
   }, [
     settings.enabled,
     settings.exchange,
-    settings.oiWeight,
-    settings.orderbookWeight,
     settings.liqFlowWeight,
     settings.biasWeight,
     requestRange,

@@ -141,6 +141,7 @@ export function LiquidityHeatmapDebugPanel({
                 />
                 <Row label="Total Long" value={formatValue(data.totalLongLiquidation)} valueClass="text-red-400" />
                 <Row label="Total Short" value={formatValue(data.totalShortLiquidation)} valueClass="text-green-400" />
+                <Row label="Direction" value={`${Number(data.directionScore ?? debugInfo.stats.directionScore ?? 50).toFixed(1)} / 100`} />
                 {data.maxLongPrice > 0 && (
                   <Row label="Max Long @" value={`$${data.maxLongPrice.toLocaleString()}`} valueClass="text-red-400" />
                 )}
@@ -167,6 +168,7 @@ export function LiquidityHeatmapDebugPanel({
               label="Depth"
               value={`${debugInfo.stats.depthBidLevels} bids / ${debugInfo.stats.depthAskLevels} asks`}
             />
+            <Row label="Direction Score" value={`${debugInfo.stats.directionScore.toFixed(1)}`} />
             <Row label="Cache Warm" value={debugInfo.stats.cacheWarm ? 'Yes' : 'No'} />
           </section>
 

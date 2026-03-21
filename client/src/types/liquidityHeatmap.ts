@@ -23,9 +23,7 @@ export interface LiquidityHeatmapSettings {
   autoRefresh: boolean;    // Auto-refresh data - default: true
   refreshInterval: number; // Refresh interval in seconds - default: 60
 
-  // Predictive scoring weights (must sum conceptually to 1, API normalizes)
-  oiWeight: number;        // Default: 0.4
-  orderbookWeight: number; // Default: 0.25
+  // Predictive scoring controls
   liqFlowWeight: number;   // Default: 0.2
   biasWeight: number;      // Default: 0.15
 
@@ -40,10 +38,19 @@ export interface LiquidityLevel {
   price: number;
   liquidationValue: number; // USD value of liquidations at this level
   side: 'long' | 'short';
+  score?: number;
+  type?: 'primary' | 'secondary';
+}
+
+export interface LiquidationTargetLevel extends LiquidityLevel {
+  score: number;
+  type: 'primary' | 'secondary';
 }
 
 export interface LiquidityHeatmapData {
   levels: LiquidityLevel[];
+  targetLevels?: LiquidationTargetLevel[];
+  directionScore?: number;
   maxLongPrice: number;
   maxShortPrice: number;
   totalLongLiquidation: number;
@@ -64,8 +71,6 @@ export const DEFAULT_LIQUIDITY_HEATMAP_SETTINGS: LiquidityHeatmapSettings = {
   shortLiquidationColor: '#22c55e',
   autoRefresh: true,
   refreshInterval: 60,
-  oiWeight: 0.4,
-  orderbookWeight: 0.25,
   liqFlowWeight: 0.2,
   biasWeight: 0.15,
   position: 'right',

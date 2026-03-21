@@ -24,6 +24,7 @@ interface PredictiveApiResponse {
       forceOrderCount?: number;
       realtimeOrderCount?: number;
       mergedForceOrderCount?: number;
+      directionScore?: number;
       coinalyzeMapLevels?: number;
       depthBidLevels?: number;
       depthAskLevels?: number;
@@ -52,6 +53,7 @@ export interface PredictiveDebugStats {
   depthBidLevels: number;
   depthAskLevels: number;
   cacheWarm: boolean;
+  directionScore: number;
   diagnostics: EndpointDiagnostic[];
 }
 
@@ -64,8 +66,6 @@ export interface FetchPredictiveLiquidationResult {
 }
 
 interface PredictiveWeights {
-  oiWeight: number;
-  orderbookWeight: number;
   liqFlowWeight: number;
   biasWeight: number;
 }
@@ -155,6 +155,7 @@ async function fetchLegacyPredictedFallback(normalizedSymbol: string): Promise<F
       depthBidLevels: 0,
       depthAskLevels: 0,
       cacheWarm: false,
+      directionScore: 50,
       diagnostics: [],
     },
   };
@@ -177,11 +178,50 @@ export async function fetchPredictiveLiquidationProfile(
   chartInterval?: string,
 ): Promise<FetchPredictiveLiquidationResult> {
   const normalizedSymbol = normalizeSymbol(symbol);
+  const precomputedUrl = new URL(`${API_BASE}/precomputed-profile`, window.location.origin);
+  precomputedUrl.searchParams.set('symbol', normalizedSymbol);
+  precomputedUrl.searchParams.set('range', range);
+
+  try {
+    const precomputedResponse = await fetch(precomputedUrl.toString(), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+      },
+      cache: 'no-store',
+    });
+
+    if (precomputedResponse.ok) {
+      const precomputedJson = await precomputedResponse.json() as PredictiveApiResponse;
+      if (precomputedJson.code === '0' && precomputedJson.data) {
+        return {
+          data: precomputedJson.data,
+          requestUrl: precomputedUrl.toString(),
+          normalizedSymbol,
+          source: precomputedJson.meta?.source || 'precomputed-profile',
+          debugStats: {
+            forceOrderCount: Number(precomputedJson.meta?.inputs?.forceOrderCount || 0),
+            realtimeOrderCount: Number(precomputedJson.meta?.inputs?.realtimeOrderCount || 0),
+            mergedForceOrderCount: Number(precomputedJson.meta?.inputs?.mergedForceOrderCount || 0),
+            coinalyzeMapLevels: Number(precomputedJson.meta?.inputs?.coinalyzeMapLevels || 0),
+            depthBidLevels: Number(precomputedJson.meta?.inputs?.depthBidLevels || 0),
+            depthAskLevels: Number(precomputedJson.meta?.inputs?.depthAskLevels || 0),
+            cacheWarm: true,
+            directionScore: Number(precomputedJson.data.directionScore ?? precomputedJson.meta?.inputs?.directionScore ?? 50),
+            diagnostics: Array.isArray(precomputedJson.meta?.diagnostics) ? precomputedJson.meta.diagnostics : [],
+          },
+        };
+      }
+    }
+  } catch {
+    // Fall through to live predictive endpoint.
+  }
+
   const url = new URL(`${API_BASE}/predictive-profile`, window.location.origin);
   url.searchParams.set('symbol', normalizedSymbol);
   url.searchParams.set('range', range);
-  url.searchParams.set('oiWeight', String(weights.oiWeight));
-  url.searchParams.set('orderbookWeight', String(weights.orderbookWeight));
   url.searchParams.set('liqFlowWeight', String(weights.liqFlowWeight));
   url.searchParams.set('biasWeight', String(weights.biasWeight));
   if (anchorTime && Number.isFinite(anchorTime) && anchorTime > 0) {
@@ -236,6 +276,7 @@ export async function fetchPredictiveLiquidationProfile(
       depthBidLevels: Number(json.meta?.inputs?.depthBidLevels || 0),
       depthAskLevels: Number(json.meta?.inputs?.depthAskLevels || 0),
       cacheWarm: Boolean(json.meta?.inputs?.cacheWarm),
+      directionScore: Number(json.data.directionScore ?? json.meta?.inputs?.directionScore ?? 50),
       diagnostics: Array.isArray(json.meta?.diagnostics) ? json.meta.diagnostics : [],
     },
   };

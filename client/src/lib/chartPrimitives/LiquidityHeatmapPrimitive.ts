@@ -9,7 +9,6 @@ import type {
   SeriesType,
 } from 'lightweight-charts';
 import type { CoinglassRange, LiquidityHeatmapData, LiquidityHeatmapSettings } from '@/types/liquidityHeatmap';
-import { getRangeLabel } from '@/lib/liquidityTimeframeMapping';
 
 type RequestUpdateCallback = () => void;
 type StackSection = 'full' | 'top' | 'bottom';
@@ -19,13 +18,6 @@ function formatUsdCompact(usd: number): string {
   if (usd >= 1e6) return `$${(usd / 1e6).toFixed(1)}M`;
   if (usd >= 1e3) return `$${(usd / 1e3).toFixed(1)}K`;
   return `$${usd.toFixed(0)}`;
-}
-
-function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result
-    ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) }
-    : null;
 }
 
 class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
@@ -61,41 +53,16 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
   draw(target: any) {
     if (!this._series || !this._chart || !this._data) return;
 
-    const { levels, totalLongLiquidation, totalShortLiquidation } = this._data;
-    if (levels.length === 0) return;
+    const fallbackTargets = this._data.levels
+      .map((level) => ({ ...level, type: level.type ?? 'secondary' as const, score: level.score ?? 50 }));
+    const targetLevels = (this._data.targetLevels && this._data.targetLevels.length > 0)
+      ? this._data.targetLevels
+      : fallbackTargets;
+    if (targetLevels.length === 0) return;
 
-    const aggregatedByPrice = new Map<number, { price: number; longValue: number; shortValue: number; totalValue: number }>();
-    for (const level of levels) {
-      const decimals = level.price >= 1000 ? 2 : 4;
-      const key = Number(level.price.toFixed(decimals));
-      const existing = aggregatedByPrice.get(key) ?? { price: key, longValue: 0, shortValue: 0, totalValue: 0 };
-      if (level.side === 'long') {
-        existing.longValue += level.liquidationValue;
-      } else {
-        existing.shortValue += level.liquidationValue;
-      }
-      existing.totalValue = existing.longValue + existing.shortValue;
-      aggregatedByPrice.set(key, existing);
-    }
-
-    const profileLevels = Array.from(aggregatedByPrice.values()).sort((a, b) => a.price - b.price);
-    if (profileLevels.length === 0) return;
-
-    const opacity = this._settings.opacity / 100;
-
-    const longRgb = hexToRgb(this._settings.longLiquidationColor);
-    const shortRgb = hexToRgb(this._settings.shortLiquidationColor);
-
-    const maxLong = totalLongLiquidation;
-    const maxShort = totalShortLiquidation;
-
-    // Compute the max single-level value per side for intensity scaling
-    const maxLongLevel = levels
-      .filter((l) => l.side === 'long')
-      .reduce((acc, l) => Math.max(acc, l.liquidationValue), 0);
-    const maxShortLevel = levels
-      .filter((l) => l.side === 'short')
-      .reduce((acc, l) => Math.max(acc, l.liquidationValue), 0);
+    const primaryTarget = targetLevels.find((l) => l.type === 'primary') || targetLevels[0];
+    const secondaryTarget = targetLevels.find((l) => l.type === 'secondary') || targetLevels[1] || null;
+    const directionScore = Number(this._data.directionScore ?? primaryTarget.score ?? 50);
 
     target.useMediaCoordinateSpace((scope: any) => {
       const ctx: CanvasRenderingContext2D = scope.context;
@@ -108,116 +75,62 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
       const laneEnd = laneStart + laneWidth;
       const isRightSide = this._profileSide === 'right';
 
-      const shouldDrawLevel = (levelIndex: number): boolean => {
-        if (!isSharedSidebar) return true;
-        const isEven = levelIndex % 2 === 0;
-        return this._stackSection === 'top' ? isEven : !isEven;
+      const drawPrimaryTarget = () => {
+        const y = this._series!.priceToCoordinate(primaryTarget.price);
+        if (y === null) return;
+
+        const zoneRadius = 24;
+        const glow = ctx.createLinearGradient(0, y - zoneRadius, 0, y + zoneRadius);
+        glow.addColorStop(0, 'rgba(250, 204, 21, 0)');
+        glow.addColorStop(0.35, 'rgba(250, 204, 21, 0.16)');
+        glow.addColorStop(0.65, 'rgba(250, 204, 21, 0.16)');
+        glow.addColorStop(1, 'rgba(250, 204, 21, 0)');
+
+        ctx.save();
+        ctx.fillStyle = glow;
+        ctx.fillRect(laneStart, y - zoneRadius, laneWidth, zoneRadius * 2);
+        ctx.fillStyle = 'rgba(250, 204, 21, 0.94)';
+        ctx.fillRect(laneStart, y - 4, laneWidth, 8);
+        ctx.strokeStyle = 'rgba(254, 240, 138, 0.95)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(laneStart, y - 4, laneWidth, 8);
+
+        const arrow = primaryTarget.side === 'long' ? '▼' : '▲';
+        const label = `${arrow} LIQ TARGET ${formatUsdCompact(primaryTarget.liquidationValue)}`;
+        ctx.font = 'bold 9px sans-serif';
+        ctx.fillStyle = 'rgba(254, 243, 199, 0.98)';
+        ctx.textAlign = isRightSide ? 'right' : 'left';
+        ctx.fillText(label, isRightSide ? laneEnd - 4 : laneStart + 4, y - 7);
+        ctx.restore();
       };
 
-      if (this._settings.showHeatmap && (maxLong > 0 || maxShort > 0)) {
-        const maxCombined = profileLevels.reduce((acc, level) => Math.max(acc, level.totalValue), 0);
+      const drawSecondaryTarget = () => {
+        if (!secondaryTarget) return;
+        const y = this._series!.priceToCoordinate(secondaryTarget.price);
+        if (y === null) return;
 
-        for (let levelIndex = 0; levelIndex < profileLevels.length; levelIndex++) {
-          if (!shouldDrawLevel(levelIndex)) continue;
-          const level = profileLevels[levelIndex];
-          if (maxCombined <= 0 || level.totalValue <= 0) continue;
+        const width = Math.round(laneWidth * 0.75);
+        const x = isRightSide ? laneEnd - width : laneStart;
 
-          const y = this._series!.priceToCoordinate(level.price);
-          if (y === null) continue;
+        ctx.save();
+        ctx.fillStyle = 'rgba(45, 212, 191, 0.58)';
+        ctx.fillRect(x, y - 2, width, 4);
+        ctx.strokeStyle = 'rgba(153, 246, 228, 0.8)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x, y - 2, width, 4);
 
-          const barHeight = 5;
-          const totalRatio = level.totalValue / maxCombined;
-          const barWidth = Math.max(1, Math.round(totalRatio * laneWidth));
-          const barStartX = isRightSide ? laneEnd - barWidth : laneStart;
+        const arrow = secondaryTarget.side === 'short' ? '▲' : '▼';
+        const sideCode = secondaryTarget.side === 'short' ? 'S' : 'L';
+        const label = `${arrow} ${sideCode} ${formatUsdCompact(secondaryTarget.liquidationValue)}`;
+        ctx.font = 'bold 9px sans-serif';
+        ctx.fillStyle = 'rgba(153, 246, 228, 0.92)';
+        ctx.textAlign = isRightSide ? 'right' : 'left';
+        ctx.fillText(label, isRightSide ? laneEnd - 4 : laneStart + 4, y - 5);
+        ctx.restore();
+      };
 
-          const bearishRatio = level.totalValue > 0 ? level.longValue / level.totalValue : 0;
-          const bullishRatio = level.totalValue > 0 ? level.shortValue / level.totalValue : 0;
-
-          const bearishWidth = Math.round(barWidth * bearishRatio);
-          const bullishWidth = Math.round(barWidth * bullishRatio);
-
-          if (bearishWidth > 0 && longRgb) {
-            ctx.fillStyle = `rgba(${longRgb.r}, ${longRgb.g}, ${longRgb.b}, ${(0.2 + totalRatio * opacity).toFixed(3)})`;
-            ctx.fillRect(barStartX, y - barHeight / 2, bearishWidth, barHeight);
-          }
-
-          if (bullishWidth > 0 && shortRgb) {
-            const bullishX = barStartX + bearishWidth;
-            ctx.fillStyle = `rgba(${shortRgb.r}, ${shortRgb.g}, ${shortRgb.b}, ${(0.2 + totalRatio * opacity).toFixed(3)})`;
-            ctx.fillRect(bullishX, y - barHeight / 2, bullishWidth, barHeight);
-          }
-
-          // Keep a subtle guide edge so bars feel like a profile column.
-          ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(laneStart, y);
-          ctx.lineTo(laneEnd, y);
-          ctx.stroke();
-        }
-
-        const maxLevel = profileLevels.reduce((best, next) => (
-          next.totalValue > best.totalValue ? next : best
-        ));
-
-        if (maxLevel && maxLevel.totalValue > 0) {
-          const y = this._series!.priceToCoordinate(maxLevel.price);
-          if (y !== null) {
-            const markerWidth = Math.max(10, Math.round((maxLevel.totalValue / maxCombined) * laneWidth));
-            const markerX = isRightSide ? laneEnd - markerWidth : laneStart;
-
-            ctx.save();
-            ctx.fillStyle = 'rgba(250, 204, 21, 0.95)';
-            ctx.fillRect(markerX, y - 3, markerWidth, 6);
-
-            const label = `MAX ${formatUsdCompact(maxLevel.totalValue)}`;
-            ctx.font = 'bold 9px sans-serif';
-            ctx.fillStyle = 'rgba(250, 204, 21, 1)';
-            ctx.textAlign = isRightSide ? 'right' : 'left';
-            const labelX = isRightSide ? laneEnd - 4 : laneStart + 4;
-            ctx.fillText(label, labelX, y + 3);
-            ctx.restore();
-          }
-        }
-      }
-
-      if (this._settings.showLiquidationLevels && !isSharedSidebar) {
-        // Draw lines at top 5 levels per side
-        const topLong = levels
-          .filter((l) => l.side === 'long')
-          .sort((a, b) => b.liquidationValue - a.liquidationValue)
-          .slice(0, 5);
-
-        const topShort = levels
-          .filter((l) => l.side === 'short')
-          .sort((a, b) => b.liquidationValue - a.liquidationValue)
-          .slice(0, 5);
-
-        const drawLine = (level: typeof levels[0], rgb: { r: number; g: number; b: number } | null) => {
-          if (!rgb) return;
-          const y = this._series!.priceToCoordinate(level.price);
-          if (y === null) return;
-
-          ctx.save();
-          const tickWidth = Math.min(18, Math.max(8, Math.round(laneWidth * 0.08)));
-          const tickX = isRightSide ? laneStart : laneEnd - tickWidth;
-          ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.95)`;
-          ctx.fillRect(tickX, y - 1, tickWidth, 2);
-
-          const sidePrefix = level.side === 'long' ? 'L' : 'S';
-          const label = `${sidePrefix} ${formatUsdCompact(level.liquidationValue)}`;
-
-          ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.9)`;
-          ctx.font = 'bold 9px sans-serif';
-          ctx.textAlign = isRightSide ? 'right' : 'left';
-          const labelX = isRightSide ? laneEnd - 4 : laneStart + 4;
-          ctx.fillText(label, labelX, y + 3);
-          ctx.restore();
-        };
-
-        for (const l of topLong) drawLine(l, longRgb);
-        for (const l of topShort) drawLine(l, shortRgb);
-      }
+      drawPrimaryTarget();
+      drawSecondaryTarget();
 
       if (isSharedSidebar) {
         ctx.save();
@@ -231,7 +144,9 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
 
       // Range indicator badge in top-right corner
       if (this._settings.showRangeIndicator) {
-        const badge = `PRED LIQ: ${getRangeLabel(this._effectiveRange)}`;
+        const longPressure = directionScore >= 50;
+        const pressurePct = longPressure ? directionScore : (100 - directionScore);
+        const badge = `LIQ PRESSURE: ${pressurePct.toFixed(0)}% ${longPressure ? 'LONG ▼' : 'SHORT ▲'}`;
         ctx.save();
         ctx.font = 'bold 10px sans-serif';
         const textWidth = ctx.measureText(badge).width;

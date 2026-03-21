@@ -242,24 +242,6 @@ export function LiquidityHeatmapSettingsModal({
             <div className="pt-2 border-t border-slate-800 mt-2">
               <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Scoring Weights</p>
               <SliderRow
-                label="Open Interest"
-                value={settings.oiWeight}
-                min={0}
-                max={1}
-                step={0.01}
-                displayValue={settings.oiWeight.toFixed(2)}
-                onChange={(v) => update('oiWeight', v)}
-              />
-              <SliderRow
-                label="Orderbook Walls"
-                value={settings.orderbookWeight}
-                min={0}
-                max={1}
-                step={0.01}
-                displayValue={settings.orderbookWeight.toFixed(2)}
-                onChange={(v) => update('orderbookWeight', v)}
-              />
-              <SliderRow
                 label="Liq Flow"
                 value={settings.liqFlowWeight}
                 min={0}
