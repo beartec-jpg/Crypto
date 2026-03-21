@@ -165,54 +165,51 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
         ctx.restore();
       };
 
-      drawPrimaryTarget();
-      drawSecondaryTarget();
+      const highestPredictedZone = this._settings.usePivotVolumePrediction && this._liquidityPivotAnalysis?.zones?.length
+        ? [...this._liquidityPivotAnalysis.zones].sort((a, b) => b.strength - a.strength)[0]
+        : null;
 
-      if (this._settings.usePivotVolumePrediction && this._liquidityPivotAnalysis?.points?.length) {
-        const zones = this._liquidityPivotAnalysis.zones.slice(0, 4);
-        const topPoints = this._liquidityPivotAnalysis.points.slice(0, 5);
+      if (highestPredictedZone) {
+        const y1 = this._series!.priceToCoordinate(highestPredictedZone.priceFrom);
+        const y2 = this._series!.priceToCoordinate(highestPredictedZone.priceTo);
 
-        for (const zone of zones) {
-          const y1 = this._series!.priceToCoordinate(zone.priceFrom);
-          const y2 = this._series!.priceToCoordinate(zone.priceTo);
-          if (y1 === null || y2 === null) continue;
+        if (y1 !== null && y2 !== null) {
           const zoneTop = Math.min(y1, y2);
           const zoneBottom = Math.max(y1, y2);
-          const zoneHeight = Math.max(6, zoneBottom - zoneTop);
-          const zoneAlpha = Math.max(0.08, Math.min(0.28, zone.strength / 400));
+          const zoneHeight = Math.max(10, zoneBottom - zoneTop);
+          const zoneAlpha = Math.max(0.15, Math.min(0.32, highestPredictedZone.strength / 300));
 
           ctx.save();
-          ctx.fillStyle = zone.direction === 'long'
+          ctx.fillStyle = highestPredictedZone.direction === 'long'
             ? `rgba(239, 68, 68, ${zoneAlpha.toFixed(3)})`
             : `rgba(34, 197, 94, ${zoneAlpha.toFixed(3)})`;
           ctx.fillRect(laneStart, zoneTop, laneWidth, zoneHeight);
-          ctx.strokeStyle = zone.direction === 'long' ? 'rgba(254, 202, 202, 0.35)' : 'rgba(187, 247, 208, 0.35)';
-          ctx.lineWidth = 1;
+
+          ctx.strokeStyle = highestPredictedZone.direction === 'long'
+            ? 'rgba(254, 202, 202, 0.65)'
+            : 'rgba(187, 247, 208, 0.65)';
+          ctx.lineWidth = 1.5;
           ctx.strokeRect(laneStart, zoneTop, laneWidth, zoneHeight);
+
+          const zoneLabel = `TOP LIQ ZONE ${highestPredictedZone.strength}%`;
+          ctx.font = 'bold 9px sans-serif';
+          const labelWidth = ctx.measureText(zoneLabel).width;
+          const labelX = isRightSide ? laneEnd - 5 : laneStart + 5;
+          const labelY = Math.max(12, Math.min(chartHeight - 4, zoneTop - 4));
+          const bgWidth = labelWidth + 8;
+          const bgX = isRightSide ? labelX - labelWidth - 4 : labelX - 4;
+
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+          ctx.fillRect(bgX, labelY - 10, bgWidth, 13);
+          ctx.fillStyle = 'rgba(241, 245, 249, 0.95)';
+          ctx.textAlign = isRightSide ? 'right' : 'left';
+          ctx.fillText(zoneLabel, labelX, labelY);
           ctx.restore();
         }
-
-        for (const point of topPoints) {
-          const y = this._series!.priceToCoordinate(point.price);
-          if (y === null) continue;
-          const markerW = Math.max(8, Math.min(22, 8 + Math.round(point.confidence / 10)));
-          const x = isRightSide ? laneEnd - markerW : laneStart;
-
-          ctx.save();
-          ctx.fillStyle = point.direction === 'long'
-            ? 'rgba(239, 68, 68, 0.92)'
-            : point.direction === 'short'
-              ? 'rgba(34, 197, 94, 0.92)'
-              : 'rgba(148, 163, 184, 0.85)';
-          ctx.fillRect(x, y - 1.5, markerW, 3);
-
-          if (point.isPivot || point.isPOC) {
-            ctx.strokeStyle = point.isPOC ? 'rgba(250, 204, 21, 0.95)' : 'rgba(148, 163, 184, 0.95)';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(x, y - 2.5, markerW, 5);
-          }
-          ctx.restore();
-        }
+      } else {
+        // Fallback to legacy target rendering when predictor mode is disabled or no zones exist.
+        drawPrimaryTarget();
+        drawSecondaryTarget();
       }
 
       if (isSharedSidebar) {
@@ -226,7 +223,7 @@ class LiquidityHeatmapPaneRenderer implements IPrimitivePaneRenderer {
       }
 
       // Range indicator badge in top-right corner
-      if (this._settings.showRangeIndicator) {
+      if (this._settings.showRangeIndicator && !highestPredictedZone) {
         const longPressure = directionScore >= 50;
         const pressurePct = longPressure ? directionScore : (100 - directionScore);
         let badge = `LIQ PRESSURE: ${pressurePct.toFixed(0)}% ${longPressure ? 'LONG ▼' : 'SHORT ▲'}`;

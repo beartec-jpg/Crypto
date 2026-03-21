@@ -84,6 +84,7 @@ import { useGenuineDemandScore } from '@/hooks/indicators/useGenuineDemandScore'
 import { GDSMiniBadge } from '@/components/indicators/GDSMiniBadge';
 import { findMaximumOpportunityZones, type OpportunityZone } from '@/lib/confluenceAnalysis';
 import { getConditionWeights } from '@/lib/conditionWeights';
+import { resolveLiquidityPredictorConfig } from '@/lib/liquidityPredictorConfig';
 import type { IPriceLine } from 'lightweight-charts';
 import { RewindControls } from '@/components/chart/RewindControls';
 import { useRewindSettings } from '@/hooks/useRewindSettings';
@@ -284,6 +285,10 @@ export function ChartFullscreenPage({
     basePoints: Drawing['points'];
     basePointLogicals: number[];
     latestPoints: Drawing['points'];
+  } | null>(null);
+  const chartPanZoomRestoreRef = useRef<{
+    handleScroll: any;
+    handleScale: any;
   } | null>(null);
   const suppressNextClickRef = useRef(false);
   const autoColorEnabledRef = useRef(true);
@@ -697,6 +702,11 @@ export function ChartFullscreenPage({
     lhVisibleRange,
   );
 
+  const resolvedLiquidityPredictorConfig = useMemo(
+    () => resolveLiquidityPredictorConfig(lhSettings.settings, liquidityHeatmapDataResult.effectiveRange),
+    [lhSettings.settings, liquidityHeatmapDataResult.effectiveRange],
+  );
+
   // Hooks - Liquidity Pivot Analysis (combines pivots + volume + liquidation)
   const liquidityPivotAnalysis = useLiquidityPivotAnalysis(
     effectiveCandles,
@@ -704,10 +714,10 @@ export function ChartFullscreenPage({
     liquidityHeatmapDataResult?.data ?? null,
     {
       enabled: lhSettings.settings.usePivotVolumePrediction,
-      pivotLookback: lhSettings.settings.pivotLookback,
-      minConfluenceScore: lhSettings.settings.predictionMinConfidence,
-      topNPoints: lhSettings.settings.predictionTopNPoints,
-      priceThresholdPercent: lhSettings.settings.predictionPriceThresholdPct,
+      pivotLookback: resolvedLiquidityPredictorConfig.pivotLookback,
+      minConfluenceScore: resolvedLiquidityPredictorConfig.minConfluenceScore,
+      topNPoints: resolvedLiquidityPredictorConfig.topNPoints,
+      priceThresholdPercent: resolvedLiquidityPredictorConfig.priceThresholdPercent,
     }
   );
 
@@ -1560,6 +1570,34 @@ export function ChartFullscreenPage({
     return { logical, price, localX, localY };
   }, [chartRef, candleSeriesRef, chartContainerRef]);
 
+  const pauseChartPanZoom = useCallback(() => {
+    const chart = chartRef.current;
+    if (!chart || chartPanZoomRestoreRef.current) return;
+
+    const opts = chart.options() as any;
+    chartPanZoomRestoreRef.current = {
+      handleScroll: opts.handleScroll,
+      handleScale: opts.handleScale,
+    };
+
+    chart.applyOptions({
+      handleScroll: false,
+      handleScale: false,
+    });
+  }, [chartRef]);
+
+  const resumeChartPanZoom = useCallback(() => {
+    const chart = chartRef.current;
+    const restore = chartPanZoomRestoreRef.current;
+    if (!chart || !restore) return;
+
+    chart.applyOptions({
+      handleScroll: restore.handleScroll,
+      handleScale: restore.handleScale,
+    });
+    chartPanZoomRestoreRef.current = null;
+  }, [chartRef]);
+
   const findNearestPointIndex = useCallback((drawing: Drawing, localX: number, localY: number): number | null => {
     if (!chartRef.current || !candleSeriesRef.current || drawing.points.length === 0) return null;
 
@@ -1611,6 +1649,7 @@ export function ChartFullscreenPage({
         basePointLogicals,
         latestPoints: drawing.points.map(p => ({ ...p })),
       };
+      pauseChartPanZoom();
       return true;
     }
 
@@ -1637,6 +1676,8 @@ export function ChartFullscreenPage({
       latestPoints: drawing.points.map(p => ({ ...p })),
     };
 
+    pauseChartPanZoom();
+
     return true;
   }, [
     activeTool,
@@ -1648,6 +1689,7 @@ export function ChartFullscreenPage({
     moveArmedDrawingId,
     chartRef,
     candleSeriesRef,
+    pauseChartPanZoom,
   ]);
 
   const updateDrawingDrag = useCallback((clientX: number, clientY: number) => {
@@ -1703,7 +1745,14 @@ export function ChartFullscreenPage({
     dragEditStateRef.current = null;
     setActiveEdit(null);
     setMoveArmedDrawingId(null);
-  }, [drawings, drawingsPersistence]);
+    resumeChartPanZoom();
+  }, [drawings, drawingsPersistence, resumeChartPanZoom]);
+
+  useEffect(() => {
+    return () => {
+      resumeChartPanZoom();
+    };
+  }, [resumeChartPanZoom]);
 
   useEffect(() => {
     const container = chartContainerRef.current;

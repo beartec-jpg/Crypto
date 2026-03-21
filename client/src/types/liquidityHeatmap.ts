@@ -33,6 +33,7 @@ export interface LiquidityHeatmapSettings {
   predictionMinConfidence: number;   // Minimum confidence threshold 0-100 - default: 40
   predictionTopNPoints: number;      // Number of top prediction points to keep - default: 15
   predictionPriceThresholdPct: number; // Price grouping threshold percent - default: 0.5
+  autoTunePredictionByRange: boolean;  // Auto-adjust predictor sensitivity by effective range - default: true
 
   // Layout
   position: SidebarPosition; // Sidebar position: 'left' | 'right'. If both indicators share a side, they entwine.
@@ -85,6 +86,7 @@ export const DEFAULT_LIQUIDITY_HEATMAP_SETTINGS: LiquidityHeatmapSettings = {
   predictionMinConfidence: 40,
   predictionTopNPoints: 15,
   predictionPriceThresholdPct: 0.5,
+  autoTunePredictionByRange: true,
   position: 'right',
   showDebugPanel: false,
 };

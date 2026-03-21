@@ -276,6 +276,14 @@ export function LiquidityHeatmapSettingsModal({
 
             {settings.usePivotVolumePrediction && (
               <>
+                <SettingRow label="Auto-Tune by Effective Range">
+                  <Switch
+                    checked={settings.autoTunePredictionByRange}
+                    onCheckedChange={(v) => update('autoTunePredictionByRange', v)}
+                    className="data-[state=checked]:bg-blue-600"
+                  />
+                </SettingRow>
+
                 <SliderRow
                   label="Pivot Lookback"
                   value={settings.pivotLookback}

@@ -3,6 +3,7 @@ import type { LiquidityHeatmapData, LiquidityHeatmapSettings, CoinglassRange } f
 import type { LiquidityHeatmapDebugInfo } from '@/hooks/useLiquidityHeatmapData';
 import type { EndpointDiagnostic } from '@/services/predictiveLiquidationApi';
 import type { PredictedLiquidityPoint, LiquidationZone } from '@/hooks/useLiquidityPivotAnalysis';
+import { resolveLiquidityPredictorConfig } from '@/lib/liquidityPredictorConfig';
 
 interface LiquidityHeatmapDebugPanelProps {
   data: LiquidityHeatmapData | null;
@@ -61,6 +62,7 @@ export function LiquidityHeatmapDebugPanel({
   liquidityPivotAnalysis,
 }: LiquidityHeatmapDebugPanelProps) {
   const [collapsed, setCollapsed] = useState(true);
+  const resolvedPredictorConfig = resolveLiquidityPredictorConfig(settings, effectiveRange);
 
   const longLevels = data?.levels.filter((l) => l.side === 'long') ?? [];
   const shortLevels = data?.levels.filter((l) => l.side === 'short') ?? [];
@@ -216,10 +218,15 @@ export function LiquidityHeatmapDebugPanel({
                   value={settings.usePivotVolumePrediction ? 'Enabled' : 'Disabled'}
                   valueClass={settings.usePivotVolumePrediction ? 'text-emerald-300' : 'text-slate-400'}
                 />
-                <Row label="Pivot Lookback" value={String(settings.pivotLookback)} />
-                <Row label="Min Confidence" value={`${settings.predictionMinConfidence}%`} />
-                <Row label="Top N" value={String(settings.predictionTopNPoints)} />
-                <Row label="Threshold" value={`${settings.predictionPriceThresholdPct.toFixed(1)}%`} />
+                <Row
+                  label="Auto-Tune"
+                  value={settings.autoTunePredictionByRange ? `On (${effectiveRange})` : 'Off'}
+                  valueClass={settings.autoTunePredictionByRange ? 'text-blue-300' : 'text-slate-400'}
+                />
+                <Row label="Pivot Lookback" value={String(resolvedPredictorConfig.pivotLookback)} />
+                <Row label="Min Confidence" value={`${resolvedPredictorConfig.minConfluenceScore}%`} />
+                <Row label="Top N" value={String(resolvedPredictorConfig.topNPoints)} />
+                <Row label="Threshold" value={`${resolvedPredictorConfig.priceThresholdPercent.toFixed(1)}%`} />
                 <Row
                   label="Direction"
                   value={`${liquidityPivotAnalysis.directionBias.toUpperCase()} (${liquidityPivotAnalysis.confidence}% confidence)`}
