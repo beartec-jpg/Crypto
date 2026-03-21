@@ -27,6 +27,7 @@ export type DrawingTool =
 export type ChartDrawingTool = 
   | 'trendline' 
   | 'horizontal' 
+  | 'text'
   | 'rectangle' 
   | 'fib_retracement' 
   | 'trend_fib' 
@@ -271,6 +272,11 @@ export interface Drawing {
     levelColors?: Record<number, string>;
     boundaryColors?: Record<string, string>;
     fillOpacity?: number;
+    text?: string;
+    fontSize?: number;
+    fontWeight?: 'normal' | 'bold';
+    backgroundColor?: string;
+    showBackground?: boolean;
     __openColorPicker?: string | null;
     /** For elliott_wave drawings: the wave type degree label (e.g. "W1", "C") */
     waveType?: string;
@@ -327,4 +333,9 @@ export interface DrawingDefaults {
   levelColors?: Record<number, string>;
   boundaryColors?: Record<string, string>;
   fillOpacity?: number;
+  text?: string;
+  fontSize?: number;
+  fontWeight?: 'normal' | 'bold';
+  backgroundColor?: string;
+  showBackground?: boolean;
 }

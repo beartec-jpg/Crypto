@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Pencil, TrendingUp, Minus, Square, GitBranch, Activity } from 'lucide-react';
+import { Pencil, TrendingUp, Minus, Square, GitBranch, Activity, Type } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -65,6 +65,12 @@ const DRAWING_TOOLS: DrawingTool[] = [
     icon: <Minus className="h-4 w-4" />,
     label: 'Horizontal Line',
     description: 'Draw horizontal support/resistance',
+  },
+  {
+    id: 'text',
+    icon: <Type className="h-4 w-4" />,
+    label: 'Text Label',
+    description: 'Place text annotation on chart',
   },
   {
     id: 'rectangle',

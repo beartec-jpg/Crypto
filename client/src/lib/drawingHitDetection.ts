@@ -224,6 +224,14 @@ function getDistanceToDrawing(
       const lineY = series.priceToCoordinate(drawing.points[0].price);
       return lineY === null ? null : Math.abs(clickY - lineY);
     }
+
+    case 'text': {
+      if (drawing.points.length < 1) return null;
+      const tx = timeScale.timeToCoordinate(drawing.points[0].time as Time);
+      const ty = series.priceToCoordinate(drawing.points[0].price);
+      if (tx === null || ty === null) return null;
+      return Math.sqrt((clickX - tx) ** 2 + (clickY - ty) ** 2);
+    }
     
     case 'rectangle': {
       if (drawing.points.length < 2) return null;

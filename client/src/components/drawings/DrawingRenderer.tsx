@@ -48,30 +48,40 @@ export function DrawingRenderer({
       return;
     }
     
-    // For horizontal lines, save immediately on first click
-    if (currentTool === 'horizontal') {
+    // For single-point tools, save immediately on first click
+    if (currentTool === 'horizontal' || currentTool === 'text') {
       const newPoint = { time: point.time as number, price: point.price, snapType: point.snapType };
       const toolDefaults = drawingDefaultsByTool?.[currentTool] || {};
       const useAutoColor = toolDefaults.autoColor ?? autoColorEnabledRef.current;
       const fallbackColor = toolDefaults.color || '#3b82f6';
       const color = useAutoColor ? getAutoColor([newPoint], candles) : fallbackColor;
+
+      const textDefaults = currentTool === 'text'
+        ? {
+            text: toolDefaults.text || 'Text',
+            fontSize: toolDefaults.fontSize || 14,
+            fontWeight: toolDefaults.fontWeight || 'normal',
+            showBackground: toolDefaults.showBackground ?? true,
+            backgroundColor: toolDefaults.backgroundColor || 'rgba(15, 23, 42, 0.8)',
+          }
+        : {};
       
       const newDrawing = {
         id: `drawing-${Date.now()}`,
         type: currentTool,
         points: [newPoint],
-        style: { color, lineWidth: 2, ...toolDefaults, autoColor: useAutoColor }
+        style: { color, lineWidth: 2, ...toolDefaults, ...textDefaults, autoColor: useAutoColor }
       };
       
-      console.log('[Renderer] Creating horizontal line:', newDrawing);
+      console.log('[Renderer] Creating single-point drawing:', newDrawing);
       setDrawings(d => [...d, newDrawing]);
       
       // Save to database
       console.log('[Renderer] Calling saveDrawingMutation.mutate');
       saveDrawingMutation.mutate(newDrawing);
-      toast({ title: 'Drawing Saved', description: 'horizontal line added to chart' });
+      toast({ title: 'Drawing Saved', description: `${currentTool === 'text' ? 'text label' : 'horizontal line'} added to chart` });
       
-      // Don't accumulate points for horizontal lines
+      // Don't accumulate points for single-point tools
       return;
     }
     

@@ -1,4 +1,4 @@
-import { TrendingUp, Minus, Square, Divide, GitBranch, Waves } from 'lucide-react';
+import { TrendingUp, Minus, Square, Divide, GitBranch, Waves, Type } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
@@ -19,6 +19,7 @@ interface DrawingSelectionModalProps {
 const TOOL_ICONS: Record<string, any> = {
   trendline: TrendingUp,
   horizontal: Minus,
+  text: Type,
   rectangle: Square,
   fib_retracement: Divide,
   trend_fib: TrendingUp,
@@ -29,6 +30,7 @@ const TOOL_ICONS: Record<string, any> = {
 const TOOL_NAMES: Record<string, string> = {
   trendline: 'Trendline',
   horizontal: 'Horizontal Line',
+  text: 'Text Label',
   rectangle: 'Rectangle',
   fib_retracement: 'Fib Retracement',
   trend_fib: 'Trend-Based Fib',
@@ -56,6 +58,14 @@ function DrawingPreview({ type, color = '#3b82f6' }: { type: string; color?: str
       return (
         <svg width="60" height="40" style={baseStyle}>
           <line x1="5" y1="35" x2="55" y2="5" stroke={color} strokeWidth="2" />
+        </svg>
+      );
+
+    case 'text':
+      return (
+        <svg width="60" height="40" style={baseStyle}>
+          <rect x="5" y="10" width="50" height="20" fill="rgba(15,23,42,0.8)" stroke={color} strokeWidth="1" />
+          <text x="10" y="24" fill={color} fontSize="10" fontWeight="bold">T</text>
         </svg>
       );
     

@@ -34,6 +34,11 @@ interface DrawingStyle {
   levelColors?: Record<number, string>;
   boundaryColors?: Record<string, string>;
   fillOpacity?: number;
+  text?: string;
+  fontSize?: number;
+  fontWeight?: 'normal' | 'bold';
+  backgroundColor?: string;
+  showBackground?: boolean;
   __openColorPicker?: string | null;
 }
 
@@ -390,6 +395,167 @@ export class HorizontalLinePrimitive implements ISeriesPrimitive<Time> {
     this._point = point;
     this._style = style;
     this._paneViews = [new HorizontalLinePaneView(this)];
+  }
+
+  attached(param: SeriesAttachedParameter<Time>) {
+    this._series = param.series;
+    this._chart = param.chart;
+    this._requestUpdate = param.requestUpdate;
+  }
+
+  detached() {
+    this._series = null;
+    this._chart = null;
+    this._requestUpdate = undefined;
+  }
+
+  updateAllViews() {
+    this._paneViews.forEach((pv) => pv.update(this._series, this._chart));
+  }
+
+  paneViews() {
+    return this._paneViews;
+  }
+
+  getId() { return this._id; }
+  getPoint() { return this._point; }
+  getStyle() { return this._style; }
+  isSelected() { return this._selected; }
+
+  setSelected(selected: boolean) {
+    this._selected = selected;
+    this._requestUpdate?.();
+  }
+
+  updatePoint(point: DrawingPoint) {
+    this._point = point;
+    this._requestUpdate?.();
+  }
+
+  updateStyle(style: DrawingStyle) {
+    this._style = style;
+    this._requestUpdate?.();
+  }
+}
+
+class TextLabelRenderer implements IPrimitivePaneRenderer {
+  private _point: DrawingPoint;
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null;
+  private _chart: IChartApi | null;
+  private _isSelected: boolean;
+
+  constructor(
+    point: DrawingPoint,
+    style: DrawingStyle,
+    series: ISeriesApi<SeriesType> | null,
+    chart: IChartApi | null,
+    isSelected: boolean
+  ) {
+    this._point = point;
+    this._style = style;
+    this._series = series;
+    this._chart = chart;
+    this._isSelected = isSelected;
+  }
+
+  draw(target: any) {
+    if (!this._series || !this._chart) return;
+
+    const timeScale = this._chart.timeScale();
+    const x = timeScale.timeToCoordinate(this._point.time as Time);
+    const y = this._series.priceToCoordinate(this._point.price);
+    if (x === null || y === null) return;
+
+    target.useMediaCoordinateSpace((scope: any) => {
+      const ctx = scope.context;
+      const text = this._style.text || 'Text';
+      const fontSize = this._style.fontSize || 14;
+      const fontWeight = this._style.fontWeight || 'normal';
+      const showBackground = this._style.showBackground ?? true;
+      const backgroundColor = this._style.backgroundColor || 'rgba(15, 23, 42, 0.8)';
+      const opacity = this._style.opacity !== undefined ? this._style.opacity : 1;
+      const colorWithOpacity = applyOpacity(this._style.color, opacity);
+      const paddingX = 6;
+      const paddingY = 4;
+
+      ctx.font = `${fontWeight} ${fontSize}px sans-serif`;
+      const metrics = ctx.measureText(text);
+      const textWidth = metrics.width;
+      const textHeight = fontSize;
+
+      const drawX = x;
+      const drawY = y;
+
+      if (showBackground) {
+        ctx.fillStyle = backgroundColor;
+        ctx.fillRect(
+          drawX - paddingX,
+          drawY - textHeight,
+          textWidth + paddingX * 2,
+          textHeight + paddingY * 2
+        );
+      }
+
+      ctx.fillStyle = colorWithOpacity;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(text, drawX, drawY + paddingY);
+
+      if (this._isSelected) {
+        ctx.fillStyle = '#22c55e';
+        ctx.beginPath();
+        ctx.arc(x, y, 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+  }
+}
+
+class TextLabelPaneView implements IPrimitivePaneView {
+  private _primitive: TextLabelPrimitive;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+
+  constructor(primitive: TextLabelPrimitive) {
+    this._primitive = primitive;
+  }
+
+  update(series: ISeriesApi<SeriesType> | null, chart: IChartApi | null) {
+    this._series = series;
+    this._chart = chart;
+  }
+
+  zOrder(): 'normal' {
+    return 'normal';
+  }
+
+  renderer() {
+    return new TextLabelRenderer(
+      this._primitive.getPoint(),
+      this._primitive.getStyle(),
+      this._series,
+      this._chart,
+      this._primitive.isSelected()
+    );
+  }
+}
+
+export class TextLabelPrimitive implements ISeriesPrimitive<Time> {
+  private _paneViews: TextLabelPaneView[];
+  private _point: DrawingPoint;
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+  private _selected: boolean = false;
+  private _id: string;
+  private _requestUpdate?: RequestUpdateCallback;
+
+  constructor(id: string, point: DrawingPoint, style: DrawingStyle) {
+    this._id = id;
+    this._point = point;
+    this._style = style;
+    this._paneViews = [new TextLabelPaneView(this)];
   }
 
   attached(param: SeriesAttachedParameter<Time>) {
@@ -1444,11 +1610,11 @@ export class ChannelPrimitive implements ISeriesPrimitive<Time> {
   }
 }
 
-export type DrawingPrimitive = TrendLinePrimitive | HorizontalLinePrimitive | RectanglePrimitive | FibRetracementPrimitive | TrendFibPrimitive | ChannelPrimitive;
+export type DrawingPrimitive = TrendLinePrimitive | HorizontalLinePrimitive | RectanglePrimitive | FibRetracementPrimitive | TrendFibPrimitive | ChannelPrimitive | TextLabelPrimitive;
 
 export function createDrawingPrimitive(
   id: string,
-  type: 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel',
+  type: 'trendline' | 'horizontal' | 'text' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel',
   points: DrawingPoint[],
   style: DrawingStyle
 ): DrawingPrimitive | null {
@@ -1461,6 +1627,11 @@ export function createDrawingPrimitive(
     case 'horizontal':
       if (points.length >= 1) {
         return new HorizontalLinePrimitive(id, points[0], style);
+      }
+      break;
+    case 'text':
+      if (points.length >= 1) {
+        return new TextLabelPrimitive(id, points[0], style);
       }
       break;
     case 'rectangle':

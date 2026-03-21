@@ -5,6 +5,7 @@ import {
   DrawingPrimitive,
   TrendLinePrimitive,
   HorizontalLinePrimitive,
+  TextLabelPrimitive,
   RectanglePrimitive,
   FibRetracementPrimitive,
   ChannelPrimitive
@@ -69,7 +70,7 @@ export function useDrawingPrimitives({
         if ('updatePoints' in existingPrimitive) {
           (existingPrimitive as TrendLinePrimitive | RectanglePrimitive | FibRetracementPrimitive | ChannelPrimitive).updatePoints(drawing.points);
         } else if ('updatePoint' in existingPrimitive) {
-          (existingPrimitive as HorizontalLinePrimitive).updatePoint(drawing.points[0]);
+          (existingPrimitive as HorizontalLinePrimitive | TextLabelPrimitive).updatePoint(drawing.points[0]);
         }
         
         existingPrimitive.updateStyle(drawing.style);
@@ -77,7 +78,7 @@ export function useDrawingPrimitives({
         // Create new primitive
         const primitive = createDrawingPrimitive(
           drawing.id,
-          drawing.type as 'trendline' | 'horizontal' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel',
+          drawing.type as 'trendline' | 'horizontal' | 'text' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel',
           drawing.points,
           drawing.style
         );

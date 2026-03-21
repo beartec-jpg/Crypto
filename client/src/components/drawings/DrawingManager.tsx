@@ -7,6 +7,7 @@ import {
   DrawingPrimitive,
   TrendLinePrimitive,
   HorizontalLinePrimitive,
+  TextLabelPrimitive,
   RectanglePrimitive,
   FibRetracementPrimitive,
   ChannelPrimitive
@@ -123,7 +124,7 @@ export function DrawingManager({
         if ('updatePoints' in existingPrimitive) {
           (existingPrimitive as TrendLinePrimitive | RectanglePrimitive | FibRetracementPrimitive | ChannelPrimitive).updatePoints(drawing.points);
         } else if ('updatePoint' in existingPrimitive) {
-          (existingPrimitive as HorizontalLinePrimitive).updatePoint(drawing.points[0]);
+          (existingPrimitive as HorizontalLinePrimitive | TextLabelPrimitive).updatePoint(drawing.points[0]);
         }
         
         // Update style

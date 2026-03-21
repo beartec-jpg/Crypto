@@ -5,6 +5,7 @@ import { FibRetracementSettings } from './FibRetracementSettings';
 import { TrendFibSettings } from './TrendFibSettings';
 import { RectangleSettings } from './RectangleSettings';
 import { ElliottWaveSettings } from './ElliottWaveSettings';
+import { TextSettings } from './TextSettings';
 
 interface DrawingSettingsPanelProps {
   drawing: any;
@@ -33,6 +34,8 @@ export function DrawingSettingsPanel({
         return <TrendlineSettings drawing={drawing} onUpdate={onUpdate} />;
       case 'horizontal':
         return <HorizontalLineSettings drawing={drawing} onUpdate={onUpdate} />;
+      case 'text':
+        return <TextSettings drawing={drawing} onUpdate={onUpdate} />;
       case 'rectangle':
         return <RectangleSettings drawing={drawing} onUpdate={onUpdate} />;
       case 'channel':
