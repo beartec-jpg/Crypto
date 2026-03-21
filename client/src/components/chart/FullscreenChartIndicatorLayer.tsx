@@ -19,6 +19,7 @@ import { DivergenceBadgePopup } from '@/components/divergence/DivergenceBadgePop
 import { DivergenceSettingsModal } from '@/components/divergence/DivergenceSettingsModal';
 import { getConditionWeights } from '@/lib/conditionWeights';
 import type { LiquidityHeatmapDebugInfo } from '@/hooks/useLiquidityHeatmapData';
+import type { PredictedLiquidityPoint, LiquidationZone } from '@/hooks/useLiquidityPivotAnalysis';
 
 interface FullscreenChartIndicatorLayerProps {
   chart: any;
@@ -71,6 +72,13 @@ interface FullscreenChartIndicatorLayerProps {
   lhIsLoading: boolean;
   lhError: string | null;
   lhDebugInfo: LiquidityHeatmapDebugInfo;
+
+  liquidityPivotAnalysis: {
+    points: PredictedLiquidityPoint[];
+    zones: LiquidationZone[];
+    directionBias: 'long' | 'short' | 'neutral';
+    confidence: number;
+  };
 
   superTrendData: any;
   superTrendSettings: any;
@@ -133,6 +141,7 @@ export function FullscreenChartIndicatorLayer({
   lhIsLoading,
   lhError,
   lhDebugInfo,
+  liquidityPivotAnalysis,
   superTrendData,
   superTrendSettings,
   divergenceScannerEnabled,
@@ -279,6 +288,7 @@ export function FullscreenChartIndicatorLayer({
           settings={lhSettings}
           symbol={symbol}
           debugInfo={lhDebugInfo}
+          liquidityPivotAnalysis={liquidityPivotAnalysis}
         />
       )}
 

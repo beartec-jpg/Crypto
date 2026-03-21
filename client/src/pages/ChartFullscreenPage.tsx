@@ -44,6 +44,7 @@ import { useVisibleRange } from '@/hooks/useVisibleRange';
 import { useVolumeProfileCalculation } from '@/hooks/useVolumeProfileCalculation';
 import { useLiquidityHeatmapSettings } from '@/hooks/useLiquidityHeatmapSettings';
 import { useLiquidityHeatmapData } from '@/hooks/useLiquidityHeatmapData';
+import { useLiquidityPivotAnalysis } from '@/hooks/useLiquidityPivotAnalysis';
 import { useFVGSettings } from '@/hooks/useFVGSettings';
 import { useFVGDetection } from '@/hooks/useFVGDetection';
 import { useOrderBlockSettings } from '@/hooks/useOrderBlockSettings';
@@ -694,6 +695,14 @@ export function ChartFullscreenPage({
     timeframe,
     effectiveCandles,
     lhVisibleRange,
+  );
+
+  // Hooks - Liquidity Pivot Analysis (combines pivots + volume + liquidation)
+  const liquidityPivotAnalysis = useLiquidityPivotAnalysis(
+    effectiveCandles,
+    volumeProfileData,
+    liquidityHeatmapDataResult?.data ?? null,
+    { minConfluenceScore: 40, topNPoints: 15 }
   );
 
   // Hooks - Trading Systems
@@ -2383,6 +2392,7 @@ export function ChartFullscreenPage({
           lhIsLoading={liquidityHeatmapDataResult.isLoading}
           lhError={liquidityHeatmapDataResult.error}
           lhDebugInfo={liquidityHeatmapDataResult.debugInfo}
+          liquidityPivotAnalysis={liquidityPivotAnalysis}
           superTrendData={superTrendData}
           superTrendSettings={superTrendSettings.settings}
           divergenceScannerEnabled={divergenceScannerEnabled}

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { LiquidityHeatmapData, LiquidityHeatmapSettings, CoinglassRange } from '@/types/liquidityHeatmap';
 import type { LiquidityHeatmapDebugInfo } from '@/hooks/useLiquidityHeatmapData';
 import type { EndpointDiagnostic } from '@/services/predictiveLiquidationApi';
+import type { PredictedLiquidityPoint, LiquidationZone } from '@/hooks/useLiquidityPivotAnalysis';
 
 interface LiquidityHeatmapDebugPanelProps {
   data: LiquidityHeatmapData | null;
@@ -11,6 +12,12 @@ interface LiquidityHeatmapDebugPanelProps {
   settings: LiquidityHeatmapSettings;
   symbol: string;
   debugInfo: LiquidityHeatmapDebugInfo;
+  liquidityPivotAnalysis?: {
+    points: PredictedLiquidityPoint[];
+    zones: LiquidationZone[];
+    directionBias: 'long' | 'short' | 'neutral';
+    confidence: number;
+  };
 }
 
 function formatValue(usd: number): string {
@@ -51,6 +58,7 @@ export function LiquidityHeatmapDebugPanel({
   settings,
   symbol,
   debugInfo,
+  liquidityPivotAnalysis,
 }: LiquidityHeatmapDebugPanelProps) {
   const [collapsed, setCollapsed] = useState(true);
 
@@ -197,6 +205,43 @@ export function LiquidityHeatmapDebugPanel({
             <Row label="Direction Score" value={`${debugInfo.stats.directionScore.toFixed(1)}`} />
             <Row label="Cache Warm" value={debugInfo.stats.cacheWarm ? 'Yes' : 'No'} />
           </section>
+
+          {liquidityPivotAnalysis && liquidityPivotAnalysis.points.length > 0 && (
+            <>
+              <Divider />
+              <section>
+                <p className="text-slate-500 uppercase tracking-wide mb-0.5">Pivot Analysis Predictions</p>
+                <Row
+                  label="Direction"
+                  value={`${liquidityPivotAnalysis.directionBias.toUpperCase()} (${liquidityPivotAnalysis.confidence}% confidence)`}
+                  valueClass={
+                    liquidityPivotAnalysis.directionBias === 'long' ? 'text-red-400'
+                    : liquidityPivotAnalysis.directionBias === 'short' ? 'text-green-400'
+                    : 'text-slate-300'
+                  }
+                />
+                <Row label="Top Points" value={String(liquidityPivotAnalysis.points.length)} />
+                <Row label="Zones" value={String(liquidityPivotAnalysis.zones.length)} />
+                {liquidityPivotAnalysis.points.length > 0 && (
+                  <>
+                    <p className="text-slate-400 text-[10px] mt-1 mb-1">Top 3 Points:</p>
+                    {liquidityPivotAnalysis.points.slice(0, 3).map((point, idx) => (
+                      <div key={idx} className="ml-2 text-[10px] text-slate-400 mb-0.5">
+                        <span className="text-slate-500">$</span>
+                        <span>{point.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                        <span className="text-slate-600"> — </span>
+                        <span className={point.direction === 'long' ? 'text-red-400' : point.direction === 'short' ? 'text-green-400' : 'text-slate-400'}>
+                          {point.direction.toUpperCase()}
+                        </span>
+                        <span className="text-slate-600"> @ </span>
+                        <span className="text-amber-300">{point.confidence}%</span>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </section>
+            </>
+          )}
 
           {debugInfo.diagnostics.length > 0 && (
             <>
