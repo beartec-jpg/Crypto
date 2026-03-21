@@ -41,8 +41,8 @@ function checkXaiApiKey(): { configured: boolean; error?: string } {
 }
 
 // Model routing: default to Grok 4 for better reasoning, with Grok 3 fallback.
-const XAI_DEFAULT_MODEL = process.env.XAI_MODEL || process.env.XAI_TRADING_MODEL || "grok-4";
-const XAI_FALLBACK_MODEL = process.env.XAI_FALLBACK_MODEL || process.env.XAI_TRADING_FALLBACK_MODEL || "grok-3";
+const XAI_DEFAULT_MODEL = process.env.XAI_MODEL || process.env.XAI_TRADING_MODEL || "grok-4-1-fast-reasoning";
+const XAI_FALLBACK_MODEL = process.env.XAI_FALLBACK_MODEL || process.env.XAI_TRADING_FALLBACK_MODEL || "grok-4";
 
 function isModelSelectionError(error: any): boolean {
   const message = String(error?.message || '').toLowerCase();
@@ -4183,7 +4183,7 @@ Be concise and direct.`;
       const startTime = Date.now();
       
       const response = await xai.chat.completions.create({
-        model: "grok-3",
+        model: XAI_DEFAULT_MODEL,
         messages: [
           {
             role: "system",
@@ -5439,7 +5439,7 @@ Provide a clear, actionable market review covering:
 Keep the analysis concise but informative (200-300 words).`;
 
       const completion = await xai.chat.completions.create({
-        model: "grok-3",
+        model: XAI_DEFAULT_MODEL,
         messages: [
           { role: "system", content: "You are a professional crypto market analyst providing clear, actionable insights." },
           { role: "user", content: prompt }
@@ -5537,7 +5537,7 @@ Return ONLY valid JSON in this exact format:
 }`;
 
       const completion = await xai.chat.completions.create({
-        model: "grok-3",
+        model: XAI_DEFAULT_MODEL,
         messages: [
           { role: "system", content: "You are a professional crypto trader. Return only valid JSON, no markdown." },
           { role: "user", content: prompt }
@@ -7109,7 +7109,7 @@ Return JSON:
 {"patternType":"impulse|diagonal|zigzag|flat|triangle","direction":"bullish|bearish","confidence":0.0-1.0,"suggestedLabels":[{"label":"0","candleIndex":N,"price":N,"snapTo":"low|high"}],"analysis":"Brief explanation"}`;
       
       res.json({
-        model: "grok-4",
+        model: XAI_DEFAULT_MODEL,
         systemPrompt,
         userPrompt,
         candleCount,
@@ -7615,9 +7615,9 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
         timeout: 120000,
       });
       
-      console.log(`🤖 Calling xAI API with grok-3-beta model...`);
+      console.log(`🤖 Calling xAI API with ${XAI_DEFAULT_MODEL} model...`);
       const response = await xaiClient.chat.completions.create({
-        model: 'grok-3-beta',
+        model: XAI_DEFAULT_MODEL,
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 4500,
         temperature: 0.1,
@@ -7954,7 +7954,7 @@ CRITICAL FOR SINGLE-PHASE STRUCTURES:
       
       console.log(`🤖 Calling xAI API for chart pattern analysis...`);
       const response = await xaiClient.chat.completions.create({
-        model: 'grok-3-beta',
+        model: XAI_DEFAULT_MODEL,
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 3000,
         temperature: 0.1,
@@ -8337,7 +8337,7 @@ CRITICAL DATA RULES:
       
       console.log(`🤖 Calling xAI API for detailed sub-wave analysis...`);
       const response = await xaiClient.chat.completions.create({
-        model: 'grok-3-beta',
+        model: XAI_DEFAULT_MODEL,
         messages: [{ role: 'user', content: prompt }],
         max_tokens: 3000,
         temperature: 0.1,
