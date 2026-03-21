@@ -3644,7 +3644,7 @@ export default function CryptoAI() {
                           {/* SMC/ICT Structure */}
                           <div>
                             <h4 className="text-sm font-semibold text-[#00c4b4] mb-2">SMC/ICT Structure</h4>
-                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 text-xs">
+                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 text-xs">
                               <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
                                 <div className="text-gray-500">BOS</div>
                                 <div className={indicatorData.bos === 'bullish' ? 'text-green-400' : indicatorData.bos === 'bearish' ? 'text-red-400' : 'text-gray-400'}>
@@ -3678,6 +3678,22 @@ export default function CryptoAI() {
                               <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
                                 <div className="text-gray-500">Liq Grabs</div>
                                 <div className="text-yellow-400">{indicatorData.liquidityGrabs}</div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">Hidden Div</div>
+                                <div className="text-purple-400">{indicatorData.hiddenDivergences ?? 0}</div>
+                              </div>
+                              <div className="bg-[#0e0e0e] p-2 rounded border border-[#2a2e39]">
+                                <div className="text-gray-500">Osc Div Flags</div>
+                                <div className="text-white">
+                                  {[
+                                    indicatorData.oscillatorDivergences?.macd,
+                                    indicatorData.oscillatorDivergences?.mfi,
+                                    indicatorData.oscillatorDivergences?.obv,
+                                  ]
+                                    .filter((v: string | undefined) => v && v !== 'none')
+                                    .join(', ') || 'none'}
+                                </div>
                               </div>
                             </div>
                           </div>

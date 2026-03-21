@@ -40,6 +40,48 @@ function checkXaiApiKey(): { configured: boolean; error?: string } {
   return { configured: true };
 }
 
+// Model routing: default to Grok 4 for better reasoning, with Grok 3 fallback.
+const XAI_DEFAULT_MODEL = process.env.XAI_MODEL || process.env.XAI_TRADING_MODEL || "grok-4";
+const XAI_FALLBACK_MODEL = process.env.XAI_FALLBACK_MODEL || process.env.XAI_TRADING_FALLBACK_MODEL || "grok-3";
+
+function isModelSelectionError(error: any): boolean {
+  const message = String(error?.message || '').toLowerCase();
+  const status = Number(error?.status || error?.response?.status || 0);
+  return status === 400 || status === 404 || message.includes('model') || message.includes('not found');
+}
+
+async function createXaiChatCompletionWithFallback(params: {
+  preferredModel?: string;
+  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+  temperature: number;
+  max_tokens: number;
+}) {
+  const primaryModel = params.preferredModel || XAI_DEFAULT_MODEL;
+  const modelCandidates = primaryModel === XAI_FALLBACK_MODEL
+    ? [primaryModel]
+    : [primaryModel, XAI_FALLBACK_MODEL];
+
+  let lastError: any = null;
+  for (const model of modelCandidates) {
+    try {
+      return await xai.chat.completions.create({
+        model,
+        messages: params.messages,
+        temperature: params.temperature,
+        max_tokens: params.max_tokens,
+      });
+    } catch (error: any) {
+      lastError = error;
+      if (!isModelSelectionError(error) || model === modelCandidates[modelCandidates.length - 1]) {
+        throw error;
+      }
+      console.warn(`⚠️ xAI model '${model}' unavailable, retrying with fallback '${XAI_FALLBACK_MODEL}'`);
+    }
+  }
+
+  throw lastError;
+}
+
 
 // In-memory cache for market analysis (15 min TTL)
 interface AnalysisCache {
@@ -4372,8 +4414,7 @@ Respond with ONLY valid JSON in this exact format:
       console.log('🤖 Calling xAI Grok for multi-TF analysis...');
       const startTime = Date.now();
 
-      const response = await xai.chat.completions.create({
-        model: "grok-3",
+      const response = await createXaiChatCompletionWithFallback({
         messages: [
           {
             role: "system",
@@ -4583,6 +4624,101 @@ Respond with ONLY valid JSON in this exact format:
         '1M': '3-12 months'
       };
       const expectedDuration = timeframeDurations[interval] || '1-7 days';
+
+      const decisionPacket = {
+        market: {
+          symbol,
+          timeframe: interval,
+          expectedDuration,
+          currentPrice,
+          change50BarsPct: Number(priceChange.toFixed(2)),
+          lastBar: {
+            open: Number(lastBar.open.toFixed(6)),
+            high: Number(lastBar.high.toFixed(6)),
+            low: Number(lastBar.low.toFixed(6)),
+            close: Number(lastBar.close.toFixed(6)),
+          },
+          levels: {
+            poc: Number(poc.toFixed(6)),
+            vah: Number(vah.toFixed(6)),
+            val: Number(val.toFixed(6)),
+          },
+        },
+        trend: {
+          adx: Number(adx.toFixed(2)),
+          plusDI: Number(plusDI.toFixed(2)),
+          minusDI: Number(minusDI.toFixed(2)),
+          atr: Number(atr.toFixed(6)),
+          vwap: {
+            value: Number(vwapCalc.vwap.toFixed(6)),
+            zone: vwapCalc.label,
+          },
+          bollinger: {
+            middle: Number(bb.middle.toFixed(6)),
+            bandwidthPct: Number((bb.bandwidth * 100).toFixed(2)),
+            squeeze: bb.squeeze,
+          },
+        },
+        momentum: {
+          rsi: Number(rsi.toFixed(2)),
+          macd: {
+            histogram: Number(macd.histogram.toFixed(6)),
+            crossover: macd.crossover,
+            divergence: macd.divergence,
+          },
+          stochastic: {
+            k: Number(stoch.k.toFixed(2)),
+            d: Number(stoch.d.toFixed(2)),
+            crossover: stoch.crossover,
+          },
+          mfi: {
+            value: Number(mfi.mfi.toFixed(2)),
+            divergence: mfi.divergence,
+          },
+          cmf: {
+            value: Number(cmf.cmf.toFixed(3)),
+            label: cmf.label,
+          },
+          obv: {
+            value: Number(obv.obv.toFixed(0)),
+            divergence: obv.divergence,
+          },
+          cci: Number(cci.toFixed(2)),
+        },
+        structure: {
+          bos: boschoch.bos,
+          choch: boschoch.choch,
+          displacement: displacement.displacement ? displacement.direction : 'none',
+          orderBlocks: { bullish: bullishOBCount || 0, bearish: bearishOBCount || 0 },
+          fvgs: { bullish: bullFVGCount || 0, bearish: bearFVGCount || 0 },
+          imbalances: { buy: buyImbalancesCount || 0, sell: sellImbalancesCount || 0 },
+          absorptionCount: absorptionCount || 0,
+          liquidityGrabCount: liquidityGrabCount || 0,
+          hiddenDivergenceCount: _hiddenDivergenceCount || 0,
+          recentSignals: {
+            lastBullishOB: bullishOB?.length ? Number(bullishOB[bullishOB.length - 1]?.price?.toFixed(6)) : null,
+            lastBearishOB: bearishOB?.length ? Number(bearishOB[bearishOB.length - 1]?.price?.toFixed(6)) : null,
+            lastBullFVG: bullFVG?.length
+              ? { low: Number(bullFVG[bullFVG.length - 1]?.low?.toFixed(6)), high: Number(bullFVG[bullFVG.length - 1]?.high?.toFixed(6)) }
+              : null,
+            lastBearFVG: bearFVG?.length
+              ? { low: Number(bearFVG[bearFVG.length - 1]?.low?.toFixed(6)), high: Number(bearFVG[bearFVG.length - 1]?.high?.toFixed(6)) }
+              : null,
+            lastLiquidityGrab: liquidityGrabs?.length
+              ? {
+                  type: liquidityGrabs[liquidityGrabs.length - 1]?.type,
+                  price: Number(liquidityGrabs[liquidityGrabs.length - 1]?.price?.toFixed(6)),
+                }
+              : null,
+          },
+        },
+        institutional: {
+          openInterest: { trend: oiTrend, deltaPct: Number(oiDelta.toFixed(2)) },
+          fundingRatePct: Number(fundingValue.toFixed(4)),
+          fundingBias,
+          longShortRatio: Number(lsRatio.toFixed(2)),
+        },
+      };
       
       // ===== BUILD REFINED PROMPT =====
       const prompt = `Symbol: ${symbol} | Timeframe: ${interval} | Duration: ${expectedDuration}
@@ -4623,13 +4759,19 @@ SL/TP: Use 1-2x ATR for SL; targets at 1:1 to 1:3 R/R aligned with key levels.
 - BOS: ${boschoch.bos} | CHoCH: ${boschoch.choch}
 - Displacement: ${displacement.displacement ? `YES (${displacement.direction})` : 'none'}
 - Liquidity Grabs: ${liquidityGrabCount || 0}${liquidityGrabs?.length ? ` (${liquidityGrabs[liquidityGrabs.length - 1]?.type} at $${liquidityGrabs[liquidityGrabs.length - 1]?.price?.toFixed(4)})` : ''}
+- Hidden Divergences (price vs CVD): ${_hiddenDivergenceCount || 0}
+- Oscillator divergence flags: MACD=${macd.divergence}, MFI=${mfi.divergence}, OBV=${obv.divergence}
 
 **Institutional Sentiment:**
 - Open Interest: ${oiTrend !== 'N/A' ? `${oiTrend.toUpperCase()} (${oiDelta > 0 ? '+' : ''}${oiDelta.toFixed(2)}% delta)` : 'N/A'}
 - Funding Rate: ${fundingValue.toFixed(4)}% (${fundingBias})
 - Long/Short Ratio: ${lsRatio.toFixed(2)} (${lsRatio > 1.2 ? 'longs dominant' : lsRatio < 0.8 ? 'shorts dominant' : 'balanced'})
 
+**Decision Packet (compact canonical context):**
+${JSON.stringify(decisionPacket)}
+
 **TASK:**
+Use the Decision Packet as primary context; use other lines only if needed.
 Find 1-3 trades with min 4 confluence factors, R/R ≥0.75. Grade: A+ (8+), A (7), B (5-6), C (3-4), D (2), E (1).
 Use ATR for SL sizing. List 4-6 confluence signals per trade. Be concise.
 
@@ -4657,12 +4799,11 @@ Use ATR for SL sizing. List 4-6 confluence signals per trade. Be concise.
       console.log('🤖 Calling xAI Grok for order flow analysis...');
       const startTime = Date.now();
       
-      const response = await xai.chat.completions.create({
-        model: "grok-3",
+      const response = await createXaiChatCompletionWithFallback({
         messages: [
           {
             role: "system",
-            content: "You are a professional crypto trader specializing in SMC/ICT, technical analysis, order flow, and institutional sentiment. Return ONLY valid JSON. summary=2 sentences, reasoning=1 sentence per trade. No data dumps. Be concise."
+            content: "You are a professional crypto trader specializing in SMC/ICT, technical analysis, order flow, and institutional sentiment. Return ONLY valid JSON. summary=2 sentences, reasoning=1 sentence per trade. Prefer concise, high-signal features over verbose data dumps."
           },
           {
             role: "user",
@@ -4813,6 +4954,12 @@ Use ATR for SL sizing. List 4-6 confluence signals per trade. Be concise.
         fvgs: { bullish: bullFVGCount || 0, bearish: bearFVGCount || 0 },
         imbalances: { buy: buyImbalancesCount || 0, sell: sellImbalancesCount || 0 },
         absorption: absorptionCount || 0,
+        hiddenDivergences: _hiddenDivergenceCount || 0,
+        oscillatorDivergences: {
+          macd: macd.divergence,
+          mfi: mfi.divergence,
+          obv: obv.divergence,
+        },
         liquidityGrabs: liquidityGrabCount || 0,
         // Institutional
         openInterest: { trend: oiTrend, delta: oiDelta },
