@@ -237,7 +237,7 @@ export function FullscreenChartActionToolbar({
         size="sm"
         onClick={onToggleDrawingMode}
         className={cn(
-          'px-2 py-1 text-xs font-semibold transition-all',
+          'h-7 px-1.5 text-[11px] font-semibold transition-all',
           activeTool
             ? 'bg-blue-500 text-white'
             : 'bg-slate-800/90 text-gray-400 hover:bg-slate-700',
@@ -245,7 +245,7 @@ export function FullscreenChartActionToolbar({
         title={activeTool ? 'Drawing: ON (press D or click to disable)' : 'Drawing: OFF (press D or click to enable)'}
         data-testid="btn-drawing-toggle"
       >
-        {activeTool ? 'Drawing: ON' : 'Drawing: OFF'}
+        {activeTool ? 'Draw: ON' : 'Draw: OFF'}
       </Button>
 
       <Button
@@ -253,25 +253,25 @@ export function FullscreenChartActionToolbar({
         size="sm"
         onClick={onToggleDrawingsVisible}
         className={cn(
-          'px-2 py-1 text-xs font-semibold transition-all',
+          'h-7 px-1.5 text-[11px] font-semibold transition-all',
           drawingsVisible
             ? 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
             : 'bg-amber-600 text-white hover:bg-amber-500'
         )}
         title={drawingsVisible ? 'Hide all drawings' : 'Show all drawings'}
       >
-        {drawingsVisible ? <EyeOff className="mr-1 h-4 w-4" /> : <Eye className="mr-1 h-4 w-4" />}
-        {drawingsVisible ? 'Hide Drawings' : 'Show Drawings'}
+        {drawingsVisible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+        <span className="ml-1 hidden sm:inline">{drawingsVisible ? 'Hide' : 'Show'}</span>
       </Button>
 
       <Button
         variant="ghost"
         size="sm"
         onClick={onDisableAllIndicators}
-        className="px-2 py-1 text-xs font-semibold bg-slate-800/90 text-gray-300 hover:bg-slate-700"
+        className="h-7 px-1.5 text-[11px] font-semibold bg-slate-800/90 text-gray-300 hover:bg-slate-700"
         title="Turn all indicators and oscillators off"
       >
-        Indicators Off
+        Ind: Off
       </Button>
 
       <Button
@@ -280,7 +280,7 @@ export function FullscreenChartActionToolbar({
         onClick={onUndo}
         disabled={!canUndo}
         className={cn(
-          'p-2 transition-all',
+          'h-7 p-1.5 transition-all',
           canUndo
             ? 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
             : 'bg-slate-800/40 text-gray-600 cursor-not-allowed',
@@ -288,7 +288,7 @@ export function FullscreenChartActionToolbar({
         title="Undo (Ctrl+Z)"
         data-testid="btn-undo"
       >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
         </svg>
       </Button>
@@ -299,7 +299,7 @@ export function FullscreenChartActionToolbar({
         onClick={onRedo}
         disabled={!canRedo}
         className={cn(
-          'p-2 transition-all',
+          'h-7 p-1.5 transition-all',
           canRedo
             ? 'bg-slate-800/90 text-gray-300 hover:bg-slate-700'
             : 'bg-slate-800/40 text-gray-600 cursor-not-allowed',
@@ -307,7 +307,7 @@ export function FullscreenChartActionToolbar({
         title="Redo (Ctrl+Y)"
         data-testid="btn-redo"
       >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" />
         </svg>
       </Button>
