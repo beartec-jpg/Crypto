@@ -33,6 +33,10 @@ export function useFullscreenChartLifecycle({
   rewindPosition,
 }: UseFullscreenChartLifecycleParams) {
   const isInitialDataLoad = useRef(true);
+  // Track the last symbol+timeframe key so we can detect a pair change even when
+  // candles arrive in the same render (cached data) — ensures fitContent() is always
+  // called on timeframe/symbol switch rather than inheriting a stale visible range.
+  const lastSymbolTimeframeRef = useRef(`${symbol}:${timeframe}`);
 
   useEffect(() => {
     if (!candleSeriesRef.current) return;
@@ -54,7 +58,13 @@ export function useFullscreenChartLifecycle({
       chartData.push(...(futureBars as any[]));
     }
 
-    if (isInitialDataLoad.current) {
+    const currentKey = `${symbol}:${timeframe}`;
+    const isNewPair = lastSymbolTimeframeRef.current !== currentKey;
+
+    // Fit content on initial load or any symbol/timeframe change so we never carry
+    // over a stale visible range from a different bar density.
+    if (isInitialDataLoad.current || isNewPair) {
+      lastSymbolTimeframeRef.current = currentKey;
       candleSeriesRef.current.setData(chartData);
       fitContent(candles.length);
       chartRef.current?.timeScale().applyOptions({ rightOffset: 50 });
@@ -69,7 +79,7 @@ export function useFullscreenChartLifecycle({
         }
       }
     }
-  }, [candles, rewindPosition, candleSeriesRef, fitContent, timeframe, chartRef]);
+  }, [candles, rewindPosition, candleSeriesRef, fitContent, timeframe, symbol, chartRef]);
 
   useEffect(() => {
     const chartElement = chartContainerRef.current;
@@ -91,8 +101,4 @@ export function useFullscreenChartLifecycle({
     gestureController.attachToChart(chartRef.current, candleSeriesRef.current, chartContainerRef.current);
     return () => gestureController.detachFromChart();
   }, [gestureController, chartRef, candleSeriesRef, chartContainerRef]);
-
-  useEffect(() => {
-    isInitialDataLoad.current = true;
-  }, [symbol, timeframe]);
 }

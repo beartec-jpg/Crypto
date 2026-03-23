@@ -525,24 +525,8 @@ const handleAIMarketReview = () => {
     candlesRef.current = candles;
   }, [candles]);
 
-  // Resize chart when oscillator panel visibility changes in fullscreen
-useEffect(() => {
-  if (isFullscreen && chartRef.current && chartContainerRef.current) {
-    const resizeTimeout = setTimeout(() => {
-      if (chartRef.current && chartContainerRef.current) {
-        chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-          height: chartContainerRef.current.clientHeight
-        });
-        chartRef.current.timeScale().fitContent();
-      }
-    }, 100);
-    
-    return () => clearTimeout(resizeTimeout);
-  }
-}, [panels.oscillatorPanel, isFullscreen]);
-
-    // Resize chart when oscillator panel visibility changes in fullscreen
+  // Resize chart when oscillator panel visibility changes in fullscreen.
+  // Only resize dimensions — do NOT call fitContent() here to avoid resetting user zoom.
   useEffect(() => {
     if (isFullscreen && chartRef.current && chartContainerRef.current) {
       const resizeTimeout = setTimeout(() => {
@@ -551,7 +535,6 @@ useEffect(() => {
             width: chartContainerRef.current.clientWidth,
             height: chartContainerRef.current.clientHeight
           });
-          chartRef.current.timeScale().fitContent();
         }
       }, 100);
       
@@ -559,7 +542,8 @@ useEffect(() => {
     }
   }, [panels.oscillatorPanel, isFullscreen]);
 
-  // Force resize when entering/exiting fullscreen
+  // Force resize when entering/exiting fullscreen.
+  // fitContent() is intentionally called here on entry so the initial view is correct.
   useEffect(() => {
     if (chartRef.current && chartContainerRef.current) {
       const resizeTimeout = setTimeout(() => {
@@ -569,7 +553,9 @@ useEffect(() => {
             width: rect.width,
             height: rect.height,
           });
-          chartRef.current.timeScale().fitContent();
+          if (isFullscreen) {
+            chartRef.current.timeScale().fitContent();
+          }
         }
       }, 200);
       
@@ -964,25 +950,25 @@ useEffect(() => {
     }
   }, [chartControls.drawingMode, activeTool]);
   
-  // Fullscreen mode: resize chart
+  // Fullscreen mode: resize chart on window resize.
+  // Resize dimensions only — fitContent() is NOT called here to preserve user zoom.
   useEffect(() => {
-   const handleResize = () => {
-  if (chartContainerRef.current && chartRef.current) {
-    const rect = chartContainerRef.current.getBoundingClientRect();
-    chartRef.current.applyOptions({
-      width: rect.width,
-      height: rect.height,
-    });
-    chartRef.current.timeScale().fitContent();
-  }
-};
-    
+    const handleResize = () => {
+      if (chartContainerRef.current && chartRef.current) {
+        const rect = chartContainerRef.current.getBoundingClientRect();
+        chartRef.current.applyOptions({
+          width: rect.width,
+          height: rect.height,
+        });
+      }
+    };
+
     if (isFullscreen) {
       window.addEventListener('resize', handleResize);
       // Trigger resize immediately when entering fullscreen
       setTimeout(handleResize, 50);
     }
-    
+
     return () => {
       window.removeEventListener('resize', handleResize);
     };
