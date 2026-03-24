@@ -49,10 +49,11 @@ export function calcRetracementLevels(
 
 /**
  * Calculate Fibonacci extension levels from a base swing.
- * Used to project W3 / W5 / Wave C targets.
+ * The length between `baseStart` and `baseEnd` defines the reference wave length,
+ * and the projection starts from `baseEnd`.
  *
- * @param baseStart  Start of the reference wave (e.g. W0 for W3 projection)
- * @param baseEnd    End of the reference wave (e.g. W2 for W3 projection)
+ * @param baseStart  Start of the reference wave (defines length)
+ * @param baseEnd    End of the reference wave — projection origin
  * @param ratios     Extension multiples to calculate
  */
 export function calcExtensionLevels(
@@ -65,6 +66,36 @@ export function calcExtensionLevels(
   return ratios.map(ratio => ({
     ratio,
     price: baseEnd + direction * baseLength * ratio,
+    label: `${(ratio * 100).toFixed(1)}%`,
+    isRetrace: false,
+  }));
+}
+
+/**
+ * Calculate trend-based Fibonacci extension levels using 3 anchor points.
+ * The wave length from `waveStart`→`waveEnd` is projected from `projectionStart`.
+ *
+ * This is the correct Elliott Wave approach for wave projections, e.g.:
+ *   - W3 targets: waveStart=W0, waveEnd=W1_end, projectionStart=W2_end
+ *   - W5 targets: waveStart=W0, waveEnd=W1_end, projectionStart=W4_end
+ *   - C targets:  waveStart=A_start, waveEnd=A_end, projectionStart=B_end
+ *
+ * @param waveStart       Start of the reference wave (e.g. W0)
+ * @param waveEnd         End of the reference wave (e.g. W1 end)
+ * @param projectionStart Point to project FROM (e.g. W2 end)
+ * @param ratios          Extension multiples to calculate
+ */
+export function calcTrendBasedExtension(
+  waveStart: number,
+  waveEnd: number,
+  projectionStart: number,
+  ratios: number[] = EXTENSION_RATIOS,
+): FibLevel[] {
+  const waveLength = Math.abs(waveEnd - waveStart);
+  const direction = waveEnd > waveStart ? 1 : -1;
+  return ratios.map(ratio => ({
+    ratio,
+    price: projectionStart + direction * waveLength * ratio,
     label: `${(ratio * 100).toFixed(1)}%`,
     isRetrace: false,
   }));
