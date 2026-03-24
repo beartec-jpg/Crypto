@@ -34,7 +34,7 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
           {FIB_LEVELS.map(level => {
             const isVisible = !isLevelHidden(level);
             const customLabel = customLabels[level] || '';
-            const levelColor = levelColors[level] || '#3b82f6';
+            const levelColor = levelColors[level] || '#ffffff';
             
             return (
               <div key={level} className="flex items-center gap-2 text-xs">
