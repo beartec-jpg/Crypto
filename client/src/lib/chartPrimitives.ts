@@ -811,15 +811,15 @@ export class RectanglePrimitive implements ISeriesPrimitive<Time> {
 
 const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.272, 1.618];
 const FIB_COLORS: Record<number, string> = {
-  0: '#787b86',
-  0.236: '#f7525f',
-  0.382: '#ff9800',
-  0.5: '#4caf50',
-  0.618: '#2196f3',
-  0.786: '#9c27b0',
-  1: '#787b86',
-  1.272: '#00bcd4',
-  1.618: '#e91e63'
+  0: '#ffffff',
+  0.236: '#ffffff',
+  0.382: '#ffffff',
+  0.5: '#ffffff',
+  0.618: '#ffffff',
+  0.786: '#ffffff',
+  1: '#ffffff',
+  1.272: '#ffffff',
+  1.618: '#ffffff'
 };
 
 class FibRetracementRenderer implements IPrimitivePaneRenderer {
@@ -891,7 +891,7 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
       const anchorRight = x3;
       const lineLeft = extendLeft ? 0 : anchorLeft;
       const lineRight = extendRight ? chartWidth : anchorRight;
-      const isRightLabel = this._style.labelPosition === 'right';
+      const isRightLabel = this._style.labelPosition !== 'left';
       // Labels go on the extended line edge if extended, otherwise on anchor point
       const labelX = isRightLabel ? lineRight - 5 : lineLeft + 5;
       // Only show labels if the original anchor points are visible on chart
@@ -1091,17 +1091,17 @@ export class FibRetracementPrimitive implements ISeriesPrimitive<Time> {
 
 const TREND_FIB_LEVELS = [0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618, 2.0, 2.618, 3.618, 4.236];
 const TREND_FIB_COLORS: Record<number, string> = {
-  0.382: '#ff9800',
-  0.5: '#8bc34a',
-  0.618: '#2196f3',
-  0.786: '#00bcd4',
-  1.0: '#787b86',
-  1.272: '#00bcd4',
-  1.618: '#e91e63',
-  2.0: '#9c27b0',
-  3.618: '#673ab7',
-  4.236: '#3f51b5',
-  2.618: '#ff9800'
+  0.382: '#ffffff',
+  0.5: '#ffffff',
+  0.618: '#ffffff',
+  0.786: '#ffffff',
+  1.0: '#ffffff',
+  1.272: '#ffffff',
+  1.618: '#ffffff',
+  2.0: '#ffffff',
+  3.618: '#ffffff',
+  4.236: '#ffffff',
+  2.618: '#ffffff'
 };
 class TrendFibRenderer implements IPrimitivePaneRenderer {
   private _points: DrawingPoint[];
@@ -1147,7 +1147,7 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
       const baseEndX = x3Raw + 200;
       const lineLeft = extendLeft ? 0 : baseStartX;
       const lineRight = extendRight ? chartWidth : baseEndX;
-      const isRightLabel = this._style.labelPosition === 'right';
+      const isRightLabel = this._style.labelPosition !== 'left';
       // Labels go on the extended line edge if extended, otherwise on base area
       const labelX = isRightLabel ? lineRight - 5 : lineLeft + 5;
       // Only show labels if the original anchor points are visible on chart
@@ -1170,7 +1170,8 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
         const y = this._series!.priceToCoordinate(levelPrice);
         if (y === null) return;
 
-        const baseColor = TREND_FIB_COLORS[level] || this._style.color;
+        const levelColors = this._style.levelColors || {};
+        const baseColor = levelColors[level] || TREND_FIB_COLORS[level] || this._style.color;
         const color = applyOpacity(baseColor, opacity);
         
         ctx.beginPath();
