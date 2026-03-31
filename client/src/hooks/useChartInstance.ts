@@ -41,7 +41,7 @@ interface UseChartInstanceReturn {
   chartRef: React.MutableRefObject<IChartApi | null>;
   candleSeriesRef: React.MutableRefObject<ISeriesApi<'Candlestick'> | null>;
   isReady: boolean;
-  fitContent: (candleCount?: number) => void;
+  fitContent: (candleCount?: number, timeframe?: string) => void;
 }
 
 export function useChartInstance({
@@ -59,11 +59,26 @@ export function useChartInstance({
   const isFirstResizeRef = useRef(true);
   const isRetryingInitRef = useRef(false);
 
-  const fitContent = useCallback((candleCount?: number) => {
+  const fitContent = useCallback((candleCount?: number, timeframe?: string) => {
     if (chartRef.current) {
-      chartRef.current.timeScale().fitContent();
-      if (candleCount !== undefined) {
-        console.log('[Chart] Fit content with', candleCount, 'candles');
+      const visibleBarsByTimeframe: Record<string, number> = {
+        '1m': 200, '3m': 200, '5m': 200, '15m': 150, '30m': 120,
+        '1h': 120, '2h': 100, '4h': 100, '6h': 80, '8h': 70,
+        '12h': 60, '1d': 90, '3d': 60, '1w': 52, '1M': 24,
+      };
+      const DEFAULT_VISIBLE_BARS = 120; // sensible default for unrecognized timeframes
+      const barsToShow = timeframe ? (visibleBarsByTimeframe[timeframe] ?? DEFAULT_VISIBLE_BARS) : undefined;
+
+      if (barsToShow !== undefined && candleCount !== undefined && candleCount > barsToShow) {
+        const from = candleCount - barsToShow;
+        const to = candleCount + 20; // small right offset for future whitespace
+        chartRef.current.timeScale().setVisibleLogicalRange({ from, to });
+        console.log(`[Chart] Set visible range to last ${barsToShow} candles (${timeframe})`);
+      } else {
+        chartRef.current.timeScale().fitContent();
+        if (candleCount !== undefined) {
+          console.log('[Chart] Fit content with', candleCount, 'candles');
+        }
       }
     }
   }, []);

@@ -40,12 +40,29 @@ export const generateFutureWhitespace = (lastCandleTime: number, interval: strin
 };
 
 /**
- * Get recommended future bar count based on timeframe
- * User wants "half a chart worth at full zoom out" - approximately 300 bars for all timeframes
+ * Get recommended future bar count based on timeframe.
+ * Smaller timeframes benefit from more future whitespace for drawing tools,
+ * while larger timeframes need far fewer future bars to avoid excessive blank space.
  */
 export const getFutureBarCount = (interval: string): number => {
-  // Use consistent large count for all timeframes to ensure half chart of future space
-  return FUTURE_BAR_COUNT;
+  const futureCounts: Record<string, number> = {
+    '1m': 300,
+    '3m': 300,
+    '5m': 300,
+    '15m': 200,
+    '30m': 150,
+    '1h': 150,
+    '2h': 120,
+    '4h': 100,
+    '6h': 75,
+    '8h': 60,
+    '12h': 50,
+    '1d': 50,
+    '3d': 30,
+    '1w': 20,
+    '1M': 12,
+  };
+  return futureCounts[interval] ?? 150; // conservative fallback for unrecognized timeframes
 };
 
 /**

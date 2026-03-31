@@ -162,6 +162,14 @@ function calculateSupportResistance(
   return { supportLevel, resistanceLevel };
 }
 
+function getSRLookback(timeframe: string): number {
+  const lookbackByTimeframe: Record<string, number> = {
+    '1m': 20, '3m': 20, '5m': 20, '15m': 30, '30m': 40,
+    '1h': 40, '2h': 50, '4h': 60, '6h': 70, '12h': 75, '1d': 80, '1w': 100,
+  };
+  return lookbackByTimeframe[timeframe] ?? 20;
+}
+
 /** Thin adapter: converts the new graduated score to the legacy action+reasons format. */
 function evaluateTradingSystemSignal(
   input: ScoringInput & { systemId: TradingSystemId; divergencePoints?: DivergencePoint[] },
@@ -819,7 +827,7 @@ export function ChartFullscreenPage({
       const { supportLevel, resistanceLevel } = calculateSupportResistance(
         effectiveCandles as Array<{ low: number; high: number }>,
         index,
-        20,
+        getSRLookback(timeframe),
       );
 
       let latestStructureDirection: 'bullish' | 'bearish' | undefined;
@@ -1023,7 +1031,7 @@ export function ChartFullscreenPage({
     const { supportLevel, resistanceLevel } = calculateSupportResistance(
       effectiveCandles as Array<{ low: number; high: number }>,
       effectiveCandles.length - 1,
-      20,
+      getSRLookback(timeframe),
     );
 
     const htfBullish = htfBiasEntries.filter(e => e.bias === 'bullish').length;
@@ -1131,7 +1139,7 @@ export function ChartFullscreenPage({
     const { supportLevel, resistanceLevel } = calculateSupportResistance(
       effectiveCandles as Array<{ low: number; high: number }>,
       effectiveCandles.length - 1,
-      20,
+      getSRLookback(timeframe),
     );
 
     const htfBullish = htfBiasEntries.filter(e => e.bias === 'bullish').length;

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { Time } from 'lightweight-charts';
-import { generateFutureWhitespace, FUTURE_BAR_COUNT } from '@/lib/chart/timeUtils';
+import { generateFutureWhitespace, getFutureBarCount } from '@/lib/chart/timeUtils';
 
 interface UseFullscreenChartLifecycleParams {
   candleSeriesRef: React.MutableRefObject<any>;
@@ -9,7 +9,7 @@ interface UseFullscreenChartLifecycleParams {
   candles: any[];
   timeframe: string;
   symbol: string;
-  fitContent: (barCount?: number) => void;
+  fitContent: (barCount?: number, timeframe?: string) => void;
   handleChartClick: EventListener;
   handleTouchEnd: EventListener;
   gestureController: {
@@ -54,7 +54,7 @@ export function useFullscreenChartLifecycle({
     // Only add future whitespace bars when in live mode (not rewinding)
     if (rewindPosition === null) {
       const lastCandle = candles[candles.length - 1];
-      const futureBars = generateFutureWhitespace(lastCandle.time as number, timeframe, FUTURE_BAR_COUNT);
+      const futureBars = generateFutureWhitespace(lastCandle.time as number, timeframe, getFutureBarCount(timeframe));
       chartData.push(...(futureBars as any[]));
     }
 
@@ -66,7 +66,7 @@ export function useFullscreenChartLifecycle({
     if (isInitialDataLoad.current || isNewPair) {
       lastSymbolTimeframeRef.current = currentKey;
       candleSeriesRef.current.setData(chartData);
-      fitContent(candles.length);
+      fitContent(candles.length, timeframe);
       chartRef.current?.timeScale().applyOptions({ rightOffset: 50 });
       isInitialDataLoad.current = false;
     } else {
