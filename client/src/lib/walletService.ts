@@ -14,9 +14,10 @@ import { HDKey } from '@scure/bip32';
 import { Keypair } from '@solana/web3.js';
 import { deriveKeypair, deriveAddress, generateSeed } from 'ripple-keypairs';
 import { Wallet as XRPLWallet } from 'xrpl';
+import { QBTCKeyPair } from './qbtcService';
 
 // Supported chains
-export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana';
+export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana' | 'qbtc';
 
 interface WalletDB extends DBSchema {
   wallets: {
@@ -31,6 +32,7 @@ interface WalletDB extends DBSchema {
         bsc: string;
         xrp: string;
         solana: string;
+        qbtc: string;
       };
       publicKeys: {
         ethereum: string;
@@ -38,6 +40,7 @@ interface WalletDB extends DBSchema {
         bsc: string;
         xrp: string;
         solana: string;
+        qbtc: string;
       };
       createdAt: string;
       salt: string;
@@ -55,6 +58,7 @@ interface Wallet {
     bsc: string;
     xrp: string;
     solana: string;
+    qbtc: string;
   };
   createdAt: string;
   mnemonicBackedUp?: boolean;
@@ -68,6 +72,7 @@ interface UnlockedWallet extends Wallet {
     bsc: string;
     xrp: string;
     solana: string;
+    qbtc: string;
   };
 }
 
@@ -85,6 +90,7 @@ const DERIVATION_PATHS = {
   bsc: "m/44'/60'/0'/0/0",
   xrp: "m/44'/144'/0'/0/0",
   solana: "m/44'/501'/0'/0/0",
+  qbtc: "m/44'/0'/0'/0/0",
 };
 
 // Security: In-memory key cache with automatic cleanup
@@ -402,6 +408,7 @@ async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
     bsc: '',
     xrp: '',
     solana: '',
+    qbtc: '',
   };
   
   const publicKeys: Record<Chain, string> = {
@@ -410,6 +417,7 @@ async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
     bsc: '',
     xrp: '',
     solana: '',
+    qbtc: '',
   };
   
   // Ethereum
@@ -439,6 +447,11 @@ async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
   if (!solNode.privateKey) throw new Error('Failed to derive SOL key');
   addresses.solana = deriveSolanaAddress(solNode.privateKey);
   publicKeys.solana = Buffer.from(solNode.privateKey).toString('hex');
+
+  // QBTC (default to testnet address format)
+  const qbtcKeyPair = QBTCKeyPair.fromMasterSeed(seed, 0);
+  addresses.qbtc = qbtcKeyPair.getAddress('testnet');
+  publicKeys.qbtc = qbtcKeyPair.ecdsaPublicKeyHex;
   
   return { addresses, publicKeys };
 }
@@ -840,6 +853,7 @@ export async function unlockWallet(walletId: string, password: string): Promise<
       bsc: '',
       xrp: '',
       solana: '',
+      qbtc: '',
     };
     
     const ethNode = derivePath(root, DERIVATION_PATHS.ethereum);
@@ -856,11 +870,33 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     const solNode = derivePath(root, DERIVATION_PATHS.solana);
     privateKeys.solana = solNode.privateKey ? Buffer.from(solNode.privateKey).toString('hex') : '';
 
+    const qbtcKeyPair = QBTCKeyPair.fromMasterSeed(seed, 0);
+    privateKeys.qbtc = qbtcKeyPair.ecdsaPrivateKeyHex;
+
     // No auto-repair - wallets must be created fresh with correct derivation
+
+    const mergedAddresses = {
+      ethereum: wallet.addresses.ethereum,
+      bitcoin: wallet.addresses.bitcoin,
+      bsc: wallet.addresses.bsc,
+      xrp: wallet.addresses.xrp,
+      solana: wallet.addresses.solana,
+      qbtc: wallet.addresses.qbtc || qbtcKeyPair.getAddress('testnet'),
+    };
+
+    // Auto-upgrade older wallet records that were created before QBTC support.
+    if (!wallet.addresses.qbtc) {
+      wallet.addresses = mergedAddresses;
+      wallet.publicKeys = {
+        ...wallet.publicKeys,
+        qbtc: qbtcKeyPair.ecdsaPublicKeyHex,
+      };
+      await db.put('wallets', wallet);
+    }
 
     return {
       id: wallet.id,
-      addresses: wallet.addresses,
+      addresses: mergedAddresses,
       mnemonic,
       privateKeys,
       createdAt: wallet.createdAt,
@@ -899,9 +935,18 @@ export async function getCurrentWallet(userId: string): Promise<Wallet | null> {
       return null;
     }
     
+    const addresses = {
+      ethereum: wallet.addresses.ethereum,
+      bitcoin: wallet.addresses.bitcoin,
+      bsc: wallet.addresses.bsc,
+      xrp: wallet.addresses.xrp,
+      solana: wallet.addresses.solana,
+      qbtc: wallet.addresses.qbtc || '',
+    };
+
     return {
       id: wallet.id,
-      addresses: wallet.addresses,
+      addresses,
       createdAt: wallet.createdAt,
       mnemonicBackedUp: wallet.mnemonicBackedUp,
     };
@@ -1052,6 +1097,9 @@ export async function signTransaction(
       
       case 'solana':
         throw new Error('Solana signing not yet implemented');
+
+      case 'qbtc':
+        throw new Error('QBTC signing is handled via QBTCChain service');
       
       default:
         throw new Error(`Unsupported chain: ${chain}`);

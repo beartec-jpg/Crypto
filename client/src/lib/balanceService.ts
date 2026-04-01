@@ -5,8 +5,9 @@ import axios from 'axios';
 import { xrplService } from './xrpService';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { QBTCChain } from './qbtcService';
 
-export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana';
+export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana' | 'qbtc';
 
 export interface ChainBalance {
   chain: Chain;
@@ -15,6 +16,8 @@ export interface ChainBalance {
   usdPrice?: number;
   priceChange24h?: number;
 }
+
+const qbtcChain = new QBTCChain();
 
 interface CoinGeckoPrices {
   ethereum: { usd: number; usd_24h_change: number };
@@ -210,6 +213,15 @@ const response = await axios.post(rpcUrl, {
   }
 }
 
+export async function fetchQBTCBalance(address: string): Promise<string> {
+  try {
+    return await qbtcChain.getBalance(address);
+  } catch (error: any) {
+    console.error('❌ Failed to fetch QBTC balance:', error.message);
+    return '0';
+  }
+}
+
 /**
  * Fetch current block/ledger number for a chain
  */
@@ -259,6 +271,10 @@ export async function fetchBlockNumber(chain: Chain): Promise<number | null> {
         return response.data.result;
       }
 
+      case 'qbtc': {
+        return await qbtcChain.getBlockCount();
+      }
+
       default:
         return null;
     }
@@ -290,6 +306,9 @@ export async function fetchChainBalance(chain: Chain, address: string): Promise<
     case 'solana':
       balance = await fetchSolanaBalance(address);
       break;
+    case 'qbtc':
+      balance = await fetchQBTCBalance(address);
+      break;
   }
 
   return { chain, balance };
@@ -304,18 +323,20 @@ export async function fetchAllBalances(addresses: {
   bsc: string;
   xrp: string;
   solana: string;
+  qbtc: string;
 }): Promise<ChainBalance[]> {
   try {
     console.log('🌐 Fetching all MAINNET balances');
     
     const prices = await fetchPrices();
 
-    const [ethBalance, btcBalance, bscBalance, xrpBalance, solBalance] = await Promise.all([
+    const [ethBalance, btcBalance, bscBalance, xrpBalance, solBalance, qbtcBalance] = await Promise.all([
       fetchEthereumBalance(addresses.ethereum),
       fetchBitcoinBalance(addresses.bitcoin),
       fetchBSCBalance(addresses.bsc),
       fetchXRPBalance(addresses.xrp),
       fetchSolanaBalance(addresses.solana),
+      fetchQBTCBalance(addresses.qbtc),
     ]);
 
     const balances: ChainBalance[] = [
@@ -353,6 +374,13 @@ export async function fetchAllBalances(addresses: {
         usdValue: parseFloat(solBalance) * prices.solana.usd,
         usdPrice: prices.solana.usd,
         priceChange24h: prices.solana.usd_24h_change,
+      },
+      {
+        chain: 'qbtc',
+        balance: qbtcBalance,
+        usdValue: 0,
+        usdPrice: 0,
+        priceChange24h: 0,
       },
     ];
 

@@ -67,6 +67,15 @@ const CHAIN_CONFIG = {
     explorer: 'https://solscan.io',
     supportsTokens: true,
   },
+  qbtc: {
+    name: 'QuantumBTC',
+    symbol: 'QBTC',
+    color: 'text-cyan-400',
+    bgColor: 'bg-cyan-500/10',
+    borderColor: 'border-cyan-500/30',
+    explorer: '#',
+    supportsTokens: false,
+  },
 };
 
 export default function ChainSection({

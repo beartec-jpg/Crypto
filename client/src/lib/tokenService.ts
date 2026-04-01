@@ -14,8 +14,8 @@ const ERC20_ABI = [
   'function balanceOf(address) view returns (uint256)',
 ];
 
-export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana';
-export type TokenStandard = 'ERC-20' | 'BEP-20' | 'SPL' | 'XRPL';
+export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana' | 'qbtc';
+export type TokenStandard = 'ERC-20' | 'BEP-20' | 'SPL' | 'XRPL' | 'QBTC';
 
 export interface Token {
   id: string;
@@ -642,9 +642,10 @@ export async function ensureNativeTokens(walletId: string): Promise<Token[]> {
     bsc: { symbol: 'BNB', name: 'BNB', decimals: 18 },
     xrp: { symbol: 'XRP', name: 'XRP', decimals: 6 },
     solana: { symbol: 'SOL', name: 'Solana', decimals: 9 },
+    qbtc: { symbol: 'QBTC', name: 'QuantumBTC', decimals: 8 },
   };
 
-  const chains: Chain[] = ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana'];
+  const chains: Chain[] = ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana', 'qbtc'];
   let tokensAdded = false;
 
   for (const chain of chains) {
@@ -655,7 +656,7 @@ export async function ensureNativeTokens(walletId: string): Promise<Token[]> {
       const nativeToken: Token = {
         id: `native-${chain}`,
         chain,
-        standard: chain === 'xrp' ? 'XRPL' : chain === 'solana' ? 'SPL' : 'ERC-20',
+        standard: chain === 'xrp' ? 'XRPL' : chain === 'solana' ? 'SPL' : chain === 'qbtc' ? 'QBTC' : 'ERC-20',
         symbol: native.symbol,
         name: native.name,
         decimals: native.decimals,

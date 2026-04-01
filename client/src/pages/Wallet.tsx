@@ -76,7 +76,7 @@ export default function WalletPage() {
       setMode('send');
     }
 
-    if (chain && ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana'].includes(chain)) {
+    if (chain && ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana', 'qbtc'].includes(chain)) {
       setSelectedChain(chain as Chain);
     }
 
@@ -803,6 +803,10 @@ function SettingsSection({
                 <div>
                   <span className="text-gray-400">SOL:</span>
                   <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.solana}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400">QBTC:</span>
+                  <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.qbtc}</span>
                 </div>
               </div>
             </div>

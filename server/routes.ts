@@ -16,12 +16,54 @@ import { promisify } from "util";
 import path from "path";
 import OpenAI from "openai";
 import WebSocket from "ws";
+import axios from 'axios';
 import { storage } from "./storage";
 import { CalculationService } from "./services/calculationService";
 import { calculationRequestSchema, insertFeedbackSchema } from "@shared/schema";
 import { userWatchlists } from "@shared/schema";
 
 const execFileAsync = promisify(execFile);
+
+const QBTC_FAUCET_CLAIM_AMOUNT = 50;
+const QBTC_FAUCET_RATE_LIMIT_MS = 60 * 60 * 1000;
+const qbtcFaucetClaims = new Map<string, number>();
+
+function getClientIp(req: Request): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.length > 0) {
+    return forwarded.split(',')[0].trim();
+  }
+  if (Array.isArray(forwarded) && forwarded.length > 0) {
+    return forwarded[0];
+  }
+  return req.ip || 'unknown';
+}
+
+function isValidQbtcTestnetAddress(address: string): boolean {
+  return address.toLowerCase().startsWith('qbtct1') && /^[a-z0-9]{14,90}$/i.test(address);
+}
+
+async function verifyRecaptchaToken(token?: string): Promise<boolean> {
+  const secret = process.env.RECAPTCHA_SECRET_KEY;
+  if (!secret) return true;
+  if (!token) return false;
+
+  try {
+    const payload = new URLSearchParams({
+      secret,
+      response: token,
+    });
+
+    const response = await axios.post('https://www.google.com/recaptcha/api/siteverify', payload.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      timeout: 10000,
+    });
+
+    return Boolean(response.data?.success);
+  } catch {
+    return false;
+  }
+}
 
 // XAI API configured to use Vercel secret
 const xai = new OpenAI({
@@ -8536,6 +8578,168 @@ CRITICAL DATA RULES:
     } catch (error: any) {
       console.error('API costs error:', error);
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/qbtc-faucet/stats', async (_req: Request, res: Response) => {
+    try {
+      const rpcUrl = process.env.QBTC_RPC_URL || 'http://127.0.0.1:28332';
+      const rpcUser = process.env.QBTC_RPC_USER || '';
+      const rpcPassword = process.env.QBTC_RPC_PASSWORD || '';
+
+      const rpc = async (method: string, params: any[] = []) => {
+        const response = await axios.post(rpcUrl, {
+          jsonrpc: '2.0',
+          id: Date.now(),
+          method,
+          params,
+        }, {
+          timeout: 12000,
+          auth: rpcUser || rpcPassword ? { username: rpcUser, password: rpcPassword } : undefined,
+        });
+
+        if (response.data?.error) {
+          throw new Error(response.data.error.message || `RPC error: ${method}`);
+        }
+
+        return response.data.result;
+      };
+
+      const [blockHeight, blockchainInfo] = await Promise.all([
+        rpc('getblockcount', []),
+        rpc('getblockchaininfo', []),
+      ]);
+
+      return res.json({
+        network: blockchainInfo?.chain || 'qbtc-testnet',
+        blockHeight,
+        difficulty: blockchainInfo?.difficulty ?? null,
+      });
+    } catch (error: any) {
+      return res.status(200).json({
+        network: 'qbtc-testnet',
+        blockHeight: null,
+        difficulty: null,
+        warning: error?.message || 'Unable to fetch QBTC faucet stats',
+      });
+    }
+  });
+
+  app.post('/api/qbtc-faucet', async (req: Request, res: Response) => {
+    try {
+      const { address, recaptchaToken } = req.body || {};
+      const clientIp = getClientIp(req);
+
+      if (!address || typeof address !== 'string' || !isValidQbtcTestnetAddress(address)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid QBTC testnet address. Expected qbtct1... format.',
+        });
+      }
+
+      const captchaValid = await verifyRecaptchaToken(recaptchaToken);
+      if (!captchaValid) {
+        return res.status(400).json({
+          success: false,
+          error: 'Captcha verification failed.',
+        });
+      }
+
+      const now = Date.now();
+      const lastClaimAt = qbtcFaucetClaims.get(clientIp) || 0;
+      const nextClaimAt = lastClaimAt + QBTC_FAUCET_RATE_LIMIT_MS;
+
+      if (now < nextClaimAt) {
+        return res.status(429).json({
+          success: false,
+          error: 'Rate limit exceeded. You can claim once per hour.',
+          nextClaimAt,
+        });
+      }
+
+      const rpcUrl = process.env.QBTC_RPC_URL || 'http://127.0.0.1:28332';
+      const rpcUser = process.env.QBTC_RPC_USER || '';
+      const rpcPassword = process.env.QBTC_RPC_PASSWORD || '';
+      const faucetWallet = process.env.QBTC_FAUCET_WALLET || '';
+      const explorerBase = process.env.QBTC_EXPLORER_BASE || '';
+
+      const rpcEndpoint = faucetWallet ? `${rpcUrl.replace(/\/$/, '')}/wallet/${faucetWallet}` : rpcUrl;
+
+      const rpcResponse = await axios.post(rpcEndpoint, {
+        jsonrpc: '2.0',
+        id: Date.now(),
+        method: 'sendtoaddress',
+        params: {
+          address,
+          amount: QBTC_FAUCET_CLAIM_AMOUNT,
+          fee_rate: 10,
+        },
+      }, {
+        timeout: 20000,
+        auth: rpcUser || rpcPassword ? { username: rpcUser, password: rpcPassword } : undefined,
+      });
+
+      if (rpcResponse.data?.error) {
+        return res.status(502).json({
+          success: false,
+          error: rpcResponse.data.error.message || 'QBTC faucet node rejected transaction',
+        });
+      }
+
+      const txid = rpcResponse.data?.result;
+      qbtcFaucetClaims.set(clientIp, now);
+
+      return res.json({
+        success: true,
+        txid,
+        explorerUrl: explorerBase ? `${explorerBase.replace(/\/$/, '')}/tx/${txid}` : undefined,
+        amount: QBTC_FAUCET_CLAIM_AMOUNT,
+      });
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        error: error?.message || 'Faucet request failed',
+      });
+    }
+  });
+
+  // QuantumBTC RPC proxy (avoids browser CORS/auth limitations)
+  app.post('/api/qbtc/rpc', async (req: Request, res: Response) => {
+    try {
+      const { rpcUrl, username, password, method, params } = req.body || {};
+
+      if (!rpcUrl || !method) {
+        return res.status(400).json({
+          error: { code: -32600, message: 'rpcUrl and method are required' },
+        });
+      }
+
+      const payload = {
+        jsonrpc: '2.0',
+        id: Date.now(),
+        method,
+        params: params || [],
+      };
+
+      const response = await axios.post(rpcUrl, payload, {
+        timeout: 20000,
+        headers: { 'Content-Type': 'application/json' },
+        auth: username || password ? { username: username || '', password: password || '' } : undefined,
+      });
+
+      return res.json(response.data);
+    } catch (error: any) {
+      const rpcError = error?.response?.data?.error;
+      if (rpcError) {
+        return res.status(200).json({ error: rpcError });
+      }
+
+      return res.status(502).json({
+        error: {
+          code: -32000,
+          message: error?.message || 'Failed to reach QBTC RPC node',
+        },
+      });
     }
   });
 

@@ -29,6 +29,7 @@ const NotFound = lazy(() => import('@/pages/not-found'));
 // 1. Add with other lazy imports (around line 22)
 const Wallet = lazy(() => import('@/pages/Wallet'));
 const ChartPage = lazy(() => import('@/pages/ChartPage'));
+const QBTCFaucet = lazy(() => import('@/pages/QBTCFaucet'));
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   return (
@@ -70,6 +71,16 @@ function App() {
             <Route path="/cryptoterms">
               <Suspense fallback={<LoadingSpinner message="Loading..." />}>
                 <CryptoTerms />
+              </Suspense>
+            </Route>
+            <Route path="/qbtc-faucet">
+              <Suspense fallback={<LoadingSpinner message="Loading faucet..." />}>
+                <QBTCFaucet />
+              </Suspense>
+            </Route>
+            <Route path="/crypto/qbtc-faucet">
+              <Suspense fallback={<LoadingSpinner message="Loading faucet..." />}>
+                <QBTCFaucet />
               </Suspense>
             </Route>
             

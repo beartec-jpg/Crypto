@@ -4,8 +4,11 @@
 import axios from 'axios';
 import { xrplService } from './xrpService';
 import { dropsToXrp } from 'xrpl';
+import { QBTCChain } from './qbtcService';
 
-export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana';
+export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana' | 'qbtc';
+
+const qbtcChain = new QBTCChain();
 
 export interface Transaction {
   hash: string;
@@ -263,6 +266,15 @@ export async function fetchSolanaTransactions(address: string): Promise<Transact
   }
 }
 
+export async function fetchQBTCTransactions(address: string): Promise<Transaction[]> {
+  try {
+    return await qbtcChain.listTransactions(address, 20);
+  } catch (error: any) {
+    console.error('❌ Failed to fetch QBTC transactions:', error.message);
+    return [];
+  }
+}
+
 /**
  * Fetch transactions for any chain
  */
@@ -284,6 +296,8 @@ export async function fetchChainTransactions(
         return await fetchXRPTransactions(address);
       case 'solana':
         return await fetchSolanaTransactions(address);
+      case 'qbtc':
+        return await fetchQBTCTransactions(address);
       default:
         return [];
     }

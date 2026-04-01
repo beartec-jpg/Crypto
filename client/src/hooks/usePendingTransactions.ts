@@ -22,7 +22,7 @@ export interface TransactionStep {
 export interface PendingTransaction {
   id: string;
   hash: string;
-  chain: 'ethereum' | 'bsc' | 'bitcoin' | 'xrp' | 'solana';
+  chain: 'ethereum' | 'bsc' | 'bitcoin' | 'xrp' | 'solana' | 'qbtc';
   from: string;
   to: string;
   amount: string;
@@ -155,7 +155,16 @@ export function usePendingTransactions() {
 
       // Poll all active transactions in parallel
       const statusUpdates = await Promise.allSettled(
-        activeTransactions.map(tx => getTransactionStatus(tx.chain as 'ethereum' | 'bsc' | 'xrp', tx.hash))
+        activeTransactions.map(tx => {
+          if (tx.chain !== 'ethereum' && tx.chain !== 'bsc' && tx.chain !== 'xrp') {
+            return Promise.resolve({
+              status: 'pending' as const,
+              confirmations: tx.confirmations,
+              requiredConfirmations: tx.requiredConfirmations,
+            });
+          }
+          return getTransactionStatus(tx.chain, tx.hash);
+        })
       );
 
       setTransactions(prev => 

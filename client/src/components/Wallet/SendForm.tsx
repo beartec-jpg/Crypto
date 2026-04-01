@@ -31,6 +31,14 @@ import {
   estimateXrpFee,
 } from '@/lib/xrpSendService';
 import { getWalletTokens, ensureNativeTokens, type Token } from '@/lib/tokenService';
+import {
+  QBTCChain,
+  QBTCKeyPair,
+  getQBTCRpcSettings,
+  setQBTCRpcSettings,
+  isValidQBTCAddress,
+  type QBTCRpcSettings,
+} from '@/lib/qbtcService';
 import TransactionPreviewModal from './TransactionPreviewModal';
 import PinEntryModal from './PinEntryModal';
 import PasswordModal from './PasswordModal';
@@ -91,6 +99,7 @@ export default function SendForm({
   const [balanceUsd, setBalanceUsd] = useState<number>(0);
   const [xrpReserved, setXrpReserved] = useState<string>('0');
   const [xrpAvailable, setXrpAvailable] = useState<string>('0');
+  const [qbtcSettings, setQbtcSettings] = useState<QBTCRpcSettings>(getQBTCRpcSettings());
   const [successData, setSuccessData] = useState<{
     hash: string;
     amount: string;
@@ -155,6 +164,10 @@ export default function SendForm({
     
     loadTokens();
   }, [sovereignWallet?.id, selectedChain]);
+
+  useEffect(() => {
+    setQbtcSettings(getQBTCRpcSettings());
+  }, [selectedChain]);
 
   // Fetch balance when token changes
   useEffect(() => {
@@ -248,7 +261,11 @@ export default function SendForm({
       return;
     }
     
-    if (!validateAddress(recipient, selectedChain as any)) {
+    const recipientValid = selectedChain === 'qbtc'
+      ? isValidQBTCAddress(recipient, qbtcSettings.network)
+      : validateAddress(recipient, selectedChain as any);
+
+    if (!recipientValid) {
       setError(`Invalid ${selectedChain} address`);
       return;
     }
@@ -360,6 +377,64 @@ export default function SendForm({
         throw new Error('Wallet address not found. Please try again.');
       }
       
+      // Handle QBTC (hybrid PQC signing)
+      if (selectedChain === 'qbtc' && selectedToken.isNative) {
+        const walletId = localStorage.getItem(`wallet_id_${userId}`);
+        if (!walletId) {
+          throw new Error('Wallet ID not found. Please try again.');
+        }
+
+        setTransactionStep('signing');
+        const { unlockWallet } = await import('@/lib/walletService');
+        const wallet = await unlockWallet(walletId, password);
+        const qbtcPrivateKey = wallet.privateKeys.qbtc;
+
+        if (!qbtcPrivateKey) {
+          throw new Error('QBTC private key not found in wallet');
+        }
+
+        const qbtcChain = new QBTCChain(qbtcSettings);
+        const keyPair = QBTCKeyPair.fromECDSAPrivateKey(qbtcPrivateKey);
+
+        setTransactionStep('broadcasting');
+        const txid = await qbtcChain.sendTransaction(keyPair, recipient, amount);
+
+        if (onAddPendingTransaction) {
+          onAddPendingTransaction({
+            hash: txid,
+            chain: 'qbtc',
+            from: fromAddress,
+            to: recipient,
+            amount,
+            token: 'QBTC',
+            status: 'pending',
+            confirmations: 0,
+            requiredConfirmations: 6,
+            timestamp: Date.now(),
+            explorerUrl: `${qbtcSettings.rpcUrl.replace(/\/$/, '')}/tx/${txid}`,
+          });
+        }
+
+        setShowPasswordModal(false);
+        setSuccessData({
+          hash: txid,
+          amount,
+          to: recipient,
+          fee: 'dynamic',
+          feeUsd: 0,
+          explorerUrl: `${qbtcSettings.rpcUrl.replace(/\/$/, '')}/tx/${txid}`,
+        });
+        setShowSuccessModal(true);
+
+        setRecipient('');
+        setAmount('');
+        setError(null);
+
+        setIsProcessing(false);
+        setTransactionStep(null);
+        return;
+      }
+
       // Handle XRP
       if (selectedChain === 'xrp' && selectedToken.isNative) {
         setTransactionStep('estimating');
@@ -516,6 +591,7 @@ export default function SendForm({
       bsc: 'BNB',
       xrp: 'XRP',
       solana: 'SOL',
+      qbtc: 'QBTC',
     };
     return symbols[chain];
   };
@@ -523,10 +599,18 @@ export default function SendForm({
   const handleRecipientChange = (value: string) => {
     setRecipient(value);
     
-    if (value && validateAddress(value, selectedChain as any)) {
+    const isValid = selectedChain === 'qbtc'
+      ? isValidQBTCAddress(value, qbtcSettings.network)
+      : validateAddress(value, selectedChain as any);
+
+    if (value && isValid) {
       setError(null);
     }
   };
+
+  const isRecipientValid = selectedChain === 'qbtc'
+    ? isValidQBTCAddress(recipient, qbtcSettings.network)
+    : validateAddress(recipient, selectedChain as any);
 
   const currentSettings = getSecuritySettings(userId);
   const securityRequirements = getSecurityRequirements(userId, 'send');
@@ -538,6 +622,12 @@ export default function SendForm({
           <h2 className="text-2xl font-semibold">
             Send {selectedToken ? selectedToken.symbol : getChainSymbol(selectedChain)}
           </h2>
+
+          {selectedChain === 'qbtc' && (
+            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-cyan-500/15 text-cyan-300 border border-cyan-500/40">
+              PQC Protected
+            </span>
+          )}
           
           {securityRequirements.length > 0 && (
             <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-gray-700/50 text-xs">
@@ -588,8 +678,84 @@ export default function SendForm({
             <option value="xrp">XRP Ledger (XRP)</option>
             <option value="bitcoin">Bitcoin (BTC)</option>
             <option value="solana">Solana (SOL)</option>
+            <option value="qbtc">QuantumBTC (QBTC)</option>
           </select>
         </div>
+
+        {selectedChain === 'qbtc' && (
+          <div className="space-y-3 p-4 rounded-xl border border-cyan-500/30 bg-cyan-500/5">
+            <p className="text-sm font-medium text-cyan-200">QuantumBTC Node Settings</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Network</label>
+                <select
+                  value={qbtcSettings.network}
+                  onChange={(e) => {
+                    const next = setQBTCRpcSettings({ network: e.target.value as 'testnet' | 'mainnet' });
+                    setQbtcSettings(next);
+                  }}
+                  className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700"
+                >
+                  <option value="testnet">Testnet (qbtct1...)</option>
+                  <option value="mainnet">Mainnet (qbtc1...)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">RPC URL</label>
+                <input
+                  value={qbtcSettings.rpcUrl}
+                  onChange={(e) => {
+                    const next = setQBTCRpcSettings({ rpcUrl: e.target.value });
+                    setQbtcSettings(next);
+                  }}
+                  placeholder="http://localhost:28332"
+                  className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">RPC Username (optional)</label>
+                <input
+                  value={qbtcSettings.username || ''}
+                  onChange={(e) => {
+                    const next = setQBTCRpcSettings({ username: e.target.value || undefined });
+                    setQbtcSettings(next);
+                  }}
+                  className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">RPC Password (optional)</label>
+                <input
+                  type="password"
+                  value={qbtcSettings.password || ''}
+                  onChange={(e) => {
+                    const next = setQBTCRpcSettings({ password: e.target.value || undefined });
+                    setQbtcSettings(next);
+                  }}
+                  className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Fee Rate (sat/vB, min 10)</label>
+                <input
+                  type="number"
+                  min={10}
+                  value={qbtcSettings.feeRate || 10}
+                  onChange={(e) => {
+                    const next = setQBTCRpcSettings({ feeRate: Math.max(10, Number(e.target.value || 10)) });
+                    setQbtcSettings(next);
+                  }}
+                  className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700"
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Token Selector */}
         <div>
@@ -712,7 +878,7 @@ export default function SendForm({
             placeholder={`Enter ${selectedChain} address`}
             className="w-full px-4 py-3 rounded-xl bg-gray-900 border border-gray-700 focus:border-emerald-500 focus:outline-none font-mono text-sm"
           />
-          {recipient && !validateAddress(recipient, selectedChain as any) && (
+          {recipient && !isRecipientValid && (
             <p className="mt-2 text-sm text-red-400">
               Invalid {selectedChain} address format
             </p>
@@ -810,7 +976,7 @@ export default function SendForm({
         {/* Send Button */}
         <button
           onClick={handleSendClick}
-          disabled={!recipient || !amount || !validateAddress(recipient, selectedChain as any) || !selectedToken}
+          disabled={!recipient || !amount || !isRecipientValid || !selectedToken}
           className="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 disabled:from-gray-700 disabled:to-gray-700 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
         >
           <Send className="w-5 h-5" />

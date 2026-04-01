@@ -23,6 +23,7 @@ const CHAIN_LABELS = {
   xrp: { name: 'XRP Ledger', standard: 'XRPL', placeholder: 'Currency code (e.g., USD)' },
   solana: { name: 'Solana', standard: 'SPL Token', placeholder: 'Mint address' },
   bitcoin: { name: 'Bitcoin', standard: 'N/A', placeholder: 'Bitcoin does not support tokens' },
+  qbtc: { name: 'QuantumBTC', standard: 'N/A', placeholder: 'QuantumBTC does not support tokens' },
 };
 
 type AddStep = 'input' | 'verify' | 'trustline-warning' | 'adding' | 'success' | 'error';
@@ -54,8 +55,8 @@ export default function AddTokenModal({
   const [issuerFlags, setIssuerFlags] = useState<any>(null);
   const [showTrustlineWarning, setShowTrustlineWarning] = useState(false);
 
-  // Bitcoin doesn't support tokens
-  if (chain === 'bitcoin') {
+  // UTXO chains don't support tokens
+  if (chain === 'bitcoin' || chain === 'qbtc') {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div className="bg-gray-800 rounded-lg max-w-md w-full p-6">
@@ -67,7 +68,9 @@ export default function AddTokenModal({
           </div>
           <div className="bg-yellow-500/10 border border-yellow-500 rounded-lg p-4">
             <p className="text-yellow-400">
-              Bitcoin does not support tokens. Only native BTC can be held on the Bitcoin blockchain.
+              {chain === 'bitcoin'
+                ? 'Bitcoin does not support tokens. Only native BTC can be held on the Bitcoin blockchain.'
+                : 'QuantumBTC does not support tokens. Only native QBTC can be held on the QuantumBTC blockchain.'}
             </p>
           </div>
           <button

@@ -21,6 +21,7 @@ function getChainSymbol(chain: Chain): string {
     bsc: 'BNB',
     xrp: 'XRP',
     solana: 'SOL',
+    qbtc: 'QBTC',
   };
   return symbols[chain];
 }

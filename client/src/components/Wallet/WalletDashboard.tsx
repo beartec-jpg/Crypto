@@ -51,6 +51,7 @@ const CHAIN_CONFIG: Record<Chain, { symbol: string; color: string; bgColor: stri
   bsc: { symbol: 'BNB', color: 'text-yellow-400', bgColor: 'bg-yellow-500/20' },
   xrp: { symbol: 'XRP', color: 'text-gray-300', bgColor: 'bg-gray-500/20' },
   solana: { symbol: 'SOL', color: 'text-purple-400', bgColor: 'bg-purple-500/20' },
+  qbtc: { symbol: 'QBTC', color: 'text-cyan-400', bgColor: 'bg-cyan-500/20' },
 };
 
 export default function WalletDashboard({
@@ -82,6 +83,7 @@ export default function WalletDashboard({
     bsc: false,
     xrp: false,
     solana: false,
+    qbtc: false,
   });
   const [addTokenChain, setAddTokenChain] = useState<Chain | null>(null);
   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
@@ -238,7 +240,7 @@ export default function WalletDashboard({
       }
 
       try {
-        const chains: Chain[] = ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana'];
+        const chains: Chain[] = ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana', 'qbtc'];
         
         // Fetch from all chains in parallel
         const transactionPromises = chains.map(async (chain) => {
@@ -394,6 +396,7 @@ export default function WalletDashboard({
       bsc: `https://bscscan.com/tx/${hash}`,
       xrp: `https://xrpscan.com/tx/${hash}`,
       solana: `https://solscan.io/tx/${hash}`,
+      qbtc: `http://localhost:28332/tx/${hash}`,
     };
     return explorers[chain];
   };
@@ -535,6 +538,21 @@ To: ${tx.to}`;
               nativeBalance={getChainBalance('bitcoin')?.balance || '0'}
               nativeUsdValue={getChainBalance('bitcoin')?.usdValue}
               nativePriceChange24h={getChainBalance('bitcoin')?.priceChange24h}
+              tokens={[]}
+              isExpanded={false}
+              hideBalances={hideBalances}
+              onToggleExpand={() => {}}
+              onAddToken={() => {}}
+              onSelectToken={handleSelectToken}
+              onRemoveToken={handleRemoveToken}
+            />
+
+            {/* QuantumBTC (no tokens) */}
+            <ChainSection
+              chain="qbtc"
+              nativeBalance={getChainBalance('qbtc')?.balance || '0'}
+              nativeUsdValue={getChainBalance('qbtc')?.usdValue}
+              nativePriceChange24h={getChainBalance('qbtc')?.priceChange24h}
               tokens={[]}
               isExpanded={false}
               hideBalances={hideBalances}

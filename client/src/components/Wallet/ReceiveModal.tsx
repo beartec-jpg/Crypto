@@ -13,6 +13,7 @@ interface ReceiveModalProps {
     bsc: string;
     xrp: string;
     solana: string;
+    qbtc: string;
   };
   selectedChain: Chain;
   onSelectChain: (chain: Chain) => void;
@@ -50,9 +51,15 @@ const CHAIN_CONFIG: Record<Chain, { name: string; symbol: string; color: string;
     color: 'bg-purple-400',
     warning: 'Only send SOL or SPL tokens to this address.'
   },
+  qbtc: {
+    name: 'QuantumBTC',
+    symbol: 'QBTC',
+    color: 'bg-cyan-400',
+    warning: 'Only send QBTC to this address. This chain uses hybrid PQC signatures.'
+  },
 };
 
-const CHAINS: Chain[] = ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana'];
+const CHAINS: Chain[] = ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana', 'qbtc'];
 
 export default function ReceiveModal({
   addresses,
