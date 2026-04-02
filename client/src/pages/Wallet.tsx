@@ -15,10 +15,10 @@ import SecuritySettings from '@/components/Wallet/SecuritySettings';
 import SecurityEducationCenter from '@/components/Security/SecurityEducationCenter';
 import { getCurrentWallet, migrateWalletToUser, deleteWallet } from '@/lib/walletService';
 import { securityManager, getSecurityRequirements } from '@/lib/securityService';
-import { getWalletTokens, clearWalletTokens, type Token } from '@/lib/tokenService';
+import { getWalletTokens, clearWalletTokens, ensureNativeTokens, type Token } from '@/lib/tokenService';
 import { deriveWIFFromPrivateKey } from '@/lib/bitcoinService';
 import { usePendingTransactions } from '@/hooks/usePendingTransactions';
-import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle, Send, QrCode, Settings as SettingsIcon } from 'lucide-react';
+import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle, Send, QrCode, Settings as SettingsIcon, Pickaxe } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -126,7 +126,7 @@ export default function WalletPage() {
         return;
       }
       
-      const walletTokens = await getWalletTokens(wallet.id);
+      const walletTokens = await ensureNativeTokens(wallet.id);
       setTokens(walletTokens);
       
       const requirements = getSecurityRequirements(userId, 'openWallet');
@@ -177,8 +177,21 @@ export default function WalletPage() {
     securityManager.unlockWallet();
   };
 
-  const handlePasskeySuccess = () => {
+  const handlePasskeySuccess = async () => {
     setShowPasskeyModal(false);
+
+    if (!userId) {
+      completeWalletUnlock();
+      return;
+    }
+
+    const freshWallet = await getCurrentWallet(userId);
+    if (freshWallet) {
+      setPendingWallet(freshWallet);
+      const walletTokens = await ensureNativeTokens(freshWallet.id);
+      setTokens(walletTokens);
+    }
+
     completeWalletUnlock();
   };
 
@@ -547,6 +560,16 @@ export default function WalletPage() {
                 >
                   <Shield className="w-4 h-4 flex-shrink-0" />
                   <span className="hidden sm:inline">Security</span>
+                </button>
+                <button
+                  onClick={() => {
+                    window.location.href = '/qbtc-faucet';
+                  }}
+                  className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 text-cyan-300 hover:text-cyan-200`}
+                  title="QBTC Faucet"
+                >
+                  <Pickaxe className="w-4 h-4 flex-shrink-0" />
+                  <span className="hidden sm:inline">Faucet</span>
                 </button>
               </div>
             )}

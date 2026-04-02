@@ -452,6 +452,10 @@ async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
   const qbtcKeyPair = QBTCKeyPair.fromMasterSeed(seed, 0);
   addresses.qbtc = qbtcKeyPair.getAddress('testnet');
   publicKeys.qbtc = qbtcKeyPair.ecdsaPublicKeyHex;
+
+  if (!addresses.qbtc || !addresses.qbtc.startsWith('qbtct1')) {
+    throw new Error('Failed to derive QBTC testnet address for new wallet');
+  }
   
   return { addresses, publicKeys };
 }
@@ -479,6 +483,10 @@ export async function createWallet(password: string, userId: string): Promise<Wa
     
     // Derive addresses
     const { addresses, publicKeys } = await deriveAddressesFromMnemonic(mnemonic);
+
+    if (!addresses.qbtc || !addresses.qbtc.startsWith('qbtct1')) {
+      throw new Error('QBTC testnet address derivation failed during wallet creation');
+    }
     
     console.log('✅ Derived addresses:', addresses);
     
@@ -545,6 +553,10 @@ export async function importWallet(mnemonic: string, password: string, userId: s
     }
     
     const { addresses, publicKeys } = await deriveAddressesFromMnemonic(cleanMnemonic);
+
+    if (!addresses.qbtc || !addresses.qbtc.startsWith('qbtct1')) {
+      throw new Error('QBTC testnet address derivation failed during wallet import');
+    }
     
     const existing = await getCurrentWallet(userId);
     if (existing && existing.addresses.ethereum === addresses.ethereum) {
