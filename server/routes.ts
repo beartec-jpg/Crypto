@@ -8862,6 +8862,36 @@ CRITICAL DATA RULES:
     }
   });
 
+  app.get('/api/qbtc/health', async (req: Request, res: Response) => {
+    try {
+      const network = ((req.query.network as string) || 'testnet') as QbtcNetwork;
+      const blockchainInfo = await qbtcRpcCall('getblockchaininfo', [], '', network);
+
+      return res.json({
+        ok: true,
+        selectedNetwork: network,
+        mainnetActive: network === 'mainnet',
+        chain: blockchainInfo?.chain || null,
+        blocks: blockchainInfo?.blocks ?? null,
+        headers: blockchainInfo?.headers ?? null,
+      });
+    } catch (error: any) {
+      if (error?.code === 'MAINNET_NOT_ACTIVE') {
+        return res.status(503).json({
+          ok: false,
+          selectedNetwork: 'mainnet',
+          mainnetActive: false,
+          error: error.message,
+        });
+      }
+
+      return res.status(502).json({
+        ok: false,
+        error: error?.message || 'Failed to reach QBTC RPC node',
+      });
+    }
+  });
+
   // QuantumBTC RPC proxy (avoids browser CORS/auth limitations)
   app.post('/api/qbtc/rpc', async (req: Request, res: Response) => {
     try {
