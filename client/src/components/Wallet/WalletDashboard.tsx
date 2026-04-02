@@ -341,12 +341,6 @@ export default function WalletDashboard({
         throw new Error(result.error || 'Failed to set trustline');
       }
       
-      // Refresh XRPL token balances to get actual balance
-      if (result.success) {
-        const { refreshXRPLTokenBalances } = await import('@/lib/tokenService');
-        await refreshXRPLTokenBalances(sovereignWallet.id, sovereignWallet.addresses.xrp);
-      }
-      
       toast({
         title: "Trustline Created",
         description: `Successfully added ${currency} token`,
