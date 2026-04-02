@@ -510,3 +510,17 @@ export function qbtcPubKeyHash160(compressedPubKeyHex: string): string {
   const pub = Buffer.from(compressedPubKeyHex, 'hex');
   return Buffer.from(ripemd160(sha256(pub))).toString('hex');
 }
+
+export function qbtcAddressFromCompressedPubKey(compressedPubKeyHex: string, network: QBTCNetwork = 'testnet'): string {
+  const net = QBTC_NETWORKS[network];
+  const payment = bitcoin.payments.p2wpkh({
+    pubkey: Buffer.from(compressedPubKeyHex, 'hex'),
+    network: net,
+  });
+
+  if (!payment.address) {
+    throw new Error('Failed to derive QBTC address from compressed public key');
+  }
+
+  return payment.address;
+}

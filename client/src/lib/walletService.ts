@@ -14,7 +14,7 @@ import { HDKey } from '@scure/bip32';
 import { Keypair } from '@solana/web3.js';
 import { deriveKeypair, deriveAddress, generateSeed } from 'ripple-keypairs';
 import { Wallet as XRPLWallet } from 'xrpl';
-import { QBTCKeyPair } from './qbtcService';
+import { QBTCKeyPair, qbtcAddressFromCompressedPubKey } from './qbtcService';
 
 // Supported chains
 export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana' | 'qbtc';
@@ -947,13 +947,32 @@ export async function getCurrentWallet(userId: string): Promise<Wallet | null> {
       return null;
     }
     
+    let qbtcAddress = wallet.addresses.qbtc || '';
+
+    // If address is missing but public key exists, deterministically rebuild testnet address.
+    if (!qbtcAddress) {
+      const qbtcPubKey = (wallet as any)?.publicKeys?.qbtc as string | undefined;
+      if (qbtcPubKey) {
+        try {
+          qbtcAddress = qbtcAddressFromCompressedPubKey(qbtcPubKey, 'testnet');
+          wallet.addresses = {
+            ...wallet.addresses,
+            qbtc: qbtcAddress,
+          };
+          await db.put('wallets', wallet);
+        } catch (error) {
+          console.warn('Failed to reconstruct QBTC address from stored public key:', error);
+        }
+      }
+    }
+
     const addresses = {
       ethereum: wallet.addresses.ethereum,
       bitcoin: wallet.addresses.bitcoin,
       bsc: wallet.addresses.bsc,
       xrp: wallet.addresses.xrp,
       solana: wallet.addresses.solana,
-      qbtc: wallet.addresses.qbtc || '',
+      qbtc: qbtcAddress,
     };
 
     return {
