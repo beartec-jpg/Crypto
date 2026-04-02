@@ -97,7 +97,19 @@ export default function QBTCScanPage() {
               Back to Faucet
             </button>
           </Link>
-          <div className="text-xs text-slate-400">QBTC Testnet Chain Explorer</div>
+          <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap justify-end">
+            <Link href="/qbtc">
+              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
+                QBTC Info
+              </button>
+            </Link>
+            <Link href="/marketplace">
+              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
+                Marketplace
+              </button>
+            </Link>
+            <span>QBTC Testnet Chain Explorer</span>
+          </div>
         </div>
 
         <div className="rounded-2xl border border-slate-700 bg-slate-900/70 backdrop-blur p-6 md:p-8">

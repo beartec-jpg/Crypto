@@ -31,6 +31,8 @@ const Wallet = lazy(() => import('@/pages/Wallet'));
 const ChartPage = lazy(() => import('@/pages/ChartPage'));
 const QBTCFaucet = lazy(() => import('@/pages/QBTCFaucet'));
 const QBTCScan = lazy(() => import('@/pages/QBTCScan'));
+const QBTCHomePage = lazy(() => import('@/pages/QBTCHomePage'));
+const QBTCMarketplace = lazy(() => import('@/pages/QBTCMarketplace'));
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   return (
@@ -92,6 +94,16 @@ function App() {
             <Route path="/crypto/qbtc-scan">
               <Suspense fallback={<LoadingSpinner message="Loading scanner..." />}>
                 <QBTCScan />
+              </Suspense>
+            </Route>
+            <Route path="/qbtc">
+              <Suspense fallback={<LoadingSpinner message="Loading QBTC..." />}>
+                <QBTCHomePage />
+              </Suspense>
+            </Route>
+            <Route path="/marketplace">
+              <Suspense fallback={<LoadingSpinner message="Loading marketplace..." />}>
+                <QBTCMarketplace />
               </Suspense>
             </Route>
             
