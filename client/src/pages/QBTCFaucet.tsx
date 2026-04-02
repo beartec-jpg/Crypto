@@ -149,10 +149,20 @@ export default function QBTCFaucetPage() {
               Back to BearTec
             </button>
           </Link>
-          <div className="text-xs text-slate-400 flex items-center gap-3">
+          <div className="text-xs text-slate-400 flex items-center gap-2 flex-wrap justify-end">
+            <Link href="/qbtc">
+              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300">
+                QBTC Info
+              </button>
+            </Link>
+            <Link href="/marketplace">
+              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300">
+                Marketplace
+              </button>
+            </Link>
             <Link href="/qbtc-scan">
               <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300">
-                Open QBTC Scan
+                QBTC Scan
               </button>
             </Link>
             <span className="inline-flex items-center gap-2">
