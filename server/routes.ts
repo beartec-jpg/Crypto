@@ -43,6 +43,52 @@ function isValidQbtcTestnetAddress(address: string): boolean {
   return address.toLowerCase().startsWith('qbtct1') && /^[a-z0-9]{14,90}$/i.test(address);
 }
 
+type QbtcNetwork = 'testnet' | 'mainnet';
+
+function resolveQbtcRpcConfig(network: QbtcNetwork) {
+  if (network === 'mainnet') {
+    const mainnetEnabled = process.env.QBTC_MAINNET_ENABLED === '1';
+    const rpcUrl = process.env.QBTC_MAINNET_RPC_URL || '';
+    const rpcUser = process.env.QBTC_MAINNET_RPC_USER || '';
+    const rpcPassword = process.env.QBTC_MAINNET_RPC_PASSWORD || '';
+
+    if (!mainnetEnabled || !rpcUrl) {
+      const error = new Error('QBTC mainnet is not active yet. Please use testnet.');
+      (error as any).code = 'MAINNET_NOT_ACTIVE';
+      throw error;
+    }
+
+    return { rpcUrl, rpcUser, rpcPassword };
+  }
+
+  return {
+    rpcUrl: process.env.QBTC_RPC_URL || 'http://127.0.0.1:28332',
+    rpcUser: process.env.QBTC_RPC_USER || '',
+    rpcPassword: process.env.QBTC_RPC_PASSWORD || '',
+  };
+}
+
+async function qbtcRpcCall(method: string, params: any[] = [], wallet = '', network: QbtcNetwork = 'testnet'): Promise<any> {
+  const { rpcUrl, rpcUser, rpcPassword } = resolveQbtcRpcConfig(network);
+  const endpoint = wallet ? `${rpcUrl.replace(/\/$/, '')}/wallet/${wallet}` : rpcUrl;
+
+  const response = await axios.post(endpoint, {
+    jsonrpc: '2.0',
+    id: Date.now(),
+    method,
+    params,
+  }, {
+    timeout: 20000,
+    auth: rpcUser || rpcPassword ? { username: rpcUser, password: rpcPassword } : undefined,
+  });
+
+  if (response.data?.error) {
+    throw new Error(response.data.error.message || `QBTC RPC error: ${method}`);
+  }
+
+  return response.data.result;
+}
+
 async function verifyRecaptchaToken(token?: string): Promise<boolean> {
   const secret = process.env.RECAPTCHA_SECRET_KEY;
   if (!secret) return true;
@@ -8583,31 +8629,9 @@ CRITICAL DATA RULES:
 
   app.get('/api/qbtc-faucet/stats', async (_req: Request, res: Response) => {
     try {
-      const rpcUrl = process.env.QBTC_RPC_URL || 'http://127.0.0.1:28332';
-      const rpcUser = process.env.QBTC_RPC_USER || '';
-      const rpcPassword = process.env.QBTC_RPC_PASSWORD || '';
-
-      const rpc = async (method: string, params: any[] = []) => {
-        const response = await axios.post(rpcUrl, {
-          jsonrpc: '2.0',
-          id: Date.now(),
-          method,
-          params,
-        }, {
-          timeout: 12000,
-          auth: rpcUser || rpcPassword ? { username: rpcUser, password: rpcPassword } : undefined,
-        });
-
-        if (response.data?.error) {
-          throw new Error(response.data.error.message || `RPC error: ${method}`);
-        }
-
-        return response.data.result;
-      };
-
       const [blockHeight, blockchainInfo] = await Promise.all([
-        rpc('getblockcount', []),
-        rpc('getblockchaininfo', []),
+        qbtcRpcCall('getblockcount', []),
+        qbtcRpcCall('getblockchaininfo', []),
       ]);
 
       return res.json({
@@ -8657,36 +8681,14 @@ CRITICAL DATA RULES:
         });
       }
 
-      const rpcUrl = process.env.QBTC_RPC_URL || 'http://127.0.0.1:28332';
-      const rpcUser = process.env.QBTC_RPC_USER || '';
-      const rpcPassword = process.env.QBTC_RPC_PASSWORD || '';
       const faucetWallet = process.env.QBTC_FAUCET_WALLET || '';
       const explorerBase = process.env.QBTC_EXPLORER_BASE || '';
 
-      const rpcEndpoint = faucetWallet ? `${rpcUrl.replace(/\/$/, '')}/wallet/${faucetWallet}` : rpcUrl;
-
-      const rpcResponse = await axios.post(rpcEndpoint, {
-        jsonrpc: '2.0',
-        id: Date.now(),
-        method: 'sendtoaddress',
-        params: {
-          address,
-          amount: QBTC_FAUCET_CLAIM_AMOUNT,
-          fee_rate: 10,
-        },
-      }, {
-        timeout: 20000,
-        auth: rpcUser || rpcPassword ? { username: rpcUser, password: rpcPassword } : undefined,
-      });
-
-      if (rpcResponse.data?.error) {
-        return res.status(502).json({
-          success: false,
-          error: rpcResponse.data.error.message || 'QBTC faucet node rejected transaction',
-        });
-      }
-
-      const txid = rpcResponse.data?.result;
+      const txid = await qbtcRpcCall('sendtoaddress', [{
+        address,
+        amount: QBTC_FAUCET_CLAIM_AMOUNT,
+        fee_rate: 10,
+      }], faucetWallet);
       qbtcFaucetClaims.set(clientIp, now);
 
       return res.json({
@@ -8700,6 +8702,163 @@ CRITICAL DATA RULES:
         success: false,
         error: error?.message || 'Faucet request failed',
       });
+    }
+  });
+
+  app.get('/api/qbtc-scan/stats', async (req: Request, res: Response) => {
+    try {
+      const network = ((req.query.network as string) || 'testnet') as QbtcNetwork;
+      const [blockchainInfo, mempoolInfo, netHashPs] = await Promise.all([
+        qbtcRpcCall('getblockchaininfo', [], '', network),
+        qbtcRpcCall('getmempoolinfo', [], '', network),
+        qbtcRpcCall('getnetworkhashps', [], '', network),
+      ]);
+
+      return res.json({
+        selectedNetwork: network,
+        mainnetActive: network === 'testnet' ? false : true,
+        network: blockchainInfo?.chain || 'qbtc-testnet',
+        blocks: blockchainInfo?.blocks ?? null,
+        headers: blockchainInfo?.headers ?? null,
+        difficulty: blockchainInfo?.difficulty ?? null,
+        verificationProgress: blockchainInfo?.verificationprogress ?? null,
+        mempoolTx: mempoolInfo?.size ?? 0,
+        mempoolBytes: mempoolInfo?.bytes ?? 0,
+        networkHashPs: netHashPs ?? 0,
+      });
+    } catch (error: any) {
+      if (error?.code === 'MAINNET_NOT_ACTIVE') {
+        return res.status(503).json({
+          selectedNetwork: 'mainnet',
+          mainnetActive: false,
+          error: error.message,
+        });
+      }
+      return res.status(500).json({ error: error?.message || 'Failed to fetch QBTC scan stats' });
+    }
+  });
+
+  app.get('/api/qbtc-scan/overview', async (req: Request, res: Response) => {
+    try {
+      const network = ((req.query.network as string) || 'testnet') as QbtcNetwork;
+      const blockCount = await qbtcRpcCall('getblockcount', [], '', network);
+
+      const latestHeights = Array.from({ length: 10 }, (_, i) => blockCount - i).filter((h) => h >= 0);
+      const latestBlocks = await Promise.all(latestHeights.map(async (height) => {
+        const hash = await qbtcRpcCall('getblockhash', [height], '', network);
+        const block = await qbtcRpcCall('getblock', [hash, 2], '', network);
+        return {
+          height,
+          hash,
+          time: block?.time,
+          txCount: Array.isArray(block?.tx) ? block.tx.length : 0,
+          size: block?.size,
+          weight: block?.weight,
+          difficulty: block?.difficulty,
+        };
+      }));
+
+      let mempoolTxids: string[] = [];
+      try {
+        const mp = await qbtcRpcCall('getrawmempool', [false], '', network);
+        if (Array.isArray(mp)) {
+          mempoolTxids = mp.slice(0, 20);
+        }
+      } catch {
+        mempoolTxids = [];
+      }
+
+      return res.json({
+        selectedNetwork: network,
+        mainnetActive: network === 'testnet' ? false : true,
+        latestBlocks,
+        latestMempoolTxids: mempoolTxids,
+      });
+    } catch (error: any) {
+      if (error?.code === 'MAINNET_NOT_ACTIVE') {
+        return res.status(503).json({
+          selectedNetwork: 'mainnet',
+          mainnetActive: false,
+          error: error.message,
+        });
+      }
+      return res.status(500).json({ error: error?.message || 'Failed to fetch QBTC overview' });
+    }
+  });
+
+  app.get('/api/qbtc-scan/search', async (req: Request, res: Response) => {
+    try {
+      const network = ((req.query.network as string) || 'testnet') as QbtcNetwork;
+      const q = String(req.query.q || '').trim();
+      if (!q) {
+        return res.status(400).json({ error: 'Missing query parameter q' });
+      }
+
+      const isAddress = /^(qbtct1|qbtc1)/i.test(q);
+      const isBlockHeight = /^\d+$/.test(q);
+      const isHex64 = /^[a-fA-F0-9]{64}$/.test(q);
+
+      if (isAddress) {
+        let utxoSet: any = null;
+        let walletTxs: any[] = [];
+        try {
+          utxoSet = await qbtcRpcCall('scantxoutset', ['start', [`addr(${q})`]], '', network);
+        } catch {
+          utxoSet = null;
+        }
+
+        try {
+          walletTxs = await qbtcRpcCall('listtransactions', ['*', 100, 0, true], '', network);
+          walletTxs = walletTxs.filter((tx: any) => tx.address === q);
+        } catch {
+          walletTxs = [];
+        }
+
+        return res.json({
+          type: 'address',
+          query: q,
+          result: {
+            address: q,
+            balance: utxoSet?.total_amount ?? null,
+            unspents: utxoSet?.unspents ?? [],
+            txCount: walletTxs.length,
+            recentWalletTxs: walletTxs.slice(0, 20),
+            note: utxoSet ? undefined : 'Address scan limited: node may not support scantxoutset or address index.',
+          },
+        });
+      }
+
+      if (isBlockHeight) {
+        const height = Number(q);
+        const hash = await qbtcRpcCall('getblockhash', [height], '', network);
+        const block = await qbtcRpcCall('getblock', [hash, 2], '', network);
+        return res.json({ type: 'block', query: q, result: block });
+      }
+
+      if (isHex64) {
+        try {
+          const block = await qbtcRpcCall('getblock', [q, 2], '', network);
+          return res.json({ type: 'block', query: q, result: block });
+        } catch {
+          // Fall through to tx lookup.
+        }
+
+        const tx = await qbtcRpcCall('getrawtransaction', [q, true], '', network);
+        return res.json({ type: 'transaction', query: q, result: tx });
+      }
+
+      return res.status(400).json({
+        error: 'Unsupported query. Use QBTC address, block height, block hash, or txid.',
+      });
+    } catch (error: any) {
+      if (error?.code === 'MAINNET_NOT_ACTIVE') {
+        return res.status(503).json({
+          selectedNetwork: 'mainnet',
+          mainnetActive: false,
+          error: error.message,
+        });
+      }
+      return res.status(500).json({ error: error?.message || 'QBTC scan search failed' });
     }
   });
 

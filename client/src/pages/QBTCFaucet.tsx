@@ -149,9 +149,16 @@ export default function QBTCFaucetPage() {
               Back to BearTec
             </button>
           </Link>
-          <div className="text-xs text-slate-400 flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-cyan-400" />
-            Testnet only • One claim per hour
+          <div className="text-xs text-slate-400 flex items-center gap-3">
+            <Link href="/qbtc-scan">
+              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300">
+                Open QBTC Scan
+              </button>
+            </Link>
+            <span className="inline-flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-cyan-400" />
+              Testnet only • One claim per hour
+            </span>
           </div>
         </div>
 
