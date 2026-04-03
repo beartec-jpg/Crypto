@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
-import { Pickaxe, Zap, ShieldCheck, Hourglass, CheckCircle2, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Pickaxe, Zap, ShieldCheck, Hourglass, CheckCircle2, AlertTriangle, ExternalLink, Lock } from 'lucide-react';
 
 type FaucetPhase = 'idle' | 'mining' | 'success' | 'error';
 
@@ -12,10 +12,23 @@ interface FaucetResponse {
   error?: string;
 }
 
+interface PqcInfo {
+  enabled: boolean;
+  mode: string;
+  algorithm: string;
+}
+
+interface DagInfo {
+  ghostdagK: number;
+  blockTargetSeconds: number;
+  mergeSetSize: number | null;
+  parentCount: number | null;
+}
+
 const MINING_STAGES = ['Mining block...', 'Block found!', 'Sending QBTC...'];
 
 function isValidQbtcTestnetAddress(address: string): boolean {
-  return address.toLowerCase().startsWith('qbtct1') && /^[a-z0-9]{14,90}$/i.test(address);
+  return /^qbtct1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{38,}$/.test(address.toLowerCase());
 }
 
 export default function QBTCFaucetPage() {
@@ -25,7 +38,13 @@ export default function QBTCFaucetPage() {
   const [progress, setProgress] = useState(0);
   const [txid, setTxid] = useState('');
   const [explorerUrl, setExplorerUrl] = useState('');
-  const [stats, setStats] = useState<{ blockHeight?: number; difficulty?: number; network?: string }>({});
+  const [stats, setStats] = useState<{
+    blockHeight?: number;
+    difficulty?: number;
+    network?: string;
+    pqc?: PqcInfo;
+    dag?: DagInfo;
+  }>({});
   const [claimCountdown, setClaimCountdown] = useState<string | null>(null);
 
   const addressError = useMemo(() => {
@@ -43,6 +62,8 @@ export default function QBTCFaucetPage() {
         blockHeight: data.blockHeight,
         difficulty: data.difficulty,
         network: data.network,
+        pqc: data.pqc,
+        dag: data.dag,
       });
     } catch {
       // Best-effort UI enhancement only.
@@ -181,7 +202,21 @@ export default function QBTCFaucetPage() {
             Claim 50 QBTC for testing. Spin up experiments, break things safely, and mine the future.
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 text-sm">
+          {stats.pqc && (
+            <div className="flex items-center gap-2 mb-4">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                <Lock className="w-3.5 h-3.5" />
+                PQC {stats.pqc.mode === 'hybrid' ? 'Hybrid' : stats.pqc.mode} — {stats.pqc.algorithm}
+              </span>
+              {stats.pqc.enabled && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                  Quantum-Resistant
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6 text-sm">
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
               <p className="text-slate-400">Network</p>
               <p className="font-semibold text-cyan-300">{stats.network || 'QBTC Testnet'}</p>
@@ -193,6 +228,18 @@ export default function QBTCFaucetPage() {
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
               <p className="text-slate-400">Difficulty</p>
               <p className="font-semibold">{stats.difficulty ?? '...'}</p>
+            </div>
+            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+              <p className="text-slate-400">GHOSTDAG K</p>
+              <p className="font-semibold">{stats.dag?.ghostdagK ?? 18}</p>
+            </div>
+            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+              <p className="text-slate-400">Block Target</p>
+              <p className="font-semibold">{stats.dag?.blockTargetSeconds ?? 2}s</p>
+            </div>
+            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+              <p className="text-slate-400">Merge Set</p>
+              <p className="font-semibold">{stats.dag?.mergeSetSize ?? '...'}</p>
             </div>
           </div>
 
