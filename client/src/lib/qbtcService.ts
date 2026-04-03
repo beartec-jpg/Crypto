@@ -41,10 +41,10 @@ export interface QBTCTransaction {
 }
 
 const QBTC_SETTINGS_KEY = 'qbtc_rpc_settings';
-const DILITHIUM_PK_SIZE = ml_dsa44.lengths.publicKey!;  // 1312
-const DILITHIUM_SK_SIZE = ml_dsa44.lengths.secretKey!;  // 2560
-const DILITHIUM_SIG_SIZE = ml_dsa44.lengths.signature!; // 2420
-const DILITHIUM_SEED_SIZE = ml_dsa44.lengths.seed!;     // 32
+const DILITHIUM_PK_SIZE = ml_dsa44.lengths.publicKey ?? 1312;
+const DILITHIUM_SK_SIZE = ml_dsa44.lengths.secretKey ?? 2560;
+const DILITHIUM_SIG_SIZE = ml_dsa44.lengths.signature ?? 2420;
+const DILITHIUM_SEED_SIZE = ml_dsa44.lengths.seed ?? 32;
 const QBTC_DERIVATION_PATH = "m/44'/0'/0'/0/0";
 const DUST_THRESHOLD = 546;
 
@@ -456,9 +456,10 @@ export class QBTCChain {
 
 export function isValidQBTCAddress(address: string, network: QBTCNetwork): boolean {
   const prefix = network === 'testnet' ? 'qbtct1' : 'qbtc1';
-  if (!address.toLowerCase().startsWith(prefix)) return false;
-  const bech32Chars = /^qbtct1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{38,}$|^qbtc1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{38,}$/;
-  return bech32Chars.test(address.toLowerCase());
+  const lower = address.toLowerCase();
+  if (!lower.startsWith(prefix)) return false;
+  const bech32Pattern = new RegExp(`^${prefix}[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{38,}$`);
+  return bech32Pattern.test(lower);
 }
 
 export function qbtcPubKeyHash160(compressedPubKeyHex: string): string {

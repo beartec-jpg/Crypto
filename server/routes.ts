@@ -8651,8 +8651,8 @@ CRITICAL DATA RULES:
         dag: {
           ghostdagK: 18,
           blockTargetSeconds: 2,
-          mergeSetSize: blockchainInfo?.headers ? Math.min(blockchainInfo.headers, 18) : null,
-          parentCount: blockchainInfo?.nTx ?? null,
+          mergeSetSize: null,
+          parentCount: null,
         },
       });
     } catch (error: any) {
