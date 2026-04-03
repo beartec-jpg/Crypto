@@ -571,6 +571,16 @@ export default function WalletPage() {
                   <Pickaxe className="w-4 h-4 flex-shrink-0" />
                   <span className="hidden sm:inline">Faucet</span>
                 </button>
+                <button
+                  onClick={() => {
+                    window.location.href = '/qbtc-wallet';
+                  }}
+                  className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 text-cyan-300 hover:text-cyan-200`}
+                  title="QBTC Wallet"
+                >
+                  <Shield className="w-4 h-4 flex-shrink-0" />
+                  <span className="hidden sm:inline">QBTC Wallet</span>
+                </button>
               </div>
             )}
 

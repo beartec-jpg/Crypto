@@ -7,6 +7,7 @@ import { hmac } from '@noble/hashes/hmac';
 import { sha512 } from '@noble/hashes/sha512';
 import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
+import { ml_dsa44 } from '@noble/post-quantum/ml-dsa.js';
 
 export type QBTCNetwork = 'testnet' | 'mainnet';
 
@@ -40,10 +41,10 @@ export interface QBTCTransaction {
 }
 
 const QBTC_SETTINGS_KEY = 'qbtc_rpc_settings';
-const DILITHIUM_PK_SIZE = 1312;
-const DILITHIUM_SK_SIZE = 2528;
-const DILITHIUM_SIG_SIZE = 2420;
-const DILITHIUM_BODY_SIZE = DILITHIUM_SIG_SIZE - 64;
+const DILITHIUM_PK_SIZE = ml_dsa44.lengths.publicKey!;  // 1312
+const DILITHIUM_SK_SIZE = ml_dsa44.lengths.secretKey!;  // 2560
+const DILITHIUM_SIG_SIZE = ml_dsa44.lengths.signature!; // 2420
+const DILITHIUM_SEED_SIZE = ml_dsa44.lengths.seed!;     // 32
 const QBTC_DERIVATION_PATH = "m/44'/0'/0'/0/0";
 const DUST_THRESHOLD = 546;
 
@@ -60,35 +61,6 @@ const QBTC_NETWORKS: Record<QBTCNetwork, bitcoin.networks.Network> = {
 
 function hmacSha512(key: Uint8Array, data: Uint8Array): Uint8Array {
   return hmac(sha512, key, data);
-}
-
-function expandToSize(seed: Uint8Array, context: Uint8Array, outLen: number): Uint8Array {
-  const chunks: Uint8Array[] = [];
-  let produced = 0;
-  let counter = 0;
-
-  while (produced < outLen) {
-    const counterLe = new Uint8Array(4);
-    const dv = new DataView(counterLe.buffer);
-    dv.setUint32(0, counter, true);
-
-    const blockInput = new Uint8Array(context.length + 4);
-    blockInput.set(context, 0);
-    blockInput.set(counterLe, context.length);
-
-    const block = hmacSha512(seed, blockInput);
-    chunks.push(block);
-    produced += block.length;
-    counter += 1;
-  }
-
-  const merged = new Uint8Array(produced);
-  let offset = 0;
-  for (const c of chunks) {
-    merged.set(c, offset);
-    offset += c.length;
-  }
-  return merged.slice(0, outLen);
 }
 
 export function getQBTCRpcSettings(): QBTCRpcSettings {
@@ -177,42 +149,23 @@ function selectUtxos(utxos: QBTCUtxo[], amountSats: number, feeRate: number): {
 
 export class DilithiumKey {
   seed: Uint8Array;
-  expanded: Uint8Array;
   publicKey: Uint8Array;
   privateKey: Uint8Array;
 
-  private constructor(seed: Uint8Array, expanded: Uint8Array, publicKey: Uint8Array, privateKey: Uint8Array) {
+  private constructor(seed: Uint8Array, publicKey: Uint8Array, privateKey: Uint8Array) {
     this.seed = seed;
-    this.expanded = expanded;
     this.publicKey = publicKey;
     this.privateKey = privateKey;
   }
 
   static fromECDSAPrivKey(ecdsaPriv: Uint8Array): DilithiumKey {
-    const seed = hmacSha512(ecdsaPriv, new TextEncoder().encode('QuantBTC-Dilithium')).slice(0, 32);
-    const expanded = sha256(seed);
-    const privateKey = new Uint8Array(DILITHIUM_SK_SIZE);
-    privateKey.set(seed, 0);
-    privateKey.set(expanded, 32);
-    const publicKey = expandToSize(expanded, new TextEncoder().encode('dilithium-pk'), DILITHIUM_PK_SIZE);
-    return new DilithiumKey(seed, expanded, publicKey, privateKey);
+    const seed = hmacSha512(ecdsaPriv, new TextEncoder().encode('QuantBTC-Dilithium')).slice(0, DILITHIUM_SEED_SIZE);
+    const { secretKey, publicKey } = ml_dsa44.keygen(seed);
+    return new DilithiumKey(seed, publicKey, secretKey);
   }
 
   sign(message: Uint8Array): Uint8Array {
-    const sigContext = new Uint8Array(13 + message.length);
-    sigContext.set(new TextEncoder().encode('dilithium-sig'), 0);
-    sigContext.set(message, 13);
-
-    const sigBody = expandToSize(this.expanded, sigContext, DILITHIUM_BODY_SIZE);
-    const tagInput = new Uint8Array(sigBody.length + message.length);
-    tagInput.set(sigBody, 0);
-    tagInput.set(message, sigBody.length);
-    const tag = hmacSha512(this.publicKey, tagInput);
-
-    const signature = new Uint8Array(DILITHIUM_SIG_SIZE);
-    signature.set(tag, 0);
-    signature.set(sigBody, 64);
-    return signature;
+    return ml_dsa44.sign(message, this.privateKey);
   }
 }
 
@@ -503,7 +456,9 @@ export class QBTCChain {
 
 export function isValidQBTCAddress(address: string, network: QBTCNetwork): boolean {
   const prefix = network === 'testnet' ? 'qbtct1' : 'qbtc1';
-  return address.toLowerCase().startsWith(prefix) && /^[a-z0-9]{14,90}$/i.test(address);
+  if (!address.toLowerCase().startsWith(prefix)) return false;
+  const bech32Chars = /^qbtct1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{38,}$|^qbtc1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{38,}$/;
+  return bech32Chars.test(address.toLowerCase());
 }
 
 export function qbtcPubKeyHash160(compressedPubKeyHex: string): string {
