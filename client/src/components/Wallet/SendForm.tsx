@@ -31,6 +31,7 @@ import {
   estimateXrpFee,
 } from '@/lib/xrpSendService';
 import { getWalletTokens, ensureNativeTokens, type Token } from '@/lib/tokenService';
+import type { TokenNetwork } from '@/lib/tokenService';
 import {
   QBTCChain,
   QBTCKeyPair,
@@ -59,6 +60,7 @@ interface SendFormProps {
   isPasskeyAuthenticated: boolean;
   onRequestPasskey: () => void;
   selectedChain: Chain;
+  tokenNetwork?: TokenNetwork;
   onChainChange?: (chain: Chain) => void;
   onAddPendingTransaction?: (tx: Parameters<ReturnType<typeof usePendingTransactions>['addPendingTransaction']>[0]) => void;
   sovereignWallet?: any;
@@ -69,6 +71,7 @@ export default function SendForm({
   isPasskeyAuthenticated,
   onRequestPasskey,
   selectedChain,
+  tokenNetwork = 'mainnet',
   onChainChange,
   onAddPendingTransaction,
   sovereignWallet,
@@ -137,8 +140,8 @@ export default function SendForm({
       if (!sovereignWallet?.id) return;
       
       try {
-        const walletTokens = await ensureNativeTokens(sovereignWallet.id);
-        const chainTokens = walletTokens.filter(t => t.chain === selectedChain);
+        const walletTokens = await ensureNativeTokens(sovereignWallet.id, tokenNetwork);
+        const chainTokens = walletTokens.filter(t => t.chain === selectedChain && t.network === tokenNetwork);
         setTokens(chainTokens);
         
         // Check for pending token selection from URL params
@@ -163,7 +166,7 @@ export default function SendForm({
     }
     
     loadTokens();
-  }, [sovereignWallet?.id, selectedChain]);
+  }, [sovereignWallet?.id, selectedChain, tokenNetwork]);
 
   useEffect(() => {
     setQbtcSettings(getQBTCRpcSettings());

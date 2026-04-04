@@ -16,6 +16,7 @@ import SecurityEducationCenter from '@/components/Security/SecurityEducationCent
 import { getCurrentWallet, migrateWalletToUser, deleteWallet } from '@/lib/walletService';
 import { securityManager, getSecurityRequirements } from '@/lib/securityService';
 import { getWalletTokens, clearWalletTokens, ensureNativeTokens, type Token } from '@/lib/tokenService';
+import type { TokenNetwork } from '@/lib/tokenService';
 import { deriveWIFFromPrivateKey } from '@/lib/bitcoinService';
 import { usePendingTransactions } from '@/hooks/usePendingTransactions';
 import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle, Send, QrCode, Settings as SettingsIcon, Pickaxe } from 'lucide-react';
@@ -37,6 +38,7 @@ export default function WalletPage() {
   const [showPasskeyModal, setShowPasskeyModal] = useState(false);
   const [isPasskeyAuthenticated, setIsPasskeyAuthenticated] = useState(false);
   const [selectedChain, setSelectedChain] = useState<Chain>('ethereum');
+  const [tokenNetwork, setTokenNetwork] = useState<TokenNetwork>('mainnet');
   const [sovereignWallet, setSovereignWallet] = useState<any>(null);
   const [autoLockTime, setAutoLockTime] = useState(600);
   
@@ -70,6 +72,7 @@ export default function WalletPage() {
     const params = new URLSearchParams(window.location.search);
     const tab = params.get('tab');
     const chain = params.get('chain');
+    const network = params.get('network');
     const tokenId = params.get('token');
 
     if (tab === 'send') {
@@ -78,6 +81,10 @@ export default function WalletPage() {
 
     if (chain && ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana', 'qbtc'].includes(chain)) {
       setSelectedChain(chain as Chain);
+    }
+
+    if (network === 'mainnet' || network === 'testnet') {
+      setTokenNetwork(network);
     }
 
     if (tokenId) {
@@ -129,7 +136,7 @@ export default function WalletPage() {
         return;
       }
       
-      const walletTokens = await ensureNativeTokens(wallet.id);
+      const walletTokens = await ensureNativeTokens(wallet.id, tokenNetwork);
       setTokens(walletTokens);
       
       const requirements = getSecurityRequirements(userId, 'openWallet');
@@ -146,7 +153,7 @@ export default function WalletPage() {
     };
     
     checkWalletAndSecurity();
-  }, [userId, authStep]);
+  }, [userId, authStep, tokenNetwork]);
 
   const handlePinSuccess = () => {
     setShowPinModal(false);
@@ -194,7 +201,7 @@ export default function WalletPage() {
     const freshWallet = await getCurrentWallet(userId);
     if (freshWallet) {
       setPendingWallet(freshWallet);
-      const walletTokens = await ensureNativeTokens(freshWallet.id);
+      const walletTokens = await ensureNativeTokens(freshWallet.id, tokenNetwork);
       setTokens(walletTokens);
       completeWalletUnlock(freshWallet);
       return;
@@ -249,6 +256,7 @@ export default function WalletPage() {
     const params = new URLSearchParams();
     params.set('tab', 'send');
     params.set('chain', token.chain);
+    params.set('network', token.network);
     params.set('token', token.id);
     window.history.pushState({}, '', `${window.location.pathname}?${params.toString()}`);
 
@@ -411,6 +419,29 @@ export default function WalletPage() {
           )}
 
           {(isPasskeyAuthenticated || sovereignWallet) && (
+            <div className="flex items-center rounded-lg bg-gray-800 overflow-hidden border border-gray-700">
+              <button
+                onClick={() => setTokenNetwork('mainnet')}
+                className={`px-2 sm:px-3 py-2 text-xs sm:text-sm transition-colors ${
+                  tokenNetwork === 'mainnet' ? 'bg-emerald-600 text-white' : 'text-gray-300 hover:text-white'
+                }`}
+                title="Use mainnet tokens"
+              >
+                Mainnet
+              </button>
+              <button
+                onClick={() => setTokenNetwork('testnet')}
+                className={`px-2 sm:px-3 py-2 text-xs sm:text-sm transition-colors ${
+                  tokenNetwork === 'testnet' ? 'bg-emerald-600 text-white' : 'text-gray-300 hover:text-white'
+                }`}
+                title="Use testnet tokens"
+              >
+                Testnet
+              </button>
+            </div>
+          )}
+
+          {(isPasskeyAuthenticated || sovereignWallet) && (
             <button
               onClick={handleDisconnect}
               className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg bg-red-600/20 text-red-400 hover:bg-red-600/30 transition-colors"
@@ -565,6 +596,7 @@ export default function WalletPage() {
                   balance={balance}
                   hideBalances={hideBalances}
                   selectedChain={selectedChain}
+                  tokenNetwork={tokenNetwork}
                   sovereignWallet={sovereignWallet}
                   pendingTransactions={pendingTransactions}
                   onSelectToken={handleTokenSelect}
@@ -578,6 +610,7 @@ export default function WalletPage() {
                   isPasskeyAuthenticated={isPasskeyAuthenticated}
                   onRequestPasskey={() => setShowPasskeyModal(true)}
                   selectedChain={selectedChain}
+                  tokenNetwork={tokenNetwork}
                   onChainChange={setSelectedChain}
                   onAddPendingTransaction={addPendingTransaction}
                   sovereignWallet={sovereignWallet}

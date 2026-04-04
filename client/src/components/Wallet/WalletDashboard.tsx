@@ -25,6 +25,7 @@ import {
   addTokenToWallet,
   refreshXRPLTokenBalances,
   type Token,
+  type TokenNetwork,
 } from '@/lib/tokenService';
 import { setXRPLTrustline, calculateXRPReserve } from '@/lib/xrpReserveService';
 import PendingTransactionCard from './PendingTransactionCard';
@@ -38,6 +39,7 @@ interface WalletDashboardProps {
   balance: ReturnType<typeof useBalance>['data'];
   hideBalances: boolean;
   selectedChain: Chain;
+  tokenNetwork: TokenNetwork;
   sovereignWallet?: any;
   pendingTransactions?: PendingTransaction[];
   onSelectToken?: (token: Token) => void;
@@ -59,6 +61,7 @@ export default function WalletDashboard({
   balance,
   hideBalances,
   selectedChain,
+  tokenNetwork,
   sovereignWallet,
   pendingTransactions = [],
   onSelectToken,
@@ -94,7 +97,7 @@ export default function WalletDashboard({
       if (!sovereignWallet?.id) return;
       
       try {
-        const walletTokens = await getWalletTokens(sovereignWallet.id);
+        const walletTokens = await getWalletTokens(sovereignWallet.id, tokenNetwork);
         setTokens(walletTokens);
       } catch (error) {
         console.error('Failed to load tokens:', error);
@@ -102,7 +105,7 @@ export default function WalletDashboard({
     };
 
     loadTokens();
-  }, [sovereignWallet?.id]);
+  }, [sovereignWallet?.id, tokenNetwork]);
 
   // Auto-detect tokens on first wallet load
   useEffect(() => {
@@ -115,7 +118,7 @@ export default function WalletDashboard({
 
       setIsAutoDetecting(true);
       try {
-        const detectedTokens = await autoDetectTokens(sovereignWallet.addresses);
+        const detectedTokens = await autoDetectTokens(sovereignWallet.addresses, tokenNetwork);
         
         if (detectedTokens.length > 0) {
           // Merge with existing native tokens
@@ -124,7 +127,7 @@ export default function WalletDashboard({
           
           // Save to storage
           const { saveWalletTokens } = await import('@/lib/tokenService');
-          await saveWalletTokens(sovereignWallet.id, allTokens);
+          await saveWalletTokens(sovereignWallet.id, allTokens, tokenNetwork);
         }
       } catch (error) {
         console.error('Auto-detect tokens failed:', error);
@@ -134,7 +137,7 @@ export default function WalletDashboard({
     };
 
     autoDetect();
-  }, [sovereignWallet?.addresses, sovereignWallet?.id]);
+  }, [sovereignWallet?.addresses, sovereignWallet?.id, tokenNetwork]);
 
   // Load balances
   useEffect(() => {
@@ -157,7 +160,8 @@ export default function WalletDashboard({
               sovereignWallet.id,
               nativeToken.id,
               chainBal.balance,
-              chainBal.usdValue
+              chainBal.usdValue,
+              tokenNetwork
             );
           }
         });
@@ -173,7 +177,7 @@ export default function WalletDashboard({
     };
 
     loadBalances();
-  }, [sovereignWallet, selectedChain]);
+  }, [sovereignWallet, selectedChain, tokenNetwork]);
 
   // Refresh balances
   const handleRefresh = async () => {
@@ -192,7 +196,8 @@ export default function WalletDashboard({
             sovereignWallet.id,
             nativeToken.id,
             chainBal.balance,
-            chainBal.usdValue
+            chainBal.usdValue,
+            tokenNetwork
           );
         }
       });
@@ -201,11 +206,12 @@ export default function WalletDashboard({
       if (sovereignWallet.addresses.xrp) {
         const result = await refreshXRPLTokenBalances(
           sovereignWallet.id,
-          sovereignWallet.addresses.xrp
+          sovereignWallet.addresses.xrp,
+          tokenNetwork
         );
         if (result.success) {
           // Reload tokens to show updated balances
-          const updatedTokens = await getWalletTokens(sovereignWallet.id);
+          const updatedTokens = await getWalletTokens(sovereignWallet.id, tokenNetwork);
           setTokens(updatedTokens);
           
           toast({
@@ -286,6 +292,7 @@ export default function WalletDashboard({
       const newToken: Token = {
         id: tokenData.id!,
         chain: tokenData.chain!,
+        network: tokenData.network || tokenNetwork,
         standard: tokenData.standard!,
         symbol: tokenData.symbol!,
         name: tokenData.name!,
@@ -297,7 +304,7 @@ export default function WalletDashboard({
         ...tokenData,
       };
 
-      await addTokenToWallet(sovereignWallet.id, newToken);
+      await addTokenToWallet(sovereignWallet.id, newToken, tokenNetwork);
       
       // Update local state
       setTokens(prev => [...prev, newToken]);
@@ -358,7 +365,7 @@ export default function WalletDashboard({
   // Handle remove token
   const handleRemoveToken = async (tokenId: string) => {
     try {
-      await removeTokenFromWallet(sovereignWallet.id, tokenId);
+      await removeTokenFromWallet(sovereignWallet.id, tokenId, tokenNetwork);
       setTokens(prev => prev.filter(t => t.id !== tokenId));
     } catch (error) {
       console.error('Failed to remove token:', error);
@@ -374,7 +381,7 @@ export default function WalletDashboard({
 
   // Get tokens for each chain
   const getChainTokens = (chain: Chain) => {
-    return tokens.filter(t => t.chain === chain && !t.isNative && t.isVisible);
+    return tokens.filter(t => t.chain === chain && t.network === tokenNetwork && !t.isNative && t.isVisible);
   };
 
   // Get chain balance
@@ -680,6 +687,7 @@ To: ${tx.to}`;
       {addTokenChain && sovereignWallet && (
         <AddTokenModal
           chain={addTokenChain}
+          network={tokenNetwork}
           walletAddress={sovereignWallet.addresses[addTokenChain]}
           onClose={() => setAddTokenChain(null)}
           onAdd={(tokenData) => handleAddToken(addTokenChain, tokenData)}

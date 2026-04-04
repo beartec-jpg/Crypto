@@ -16,10 +16,12 @@ const ERC20_ABI = [
 
 export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana' | 'qbtc';
 export type TokenStandard = 'ERC-20' | 'BEP-20' | 'SPL' | 'XRPL' | 'QBTC';
+export type TokenNetwork = 'mainnet' | 'testnet';
 
 export interface Token {
   id: string;
   chain: Chain;
+  network: TokenNetwork;
   standard: TokenStandard;
   contractAddress?: string;
   mintAddress?: string; // For Solana SPL tokens (Solana's equivalent to ERC-20 contract address)
@@ -58,6 +60,14 @@ interface TokenDB extends DBSchema {
 const TOKEN_DB_NAME = 'beartec_tokens';
 const TOKEN_DB_VERSION = 1;
 
+function normalizeNetwork(network?: TokenNetwork): TokenNetwork {
+  return network === 'testnet' ? 'testnet' : 'mainnet';
+}
+
+function tokenStorageKey(walletId: string, network?: TokenNetwork): string {
+  return `${walletId}:${normalizeNetwork(network)}`;
+}
+
 // Initialize Token IndexedDB
 async function getTokenDB(): Promise<IDBPDatabase<TokenDB>> {
   return openDB<TokenDB>(TOKEN_DB_NAME, TOKEN_DB_VERSION, {
@@ -72,10 +82,29 @@ async function getTokenDB(): Promise<IDBPDatabase<TokenDB>> {
 /**
  * Get all tokens for a wallet from IndexedDB
  */
-export async function getWalletTokens(walletId: string): Promise<Token[]> {
+export async function getWalletTokens(walletId: string, network: TokenNetwork = 'mainnet'): Promise<Token[]> {
   try {
     const db = await getTokenDB();
-    const record = await db.get('tokens', walletId);
+    const activeNetwork = normalizeNetwork(network);
+    const scopedKey = tokenStorageKey(walletId, activeNetwork);
+    let record = await db.get('tokens', scopedKey);
+
+    // Backward compatibility: migrate legacy unscoped records into mainnet scope.
+    if (!record && activeNetwork === 'mainnet') {
+      const legacyRecord = await db.get('tokens', walletId);
+      if (legacyRecord) {
+        record = {
+          ...legacyRecord,
+          walletId: scopedKey,
+          tokens: legacyRecord.tokens.map(token => ({
+            ...token,
+            network: (token as Token).network || 'mainnet',
+          })),
+        };
+        await db.put('tokens', record);
+        await db.delete('tokens', walletId);
+      }
+    }
     
     if (!record) {
       return [];
@@ -84,6 +113,7 @@ export async function getWalletTokens(walletId: string): Promise<Token[]> {
     // Parse dates back from strings
     return record.tokens.map(token => ({
       ...token,
+      network: token.network || activeNetwork,
       addedAt: new Date(token.addedAt),
     }));
   } catch (error) {
@@ -95,12 +125,17 @@ export async function getWalletTokens(walletId: string): Promise<Token[]> {
 /**
  * Save wallet tokens to IndexedDB
  */
-export async function saveWalletTokens(walletId: string, tokens: Token[]): Promise<void> {
+export async function saveWalletTokens(walletId: string, tokens: Token[], network: TokenNetwork = 'mainnet'): Promise<void> {
   try {
     const db = await getTokenDB();
+    const activeNetwork = normalizeNetwork(network);
+    const scopedKey = tokenStorageKey(walletId, activeNetwork);
     await db.put('tokens', {
-      walletId,
-      tokens,
+      walletId: scopedKey,
+      tokens: tokens.map(token => ({
+        ...token,
+        network: token.network || activeNetwork,
+      })),
       lastUpdated: new Date().toISOString(),
     });
   } catch (error) {
@@ -112,25 +147,31 @@ export async function saveWalletTokens(walletId: string, tokens: Token[]): Promi
 /**
  * Add token to wallet
  */
-export async function addTokenToWallet(walletId: string, token: Token): Promise<void> {
-  const tokens = await getWalletTokens(walletId);
+export async function addTokenToWallet(walletId: string, token: Token, network: TokenNetwork = 'mainnet'): Promise<void> {
+  const activeNetwork = normalizeNetwork(network);
+  const tokens = await getWalletTokens(walletId, activeNetwork);
+  const tokenWithNetwork: Token = {
+    ...token,
+    network: token.network || activeNetwork,
+  };
   
-  const exists = tokens.find(t => t.id === token.id);
+  const exists = tokens.find(t => t.id === tokenWithNetwork.id);
   if (exists) {
     throw new Error('Token already added');
   }
   
-  tokens.push(token);
-  await saveWalletTokens(walletId, tokens);
+  tokens.push(tokenWithNetwork);
+  await saveWalletTokens(walletId, tokens, activeNetwork);
 }
 
 /**
  * Remove token from wallet
  */
-export async function removeTokenFromWallet(walletId: string, tokenId: string): Promise<void> {
-  const tokens = await getWalletTokens(walletId);
+export async function removeTokenFromWallet(walletId: string, tokenId: string, network: TokenNetwork = 'mainnet'): Promise<void> {
+  const activeNetwork = normalizeNetwork(network);
+  const tokens = await getWalletTokens(walletId, activeNetwork);
   const filtered = tokens.filter(t => t.id !== tokenId);
-  await saveWalletTokens(walletId, filtered);
+  await saveWalletTokens(walletId, filtered, activeNetwork);
 }
 
 /**
@@ -140,9 +181,11 @@ export async function updateTokenBalance(
   walletId: string,
   tokenId: string,
   balance: string,
-  usdValue?: number
+  usdValue?: number,
+  network: TokenNetwork = 'mainnet'
 ): Promise<void> {
-  const tokens = await getWalletTokens(walletId);
+  const activeNetwork = normalizeNetwork(network);
+  const tokens = await getWalletTokens(walletId, activeNetwork);
   const token = tokens.find(t => t.id === tokenId);
   
   if (token) {
@@ -150,7 +193,7 @@ export async function updateTokenBalance(
     if (usdValue !== undefined) {
       token.usdValue = usdValue;
     }
-    await saveWalletTokens(walletId, tokens);
+    await saveWalletTokens(walletId, tokens, activeNetwork);
   }
 }
 
@@ -160,6 +203,8 @@ export async function updateTokenBalance(
 export async function clearWalletTokens(walletId: string): Promise<void> {
   try {
     const db = await getTokenDB();
+    await db.delete('tokens', tokenStorageKey(walletId, 'mainnet'));
+    await db.delete('tokens', tokenStorageKey(walletId, 'testnet'));
     await db.delete('tokens', walletId);
     console.log(`✅ Cleared tokens for wallet: ${walletId}`);
   } catch (error) {
@@ -411,7 +456,8 @@ export async function fetchXRPLIssuerInfo(issuer: string): Promise<{
 /**
  * Auto-detect tokens for all chains
  */
-export async function autoDetectTokens(addresses: Record<Chain, string>): Promise<Token[]> {
+export async function autoDetectTokens(addresses: Record<Chain, string>, network: TokenNetwork = 'mainnet'): Promise<Token[]> {
+  const activeNetwork = normalizeNetwork(network);
   const detectedTokens: Token[] = [];
   
   try {
@@ -429,7 +475,7 @@ export async function autoDetectTokens(addresses: Record<Chain, string>): Promis
   }
   
   try {
-    const result = await detectXRPLTrustlines(addresses.xrp);
+    const result = await detectXRPLTrustlines(addresses.xrp, activeNetwork);
     detectedTokens.push(...result.tokens);
     if (result.error) {
       console.error('Failed to detect XRP trustlines:', result.error);
@@ -510,7 +556,8 @@ function decodeCurrencyCode(currency: string): string {
  * Detect XRPL trustlines
  */
 async function detectXRPLTrustlines(
-  address: string
+  address: string,
+  network: TokenNetwork = 'mainnet'
 ): Promise<{ tokens: Token[]; error?: string }> {
   try {
     const client = await xrplService.getClient(true);
@@ -540,8 +587,9 @@ async function detectXRPLTrustlines(
     const tokens = response.result.lines.map((line: any) => {
       const decodedCurrency = decodeCurrencyCode(line.currency);
       return {
-        id: `xrpl-${line.currency}-${line.account}`,
+        id: `xrpl-${line.currency}-${line.account}-${network}`,
         chain: 'xrp' as Chain,
+        network,
         standard: 'XRPL' as TokenStandard,
         currencyCode: line.currency,
         issuer: line.account,
@@ -571,17 +619,19 @@ async function detectXRPLTrustlines(
  */
 export async function refreshXRPLTokenBalances(
   walletId: string,
-  xrpAddress: string
+  xrpAddress: string,
+  network: TokenNetwork = 'mainnet'
 ): Promise<{ success: boolean; error?: string }> {
   try {
     console.log('🔄 Refreshing XRPL token balances...');
+    const activeNetwork = normalizeNetwork(network);
     
     // Get current stored tokens
-    const storedTokens = await getWalletTokens(walletId);
-    const xrpTokens = storedTokens.filter(t => t.chain === 'xrp' && !t.isNative);
+    const storedTokens = await getWalletTokens(walletId, activeNetwork);
+    const xrpTokens = storedTokens.filter(t => t.chain === 'xrp' && !t.isNative && t.network === activeNetwork);
     
     // Detect current on-chain trust lines
-    const result = await detectXRPLTrustlines(xrpAddress);
+    const result = await detectXRPLTrustlines(xrpAddress, activeNetwork);
     
     // If there was an error, return it
     if (result.error) {
@@ -619,7 +669,7 @@ export async function refreshXRPLTokenBalances(
     ];
     
     // Save back to IndexedDB
-    await saveWalletTokens(walletId, updatedTokens);
+    await saveWalletTokens(walletId, updatedTokens, activeNetwork);
     
     console.log('✅ XRPL token balances refreshed');
     return { success: true };
@@ -633,8 +683,9 @@ export async function refreshXRPLTokenBalances(
 /**
  * Ensure native tokens exist for all chains
  */
-export async function ensureNativeTokens(walletId: string): Promise<Token[]> {
-  const tokens = await getWalletTokens(walletId);
+export async function ensureNativeTokens(walletId: string, network: TokenNetwork = 'mainnet'): Promise<Token[]> {
+  const activeNetwork = normalizeNetwork(network);
+  const tokens = await getWalletTokens(walletId, activeNetwork);
   
   const NATIVE_TOKENS: Record<Chain, { symbol: string; name: string; decimals: number }> = {
     ethereum: { symbol: 'ETH', name: 'Ethereum', decimals: 18 },
@@ -649,13 +700,14 @@ export async function ensureNativeTokens(walletId: string): Promise<Token[]> {
   let tokensAdded = false;
 
   for (const chain of chains) {
-    const nativeExists = tokens.find(t => t.chain === chain && t.isNative);
+    const nativeExists = tokens.find(t => t.chain === chain && t.isNative && t.network === activeNetwork);
     
     if (!nativeExists) {
       const native = NATIVE_TOKENS[chain];
       const nativeToken: Token = {
-        id: `native-${chain}`,
+        id: `native-${chain}-${activeNetwork}`,
         chain,
+        network: activeNetwork,
         standard: chain === 'xrp' ? 'XRPL' : chain === 'solana' ? 'SPL' : chain === 'qbtc' ? 'QBTC' : 'ERC-20',
         symbol: native.symbol,
         name: native.name,
@@ -672,7 +724,7 @@ export async function ensureNativeTokens(walletId: string): Promise<Token[]> {
   }
 
   if (tokensAdded) {
-    await saveWalletTokens(walletId, tokens);
+    await saveWalletTokens(walletId, tokens, activeNetwork);
   }
   
   return tokens;

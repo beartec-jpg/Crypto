@@ -4,13 +4,14 @@
 import { useState } from 'react';
 import { X, Search, AlertTriangle, CheckCircle, Loader2, ExternalLink } from 'lucide-react';
 import type { Chain } from '@/lib/balanceService';
-import type { Token } from '@/lib/tokenService';
+import type { Token, TokenNetwork } from '@/lib/tokenService';
 import { fetchERC20TokenInfo, fetchXRPLIssuerInfo, fetchSPLTokenInfo } from '@/lib/tokenService';
 import { calculateXRPReserve, type XRPReserveInfo } from '@/lib/xrpReserveService';
 import TrustlineWarningModal from './TrustlineWarningModal';
 
 interface AddTokenModalProps {
   chain: Chain;
+  network?: TokenNetwork;
   walletAddress: string;
   onClose: () => void;
   onAdd: (token: Partial<Token>) => void;
@@ -30,6 +31,7 @@ type AddStep = 'input' | 'verify' | 'trustline-warning' | 'adding' | 'success' |
 
 export default function AddTokenModal({
   chain,
+  network = 'mainnet',
   walletAddress,
   onClose,
   onAdd,
@@ -101,8 +103,9 @@ const handleVerify = async () => {
       const tokenInfo = await fetchERC20TokenInfo(tokenAddress, chain);
       
       const token: Partial<Token> = {
-        id: `${chain === 'ethereum' ? 'erc20' : 'bep20'}-${tokenAddress}`,
+        id: `${chain === 'ethereum' ? 'erc20' : 'bep20'}-${tokenAddress}-${network}`,
         chain,
+        network,
         standard: chain === 'ethereum' ? 'ERC-20' : 'BEP-20',
         contractAddress: tokenAddress,
         symbol: tokenInfo.symbol || 'UNKNOWN',
@@ -143,8 +146,9 @@ const handleVerify = async () => {
       const reserve = await calculateXRPReserve(walletAddress);
       
       const token: Partial<Token> = {
-        id: `xrpl-${currencyCode.toUpperCase()}-${issuerAddress}`,
+        id: `xrpl-${currencyCode.toUpperCase()}-${issuerAddress}-${network}`,
         chain: 'xrp',
+        network,
         standard: 'XRPL',
         currencyCode: currencyCode.toUpperCase(),
         issuer: issuerAddress,
@@ -173,8 +177,9 @@ const handleVerify = async () => {
       const tokenInfo = await fetchSPLTokenInfo(tokenAddress);
       
       const token: Partial<Token> = {
-        id: `spl-${tokenAddress}`,
+        id: `spl-${tokenAddress}-${network}`,
         chain: 'solana',
+        network,
         standard: 'SPL',
         mintAddress: tokenAddress,
         symbol: tokenInfo.symbol || tokenAddress.slice(0, 8),
