@@ -35,7 +35,18 @@ class XRPLService {
     
     // Return existing connected client if same network and URL
     if (this.client && this.client.url === wsUrl && this.client.isConnected()) {
-      return this.client;
+      // Verify the connection is actually alive with a ping
+      try {
+        await Promise.race([
+          this.client.request({ command: 'ping' }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('ping timeout')), 3000)),
+        ]);
+        return this.client;
+      } catch {
+        console.warn('⚠️ Stale XRPL connection detected, reconnecting...');
+        try { await this.client.disconnect(); } catch {}
+        this.client = null;
+      }
     }
     
     // Disconnect old client if switching networks or URLs

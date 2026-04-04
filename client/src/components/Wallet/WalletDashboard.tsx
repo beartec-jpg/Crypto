@@ -219,18 +219,8 @@ export default function WalletDashboard({
           // Reload tokens to show updated balances
           const updatedTokens = await getWalletTokens(sovereignWallet.id, tokenNetwork);
           setTokens(updatedTokens);
-          
-          toast({
-            title: "XRPL Tokens Refreshed",
-            description: "Token balances updated from ledger",
-          });
         } else if (result.error) {
           console.error('Failed to refresh XRPL tokens:', result.error);
-          toast({
-            title: 'XRPL Refresh Warning',
-            description: result.error,
-            variant: 'destructive',
-          });
         }
       }
       

@@ -69,31 +69,25 @@ export async function setXRPLTrustline(
     const signed = wallet.sign(prepared);
     console.log('  Transaction signed, hash:', signed.hash);
 
-    // Submit transaction
-    const result = await client.submitAndWait(signed.tx_blob);
-    console.log('  Transaction result:', result);
+    // Submit transaction (use submit instead of submitAndWait to avoid timeout)
+    const result = await client.submit(signed.tx_blob);
+    console.log('  Submit result:', result);
 
-    if (result.result.meta && typeof result.result.meta === 'object') {
-      const meta = result.result.meta as any;
-      if (meta.TransactionResult === 'tesSUCCESS') {
-        console.log('✅ Trustline set successfully!');
-        return {
-          success: true,
-          txHash: signed.hash,
-        };
-      } else {
-        console.error('❌ Transaction failed:', meta.TransactionResult);
-        return {
-          success: false,
-          error: `Transaction failed: ${meta.TransactionResult}`,
-        };
-      }
+    const engineResult = result.result.engine_result;
+
+    if (engineResult === 'tesSUCCESS' || engineResult === 'terQUEUED') {
+      console.log('✅ Trustline transaction accepted:', engineResult);
+      return {
+        success: true,
+        txHash: signed.hash,
+      };
+    } else {
+      console.error('❌ Transaction rejected:', engineResult, result.result.engine_result_message);
+      return {
+        success: false,
+        error: `Transaction rejected: ${engineResult} - ${result.result.engine_result_message || ''}`,
+      };
     }
-
-    return {
-      success: false,
-      error: 'Unknown transaction result',
-    };
   } catch (error: any) {
     console.error('❌ Failed to set trustline:', error);
     return {

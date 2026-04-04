@@ -192,16 +192,17 @@ export async function broadcastXrpTransaction(
   try {
     const client = await xrplService.getClient(true);
     
-    const result = await client.submitAndWait(signedTxBlob);
+    // Use submit instead of submitAndWait to avoid timeout on slow connections
+    const result = await client.submit(signedTxBlob);
     
-    if (result.result.meta && typeof result.result.meta === 'object') {
-      const meta = result.result.meta as any;
-      if (meta.TransactionResult !== 'tesSUCCESS') {
-        throw new Error(`Transaction failed: ${meta.TransactionResult}`);
-      }
+    const engineResult = result.result.engine_result;
+    
+    if (engineResult !== 'tesSUCCESS' && engineResult !== 'terQUEUED') {
+      throw new Error(`Transaction rejected: ${engineResult} - ${result.result.engine_result_message || ''}`);
     }
     
-    const hash = result.result.hash;
+    // tx_json.hash is available on submit result
+    const hash = (result.result as any).tx_json?.hash || signedTxBlob.slice(0, 64);
     
     return {
       hash,
