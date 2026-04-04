@@ -56,6 +56,9 @@ export async function getXrpAccountInfo(address: string): Promise<XRPAccountInfo
       },
       available: available.toString(),
     };
+  } catch (error: any) {
+    console.error('Failed to get XRP account info:', error.message);
+    throw error;
   }
 }
 
