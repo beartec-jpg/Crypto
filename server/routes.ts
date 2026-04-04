@@ -24,7 +24,7 @@ import { userWatchlists } from "@shared/schema";
 
 const execFileAsync = promisify(execFile);
 
-const QBTC_FAUCET_CLAIM_AMOUNT = 50;
+const QBTC_FAUCET_CLAIM_AMOUNT = 0.5;
 const QBTC_FAUCET_RATE_LIMIT_MS = 60 * 60 * 1000;
 const qbtcFaucetClaims = new Map<string, number>();
 

@@ -138,7 +138,7 @@ export default function QBTCFaucetPage() {
       setExplorerUrl(data.explorerUrl || '');
       setProgress(100);
       setPhase('success');
-      setMessage('50 QBTC sent successfully. Your transaction is on the way.');
+      setMessage('0.5 QBTC sent successfully. Your transaction is on the way.');
       await fetchStats();
     } catch {
       setPhase('error');
@@ -199,7 +199,7 @@ export default function QBTCFaucetPage() {
             <h1 className="text-3xl font-bold tracking-tight">QBTC Testnet Faucet</h1>
           </div>
           <p className="text-slate-300 mb-6">
-            Claim 50 QBTC for testing. Spin up experiments, break things safely, and mine the future.
+            Claim 0.5 QBTC for testing. Spin up experiments, break things safely, and mine the future.
           </p>
 
           {stats.pqc && (
@@ -262,7 +262,7 @@ export default function QBTCFaucetPage() {
                 disabled={!!addressError || !address.trim() || phase === 'mining'}
                 className="w-full py-3 rounded-xl font-semibold bg-gradient-to-r from-cyan-500 to-emerald-500 text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {phase === 'mining' ? 'Mining...' : 'Claim 50 QBTC'}
+                {phase === 'mining' ? 'Mining...' : 'Claim 0.5 QBTC'}
               </button>
 
               {(phase === 'mining' || phase === 'error') && (
