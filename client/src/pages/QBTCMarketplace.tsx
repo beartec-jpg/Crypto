@@ -701,14 +701,14 @@ export default function QBTCMarketplacePage() {
                     step: 2,
                     icon: Lock,
                     title: 'Seller Locks QBTC in P2WSH HTLC',
-                    desc: 'Seller broadcasts a QBTC transaction to a P2WSH Hash Time-Lock Contract address. The script uses an ML-DSA-44 + ECDSA hybrid signature scheme. The buyer can redeem with the secret; the seller can refund after 48 h via CLTV.',
+                    desc: 'Seller broadcasts a QBTC transaction to a P2WSH Hash Time-Lock Contract address. The script uses an ML-DSA-44 + ECDSA hybrid signature scheme. The buyer can redeem with the secret; the seller can refund after 48 hours via CLTV.',
                     color: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
                   },
                   {
                     step: 3,
                     icon: Users,
                     title: 'Buyer Locks USDC in EVM HTLC',
-                    desc: 'After the QBTC lock is confirmed, the buyer calls newContract() on the HashedTimelockERC20 contract with the same SHA-256 hash. The seller can withdraw USDC by revealing the secret; the buyer can refund after 24 h.',
+                    desc: 'After the QBTC lock is confirmed, the buyer calls newContract() on the HashedTimelockERC20 contract with the same SHA-256 hash. The seller can withdraw USDC by revealing the secret; the buyer can refund after 24 hours.',
                     color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30',
                   },
                   {
