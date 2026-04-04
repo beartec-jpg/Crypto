@@ -8,10 +8,10 @@ import {
   importWallet, 
   validateMnemonic, 
   markMnemonicBackedUp,
-  hasExistingWallet 
+  hasExistingWallet,
+  removeAllWalletsForUser
 } from '@/lib/walletService';
 import { reconstructMnemonic, splitMnemonic } from '@/lib/shamirService';
-import { deleteWallet } from '@/lib/walletService';
 import { 
   registerPasskey, 
   authenticateWithPasskey, 
@@ -188,8 +188,7 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
   const handleRemoveWallet = async () => {
     if (!window.confirm('Remove this wallet from the device? Your funds are safe — you can restore with your recovery phrase. This cannot be undone on this device.')) return;
     try {
-      const storedId = localStorage.getItem(`${userId}_wallet_id`);
-      if (storedId) await deleteWallet(storedId, userId);
+      await removeAllWalletsForUser(userId);
       localStorage.removeItem('passkey_credential_id');
       localStorage.removeItem('passkey_registered');
       setMode('choose');

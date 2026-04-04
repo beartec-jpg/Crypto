@@ -559,9 +559,6 @@ export async function importWallet(mnemonic: string, password: string, userId: s
     }
     
     const existing = await getCurrentWallet(userId);
-    if (existing && existing.addresses.ethereum === addresses.ethereum) {
-      throw new Error('This wallet is already imported for your account.');
-    }
     
     console.log('✅ Derived addresses:', addresses);
     
@@ -570,7 +567,11 @@ export async function importWallet(mnemonic: string, password: string, userId: s
     const encryptedMnemonic = await encryptData(cleanMnemonic, password, salt);
     
     if (existing) {
-      console.log('🔄 Replacing existing wallet...');
+      if (existing.addresses.ethereum === addresses.ethereum) {
+        console.log('🔄 Re-importing same wallet for this account...');
+      } else {
+        console.log('🔄 Replacing existing wallet...');
+      }
       await deleteWallet(existing.id, userId);
     }
     
@@ -1192,6 +1193,37 @@ export async function deleteWallet(walletId: string, userId: string): Promise<vo
     
   } catch (error) {
     console.error('❌ Failed to delete wallet:', error);
+    throw error;
+  }
+}
+
+/**
+ * Remove all wallets for a user from this device (IndexedDB + localStorage refs)
+ */
+export async function removeAllWalletsForUser(userId: string): Promise<void> {
+  try {
+    const db = await getDB();
+    const tx = db.transaction('wallets', 'readwrite');
+    const store = tx.objectStore('wallets');
+    const userIndex = store.index('userId');
+    const walletIds = await userIndex.getAllKeys(userId);
+
+    for (const walletId of walletIds) {
+      await store.delete(walletId as string);
+      localStorage.removeItem(`wallet_tokens_${walletId}`);
+      localStorage.removeItem(`wallet_tokens_${walletId}:mainnet`);
+      localStorage.removeItem(`wallet_tokens_${walletId}:testnet`);
+    }
+
+    await tx.done;
+
+    localStorage.removeItem(getUserStorageKey(userId, 'wallet_id'));
+    localStorage.removeItem(getUserStorageKey(userId, 'wallet_created'));
+    keyCache.clear();
+
+    console.log(`✅ Removed ${walletIds.length} wallet(s) for user ${userId}`);
+  } catch (error) {
+    console.error('❌ Failed to remove all wallets for user:', error);
     throw error;
   }
 }
