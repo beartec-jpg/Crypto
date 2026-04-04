@@ -632,20 +632,27 @@ export default function QBTCMarketplacePage() {
       <div className="relative max-w-6xl mx-auto px-4 py-10 space-y-8">
         {/* Top nav bar */}
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <Link href="/crypto">
-            <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 transition-colors">
-              ← Back to BearTec
-            </button>
-          </Link>
-          <div className="flex items-center gap-2 text-xs text-slate-400">
-            <Link href="/qbtc">
-              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
-                QBTC Info
+          <div className="flex items-center gap-2">
+            <Link href="/crypto">
+              <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 transition-colors">
+                ← BearTec
               </button>
             </Link>
+            <Link href="/qbtc">
+              <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 transition-colors">
+                ← QBTC
+              </button>
+            </Link>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-slate-400">
             <Link href="/qbtc-faucet">
               <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
                 Faucet
+              </button>
+            </Link>
+            <Link href="/qbtc-scan">
+              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
+                Scan
               </button>
             </Link>
             <Link href="/wallet">

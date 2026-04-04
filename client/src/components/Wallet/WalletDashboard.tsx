@@ -98,6 +98,8 @@ export default function WalletDashboard({
   const trustlinePromiseRef = useRef<{ resolve: () => void; reject: (error: Error) => void } | null>(null);
 
   // Load tokens on mount
+  const [tokensLoaded, setTokensLoaded] = useState(false);
+
   useEffect(() => {
     const loadTokens = async () => {
       if (!sovereignWallet?.id) return;
@@ -107,19 +109,25 @@ export default function WalletDashboard({
         setTokens(walletTokens);
       } catch (error) {
         console.error('Failed to load tokens:', error);
+      } finally {
+        setTokensLoaded(true);
       }
     };
 
+    setTokensLoaded(false);
     loadTokens();
   }, [sovereignWallet?.id, tokenNetwork]);
 
-  // Auto-detect tokens on first wallet load
+  // Auto-detect tokens on first wallet load (waits for tokens to load first)
   useEffect(() => {
     const autoDetect = async () => {
-      if (!sovereignWallet?.addresses || isAutoDetecting) return;
+      if (!tokensLoaded || !sovereignWallet?.addresses || isAutoDetecting) return;
       
+      // Re-read tokens from DB to avoid stale closure
+      const currentTokens = await getWalletTokens(sovereignWallet.id, tokenNetwork);
+
       // Check if we've already auto-detected (check if we have any non-native tokens)
-      const hasNonNativeTokens = tokens.some(t => !t.isNative);
+      const hasNonNativeTokens = currentTokens.some(t => !t.isNative);
       if (hasNonNativeTokens) return;
 
       setIsAutoDetecting(true);
@@ -127,8 +135,8 @@ export default function WalletDashboard({
         const detectedTokens = await autoDetectTokens(sovereignWallet.addresses, tokenNetwork);
         
         if (detectedTokens.length > 0) {
-          // Merge with existing native tokens
-          const allTokens = [...tokens, ...detectedTokens];
+          // Merge with existing tokens from DB (not stale state)
+          const allTokens = [...currentTokens, ...detectedTokens];
           setTokens(allTokens);
           
           // Save to storage
@@ -143,7 +151,7 @@ export default function WalletDashboard({
     };
 
     autoDetect();
-  }, [sovereignWallet?.addresses, sovereignWallet?.id, tokenNetwork]);
+  }, [tokensLoaded, sovereignWallet?.addresses, sovereignWallet?.id, tokenNetwork]);
 
   // Load balances
   useEffect(() => {

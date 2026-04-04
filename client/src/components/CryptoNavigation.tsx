@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'wouter';
-import { BarChart3, Bot, GraduationCap, Waves, Crown, Wallet } from 'lucide-react';
+import { BarChart3, Bot, GraduationCap, Crown, Wallet, Bitcoin } from 'lucide-react';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import { useQuery } from '@tanstack/react-query';
 
@@ -45,7 +45,7 @@ export function CryptoNavigation({ showWallet = false }: CryptoNavigationProps =
     { path: '/crypto/training', icon: GraduationCap, label: 'Training' },
     { path: '/cryptoindicators', icon: BarChart3, label: 'Charts' },
     { path: '/cryptoai', icon: Bot, label: 'AI' },
-    { path: '/cryptoelliottwave', icon: Waves, label: 'Waves' },
+    { path: '/qbtc', icon: Bitcoin, label: 'QBTC' },
   ];
 
   return (

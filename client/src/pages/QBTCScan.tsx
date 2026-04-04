@@ -177,15 +177,27 @@ export default function QBTCScanPage() {
 
       <div className="relative max-w-5xl mx-auto px-4 py-10">
         <div className="mb-6 flex items-center justify-between">
-          <Link href="/qbtc-faucet">
-            <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 transition-colors">
-              Back to Faucet
-            </button>
-          </Link>
-          <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap justify-end">
+          <div className="flex items-center gap-2">
+            <Link href="/crypto">
+              <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 transition-colors">
+                ← BearTec
+              </button>
+            </Link>
             <Link href="/qbtc">
+              <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 transition-colors">
+                ← QBTC
+              </button>
+            </Link>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap justify-end">
+            <Link href="/qbtc-faucet">
               <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
-                QBTC Info
+                Faucet
+              </button>
+            </Link>
+            <Link href="/wallet">
+              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
+                Wallet
               </button>
             </Link>
             <Link href="/marketplace">

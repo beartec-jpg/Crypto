@@ -178,6 +178,11 @@ export default function QBTCHomePage() {
                 Faucet
               </button>
             </Link>
+            <Link href="/qbtc-scan">
+              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
+                Scan
+              </button>
+            </Link>
             <Link href="/wallet">
               <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
                 Wallet
