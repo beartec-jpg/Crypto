@@ -189,11 +189,11 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
     if (!window.confirm('Remove this wallet from the device? Your funds are safe — you can restore with your recovery phrase. This cannot be undone on this device.')) return;
     try {
       await removeAllWalletsForUser(userId);
-      localStorage.removeItem('passkey_credential_id');
-      localStorage.removeItem('passkey_registered');
-      setMode('choose');
+      // Reload the page so useEffect re-evaluates with clean state
+      window.location.reload();
     } catch (err: any) {
-      setError(err.message || 'Failed to remove wallet');
+      // Even if cleanup threw, localStorage was already wiped — reload anyway
+      window.location.reload();
     }
   };
 

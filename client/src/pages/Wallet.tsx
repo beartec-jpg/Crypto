@@ -640,6 +640,7 @@ export default function WalletPage() {
           selectedChain={selectedChain}
           onSelectChain={setSelectedChain}
           onClose={() => setShowReceiveModal(false)}
+          tokenNetwork={tokenNetwork}
         />
       )}
 

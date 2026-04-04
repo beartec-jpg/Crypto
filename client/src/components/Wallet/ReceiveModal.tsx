@@ -14,10 +14,12 @@ interface ReceiveModalProps {
     xrp: string;
     solana: string;
     qbtc: string;
+    qbtcMainnet: string;
   };
   selectedChain: Chain;
   onSelectChain: (chain: Chain) => void;
   onClose: () => void;
+  tokenNetwork?: 'mainnet' | 'testnet';
 }
 
 const CHAIN_CONFIG: Record<Chain, { name: string; symbol: string; color: string; warning: string }> = {
@@ -66,12 +68,15 @@ export default function ReceiveModal({
   selectedChain,
   onSelectChain,
   onClose,
+  tokenNetwork = 'testnet',
 }: ReceiveModalProps) {
   const [copied, setCopied] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   
   const config = CHAIN_CONFIG[selectedChain];
-  const address = addresses[selectedChain];
+  const address = selectedChain === 'qbtc' && tokenNetwork === 'mainnet'
+    ? (addresses.qbtcMainnet || addresses.qbtc)
+    : addresses[selectedChain];
 
   const handleCopy = async () => {
     try {

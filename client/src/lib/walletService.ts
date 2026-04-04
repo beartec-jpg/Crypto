@@ -33,6 +33,7 @@ interface WalletDB extends DBSchema {
         xrp: string;
         solana: string;
         qbtc: string;
+        qbtcMainnet: string;
       };
       publicKeys: {
         ethereum: string;
@@ -59,6 +60,7 @@ interface Wallet {
     xrp: string;
     solana: string;
     qbtc: string;
+    qbtcMainnet: string;
   };
   createdAt: string;
   mnemonicBackedUp?: boolean;
@@ -409,6 +411,7 @@ export async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
     xrp: '',
     solana: '',
     qbtc: '',
+    qbtcMainnet: '',
   };
   
   const publicKeys: Record<Chain, string> = {
@@ -451,6 +454,7 @@ export async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
   // QBTC (default to testnet address format)
   const qbtcKeyPair = QBTCKeyPair.fromMasterSeed(seed, 0);
   addresses.qbtc = qbtcKeyPair.getAddress('testnet');
+  addresses.qbtcMainnet = qbtcKeyPair.getAddress('mainnet');
   publicKeys.qbtc = qbtcKeyPair.ecdsaPublicKeyHex;
 
   if (!addresses.qbtc || !addresses.qbtc.startsWith('qbtct1')) {
@@ -895,6 +899,7 @@ export async function unlockWallet(walletId: string, password: string): Promise<
       xrp: wallet.addresses.xrp,
       solana: wallet.addresses.solana,
       qbtc: wallet.addresses.qbtc || qbtcKeyPair.getAddress('testnet'),
+      qbtcMainnet: wallet.addresses.qbtcMainnet || qbtcKeyPair.getAddress('mainnet'),
     };
 
     // Auto-upgrade older wallet records that were created before QBTC support.
@@ -967,6 +972,16 @@ export async function getCurrentWallet(userId: string): Promise<Wallet | null> {
       }
     }
 
+    let qbtcMainnetAddress = (wallet.addresses as any).qbtcMainnet || '';
+    if (!qbtcMainnetAddress) {
+      const qbtcPubKey = (wallet as any)?.publicKeys?.qbtc as string | undefined;
+      if (qbtcPubKey) {
+        try {
+          qbtcMainnetAddress = qbtcAddressFromCompressedPubKey(qbtcPubKey, 'mainnet');
+        } catch {}
+      }
+    }
+
     const addresses = {
       ethereum: wallet.addresses.ethereum,
       bitcoin: wallet.addresses.bitcoin,
@@ -974,6 +989,7 @@ export async function getCurrentWallet(userId: string): Promise<Wallet | null> {
       xrp: wallet.addresses.xrp,
       solana: wallet.addresses.solana,
       qbtc: qbtcAddress,
+      qbtcMainnet: qbtcMainnetAddress,
     };
 
     return {
@@ -1201,30 +1217,37 @@ export async function deleteWallet(walletId: string, userId: string): Promise<vo
  * Remove all wallets for a user from this device (IndexedDB + localStorage refs)
  */
 export async function removeAllWalletsForUser(userId: string): Promise<void> {
+  // Step 1: Nuke all localStorage keys that relate to this user or any wallet
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+    if (
+      key.includes(userId) ||
+      key.startsWith('wallet_tokens_') ||
+      key === 'passkey_credential_id' ||
+      key === 'passkey_registered' ||
+      key === 'current_wallet_id'
+    ) {
+      keysToRemove.push(key);
+    }
+  }
+  keysToRemove.forEach(k => localStorage.removeItem(k));
+  keyCache.clear();
+
+  // Step 2: Delete all IndexedDB wallet records for this userId
+  // Iterate ALL records to avoid relying on index existing
   try {
     const db = await getDB();
-    const tx = db.transaction('wallets', 'readwrite');
-    const store = tx.objectStore('wallets');
-    const userIndex = store.index('userId');
-    const walletIds = await userIndex.getAllKeys(userId);
-
-    for (const walletId of walletIds) {
-      await store.delete(walletId as string);
-      localStorage.removeItem(`wallet_tokens_${walletId}`);
-      localStorage.removeItem(`wallet_tokens_${walletId}:mainnet`);
-      localStorage.removeItem(`wallet_tokens_${walletId}:testnet`);
+    const allWallets = await db.getAll('wallets');
+    const userWallets = allWallets.filter(w => w.userId === userId);
+    for (const w of userWallets) {
+      await db.delete('wallets', w.id);
     }
-
-    await tx.done;
-
-    localStorage.removeItem(getUserStorageKey(userId, 'wallet_id'));
-    localStorage.removeItem(getUserStorageKey(userId, 'wallet_created'));
-    keyCache.clear();
-
-    console.log(`✅ Removed ${walletIds.length} wallet(s) for user ${userId}`);
+    console.log(`✅ Removed ${userWallets.length} wallet(s) from IndexedDB for user ${userId}`);
   } catch (error) {
-    console.error('❌ Failed to remove all wallets for user:', error);
-    throw error;
+    // IndexedDB failed — localStorage already cleared so hasExistingWallet returns false
+    console.warn('⚠️ IndexedDB cleanup failed (localStorage already cleared):', error);
   }
 }
 
