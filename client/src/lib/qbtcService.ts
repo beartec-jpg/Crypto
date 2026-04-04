@@ -367,14 +367,14 @@ export class QBTCChain {
   }
 
   async listTransactions(address: string, count = 20): Promise<QBTCTransaction[]> {
-    const result = await this.rpcCall<{ unspents: Array<{ txid: string; amount: number; height: number }> }>(
+    const result = await this.rpcCall<{ unspents: Array<{ txid: string; vout: number; amount: number; height: number }> }>(
       'scantxoutset', ['start', [{ desc: `addr(${address})` }]]
     );
     if (!result?.unspents) return [];
 
     const utxos = result.unspents.slice(0, count);
 
-    // Fetch block times for unique heights to get real timestamps
+    // Pre-fetch block times for all unique heights (always works, no txindex needed)
     const uniqueHeights = [...new Set(utxos.map(u => u.height))];
     const blockTimeMap = new Map<number, number>();
     await Promise.all(
@@ -384,23 +384,79 @@ export class QBTCChain {
           const block = await this.rpcCall<{ time: number }>('getblock', [hash, 1]);
           blockTimeMap.set(height, block.time);
         } catch {
-          // Fallback: leave missing, will use Date.now()
+          // Fallback handled below
         }
       })
     );
 
-    return utxos.map((u) => ({
-      hash: u.txid,
-      type: 'receive' as const,
-      amount: u.amount.toFixed(8),
-      token: 'QBTC' as const,
-      to: address,
-      from: '',
-      timestamp: new Date((blockTimeMap.get(u.height) ?? Date.now() / 1000) * 1000),
-      status: 'confirmed' as const,
-      chain: 'qbtc' as const,
-      blockNumber: u.height,
-    }));
+    // Try getrawtransaction for full details (requires txindex=1 on node)
+    const transactions: QBTCTransaction[] = [];
+    await Promise.all(
+      utxos.map(async (u) => {
+        const blockTime = blockTimeMap.get(u.height);
+        const fallbackTimestamp = blockTime ? new Date(blockTime * 1000) : new Date();
+
+        try {
+          const rawTx = await this.rpcCall<{
+            txid: string;
+            vin: Array<{ txid?: string; vout?: number; coinbase?: string }>;
+            vout: Array<{ value: number; n: number; scriptPubKey: { address?: string } }>;
+            time?: number;
+            blocktime?: number;
+          }>('getrawtransaction', [u.txid, true]);
+
+          // Get the specific output that belongs to this address
+          const myOutput = rawTx.vout.find((out) => out.n === u.vout);
+          const amount = myOutput ? myOutput.value : u.amount;
+
+          // Determine sender from first input (skip coinbase)
+          let fromAddress = '';
+          const firstInput = rawTx.vin[0];
+          if (firstInput && firstInput.txid && !firstInput.coinbase) {
+            try {
+              const inputTx = await this.rpcCall<{
+                vout: Array<{ scriptPubKey: { address?: string } }>;
+              }>('getrawtransaction', [firstInput.txid, true]);
+              const inputVout = firstInput.vout ?? 0;
+              fromAddress = inputTx.vout[inputVout]?.scriptPubKey?.address || '';
+            } catch {
+              // Can't resolve sender
+            }
+          }
+
+          const isSend = fromAddress && fromAddress.toLowerCase() === address.toLowerCase();
+
+          transactions.push({
+            hash: u.txid,
+            type: isSend ? 'send' : 'receive',
+            amount: amount.toFixed(8),
+            token: 'QBTC' as const,
+            to: isSend ? (rawTx.vout.find(out => out.scriptPubKey.address !== address)?.scriptPubKey.address || address) : address,
+            from: fromAddress,
+            timestamp: rawTx.blocktime ? new Date(rawTx.blocktime * 1000) : fallbackTimestamp,
+            status: 'confirmed' as const,
+            chain: 'qbtc' as const,
+          });
+        } catch {
+          // getrawtransaction failed (no txindex) — use block header time + UTXO data
+          transactions.push({
+            hash: u.txid,
+            type: 'receive',
+            amount: u.amount.toFixed(8),
+            token: 'QBTC' as const,
+            to: address,
+            from: '',
+            timestamp: fallbackTimestamp,
+            status: 'confirmed' as const,
+            chain: 'qbtc' as const,
+          });
+        }
+      })
+    );
+
+    // Sort by timestamp descending
+    transactions.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    return transactions;
   }
 
   async getBlockCount(): Promise<number | null> {
