@@ -395,7 +395,7 @@ function base58Encode(bytes: Uint8Array): string {
 /**
  * Derive all addresses from mnemonic
  */
-async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
+export async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
   addresses: Wallet['addresses'];
   publicKeys: Record<Chain, string>;
 }> {

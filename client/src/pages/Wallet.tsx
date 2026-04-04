@@ -119,6 +119,9 @@ export default function WalletPage() {
     const checkWalletAndSecurity = async () => {
       if (!userId) return;
       
+      // Skip if already unlocked or in progress
+      if (authStep === 'complete') return;
+      
       const wallet = await getCurrentWallet(userId);
       if (!wallet) {
         setSovereignWallet(null);
@@ -143,7 +146,7 @@ export default function WalletPage() {
     };
     
     checkWalletAndSecurity();
-  }, [userId]);
+  }, [userId, authStep]);
 
   const handlePinSuccess = () => {
     setShowPinModal(false);
@@ -449,42 +452,17 @@ export default function WalletPage() {
 
                 <div className="flex flex-col gap-4 max-w-md mx-auto">
                   <button
-                    onClick={() => handleConnect('metaMask')}
-                    disabled={isPending}
-                    className="flex items-center justify-center gap-3 w-full px-6 py-4 rounded-xl bg-orange-600 hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <span className="font-medium">MetaMask</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleConnect('walletConnect')}
-                    disabled={isPending}
-                    className="flex items-center justify-center gap-3 w-full px-6 py-4 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <span className="font-medium">WalletConnect</span>
-                  </button>
-
-                  <div className="relative my-4">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-gray-700" />
-                    </div>
-                    <div className="relative flex justify-center text-sm">
-                      <span className="px-4 bg-gray-800 text-gray-400">or</span>
-                    </div>
-                  </div>
-
-                  <button
                     onClick={() => setShowPasskeyModal(true)}
                     disabled={!userId}
-                    className="flex items-center justify-center gap-3 w-full px-6 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="flex items-center justify-center gap-3 w-full px-6 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
                   >
-                    <Lock className="w-6 h-6" />
-                    <span className="font-medium">Create Sovereign Wallet with Passkey</span>
+                    <Shield className="w-5 h-5" />
+                    Create Sovereign Wallet
                   </button>
                   
                   {!userId && (
                     <p className="text-center text-sm text-red-400">
-                      Please sign in to create a sovereign wallet
+                      Please sign in to create a wallet
                     </p>
                   )}
                 </div>
@@ -575,16 +553,6 @@ export default function WalletPage() {
                 >
                   <Pickaxe className="w-4 h-4 flex-shrink-0" />
                   <span className="hidden sm:inline">Faucet</span>
-                </button>
-                <button
-                  onClick={() => {
-                    window.location.href = '/qbtc-wallet';
-                  }}
-                  className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 text-cyan-300 hover:text-cyan-200`}
-                  title="QBTC Wallet"
-                >
-                  <Shield className="w-4 h-4 flex-shrink-0" />
-                  <span className="hidden sm:inline">QBTC Wallet</span>
                 </button>
               </div>
             )}
