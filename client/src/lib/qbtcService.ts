@@ -371,16 +371,35 @@ export class QBTCChain {
       'scantxoutset', ['start', [{ desc: `addr(${address})` }]]
     );
     if (!result?.unspents) return [];
-    return result.unspents.slice(0, count).map((u) => ({
+
+    const utxos = result.unspents.slice(0, count);
+
+    // Fetch block times for unique heights to get real timestamps
+    const uniqueHeights = [...new Set(utxos.map(u => u.height))];
+    const blockTimeMap = new Map<number, number>();
+    await Promise.all(
+      uniqueHeights.map(async (height) => {
+        try {
+          const hash = await this.rpcCall<string>('getblockhash', [height]);
+          const block = await this.rpcCall<{ time: number }>('getblock', [hash, 1]);
+          blockTimeMap.set(height, block.time);
+        } catch {
+          // Fallback: leave missing, will use Date.now()
+        }
+      })
+    );
+
+    return utxos.map((u) => ({
       hash: u.txid,
       type: 'receive' as const,
       amount: u.amount.toFixed(8),
       token: 'QBTC' as const,
       to: address,
       from: '',
-      timestamp: new Date(),
+      timestamp: new Date((blockTimeMap.get(u.height) ?? Date.now() / 1000) * 1000),
       status: 'confirmed' as const,
       chain: 'qbtc' as const,
+      blockNumber: u.height,
     }));
   }
 
