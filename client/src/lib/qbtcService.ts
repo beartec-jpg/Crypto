@@ -347,13 +347,11 @@ export class QBTCChain {
     }
 
     const response = await axios.post('/api/qbtc/rpc', {
-      rpcUrl: this.settings.rpcUrl,
-      username: this.settings.username,
-      password: this.settings.password,
       method,
       params,
+      network: this.settings.network,
     }, {
-      timeout: 20000,
+      timeout: 30000,
     });
 
     if (response.data?.error) {
@@ -364,27 +362,26 @@ export class QBTCChain {
   }
 
   async getBalance(address: string): Promise<string> {
-    const utxos = await this.rpcCall<QBTCUtxo[]>('listunspent', [0, 9999999, [address]]);
-    const total = utxos.reduce((sum, utxo) => sum + toSats(utxo.amount), 0);
-    return fromSats(total);
+    const result = await this.rpcCall<{ total_amount: number }>('scantxoutset', ['start', [{ desc: `addr(${address})` }]]);
+    return (result?.total_amount ?? 0).toFixed(8);
   }
 
   async listTransactions(address: string, count = 20): Promise<QBTCTransaction[]> {
-    const txs = await this.rpcCall<any[]>('listtransactions', ['*', count, 0, true]);
-
-    return txs
-      .filter((tx) => tx.address === address || tx.from === address)
-      .map((tx) => ({
-        hash: tx.txid,
-        type: tx.category === 'receive' ? 'receive' : 'send',
-        amount: Math.abs(Number(tx.amount || 0)).toFixed(8),
-        token: 'QBTC' as const,
-        to: tx.address || '',
-        from: tx.from || '',
-        timestamp: new Date((tx.time || Math.floor(Date.now() / 1000)) * 1000),
-        status: tx.confirmations > 0 ? 'confirmed' : 'pending',
-        chain: 'qbtc' as const,
-      }));
+    const result = await this.rpcCall<{ unspents: Array<{ txid: string; amount: number; height: number }> }>(
+      'scantxoutset', ['start', [{ desc: `addr(${address})` }]]
+    );
+    if (!result?.unspents) return [];
+    return result.unspents.slice(0, count).map((u) => ({
+      hash: u.txid,
+      type: 'receive' as const,
+      amount: u.amount.toFixed(8),
+      token: 'QBTC' as const,
+      to: address,
+      from: '',
+      timestamp: new Date(),
+      status: 'confirmed' as const,
+      chain: 'qbtc' as const,
+    }));
   }
 
   async getBlockCount(): Promise<number | null> {
