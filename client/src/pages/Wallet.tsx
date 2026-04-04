@@ -165,11 +165,14 @@ export default function WalletPage() {
     setPendingWallet(null);
   };
 
-  const completeWalletUnlock = () => {
-    if (pendingWallet) {
-      setSovereignWallet(pendingWallet);
+  const completeWalletUnlock = (walletOverride?: any) => {
+    const walletToUse = walletOverride ?? pendingWallet;
+    if (walletToUse) {
+      setSovereignWallet(walletToUse);
       setPendingWallet(null);
     }
+    setMode('dashboard');
+    setShowReceiveModal(false);
     setIsWalletUnlocked(true);
     setIsPasskeyAuthenticated(true);
     setAuthStep('complete');
@@ -190,6 +193,8 @@ export default function WalletPage() {
       setPendingWallet(freshWallet);
       const walletTokens = await ensureNativeTokens(freshWallet.id);
       setTokens(walletTokens);
+      completeWalletUnlock(freshWallet);
+      return;
     }
 
     completeWalletUnlock();
