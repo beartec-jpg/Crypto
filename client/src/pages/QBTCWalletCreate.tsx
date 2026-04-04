@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Link } from 'wouter';
-import { Shield, Key, Copy, CheckCircle2, Eye, EyeOff, Settings, RefreshCw, Lock } from 'lucide-react';
+import { Shield, Key, Copy, CheckCircle2, Eye, EyeOff, Settings, RefreshCw, Lock, Download } from 'lucide-react';
 import * as bip39 from 'bip39';
 import { QBTCKeyPair, getQBTCRpcSettings, setQBTCRpcSettings, type QBTCRpcSettings } from '@/lib/qbtcService';
 
@@ -35,7 +35,7 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
 }
 
 export default function QBTCWalletCreate() {
-  const [step, setStep] = useState<'create' | 'wallet' | 'settings'>('create');
+  const [step, setStep] = useState<'create' | 'wallet' | 'settings' | 'import'>('create');
   const [walletData, setWalletData] = useState<WalletData | null>(null);
   const [showMnemonic, setShowMnemonic] = useState(false);
   const [showShares, setShowShares] = useState(false);
@@ -43,6 +43,9 @@ export default function QBTCWalletCreate() {
   const [error, setError] = useState<string | null>(null);
   const [rpcSettings, setRpcSettings] = useState<QBTCRpcSettings>(getQBTCRpcSettings());
   const [rpcSaved, setRpcSaved] = useState(false);
+  const [importMnemonic, setImportMnemonic] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const generateWallet = useCallback(async () => {
     setGenerating(true);
@@ -69,6 +72,46 @@ export default function QBTCWalletCreate() {
     } finally {
       setGenerating(false);
     }
+  }, []);
+
+  const importWallet = useCallback(async () => {
+    setImportError(null);
+    const trimmed = importMnemonic.trim().replace(/\s+/g, ' ');
+    const words = trimmed.split(' ');
+    if (words.length !== 12 && words.length !== 24) {
+      setImportError(`Invalid word count: got ${words.length} word${words.length !== 1 ? 's' : ''}. A BIP-39 mnemonic must be 12 or 24 words.`);
+      return;
+    }
+    if (!bip39.validateMnemonic(trimmed)) {
+      setImportError('Invalid mnemonic: one or more words are not in the BIP-39 word list. Please check your recovery phrase and try again.');
+      return;
+    }
+    setImporting(true);
+    try {
+      const keyPair = await QBTCKeyPair.fromMnemonic(trimmed);
+      const address = keyPair.getAddress('testnet');
+      const shamirShares = keyPair.splitECDSAPrivateKey(3, 2);
+      setWalletData({
+        mnemonic: trimmed,
+        address,
+        ecdsaPublicKey: keyPair.ecdsaPublicKeyHex,
+        dilithiumPublicKey: keyPair.dilithiumPublicKeyHex,
+        shamirShares,
+      });
+      setShowMnemonic(false);
+      setShowShares(false);
+      setStep('wallet');
+    } catch (err) {
+      console.error('Wallet import failed:', err);
+      setImportError(err instanceof Error ? err.message : 'Wallet import failed. Please try again.');
+    } finally {
+      setImporting(false);
+    }
+  }, [importMnemonic]);
+
+  const handleImportMnemonicChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setImportMnemonic(e.target.value);
+    setImportError(null);
   }, []);
 
   const saveRpcSettings = useCallback(() => {
@@ -125,6 +168,17 @@ export default function QBTCWalletCreate() {
             >
               <Key className="w-4 h-4 inline mr-1.5" />
               Wallet
+            </button>
+            <button
+              onClick={() => setStep('import')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                step === 'import'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                  : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-600'
+              }`}
+            >
+              <Download className="w-4 h-4 inline mr-1.5" />
+              Import Wallet
             </button>
             <button
               onClick={() => setStep('settings')}
@@ -286,6 +340,55 @@ export default function QBTCWalletCreate() {
                   </span>
                 ) : (
                   'Generate New Wallet'
+                )}
+              </button>
+            </div>
+          )}
+
+          {step === 'import' && (
+            <div className="space-y-5">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-cyan-500/10 text-cyan-300 text-sm border border-cyan-500/20">
+                <Download className="w-4 h-4" />
+                Restore from BIP-39 Recovery Phrase
+              </div>
+              <p className="text-slate-400 text-sm max-w-lg">
+                Enter your 12 or 24-word BIP-39 mnemonic to restore an existing QBTC wallet.
+                Your keys are derived locally — nothing is sent to a server.
+              </p>
+              <div>
+                <label className="text-sm text-slate-300 block mb-1.5">Recovery Phrase</label>
+                <textarea
+                  value={importMnemonic}
+                  onChange={handleImportMnemonicChange}
+                  placeholder="word1 word2 word3 ... (12 or 24 words)"
+                  rows={4}
+                  className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none font-mono text-sm text-slate-200 placeholder:text-slate-600 resize-none"
+                />
+                <p className="text-xs text-slate-500 mt-1">Separate words with spaces. Case-insensitive.</p>
+              </div>
+
+              {importError && (
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm">
+                  <p className="font-medium mb-1">Import failed</p>
+                  <p className="text-xs text-red-300/80">{importError}</p>
+                </div>
+              )}
+
+              <button
+                onClick={importWallet}
+                disabled={importing || importMnemonic.trim() === ''}
+                className="px-8 py-3 rounded-xl font-semibold bg-gradient-to-r from-cyan-500 to-emerald-500 text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+              >
+                {importing ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Restoring...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    Restore Wallet
+                  </>
                 )}
               </button>
             </div>
