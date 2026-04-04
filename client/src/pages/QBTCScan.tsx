@@ -207,7 +207,7 @@ export default function QBTCScanPage() {
             </div>
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
               <p className="text-slate-400 flex items-center gap-1"><Gauge className="w-3.5 h-3.5" /> Difficulty</p>
-              <p className="font-semibold">{stats.difficulty ?? '...'}</p>
+              <p className="font-semibold">{stats.difficulty != null ? Number(stats.difficulty.toFixed(10)) : '...'}</p>
             </div>
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
               <p className="text-slate-400 flex items-center gap-1"><Activity className="w-3.5 h-3.5" /> Hash Rate</p>

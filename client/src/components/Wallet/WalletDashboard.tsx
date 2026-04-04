@@ -1,7 +1,7 @@
 // client/src/components/Wallet/WalletDashboard.tsx
 // Dashboard showing balances with expandable token sections and portfolio summary
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useBalance } from 'wagmi';
 import { useUser } from '@clerk/clerk-react';
 import { ArrowUpRight, ArrowDownLeft, RefreshCw, Clock, Loader2, Copy, Share2, ExternalLink, Check } from 'lucide-react';
@@ -234,45 +234,48 @@ export default function WalletDashboard({
   };
 
   // Fetch transactions from ALL chains
+  const loadTransactions = useCallback(async () => {
+    if (!sovereignWallet?.addresses) {
+      setAllTransactions([]);
+      return;
+    }
+
+    try {
+      const chains: Chain[] = ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana', 'qbtc'];
+      
+      // Fetch from all chains in parallel
+      const transactionPromises = chains.map(async (chain) => {
+        const address = sovereignWallet.addresses[chain];
+        if (!address) return [];
+        
+        try {
+          return await fetchChainTransactions(chain, address);
+        } catch (error) {
+          console.error(`Failed to fetch ${chain} transactions:`, error);
+          return [];
+        }
+      });
+
+      const allChainTransactions = await Promise.all(transactionPromises);
+      
+      // Flatten and sort by timestamp (newest first)
+      const combinedTransactions = allChainTransactions
+        .flat()
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      
+      setAllTransactions(combinedTransactions);
+    } catch (error) {
+      console.error('Transaction fetch failed:', error);
+      setAllTransactions([]);
+    }
+  }, [sovereignWallet]);
+
+  // Initial load + auto-refresh transactions every 30 seconds
   useEffect(() => {
-    const loadTransactions = async () => {
-      if (!sovereignWallet?.addresses) {
-        setAllTransactions([]);
-        return;
-      }
-
-      try {
-        const chains: Chain[] = ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana', 'qbtc'];
-        
-        // Fetch from all chains in parallel
-        const transactionPromises = chains.map(async (chain) => {
-          const address = sovereignWallet.addresses[chain];
-          if (!address) return [];
-          
-          try {
-            return await fetchChainTransactions(chain, address);
-          } catch (error) {
-            console.error(`Failed to fetch ${chain} transactions:`, error);
-            return [];
-          }
-        });
-
-        const allChainTransactions = await Promise.all(transactionPromises);
-        
-        // Flatten and sort by timestamp (newest first)
-        const combinedTransactions = allChainTransactions
-          .flat()
-          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-        
-        setAllTransactions(combinedTransactions);
-      } catch (error) {
-        console.error('Transaction fetch failed:', error);
-        setAllTransactions([]);
-      }
-    };
-    
     loadTransactions();
-  }, [sovereignWallet, blockNumber]);
+    const txInterval = setInterval(loadTransactions, 30000);
+    return () => clearInterval(txInterval);
+  }, [loadTransactions]);
 
   // Toggle chain expansion
   const toggleChainExpansion = (chain: Chain) => {
@@ -641,7 +644,8 @@ To: ${tx.to}`;
                       <div className="flex-1 min-w-0">
                         <p className="font-medium capitalize">{tx.type}</p>
                         <p className="text-sm text-gray-400 truncate">
-                          {new Date(tx.timestamp).toLocaleDateString()}
+                          {new Date(tx.timestamp).toLocaleDateString()}{' '}
+                          {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </p>
                       </div>
                     </div>
