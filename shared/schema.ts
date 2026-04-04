@@ -1270,3 +1270,92 @@ export type LiqTrackedSymbol = typeof liqTrackedSymbols.$inferSelect;
 export type LiqMarketSnapshot = typeof liqMarketSnapshots.$inferSelect;
 export type LiqForceOrder = typeof liqForceOrders.$inferSelect;
 export type LiqComputedProfile = typeof liqComputedProfiles.$inferSelect;
+
+// ─── Atomic Swap Tables ──────────────────────────────────────────────────────
+
+/**
+ * Sell offers posted by QBTC holders who want USDC in exchange.
+ */
+export const swapOffers = pgTable("swap_offers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  /** qbtct1… / qbtc1… address of the seller */
+  sellerQbtcAddress: text("seller_qbtc_address").notNull(),
+  /** EVM address where the seller will receive USDC */
+  sellerEvmAddress: text("seller_evm_address").notNull(),
+  /** ECDSA compressed public key of the seller (hex, 33 bytes) — needed to build HTLC script */
+  sellerPubKeyHex: text("seller_pub_key_hex").notNull(),
+  /** QBTC amount being offered, stored as a decimal string (e.g. "1.00000000") */
+  qbtcAmount: text("qbtc_amount").notNull(),
+  /** USDC amount requested, stored as a decimal string with 6 decimal places (e.g. "45000.000000") */
+  usdcAmountRequested: text("usdc_amount_requested").notNull(),
+  /** OPEN | MATCHED | CANCELLED */
+  status: text("status").notNull().default("OPEN"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+/**
+ * Active or completed atomic swaps.
+ *
+ * State machine:
+ *   PENDING_QBTC_LOCK → QBTC_LOCKED → EVM_LOCKED → COMPLETE
+ *                    ↘ EXPIRED / REFUNDED
+ */
+export const atomicSwaps = pgTable("atomic_swaps", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  offerId: varchar("offer_id").notNull().references(() => swapOffers.id),
+
+  // ── Parties ───────────────────────────────────────────────────────────────
+  sellerQbtcAddress: text("seller_qbtc_address").notNull(),
+  sellerEvmAddress: text("seller_evm_address").notNull(),
+  sellerPubKeyHex: text("seller_pub_key_hex").notNull(),
+  buyerQbtcAddress: text("buyer_qbtc_address").notNull(),
+  buyerEvmAddress: text("buyer_evm_address").notNull(),
+  /** ECDSA compressed public key of the buyer (hex, 33 bytes) — needed to build HTLC script */
+  buyerPubKeyHex: text("buyer_pub_key_hex").notNull(),
+
+  // ── Amounts ───────────────────────────────────────────────────────────────
+  qbtcAmount: text("qbtc_amount").notNull(),
+  usdcAmount: text("usdc_amount").notNull(),
+
+  // ── Secret / hash ─────────────────────────────────────────────────────────
+  /** SHA-256 hash of the secret, hex-encoded — embedded in both HTLCs */
+  secretHash: text("secret_hash").notNull(),
+  /** Revealed preimage (hex) — populated when the seller claims USDC */
+  secret: text("secret"),
+
+  // ── QBTC chain ────────────────────────────────────────────────────────────
+  qbtcHtlcTxid: text("qbtc_htlc_txid"),
+  qbtcHtlcAddress: text("qbtc_htlc_address"),
+  /** Unix timestamp — seller can refund QBTC after this time (48h from creation) */
+  qbtcLocktime: integer("qbtc_locktime"),
+
+  // ── EVM chain ─────────────────────────────────────────────────────────────
+  evmContractId: text("evm_contract_id"),
+  /** Unix timestamp — buyer can refund USDC after this time (24h from creation) */
+  evmLocktime: integer("evm_locktime"),
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  status: text("status").notNull().default("PENDING_QBTC_LOCK"),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type SwapOffer = typeof swapOffers.$inferSelect;
+export type NewSwapOffer = typeof swapOffers.$inferInsert;
+export type AtomicSwap = typeof atomicSwaps.$inferSelect;
+export type NewAtomicSwap = typeof atomicSwaps.$inferInsert;
+
+export const insertSwapOfferSchema = z.object({
+  sellerQbtcAddress: z.string().min(1),
+  sellerEvmAddress: z.string().min(1),
+  sellerPubKeyHex: z.string().length(66), // 33 bytes compressed pubkey = 66 hex chars
+  qbtcAmount: z.string().min(1),
+  usdcAmountRequested: z.string().min(1),
+});
+
+export const acceptSwapOfferSchema = z.object({
+  buyerQbtcAddress: z.string().min(1),
+  buyerEvmAddress: z.string().min(1),
+  buyerPubKeyHex: z.string().length(66),
+});
