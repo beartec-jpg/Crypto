@@ -36,11 +36,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const [blockchainInfo, mempoolInfo, netHashPs] = await Promise.all([
+    const [blockchainInfo, mempoolInfo, netHashPs, networkInfo, connectionCount, uptimeResult, chainTxStats] = await Promise.all([
       rpcCall('getblockchaininfo'),
       rpcCall('getmempoolinfo'),
       rpcCall('getnetworkhashps'),
+      rpcCall('getnetworkinfo').catch(() => null),
+      rpcCall('getconnectioncount').catch(() => null),
+      rpcCall('uptime').catch(() => null),
+      rpcCall('getchaintxstats').catch(() => null),
     ]);
+
+    // gettxoutsetinfo can be slow — run separately with generous timeout
+    let txOutSetInfo: any = null;
+    try {
+      txOutSetInfo = await rpcCall('gettxoutsetinfo');
+    } catch {
+      // Non-critical — return nulls for these fields
+    }
 
     return res.json({
       selectedNetwork: 'testnet',
@@ -53,6 +65,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       mempoolTx: mempoolInfo?.size ?? 0,
       mempoolBytes: mempoolInfo?.bytes ?? 0,
       networkHashPs: netHashPs ?? 0,
+
+      // New: network health
+      peers: connectionCount ?? null,
+      uptime: uptimeResult ?? null,
+      txCount: chainTxStats?.txcount ?? null,
+      txRate: chainTxStats?.txrate ?? null,
+
+      // New: chain info (from gettxoutsetinfo)
+      circulatingSupply: txOutSetInfo?.total_amount ?? null,
+      utxoCount: txOutSetInfo?.txouts ?? null,
+
+      // New: protocol info (from getblockchaininfo)
+      dagTips: blockchainInfo?.dag_tips ?? null,
+      ghostdagK: blockchainInfo?.ghostdag_k ?? null,
+      pqcActive: blockchainInfo?.pqc ?? null,
+      dagMode: blockchainInfo?.dagmode ?? null,
+      chainSizeBytes: blockchainInfo?.size_on_disk ?? null,
+      chainwork: blockchainInfo?.chainwork ?? null,
+
+      // New: node version (from getnetworkinfo)
+      nodeVersion: networkInfo?.subversion ?? null,
     });
   } catch (error: any) {
     return res.status(500).json({ error: error?.message || 'Failed to fetch QBTC scan stats' });

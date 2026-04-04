@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
-import { Search, Activity, Blocks, Gauge, Clock3, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Search, Activity, Blocks, Gauge, Clock3, AlertTriangle, ExternalLink, Wifi, GitFork, Zap, Timer, Coins, Hash, HardDrive, Database, Shield, Network, Server } from 'lucide-react';
 
 interface ScanStats {
   network?: string;
@@ -11,6 +11,22 @@ interface ScanStats {
   mempoolTx?: number;
   mempoolBytes?: number;
   networkHashPs?: number;
+  // Network health
+  peers?: number | null;
+  uptime?: number | null;
+  txCount?: number | null;
+  txRate?: number | null;
+  // Chain info
+  circulatingSupply?: string | null;
+  utxoCount?: number | null;
+  // Protocol
+  dagTips?: number | null;
+  ghostdagK?: number | null;
+  pqcActive?: boolean | null;
+  dagMode?: boolean | null;
+  chainSizeBytes?: number | null;
+  chainwork?: string | null;
+  nodeVersion?: string | null;
 }
 
 interface ScanResponse {
@@ -43,6 +59,38 @@ function formatHashrate(value?: number): string {
     i += 1;
   }
   return `${v.toFixed(2)} ${units[i]}`;
+}
+
+function formatUptime(seconds?: number | null): string {
+  if (seconds == null) return '...';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+function formatNumber(value?: number | null): string {
+  if (value == null) return '...';
+  return value.toLocaleString();
+}
+
+function formatSupply(value?: string | null): string {
+  if (value == null) return '...';
+  const num = parseFloat(value);
+  if (isNaN(num)) return value;
+  return num.toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' QBTC';
+}
+
+function formatChainSize(bytes?: number | null): string {
+  if (bytes == null) return '...';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function stripSlashes(s?: string | null): string {
+  if (!s) return '...';
+  return s.replace(/^\/|\/$/g, '');
 }
 
 export default function QBTCScanPage() {
@@ -169,6 +217,75 @@ export default function QBTCScanPage() {
               <p className="text-slate-400 flex items-center gap-1"><Clock3 className="w-3.5 h-3.5" /> Mempool Tx</p>
               <p className="font-semibold">{stats.mempoolTx ?? '...'}</p>
             </div>
+          </div>
+
+          {/* Network Health */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 text-sm">
+            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+              <p className="text-slate-400 flex items-center gap-1"><Wifi className="w-3.5 h-3.5" /> Peers</p>
+              <p className="font-semibold">{stats.peers ?? '...'}</p>
+            </div>
+            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+              <p className="text-slate-400 flex items-center gap-1"><GitFork className="w-3.5 h-3.5" /> DAG Tips</p>
+              <p className="font-semibold">{stats.dagTips ?? '...'}</p>
+            </div>
+            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+              <p className="text-slate-400 flex items-center gap-1"><Zap className="w-3.5 h-3.5" /> Tx/sec</p>
+              <p className="font-semibold">{stats.txRate != null ? stats.txRate.toFixed(2) : '...'}</p>
+            </div>
+            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+              <p className="text-slate-400 flex items-center gap-1"><Timer className="w-3.5 h-3.5" /> Uptime</p>
+              <p className="font-semibold">{formatUptime(stats.uptime)}</p>
+            </div>
+          </div>
+
+          {/* Chain Info */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 text-sm">
+            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+              <p className="text-slate-400 flex items-center gap-1"><Coins className="w-3.5 h-3.5" /> Supply</p>
+              <p className="font-semibold">{formatSupply(stats.circulatingSupply)}</p>
+            </div>
+            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+              <p className="text-slate-400 flex items-center gap-1"><Hash className="w-3.5 h-3.5" /> Total Txs</p>
+              <p className="font-semibold">{formatNumber(stats.txCount)}</p>
+            </div>
+            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+              <p className="text-slate-400 flex items-center gap-1"><HardDrive className="w-3.5 h-3.5" /> Chain Size</p>
+              <p className="font-semibold">{formatChainSize(stats.chainSizeBytes)}</p>
+            </div>
+            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+              <p className="text-slate-400 flex items-center gap-1"><Database className="w-3.5 h-3.5" /> UTXO Set</p>
+              <p className="font-semibold">{formatNumber(stats.utxoCount)}</p>
+            </div>
+          </div>
+
+          {/* Protocol Badges */}
+          <div className="flex flex-wrap items-center gap-2 mb-6 text-xs">
+            <span className="flex items-center gap-1">
+              <Shield className="w-3.5 h-3.5 text-slate-400" />
+              <span className="text-slate-400">PQC:</span>
+              {stats.pqcActive != null ? (
+                <span className={`px-2 py-0.5 rounded-full font-medium ${stats.pqcActive ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'}`}>
+                  {stats.pqcActive ? 'Active' : 'Inactive'}
+                </span>
+              ) : <span className="text-slate-500">...</span>}
+            </span>
+            <span className="flex items-center gap-1">
+              <Network className="w-3.5 h-3.5 text-slate-400" />
+              <span className="text-slate-400">DAG Mode:</span>
+              {stats.dagMode != null ? (
+                <span className="px-2 py-0.5 rounded-full font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  GHOSTDAG K={stats.ghostdagK ?? '?'}
+                </span>
+              ) : <span className="text-slate-500">...</span>}
+            </span>
+            <span className="flex items-center gap-1">
+              <Server className="w-3.5 h-3.5 text-slate-400" />
+              <span className="text-slate-400">Node:</span>
+              <span className="px-2 py-0.5 rounded-full font-medium bg-slate-700/60 text-slate-300 border border-slate-600">
+                {stripSlashes(stats.nodeVersion)}
+              </span>
+            </span>
           </div>
 
           <div className="flex gap-2 mb-3">
