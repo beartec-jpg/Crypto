@@ -818,7 +818,7 @@ export default function QBTCMarketplacePage() {
                         <td className="py-3 pr-4 font-mono font-semibold">{offer.qbtcAmount}</td>
                         <td className="py-3 pr-4 font-mono">{offer.usdcAmountRequested}</td>
                         <td className="py-3 pr-4 font-mono text-xs text-slate-400">
-                          {(Number(offer.usdcAmountRequested) / Number(offer.qbtcAmount)).toFixed(2)} USDC/QBTC
+                          {Number(offer.qbtcAmount) > 0 ? (Number(offer.usdcAmountRequested) / Number(offer.qbtcAmount)).toFixed(2) : "—"} USDC/QBTC
                         </td>
                         <td className="py-3 pr-4 font-mono text-xs text-slate-400">
                           {offer.sellerQbtcAddress.slice(0, 14)}…

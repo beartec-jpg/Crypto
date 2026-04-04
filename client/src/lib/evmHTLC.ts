@@ -213,11 +213,19 @@ export function getSwapNetworkConfig(): SwapNetworkConfig {
   const network = (import.meta.env.VITE_SWAP_NETWORK || 'testnet') as SwapNetwork;
 
   if (network === 'mainnet') {
+    const evmRpcUrl = import.meta.env.VITE_EVM_RPC_URL || '';
+    const htlcContractAddress = import.meta.env.VITE_EVM_HTLC_CONTRACT || '';
+    const usdcContractAddress = import.meta.env.VITE_USDC_CONTRACT || '';
+
+    if (!evmRpcUrl) throw new Error('VITE_EVM_RPC_URL must be set for mainnet');
+    if (!htlcContractAddress) throw new Error('VITE_EVM_HTLC_CONTRACT must be set for mainnet');
+    if (!usdcContractAddress) throw new Error('VITE_USDC_CONTRACT must be set for mainnet');
+
     return {
       network: 'mainnet',
-      evmRpcUrl: import.meta.env.VITE_EVM_RPC_URL || '',
-      htlcContractAddress: import.meta.env.VITE_EVM_HTLC_CONTRACT || '',
-      usdcContractAddress: import.meta.env.VITE_USDC_CONTRACT || '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+      evmRpcUrl,
+      htlcContractAddress,
+      usdcContractAddress,
       evmChainId: Number(import.meta.env.VITE_EVM_CHAIN_ID || 1),
     };
   }

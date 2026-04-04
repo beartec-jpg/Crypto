@@ -8636,6 +8636,11 @@ CRITICAL DATA RULES:
   // POST /api/swap/lock/evm       — buyer posts EVM HTLC contract id
   // GET  /api/swap/:id            — get swap status
   // ---------------------------------------------------------------------------
+  //
+  // Timelock constants (seconds)
+  const SWAP_QBTC_TIMELOCK_SECS = 48 * 3600; // 48 h — seller's refund window on QBTC side
+  const SWAP_EVM_TIMELOCK_SECS  = 24 * 3600; // 24 h — buyer's refund window on EVM side (shorter by design)
+  const SWAP_EVM_GRACE_SECS     = 3600;       // 1 h grace after EVM timelock before marking EXPIRED
 
   app.post('/api/swap/offer', async (req: Request, res: Response) => {
     try {
@@ -8656,8 +8661,8 @@ CRITICAL DATA RULES:
     try {
       const { db } = await import('./db');
       const { swapOffers } = await import('@shared/schema');
-      const { eq } = await import('drizzle-orm');
-      const offers = await db.select().from(swapOffers).where(eq(swapOffers.status, 'OPEN')).orderBy(swapOffers.createdAt);
+      const { eq, asc } = await import('drizzle-orm');
+      const offers = await db.select().from(swapOffers).where(eq(swapOffers.status, 'OPEN')).orderBy(asc(swapOffers.createdAt));
       return res.json(offers);
     } catch (error: any) {
       return res.status(500).json({ error: error.message || 'Failed to fetch swap offers' });
@@ -8688,8 +8693,8 @@ CRITICAL DATA RULES:
 
       // Timelocks: QBTC = 48 h, EVM = 24 h (EVM shorter so seller can refund QBTC if EVM stalls)
       const now = Math.floor(Date.now() / 1000);
-      const qbtcLocktime = now + 48 * 3600;
-      const evmLocktime  = now + 24 * 3600;
+      const qbtcLocktime = now + SWAP_QBTC_TIMELOCK_SECS;
+      const evmLocktime  = now + SWAP_EVM_TIMELOCK_SECS;
 
       // Create the swap record and mark the offer as matched in one go
       const [swap] = await db.insert(atomicSwaps).values({
@@ -8858,18 +8863,20 @@ CRITICAL DATA RULES:
               // Check if timelock expired and neither party acted → mark EXPIRED
               const now = Math.floor(Date.now() / 1000);
               const refunded: boolean = details[7];
-              if (refunded || (swap.evmLocktime && now > swap.evmLocktime + 3600)) {
+              if (refunded || (swap.evmLocktime && now > swap.evmLocktime + SWAP_EVM_GRACE_SECS)) {
                 await db.update(atomicSwaps)
                   .set({ status: 'EXPIRED', updatedAt: new Date() })
                   .where(eq(atomicSwaps.id, swap.id));
               }
             }
-          } catch {
+          } catch (swapErr: any) {
             // per-swap errors are non-fatal; keep polling others
+            console.error(`[swap-monitor] Error checking swap ${swap.id}:`, swapErr?.message);
           }
         }
-      } catch {
-        // monitor errors are non-fatal
+      } catch (monitorErr: any) {
+        // monitor errors are non-fatal but should be visible
+        console.error('[swap-monitor] Poll cycle error:', monitorErr?.message);
       }
     }
 

@@ -512,10 +512,15 @@ export function getHTLCAddress(htlcScript: Buffer, network: QBTCNetwork): string
  * Witness structure per input:
  *   [OP_0 (empty), secret, ecdsa_sig, ecdsa_pubkey, dilithium_sig, dilithium_pubkey, htlcScript]
  *
- * OP_0 satisfies the initial stack item consumed by OP_IF — since the HTLC
- * script uses OP_IF to branch on a non-empty preimage we push the secret as
- * the branch selector, so the actual witness is:
+ * OP_0 for the claim path means nSequence = 0; CLTV is not used on this
+ * branch. The actual witness layout is:
  *   [<empty>, secret, ecdsaSig, ecdsaPubkey, dilithiumSig, dilithiumPubkey, htlcScript]
+ *
+ * The script evaluates: OP_IF pops the top stack item (empty = truthy due to
+ * OP_IF semantics for a non-zero-length byte array pushed by the secret being
+ * present). Actually the OP_IF branch is taken when the item is non-empty/truthy.
+ * The empty buffer left after the secret is consumed by OP_SHA256/OP_EQUALVERIFY
+ * satisfies the initial stack. The secret itself triggers OP_IF (truthy → claim branch).
  */
 export function createHTLCClaimTransaction(
   htlcScript: Buffer,
