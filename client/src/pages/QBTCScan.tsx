@@ -16,6 +16,7 @@ interface ScanStats {
   uptime?: number | null;
   txCount?: number | null;
   txRate?: number | null;
+  paymentsPerSec?: number | null;
   // Chain info
   circulatingSupply?: string | null;
   utxoCount?: number | null;
@@ -220,7 +221,7 @@ export default function QBTCScanPage() {
           </div>
 
           {/* Network Health */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3 text-sm">
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
               <p className="text-slate-400 flex items-center gap-1"><Wifi className="w-3.5 h-3.5" /> Peers</p>
               <p className="font-semibold">{stats.peers ?? '...'}</p>
@@ -232,6 +233,11 @@ export default function QBTCScanPage() {
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
               <p className="text-slate-400 flex items-center gap-1"><Zap className="w-3.5 h-3.5" /> Tx/sec</p>
               <p className="font-semibold">{stats.txRate != null ? stats.txRate.toFixed(2) : '...'}</p>
+            </div>
+            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+              <p className="text-slate-400 flex items-center gap-1"><Zap className="w-3.5 h-3.5" /> Payments/sec</p>
+              <p className="font-semibold">{stats.paymentsPerSec != null ? stats.paymentsPerSec.toFixed(1) : '...'}</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">Total outputs across all txs</p>
             </div>
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
               <p className="text-slate-400 flex items-center gap-1"><Timer className="w-3.5 h-3.5" /> Uptime</p>

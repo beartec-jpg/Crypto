@@ -43,7 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       rpcCall('getnetworkinfo').catch(() => null),
       rpcCall('getconnectioncount').catch(() => null),
       rpcCall('uptime').catch(() => null),
-      rpcCall('getchaintxstats').catch(() => null),
+      rpcCall('getchaintxstats', [50]).catch(() => null),
     ]);
 
     // gettxoutsetinfo can be slow — run separately with generous timeout
@@ -52,6 +52,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       txOutSetInfo = await rpcCall('gettxoutsetinfo');
     } catch {
       // Non-critical — return nulls for these fields
+    }
+
+    // Compute payments/sec from last 20 blocks (counts all vout entries)
+    let paymentsPerSec: number | null = null;
+    try {
+      const height = blockchainInfo?.blocks;
+      if (height && height >= 20) {
+        const blockPromises = [];
+        for (let i = 0; i < 20; i++) {
+          blockPromises.push(
+            rpcCall('getblockhash', [height - i])
+              .then((hash: string) => rpcCall('getblock', [hash, 2]))
+          );
+        }
+        const blocks = await Promise.all(blockPromises);
+
+        let totalOutputs = 0;
+        for (const block of blocks) {
+          for (const tx of block.tx) {
+            totalOutputs += tx.vout.length;
+          }
+        }
+
+        const timeSpan = blocks[0].time - blocks[blocks.length - 1].time;
+        if (timeSpan > 0) {
+          paymentsPerSec = totalOutputs / timeSpan;
+        }
+      }
+    } catch {
+      // Fallback: estimate from txRate * avg outputs per tx
+      if (chainTxStats?.txrate) {
+        paymentsPerSec = chainTxStats.txrate * 3.5;
+      }
     }
 
     return res.json({
@@ -71,6 +104,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       uptime: uptimeResult ?? null,
       txCount: chainTxStats?.txcount ?? null,
       txRate: chainTxStats?.txrate ?? null,
+      paymentsPerSec: paymentsPerSec,
 
       // New: chain info (from gettxoutsetinfo)
       circulatingSupply: txOutSetInfo?.total_amount ?? null,
