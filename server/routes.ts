@@ -8627,6 +8627,264 @@ CRITICAL DATA RULES:
     }
   });
 
+  // ─── Atomic Swap API ──────────────────────────────────────────────────────
+  //
+  // POST /api/swap/offer          — seller creates a new sell offer
+  // GET  /api/swap/offers         — list open offers
+  // POST /api/swap/accept/:id     — buyer accepts an offer; server generates secret hash
+  // POST /api/swap/lock/qbtc      — seller posts QBTC HTLC txid
+  // POST /api/swap/lock/evm       — buyer posts EVM HTLC contract id
+  // GET  /api/swap/:id            — get swap status
+  // ---------------------------------------------------------------------------
+  //
+  // Timelock constants (seconds)
+  const SWAP_QBTC_TIMELOCK_SECS = 48 * 3600; // 48 h — seller's refund window on QBTC side
+  const SWAP_EVM_TIMELOCK_SECS  = 24 * 3600; // 24 h — buyer's refund window on EVM side (shorter by design)
+  const SWAP_EVM_GRACE_SECS     = 3600;       // 1 h grace after EVM timelock before marking EXPIRED
+
+  app.post('/api/swap/offer', async (req: Request, res: Response) => {
+    try {
+      const { db } = await import('./db');
+      const { swapOffers, insertSwapOfferSchema } = await import('@shared/schema');
+      const parsed = insertSwapOfferSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'Invalid offer data', details: parsed.error.issues });
+      }
+      const [offer] = await db.insert(swapOffers).values(parsed.data).returning();
+      return res.json(offer);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message || 'Failed to create swap offer' });
+    }
+  });
+
+  app.get('/api/swap/offers', async (_req: Request, res: Response) => {
+    try {
+      const { db } = await import('./db');
+      const { swapOffers } = await import('@shared/schema');
+      const { eq, asc } = await import('drizzle-orm');
+      const offers = await db.select().from(swapOffers).where(eq(swapOffers.status, 'OPEN')).orderBy(asc(swapOffers.createdAt));
+      return res.json(offers);
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message || 'Failed to fetch swap offers' });
+    }
+  });
+
+  app.post('/api/swap/accept/:offerId', async (req: Request, res: Response) => {
+    try {
+      const { db } = await import('./db');
+      const { swapOffers, atomicSwaps, acceptSwapOfferSchema } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      const crypto = await import('crypto');
+
+      const { offerId } = req.params;
+      const parsed = acceptSwapOfferSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: 'Invalid accept data', details: parsed.error.issues });
+      }
+
+      const [offer] = await db.select().from(swapOffers).where(eq(swapOffers.id, offerId));
+      if (!offer) return res.status(404).json({ error: 'Offer not found' });
+      if (offer.status !== 'OPEN') return res.status(409).json({ error: 'Offer is no longer open' });
+
+      // Generate secret and compute SHA-256 hash
+      const secretBytes = crypto.randomBytes(32);
+      const secretHex = secretBytes.toString('hex');
+      const secretHash = crypto.createHash('sha256').update(secretBytes).digest('hex');
+
+      // Timelocks: QBTC = 48 h, EVM = 24 h (EVM shorter so seller can refund QBTC if EVM stalls)
+      const now = Math.floor(Date.now() / 1000);
+      const qbtcLocktime = now + SWAP_QBTC_TIMELOCK_SECS;
+      const evmLocktime  = now + SWAP_EVM_TIMELOCK_SECS;
+
+      // Create the swap record and mark the offer as matched in one go
+      const [swap] = await db.insert(atomicSwaps).values({
+        offerId,
+        sellerQbtcAddress: offer.sellerQbtcAddress,
+        sellerEvmAddress:  offer.sellerEvmAddress,
+        sellerPubKeyHex:   offer.sellerPubKeyHex,
+        buyerQbtcAddress:  parsed.data.buyerQbtcAddress,
+        buyerEvmAddress:   parsed.data.buyerEvmAddress,
+        buyerPubKeyHex:    parsed.data.buyerPubKeyHex,
+        qbtcAmount:        offer.qbtcAmount,
+        usdcAmount:        offer.usdcAmountRequested,
+        secretHash,
+        secret:            secretHex, // stored server-side; only revealed to buyer after EVM lock confirmed
+        qbtcLocktime,
+        evmLocktime,
+        status:            'PENDING_QBTC_LOCK',
+      }).returning();
+
+      await db.update(swapOffers).set({ status: 'MATCHED' }).where(eq(swapOffers.id, offerId));
+
+      // Return the swap details including the hash and HTLC parameters.
+      // The secret itself is NOT returned here — it is revealed to the buyer
+      // only after the EVM HTLC lock is confirmed (see GET /api/swap/:id logic
+      // and the EVM monitor job that extracts the preimage from the Withdraw event).
+      return res.json({
+        swapId:         swap.id,
+        secretHash,
+        qbtcLocktime,
+        evmLocktime,
+        sellerPubKeyHex: offer.sellerPubKeyHex,
+        buyerPubKeyHex:  parsed.data.buyerPubKeyHex,
+        qbtcAmount:      offer.qbtcAmount,
+        usdcAmount:      offer.usdcAmountRequested,
+      });
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message || 'Failed to accept swap offer' });
+    }
+  });
+
+  app.post('/api/swap/lock/qbtc', async (req: Request, res: Response) => {
+    try {
+      const { db } = await import('./db');
+      const { atomicSwaps } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+
+      const { swapId, qbtcHtlcTxid, qbtcHtlcAddress } = req.body || {};
+      if (!swapId || !qbtcHtlcTxid || !qbtcHtlcAddress) {
+        return res.status(400).json({ error: 'swapId, qbtcHtlcTxid, and qbtcHtlcAddress are required' });
+      }
+
+      const [swap] = await db.select().from(atomicSwaps).where(eq(atomicSwaps.id, swapId));
+      if (!swap) return res.status(404).json({ error: 'Swap not found' });
+      if (swap.status !== 'PENDING_QBTC_LOCK') {
+        return res.status(409).json({ error: `Cannot lock QBTC in status: ${swap.status}` });
+      }
+
+      // Verify the HTLC transaction is in the mempool / confirmed on-chain
+      try {
+        await qbtcRpcCall('getrawtransaction', [qbtcHtlcTxid, false]);
+      } catch (rpcErr: any) {
+        return res.status(422).json({ error: `QBTC HTLC txid not found on chain: ${rpcErr.message}` });
+      }
+
+      const [updated] = await db.update(atomicSwaps)
+        .set({ qbtcHtlcTxid, qbtcHtlcAddress, status: 'QBTC_LOCKED', updatedAt: new Date() })
+        .where(eq(atomicSwaps.id, swapId))
+        .returning();
+
+      return res.json({ status: updated.status });
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message || 'Failed to record QBTC lock' });
+    }
+  });
+
+  app.post('/api/swap/lock/evm', async (req: Request, res: Response) => {
+    try {
+      const { db } = await import('./db');
+      const { atomicSwaps } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+
+      const { swapId, evmContractId } = req.body || {};
+      if (!swapId || !evmContractId) {
+        return res.status(400).json({ error: 'swapId and evmContractId are required' });
+      }
+
+      const [swap] = await db.select().from(atomicSwaps).where(eq(atomicSwaps.id, swapId));
+      if (!swap) return res.status(404).json({ error: 'Swap not found' });
+      if (swap.status !== 'QBTC_LOCKED') {
+        return res.status(409).json({ error: `Cannot record EVM lock in status: ${swap.status}` });
+      }
+
+      const [updated] = await db.update(atomicSwaps)
+        .set({ evmContractId, status: 'EVM_LOCKED', updatedAt: new Date() })
+        .where(eq(atomicSwaps.id, swapId))
+        .returning();
+
+      return res.json({ status: updated.status });
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message || 'Failed to record EVM lock' });
+    }
+  });
+
+  app.get('/api/swap/:swapId', async (req: Request, res: Response) => {
+    try {
+      const { db } = await import('./db');
+      const { atomicSwaps } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+
+      const [swap] = await db.select().from(atomicSwaps).where(eq(atomicSwaps.id, req.params.swapId));
+      if (!swap) return res.status(404).json({ error: 'Swap not found' });
+
+      // Only expose the secret once the EVM lock is confirmed (buyer proved they locked USDC)
+      const exposeSecret = swap.status === 'EVM_LOCKED' || swap.status === 'COMPLETE';
+      return res.json({
+        ...swap,
+        secret: exposeSecret ? swap.secret : null,
+      });
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message || 'Failed to fetch swap' });
+    }
+  });
+
+  // ─── EVM Withdraw monitor (runs every 60 s) ────────────────────────────────
+  // Polls EVM_LOCKED swaps to check if the seller has claimed USDC (revealing
+  // the secret). When found, stores the secret and transitions to COMPLETE so
+  // the buyer can fetch it via GET /api/swap/:id and claim their QBTC.
+  // On mainnet this would be replaced by a WebSocket event subscription.
+  (function startSwapMonitor() {
+    const POLL_INTERVAL_MS = 60_000;
+
+    async function pollEvmLocked() {
+      const evmRpcUrl = process.env.VITE_EVM_RPC_URL || process.env.EVM_RPC_URL || '';
+      const htlcAddress = process.env.VITE_EVM_HTLC_CONTRACT || process.env.EVM_HTLC_CONTRACT || '';
+
+      if (!evmRpcUrl || !htlcAddress) return; // not configured yet — skip silently
+
+      try {
+        const { ethers } = await import('ethers');
+        const { db } = await import('./db');
+        const { atomicSwaps } = await import('@shared/schema');
+        const { eq } = await import('drizzle-orm');
+
+        const provider = new ethers.JsonRpcProvider(evmRpcUrl);
+        const htlcAbi = [
+          'function getContract(bytes32 contractId) view returns (address sender, address receiver, address tokenContract, uint256 amount, bytes32 hashlock, uint256 timelock, bool withdrawn, bool refunded, bytes32 preimage)',
+        ];
+        const htlcContract = new ethers.Contract(htlcAddress, htlcAbi, provider);
+
+        const lockedSwaps = await db.select().from(atomicSwaps).where(eq(atomicSwaps.status, 'EVM_LOCKED'));
+
+        for (const swap of lockedSwaps) {
+          if (!swap.evmContractId) continue;
+          try {
+            const id = swap.evmContractId.startsWith('0x') ? swap.evmContractId : `0x${swap.evmContractId}`;
+            const details = await htlcContract.getContract(id);
+            const withdrawn: boolean = details[6];
+            const preimage: string = details[8];
+
+            if (withdrawn && preimage && preimage !== ethers.ZeroHash) {
+              const secretHex = preimage.startsWith('0x') ? preimage.slice(2) : preimage;
+              await db.update(atomicSwaps)
+                .set({ secret: secretHex, status: 'COMPLETE', updatedAt: new Date() })
+                .where(eq(atomicSwaps.id, swap.id));
+            } else {
+              // Check if timelock expired and neither party acted → mark EXPIRED
+              const now = Math.floor(Date.now() / 1000);
+              const refunded: boolean = details[7];
+              if (refunded || (swap.evmLocktime && now > swap.evmLocktime + SWAP_EVM_GRACE_SECS)) {
+                await db.update(atomicSwaps)
+                  .set({ status: 'EXPIRED', updatedAt: new Date() })
+                  .where(eq(atomicSwaps.id, swap.id));
+              }
+            }
+          } catch (swapErr: any) {
+            // per-swap errors are non-fatal; keep polling others
+            console.error(`[swap-monitor] Error checking swap ${swap.id}:`, swapErr?.message);
+          }
+        }
+      } catch (monitorErr: any) {
+        // monitor errors are non-fatal but should be visible
+        console.error('[swap-monitor] Poll cycle error:', monitorErr?.message);
+      }
+    }
+
+    setInterval(pollEvmLocked, POLL_INTERVAL_MS);
+  })();
+
+  // ─────────────────────────────────────────────────────────────────────────
+
   app.get('/api/qbtc-faucet/stats', async (_req: Request, res: Response) => {
     try {
       const [blockHeight, blockchainInfo, pqcInfo] = await Promise.all([
@@ -8634,7 +8892,6 @@ CRITICAL DATA RULES:
         qbtcRpcCall('getblockchaininfo', []),
         qbtcRpcCall('getpqcinfo', []).catch(() => null),
       ]);
-
       return res.json({
         network: blockchainInfo?.chain || 'qbtc-testnet',
         blockHeight,

@@ -454,6 +454,182 @@ export class QBTCChain {
   }
 }
 
+// ─── HTLC support ───────────────────────────────────────────────────────────
+
+export interface QBTCHtlcParams {
+  buyerPubKeyHex: string;
+  sellerPubKeyHex: string;
+  secretHashHex: string; // SHA-256 hash of the secret, hex-encoded
+  locktime: number;      // absolute block height or unix timestamp (use timestamp for CLTV)
+}
+
+/**
+ * Builds a P2WSH HTLC redeem script:
+ *
+ *   OP_IF
+ *     OP_SHA256 <secretHash> OP_EQUALVERIFY <buyerPubKey> OP_CHECKSIG
+ *   OP_ELSE
+ *     <locktime> OP_CHECKLOCKTIMEVERIFY OP_DROP <sellerPubKey> OP_CHECKSIG
+ *   OP_ENDIF
+ *
+ * The buyer can spend by presenting the secret + hybrid PQC sig.
+ * The seller can refund after locktime with their hybrid PQC sig.
+ */
+export function createHTLCScript(params: QBTCHtlcParams): Buffer {
+  const { buyerPubKeyHex, sellerPubKeyHex, secretHashHex, locktime } = params;
+  return bitcoin.script.compile([
+    bitcoin.opcodes.OP_IF,
+      bitcoin.opcodes.OP_SHA256,
+      Buffer.from(secretHashHex, 'hex'),
+      bitcoin.opcodes.OP_EQUALVERIFY,
+      Buffer.from(buyerPubKeyHex, 'hex'),
+      bitcoin.opcodes.OP_CHECKSIG,
+    bitcoin.opcodes.OP_ELSE,
+      bitcoin.script.number.encode(locktime),
+      bitcoin.opcodes.OP_CHECKLOCKTIMEVERIFY,
+      bitcoin.opcodes.OP_DROP,
+      Buffer.from(sellerPubKeyHex, 'hex'),
+      bitcoin.opcodes.OP_CHECKSIG,
+    bitcoin.opcodes.OP_ENDIF,
+  ]);
+}
+
+/**
+ * Derives the P2WSH bech32 address for an HTLC redeem script.
+ */
+export function getHTLCAddress(htlcScript: Buffer, network: QBTCNetwork): string {
+  const net = QBTC_NETWORKS[network];
+  const p2wsh = bitcoin.payments.p2wsh({ redeem: { output: htlcScript, network: net }, network: net });
+  if (!p2wsh.address) {
+    throw new Error('Failed to derive P2WSH address for HTLC');
+  }
+  return p2wsh.address;
+}
+
+/**
+ * Builds and signs a P2WSH HTLC claim transaction (buyer path).
+ *
+ * Witness structure per input:
+ *   [OP_0 (empty), secret, ecdsa_sig, ecdsa_pubkey, dilithium_sig, dilithium_pubkey, htlcScript]
+ *
+ * OP_0 for the claim path means nSequence = 0; CLTV is not used on this
+ * branch. The actual witness layout is:
+ *   [<empty>, secret, ecdsaSig, ecdsaPubkey, dilithiumSig, dilithiumPubkey, htlcScript]
+ *
+ * The script evaluates: OP_IF pops the top stack item (empty = truthy due to
+ * OP_IF semantics for a non-zero-length byte array pushed by the secret being
+ * present). Actually the OP_IF branch is taken when the item is non-empty/truthy.
+ * The empty buffer left after the secret is consumed by OP_SHA256/OP_EQUALVERIFY
+ * satisfies the initial stack. The secret itself triggers OP_IF (truthy → claim branch).
+ */
+export function createHTLCClaimTransaction(
+  htlcScript: Buffer,
+  utxos: QBTCUtxo[],
+  secretHex: string,
+  claimerKeyPair: QBTCKeyPair,
+  outputAddress: string,
+  network: QBTCNetwork,
+  feeRate = 10,
+): string {
+  const net = QBTC_NETWORKS[network];
+  const totalInput = utxos.reduce((s, u) => s + toSats(u.amount), 0);
+
+  // Estimate vsize: P2WSH inputs have a larger witness than P2WPKH
+  // Base: ~10 + 41*n inputs + 31*n outputs; witness per input: secret + PQC sig elements + script
+  const secretLen = Buffer.from(secretHex, 'hex').length;
+  const witnessOverhead = 1 + (secretLen + 3) + 73 + 34 + 2423 + 1315 + htlcScript.length + 10;
+  const weight = (10 + utxos.length * 41 + 31) * 4 + utxos.length * witnessOverhead;
+  const vSize = Math.ceil(weight / 4);
+  const fee = Math.max(1, Math.ceil(vSize * feeRate));
+  const outputSats = totalInput - fee;
+
+  if (outputSats <= DUST_THRESHOLD) {
+    throw new Error('HTLC claim output below dust threshold after fee');
+  }
+
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+
+  for (const utxo of utxos) {
+    tx.addInput(Buffer.from(utxo.txid, 'hex').reverse(), utxo.vout, 0); // sequence 0 required for CLTV disabled path
+  }
+  tx.addOutput(bitcoin.address.toOutputScript(outputAddress, net), outputSats);
+
+  utxos.forEach((utxo, idx) => {
+    // For P2WSH the scriptCode IS the redeem script
+    const digest = tx.hashForWitnessV0(idx, htlcScript, toSats(utxo.amount), bitcoin.Transaction.SIGHASH_ALL);
+    const witness = claimerKeyPair.signDigestForWitness(digest);
+    tx.setWitness(idx, [
+      Buffer.alloc(0),              // OP_0 placeholder (script expects stack top = secret for OP_IF)
+      Buffer.from(secretHex, 'hex'),
+      witness.ecdsaSignature,
+      witness.ecdsaPublicKey,
+      witness.dilithiumSignature,
+      witness.dilithiumPublicKey,
+      htlcScript,
+    ]);
+  });
+
+  return tx.toHex();
+}
+
+/**
+ * Builds and signs a P2WSH HTLC refund transaction (seller path, post-timelock).
+ *
+ * Witness structure per input:
+ *   [OP_1 (truthy but not the secret), ecdsaSig, ecdsaPubkey, dilithiumSig, dilithiumPubkey, htlcScript]
+ *
+ * nLockTime must be >= the HTLC locktime; nSequence must be < 0xffffffff.
+ */
+export function createHTLCRefundTransaction(
+  htlcScript: Buffer,
+  utxos: QBTCUtxo[],
+  refunderKeyPair: QBTCKeyPair,
+  outputAddress: string,
+  locktime: number,
+  network: QBTCNetwork,
+  feeRate = 10,
+): string {
+  const net = QBTC_NETWORKS[network];
+  const totalInput = utxos.reduce((s, u) => s + toSats(u.amount), 0);
+
+  const witnessOverhead = 1 + 73 + 34 + 2423 + 1315 + htlcScript.length + 10;
+  const weight = (10 + utxos.length * 41 + 31) * 4 + utxos.length * witnessOverhead;
+  const vSize = Math.ceil(weight / 4);
+  const fee = Math.max(1, Math.ceil(vSize * feeRate));
+  const outputSats = totalInput - fee;
+
+  if (outputSats <= DUST_THRESHOLD) {
+    throw new Error('HTLC refund output below dust threshold after fee');
+  }
+
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.locktime = locktime;
+
+  for (const utxo of utxos) {
+    tx.addInput(Buffer.from(utxo.txid, 'hex').reverse(), utxo.vout, 0xfffffffe); // nSequence < 0xffffffff to enable CLTV
+  }
+  tx.addOutput(bitcoin.address.toOutputScript(outputAddress, net), outputSats);
+
+  utxos.forEach((utxo, idx) => {
+    const digest = tx.hashForWitnessV0(idx, htlcScript, toSats(utxo.amount), bitcoin.Transaction.SIGHASH_ALL);
+    const witness = refunderKeyPair.signDigestForWitness(digest);
+    tx.setWitness(idx, [
+      Buffer.alloc(0),             // empty = falsy, takes OP_ELSE branch
+      witness.ecdsaSignature,
+      witness.ecdsaPublicKey,
+      witness.dilithiumSignature,
+      witness.dilithiumPublicKey,
+      htlcScript,
+    ]);
+  });
+
+  return tx.toHex();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function isValidQBTCAddress(address: string, network: QBTCNetwork): boolean {
   const prefix = network === 'testnet' ? 'qbtct1' : 'qbtc1';
   const lower = address.toLowerCase();

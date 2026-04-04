@@ -40,11 +40,13 @@ export default function QBTCWalletCreate() {
   const [showMnemonic, setShowMnemonic] = useState(false);
   const [showShares, setShowShares] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [rpcSettings, setRpcSettings] = useState<QBTCRpcSettings>(getQBTCRpcSettings());
   const [rpcSaved, setRpcSaved] = useState(false);
 
   const generateWallet = useCallback(async () => {
     setGenerating(true);
+    setError(null);
     try {
       const mnemonic = bip39.generateMnemonic(128);
       const keyPair = await QBTCKeyPair.fromMnemonic(mnemonic);
@@ -58,9 +60,12 @@ export default function QBTCWalletCreate() {
         dilithiumPublicKey: keyPair.dilithiumPublicKeyHex,
         shamirShares,
       });
+      setShowMnemonic(false);
+      setShowShares(false);
       setStep('wallet');
     } catch (err) {
       console.error('Wallet generation failed:', err);
+      setError(err instanceof Error ? err.message : 'Wallet generation failed. Please try again.');
     } finally {
       setGenerating(false);
     }
@@ -158,6 +163,15 @@ export default function QBTCWalletCreate() {
                   'Generate QBTC Wallet'
                 )}
               </button>
+              {error && (
+                <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-sm max-w-md mx-auto">
+                  <p className="font-medium mb-1">Generation failed</p>
+                  <p className="text-xs text-red-300/80">{error}</p>
+                </div>
+              )}
+              <p className="text-xs text-slate-500 mt-2 max-w-md mx-auto">
+                Wallet generation is fully offline — no node connection required.
+              </p>
             </div>
           )}
 
@@ -261,15 +275,18 @@ export default function QBTCWalletCreate() {
 
               {/* Generate another */}
               <button
-                onClick={() => {
-                  setWalletData(null);
-                  setShowMnemonic(false);
-                  setShowShares(false);
-                  setStep('create');
-                }}
-                className="w-full py-2 rounded-lg text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                onClick={generateWallet}
+                disabled={generating}
+                className="w-full py-2 rounded-lg text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Generate New Wallet
+                {generating ? (
+                  <span className="inline-flex items-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Generating...
+                  </span>
+                ) : (
+                  'Generate New Wallet'
+                )}
               </button>
             </div>
           )}
