@@ -10,7 +10,8 @@ import {
   markMnemonicBackedUp,
   hasExistingWallet 
 } from '@/lib/walletService';
-import { reconstructMnemonic } from '@/lib/shamirService';
+import { reconstructMnemonic, splitMnemonic } from '@/lib/shamirService';
+import { deleteWallet } from '@/lib/walletService';
 import { 
   registerPasskey, 
   authenticateWithPasskey, 
@@ -47,6 +48,9 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
   const [mnemonicCopied, setMnemonicCopied] = useState(false);
   const [backupConfirmed, setBackupConfirmed] = useState(false);
   const [walletId, setWalletId] = useState<string | null>(null);
+  const [shamirShares, setShamirShares] = useState<string[] | null>(null);
+  const [shamirCopied, setShamirCopied] = useState<number | null>(null);
+  const [showShamirBackup, setShowShamirBackup] = useState(false);
 
   useEffect(() => {
     // Check WebAuthn support
@@ -127,6 +131,15 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
       }
 
       try {
+        // Validate share format: secrets.js shares for a mnemonic are ~280+ chars long.
+        // 64-char shares are QBTC ECDSA key splits and cannot reconstruct a mnemonic.
+        if (shareA.length < 100 || shareB.length < 100) {
+          setMnemonicError(
+            `Invalid share format. Shares should be ~280+ characters long (yours are ${shareA.length} and ${shareB.length} chars). ` +
+            `These may be QBTC key shares, not mnemonic recovery shares. Use your written recovery phrase instead.`
+          );
+          return;
+        }
         recoveredMnemonic = reconstructMnemonic([shareA, shareB]);
       } catch (error: any) {
         setMnemonicError(error?.message || 'Failed to reconstruct mnemonic from shares');
@@ -169,6 +182,19 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
       setError(err.message || 'Failed to import wallet');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleRemoveWallet = async () => {
+    if (!window.confirm('Remove this wallet from the device? Your funds are safe — you can restore with your recovery phrase. This cannot be undone on this device.')) return;
+    try {
+      const storedId = localStorage.getItem(`${userId}_wallet_id`);
+      if (storedId) await deleteWallet(storedId, userId);
+      localStorage.removeItem('passkey_credential_id');
+      localStorage.removeItem('passkey_registered');
+      setMode('choose');
+    } catch (err: any) {
+      setError(err.message || 'Failed to remove wallet');
     }
   };
 
@@ -590,6 +616,51 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
 
               {renderMnemonicWords(generatedMnemonic)}
 
+              {/* Shamir Backup Option */}
+              <div className="border border-gray-700 rounded-lg overflow-hidden">
+                <button
+                  onClick={() => {
+                    setShowShamirBackup(v => !v);
+                    if (!shamirShares && generatedMnemonic) {
+                      setShamirShares(splitMnemonic(generatedMnemonic, { shares: 3, threshold: 2 }));
+                    }
+                  }}
+                  className="w-full px-4 py-3 bg-gray-900 hover:bg-gray-800 transition-colors flex items-center justify-between text-sm"
+                >
+                  <span className="flex items-center gap-2 text-emerald-400">
+                    <Shield className="w-4 h-4" />
+                    Generate Shamir Shares (optional)
+                  </span>
+                  <span className="text-gray-500 text-xs">{showShamirBackup ? '▲ hide' : '▼ show'}</span>
+                </button>
+                {showShamirBackup && shamirShares && (
+                  <div className="p-4 space-y-3 bg-gray-900/50">
+                    <p className="text-xs text-gray-400">
+                      Any 2 of these 3 shares can reconstruct your wallet. Store each in a different secure location.
+                    </p>
+                    {shamirShares.map((share, i) => (
+                      <div key={i} className="bg-gray-900 rounded-lg p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-gray-300">Share {i + 1}{i === 0 ? ' (keep here)' : i === 1 ? ' (cold storage)' : ' (paper backup)'}</span>
+                          <button
+                            onClick={async () => {
+                              await navigator.clipboard.writeText(share);
+                              setShamirCopied(i);
+                              setTimeout(() => setShamirCopied(null), 2000);
+                            }}
+                            className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                          >
+                            {shamirCopied === i ? <><Check className="w-3 h-3" /> Copied</> : 'Copy'}
+                          </button>
+                        </div>
+                        <p className="text-xs font-mono text-gray-400 break-all leading-relaxed">{share}</p>
+                      </div>
+                    ))}
+                    <p className="text-xs text-yellow-500">⚠ These shares reconstruct your full wallet. Treat each one like a private key.</p>
+                  </div>
+                )}
+              </div>
+
               <button
                 onClick={copyMnemonic}
                 className="w-full px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors flex items-center justify-center gap-2"
@@ -661,12 +732,24 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
                 )}
               </button>
 
-              <div className="text-center">
+              <div className="text-center space-y-2">
                 <button
                   onClick={() => setMode('import')}
-                  className="text-sm text-gray-400 hover:text-white transition-colors"
+                  className="text-sm text-gray-400 hover:text-white transition-colors block w-full"
                 >
                   Restore from recovery options instead
+                </button>
+                <button
+                  onClick={() => setMode('create')}
+                  className="text-sm text-emerald-500 hover:text-emerald-400 transition-colors block w-full"
+                >
+                  + Start a new wallet
+                </button>
+                <button
+                  onClick={handleRemoveWallet}
+                  className="text-sm text-red-500 hover:text-red-400 transition-colors block w-full pt-2"
+                >
+                  Remove wallet from this device
                 </button>
               </div>
             </div>
