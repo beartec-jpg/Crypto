@@ -606,7 +606,11 @@ async function detectXRPLTrustlines(
     });
     
     return { tokens };
-  } catch (error) {
+  } catch (error: any) {
+    if (error.data?.error === 'actNotFound') {
+      // Account not yet activated — no trustlines, not an error
+      return { tokens: [] };
+    }
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Failed to detect XRPL trustlines:', error);
     return { tokens: [], error: errorMessage };
