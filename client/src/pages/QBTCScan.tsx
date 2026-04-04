@@ -20,6 +20,19 @@ interface ScanResponse {
   error?: string;
 }
 
+interface OverviewBlock {
+  height: number;
+  hash: string;
+  time?: number;
+  txCount?: number;
+  size?: number;
+}
+
+interface ScanOverview {
+  latestBlocks?: OverviewBlock[];
+  latestMempoolTxids?: string[];
+}
+
 function formatHashrate(value?: number): string {
   if (!value || value <= 0) return '0 H/s';
   const units = ['H/s', 'KH/s', 'MH/s', 'GH/s', 'TH/s', 'PH/s'];
@@ -38,6 +51,7 @@ export default function QBTCScanPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ScanResponse | null>(null);
   const [stats, setStats] = useState<ScanStats>({});
+  const [overview, setOverview] = useState<ScanOverview>({});
 
   const hasQuery = useMemo(() => query.trim().length > 0, [query]);
 
@@ -52,9 +66,24 @@ export default function QBTCScanPage() {
     }
   };
 
+  const fetchOverview = async () => {
+    try {
+      const res = await fetch('/api/qbtc-scan/overview');
+      if (!res.ok) return;
+      const data = await res.json();
+      setOverview(data);
+    } catch {
+      // Keep page usable even if overview endpoint is unavailable.
+    }
+  };
+
   useEffect(() => {
     fetchStats();
-    const id = setInterval(fetchStats, 15000);
+    fetchOverview();
+    const id = setInterval(() => {
+      fetchStats();
+      fetchOverview();
+    }, 15000);
     return () => clearInterval(id);
   }, []);
 
@@ -155,6 +184,49 @@ export default function QBTCScanPage() {
           </div>
 
           <p className="text-xs text-slate-400 mb-4">Tip: address search may depend on node index/capabilities. Tx and block search are the most reliable.</p>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+            <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-4">
+              <h3 className="text-sm font-semibold text-cyan-300 mb-3">Latest Blocks</h3>
+              {!overview.latestBlocks || overview.latestBlocks.length === 0 ? (
+                <p className="text-xs text-slate-400">No block data available.</p>
+              ) : (
+                <div className="space-y-2 max-h-56 overflow-auto pr-1">
+                  {overview.latestBlocks.slice(0, 10).map((block) => (
+                    <button
+                      key={block.hash}
+                      onClick={() => setQuery(block.hash)}
+                      className="w-full text-left rounded-lg border border-slate-800 p-2 hover:border-cyan-500/50 transition-colors"
+                      title="Click to search this block hash"
+                    >
+                      <p className="text-xs text-slate-300">Height: <span className="text-cyan-300">{block.height}</span> • Tx: {block.txCount ?? 0}</p>
+                      <p className="text-[11px] font-mono text-slate-400 truncate">{block.hash}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-4">
+              <h3 className="text-sm font-semibold text-cyan-300 mb-3">Recent Mempool TXIDs</h3>
+              {!overview.latestMempoolTxids || overview.latestMempoolTxids.length === 0 ? (
+                <p className="text-xs text-slate-400">No mempool txids available.</p>
+              ) : (
+                <div className="space-y-2 max-h-56 overflow-auto pr-1">
+                  {overview.latestMempoolTxids.slice(0, 20).map((txid) => (
+                    <button
+                      key={txid}
+                      onClick={() => setQuery(txid)}
+                      className="w-full text-left rounded-lg border border-slate-800 p-2 hover:border-cyan-500/50 transition-colors"
+                      title="Click to search this transaction"
+                    >
+                      <p className="text-[11px] font-mono text-slate-400 truncate">{txid}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
 
           {error && (
             <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-rose-300 text-sm flex items-center gap-2">
