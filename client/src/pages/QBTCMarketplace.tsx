@@ -121,19 +121,37 @@ function statusLabel(status: SwapStatus | string) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function MainnetGatingBanner() {
+function TestnetBanner() {
   return (
     <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 flex items-start gap-3">
       <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
       <div className="text-amber-200 text-sm space-y-1">
         <p>
-          <span className="font-semibold">Testnet Mode</span> — Atomic swaps are fully implemented
-          and ready. Set <code className="bg-amber-900/40 px-1 rounded">VITE_SWAP_NETWORK=mainnet</code> +
-          mainnet contract addresses to activate on mainnet.
+          <span className="font-semibold">Testnet Mode</span> — Trading QBTC testnet tokens only.
+          QBTC locks use Sepolia EVM; QBTC chain RPC on port 28332.
+          All cryptographic guarantees are identical to mainnet.
         </p>
         <p className="text-xs text-amber-300/70">
-          QBTC side uses Sepolia testnet EVM; QBTC chain uses testnet RPC (:28332).
-          All cryptographic guarantees are identical to mainnet.
+          Get free testnet QBTC from the faucet before posting or accepting offers.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function MainnetActiveBanner() {
+  return (
+    <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 flex items-start gap-3">
+      <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+      <div className="text-emerald-200 text-sm space-y-1">
+        <p>
+          <span className="font-semibold">Mainnet Live</span> — Trustless QBTC ↔ USDC atomic swaps
+          are active on Ethereum mainnet. Funds are secured by cryptographic hash-locks and
+          time-locks; no custodian or intermediary is involved.
+        </p>
+        <p className="text-xs text-emerald-300/70">
+          QBTC side: P2WSH HTLC with ML-DSA-44 + ECDSA hybrid signatures on the QBTC mainnet chain (port 58332).
+          EVM side: HashedTimelockERC20 contract on Ethereum, settling in USDC.
         </p>
       </div>
     </div>
@@ -651,7 +669,7 @@ export default function QBTCMarketplacePage() {
         </div>
 
         {/* Network banner */}
-        <MainnetGatingBanner />
+        {isMainnet ? <MainnetActiveBanner /> : <TestnetBanner />}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* ── Left/main column ── */}
@@ -676,28 +694,28 @@ export default function QBTCMarketplacePage() {
                     step: 1,
                     icon: Send,
                     title: 'Seller Posts Offer',
-                    desc: 'Seller lists QBTC for sale with a USDC price. No funds are locked yet.',
+                    desc: 'Seller lists QBTC for sale at a USDC price. No funds are locked at this stage — the offer is just a public intent.',
                     color: 'text-blue-400 bg-blue-500/10 border-blue-500/30',
                   },
                   {
                     step: 2,
                     icon: Lock,
                     title: 'Seller Locks QBTC in P2WSH HTLC',
-                    desc: 'Seller locks QBTC on-chain in an HTLC. Redeemable by buyer with secret, or refundable by seller after 48h.',
+                    desc: 'Seller broadcasts a QBTC transaction to a P2WSH Hash Time-Lock Contract address. The script uses an ML-DSA-44 + ECDSA hybrid signature scheme. The buyer can redeem with the secret; the seller can refund after 48 h via CLTV.',
                     color: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
                   },
                   {
                     step: 3,
                     icon: Users,
                     title: 'Buyer Locks USDC in EVM HTLC',
-                    desc: 'Buyer locks USDC in an EVM contract with the same hash. Redeemable by seller with the secret, or refundable after 24h.',
+                    desc: 'After the QBTC lock is confirmed, the buyer calls newContract() on the HashedTimelockERC20 contract with the same SHA-256 hash. The seller can withdraw USDC by revealing the secret; the buyer can refund after 24 h.',
                     color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30',
                   },
                   {
                     step: 4,
                     icon: ArrowLeftRight,
                     title: 'Atomic Settlement',
-                    desc: 'Seller claims USDC (revealing the secret). Buyer uses the revealed secret to claim their QBTC. No trust required.',
+                    desc: 'Seller calls withdraw(contractId, secret) on the EVM contract to claim USDC — this reveals the preimage on-chain. The buyer then uses the revealed secret to broadcast the HTLC claim transaction on QBTC. Both legs settle atomically with no trusted third party.',
                     color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
                   },
                 ].map((s) => (
@@ -711,6 +729,45 @@ export default function QBTCMarketplacePage() {
                     </div>
                   </div>
                 ))}
+              </div>
+
+              {/* Technical spec summary */}
+              <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-4 space-y-2 text-xs text-slate-400">
+                <p className="text-slate-300 font-semibold text-sm mb-2">Technical Specification</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5">
+                  <div className="flex justify-between gap-2">
+                    <span>QBTC Script</span>
+                    <span className="text-slate-300 font-mono">P2WSH HTLC (OP_IF / CLTV)</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span>Hash Function</span>
+                    <span className="text-slate-300 font-mono">SHA-256</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span>Signature Scheme</span>
+                    <span className="text-slate-300 font-mono">ML-DSA-44 + ECDSA</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span>EVM Contract</span>
+                    <span className="text-slate-300 font-mono">HashedTimelockERC20</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span>QBTC Refund Window</span>
+                    <span className="text-slate-300 font-mono">48 hours</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span>EVM Refund Window</span>
+                    <span className="text-slate-300 font-mono">24 hours</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span>Settlement Token</span>
+                    <span className="text-slate-300 font-mono">USDC (ERC-20)</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span>Trust Model</span>
+                    <span className="text-slate-300 font-mono">Trustless (no custodian)</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -762,10 +819,11 @@ export default function QBTCMarketplacePage() {
               <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-5 space-y-3">
                 <div className="flex items-center gap-2 text-amber-400 font-semibold text-sm">
                   <Clock className="w-4 h-4" />
-                  Testnet Reminder
+                  Testnet — No Real Value
                 </div>
                 <p className="text-xs text-slate-400">
-                  All QBTC here is testnet only. Get free testnet QBTC from the faucet.
+                  All QBTC and USDC here are testnet tokens with no monetary value.
+                  Get free testnet QBTC from the faucet to try the swap flow end-to-end.
                 </p>
                 <Link href="/qbtc-faucet">
                   <button className="w-full py-2 rounded-lg text-xs font-semibold border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors">
@@ -862,7 +920,7 @@ export default function QBTCMarketplacePage() {
         {/* Docs link */}
         <div className="text-center text-xs text-slate-600 space-y-1">
           <p>
-            Contract ABI compatible with{' '}
+            EVM contract ABI compatible with{' '}
             <a
               href="https://github.com/chatch/hashed-timelock-contract-ethereum"
               target="_blank"
@@ -872,7 +930,7 @@ export default function QBTCMarketplacePage() {
               HashedTimelockERC20 <ExternalLink className="w-3 h-3" />
             </a>
           </p>
-          <p>P2WSH HTLC script verified against QuantBTC node (CheckPQCSignature + CLTV).</p>
+          <p>QBTC P2WSH HTLC verified against QuantBTC node (CheckPQCSignature + CLTV). Secret size: 32 bytes (256-bit entropy).</p>
         </div>
       </div>
 
