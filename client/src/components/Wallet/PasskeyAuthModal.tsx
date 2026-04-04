@@ -10,6 +10,7 @@ import {
   markMnemonicBackedUp,
   hasExistingWallet 
 } from '@/lib/walletService';
+import { reconstructMnemonic } from '@/lib/shamirService';
 import { 
   registerPasskey, 
   authenticateWithPasskey, 
@@ -35,7 +36,10 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
   const [webAuthnSupported, setWebAuthnSupported] = useState(true);
   
   // Import wallet state
+  const [importMethod, setImportMethod] = useState<'mnemonic' | 'shamir'>('mnemonic');
   const [mnemonicInput, setMnemonicInput] = useState('');
+  const [shamirShareA, setShamirShareA] = useState('');
+  const [shamirShareB, setShamirShareB] = useState('');
   const [mnemonicError, setMnemonicError] = useState<string | null>(null);
   
   // Backup state (for new wallet creation)
@@ -105,12 +109,35 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
 
   const handleImportWallet = async () => {
     if (!validatePassword()) return;
-    
-    // Validate mnemonic first
-    const validation = validateMnemonic(mnemonicInput);
-    if (!validation.valid) {
-      setMnemonicError(validation.error || 'Invalid recovery phrase');
-      return;
+
+    let recoveredMnemonic = '';
+    if (importMethod === 'mnemonic') {
+      const validation = validateMnemonic(mnemonicInput);
+      if (!validation.valid) {
+        setMnemonicError(validation.error || 'Invalid recovery phrase');
+        return;
+      }
+      recoveredMnemonic = mnemonicInput;
+    } else {
+      const shareA = shamirShareA.trim();
+      const shareB = shamirShareB.trim();
+      if (!shareA || !shareB) {
+        setMnemonicError('Enter 2 Shamir shares to reconstruct your wallet phrase.');
+        return;
+      }
+
+      try {
+        recoveredMnemonic = reconstructMnemonic([shareA, shareB]);
+      } catch (error: any) {
+        setMnemonicError(error?.message || 'Failed to reconstruct mnemonic from shares');
+        return;
+      }
+
+      const validation = validateMnemonic(recoveredMnemonic);
+      if (!validation.valid) {
+        setMnemonicError('Recovered phrase is invalid. Check your shares and try again.');
+        return;
+      }
     }
     
     setIsLoading(true);
@@ -119,7 +146,7 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
     
     try {
       // Pass userId to importWallet
-      await importWallet(mnemonicInput, password, userId);
+      await importWallet(recoveredMnemonic, password, userId);
       
       // Register passkey
       if (webAuthnSupported) {
@@ -132,6 +159,8 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
       
       // Clear sensitive data
       setMnemonicInput('');
+      setShamirShareA('');
+      setShamirShareB('');
       setPassword('');
       
       onSuccess();
@@ -268,7 +297,7 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
                 </div>
                 <div className="text-left">
                   <p className="font-semibold">Import Existing Wallet</p>
-                  <p className="text-sm text-gray-400">Restore with recovery phrase</p>
+                  <p className="text-sm text-gray-400">Restore with recovery phrase or Shamir shares</p>
                 </div>
               </button>
 
@@ -356,6 +385,36 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
           {/* Import Wallet */}
           {mode === 'import' && (
             <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-2 p-1 rounded-lg bg-gray-900 border border-gray-700">
+                <button
+                  onClick={() => {
+                    setImportMethod('mnemonic');
+                    setMnemonicError(null);
+                  }}
+                  className={`px-3 py-2 rounded-md text-sm transition-colors ${
+                    importMethod === 'mnemonic'
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-gray-300 hover:text-white'
+                  }`}
+                >
+                  Recovery Phrase
+                </button>
+                <button
+                  onClick={() => {
+                    setImportMethod('shamir');
+                    setMnemonicError(null);
+                  }}
+                  className={`px-3 py-2 rounded-md text-sm transition-colors ${
+                    importMethod === 'shamir'
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-gray-300 hover:text-white'
+                  }`}
+                >
+                  Shamir (2 shares)
+                </button>
+              </div>
+
+              {importMethod === 'mnemonic' ? (
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Recovery Phrase
@@ -379,6 +438,58 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
                   Words: {mnemonicInput.trim() ? mnemonicInput.trim().split(/\s+/).length : 0}
                 </p>
               </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Shamir Share 1
+                    </label>
+                    <textarea
+                      value={shamirShareA}
+                      onChange={(e) => {
+                        setShamirShareA(e.target.value.trim());
+                        setMnemonicError(null);
+                      }}
+                      placeholder="Paste first Shamir share"
+                      rows={3}
+                      className={`w-full px-4 py-3 rounded-lg bg-gray-900 border ${
+                        mnemonicError ? 'border-red-500' : 'border-gray-700'
+                      } focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none font-mono text-xs`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Shamir Share 2
+                    </label>
+                    <textarea
+                      value={shamirShareB}
+                      onChange={(e) => {
+                        setShamirShareB(e.target.value.trim());
+                        setMnemonicError(null);
+                      }}
+                      placeholder="Paste second Shamir share"
+                      rows={3}
+                      className={`w-full px-4 py-3 rounded-lg bg-gray-900 border ${
+                        mnemonicError ? 'border-red-500' : 'border-gray-700'
+                      } focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none font-mono text-xs`}
+                    />
+                  </div>
+
+                  {mnemonicError && (
+                    <p className="text-sm text-red-400">{mnemonicError}</p>
+                  )}
+                  <div className="rounded-lg border border-cyan-700/40 bg-cyan-900/20 p-3 text-xs text-cyan-100 space-y-1">
+                    <p className="font-semibold text-cyan-300">Shamir Recovery Help</p>
+                    <p>Use any 2 shares from the same 2-of-3 backup set.</p>
+                    <p>Paste each full share string exactly as saved (no edits).</p>
+                    <p>If reconstruction fails, one share is from a different set or was altered.</p>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Enter any 2 valid shares from your 2-of-3 backup set.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -419,7 +530,7 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
                   <p className="text-xs text-amber-300">
-                    Never share your recovery phrase. Anyone with these words can access your funds.
+                    Never share your recovery phrase or Shamir shares. Anyone with enough recovery material can access your funds.
                   </p>
                 </div>
               </div>
@@ -437,7 +548,12 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
                 </button>
                 <button
                   onClick={handleImportWallet}
-                  disabled={isLoading || !mnemonicInput || !password || !confirmPassword}
+                  disabled={
+                    isLoading ||
+                    !password ||
+                    !confirmPassword ||
+                    (importMethod === 'mnemonic' ? !mnemonicInput : (!shamirShareA || !shamirShareB))
+                  }
                   className="flex-1 px-4 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                 >
                   {isLoading ? (
@@ -550,7 +666,7 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
                   onClick={() => setMode('import')}
                   className="text-sm text-gray-400 hover:text-white transition-colors"
                 >
-                  Restore from recovery phrase instead
+                  Restore from recovery options instead
                 </button>
               </div>
             </div>
