@@ -449,7 +449,7 @@ export async function fetchXRPLIssuerInfo(issuer: string): Promise<{
     if (error.data?.error === 'actNotFound') {
       return { exists: false };
     }
-    throw error;
+    throw new Error('Could not verify issuer on XRPL. Check your connection and try again.');
   }
 }
 

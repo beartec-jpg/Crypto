@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { Search, Activity, Blocks, Gauge, Clock3, AlertTriangle, ExternalLink } from 'lucide-react';
 
@@ -52,6 +52,7 @@ export default function QBTCScanPage() {
   const [result, setResult] = useState<ScanResponse | null>(null);
   const [stats, setStats] = useState<ScanStats>({});
   const [overview, setOverview] = useState<ScanOverview>({});
+  const isRefreshingRef = useRef(false);
 
   const hasQuery = useMemo(() => query.trim().length > 0, [query]);
 
@@ -78,12 +79,18 @@ export default function QBTCScanPage() {
   };
 
   useEffect(() => {
-    fetchStats();
-    fetchOverview();
-    const id = setInterval(() => {
-      fetchStats();
-      fetchOverview();
-    }, 15000);
+    const refreshLiveData = async () => {
+      if (isRefreshingRef.current) return;
+      isRefreshingRef.current = true;
+      try {
+        await Promise.all([fetchStats(), fetchOverview()]);
+      } finally {
+        isRefreshingRef.current = false;
+      }
+    };
+
+    refreshLiveData();
+    const id = setInterval(refreshLiveData, 1000);
     return () => clearInterval(id);
   }, []);
 

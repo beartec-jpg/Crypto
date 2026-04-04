@@ -142,6 +142,10 @@ const handleVerify = async () => {
         throw new Error('Issuer address does not exist on XRPL');
       }
 
+      if (!walletAddress || !/^r[1-9A-HJ-NP-Za-km-z]{25,34}$/.test(walletAddress)) {
+        throw new Error('Your XRP wallet address is not available. Please recreate or import your wallet.');
+      }
+
       // Calculate reserve requirements
       const reserve = await calculateXRPReserve(walletAddress);
       

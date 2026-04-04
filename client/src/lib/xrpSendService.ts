@@ -2,10 +2,10 @@
 // XRP native send service - STANDARD XRPL.js ONLY
 
 import * as xrpl from 'xrpl';
+import { xrplService } from './xrpService';
 
 const BASE_RESERVE = 10; // 10 XRP
 const OWNER_RESERVE = 2; // 2 XRP per object
-const XRP_MAINNET_URL = 'wss://xrplcluster.com';
 
 export interface XRPAccountInfo {
   address: string;
@@ -29,10 +29,8 @@ export interface XRPTransactionBroadcastResult {
  * Get XRP account info with reserves calculation
  */
 export async function getXrpAccountInfo(address: string): Promise<XRPAccountInfo> {
-  const client = new xrpl.Client(XRP_MAINNET_URL);
-  
   try {
-    await client.connect();
+    const client = await xrplService.getClient(true);
     
     const response = await client.request({
       command: 'account_info',
@@ -58,8 +56,6 @@ export async function getXrpAccountInfo(address: string): Promise<XRPAccountInfo
       },
       available: available.toString(),
     };
-  } finally {
-    await client.disconnect();
   }
 }
 
@@ -67,10 +63,8 @@ export async function getXrpAccountInfo(address: string): Promise<XRPAccountInfo
  * Check if destination XRP address exists
  */
 export async function checkDestinationExists(address: string): Promise<boolean> {
-  const client = new xrpl.Client(XRP_MAINNET_URL);
-  
   try {
-    await client.connect();
+    const client = await xrplService.getClient(true);
     
     const response = await client.request({
       command: 'account_info',
@@ -85,8 +79,6 @@ export async function checkDestinationExists(address: string): Promise<boolean> 
       return false;
     }
     throw error;
-  } finally {
-    await client.disconnect();
   }
 }
 
@@ -114,10 +106,8 @@ export async function buildXrpTransaction(
   amount: string,
   destinationTag?: number
 ): Promise<xrpl.Payment> {
-  const client = new xrpl.Client(XRP_MAINNET_URL);
-  
   try {
-    await client.connect();
+    const client = await xrplService.getClient(true);
     
     const payment: xrpl.Payment = {
       TransactionType: 'Payment',
@@ -134,8 +124,6 @@ export async function buildXrpTransaction(
     const prepared = await client.autofill(payment);
     
     return prepared;
-  } finally {
-    await client.disconnect();
   }
 }
 
@@ -195,10 +183,8 @@ export function signXrpTransaction(
 export async function broadcastXrpTransaction(
   signedTxBlob: string
 ): Promise<XRPTransactionBroadcastResult> {
-  const client = new xrpl.Client(XRP_MAINNET_URL);
-  
   try {
-    await client.connect();
+    const client = await xrplService.getClient(true);
     
     const result = await client.submitAndWait(signedTxBlob);
     
@@ -215,8 +201,6 @@ export async function broadcastXrpTransaction(
       hash,
       explorerUrl: `https://livenet.xrpl.org/transactions/${hash}`,
     };
-  } finally {
-    await client.disconnect();
   }
 }
 
@@ -225,10 +209,8 @@ export async function broadcastXrpTransaction(
  * Returns the current network fee in XRP
  */
 export async function estimateXrpFee(): Promise<string> {
-  const client = new xrpl.Client(XRP_MAINNET_URL);
-  
   try {
-    await client.connect();
+    const client = await xrplService.getClient(true);
     
     // Get current fee from the network
     const response = await client.request({
@@ -244,7 +226,5 @@ export async function estimateXrpFee(): Promise<string> {
     console.error('Failed to estimate XRP fee:', error);
     // Return default fee if estimation fails (0.00001 XRP = 10 drops)
     return '0.00001';
-  } finally {
-    await client.disconnect();
   }
 }

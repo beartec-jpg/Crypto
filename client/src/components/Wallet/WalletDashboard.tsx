@@ -1,7 +1,7 @@
 // client/src/components/Wallet/WalletDashboard.tsx
 // Dashboard showing balances with expandable token sections and portfolio summary
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useBalance } from 'wagmi';
 import { useUser } from '@clerk/clerk-react';
 import { ArrowUpRight, ArrowDownLeft, RefreshCw, Clock, Loader2, Copy, Share2, ExternalLink, Check } from 'lucide-react';
@@ -32,6 +32,7 @@ import PendingTransactionCard from './PendingTransactionCard';
 import ChainSection from './ChainSection';
 import AddTokenModal from './AddTokenModal';
 import PortfolioSummary from './PortfolioSummary';
+import PasswordModal from './PasswordModal';
 import type { PendingTransaction } from '@/hooks/usePendingTransactions';
 
 interface WalletDashboardProps {
@@ -90,6 +91,11 @@ export default function WalletDashboard({
   });
   const [addTokenChain, setAddTokenChain] = useState<Chain | null>(null);
   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
+  const [showTrustlinePasswordModal, setShowTrustlinePasswordModal] = useState(false);
+  const [trustlinePasswordError, setTrustlinePasswordError] = useState<string | null>(null);
+  const [isTrustlineSubmitting, setIsTrustlineSubmitting] = useState(false);
+  const [pendingTrustline, setPendingTrustline] = useState<{ currency: string; issuer: string } | null>(null);
+  const trustlinePromiseRef = useRef<{ resolve: () => void; reject: (error: Error) => void } | null>(null);
 
   // Load tokens on mount
   useEffect(() => {
@@ -326,40 +332,63 @@ export default function WalletDashboard({
       throw new Error('No wallet found');
     }
 
-    const password = prompt('Enter your wallet password to set trustline:');
-    if (!password) {
-      toast({
-        title: "Cancelled",
-        description: "Password required to set trustline",
-      });
-      throw new Error('Password required');
+    setPendingTrustline({ currency, issuer });
+    setTrustlinePasswordError(null);
+    setShowTrustlinePasswordModal(true);
+
+    return new Promise<void>((resolve, reject) => {
+      trustlinePromiseRef.current = { resolve, reject };
+    });
+  };
+
+  const handleTrustlinePasswordSubmit = async (password: string) => {
+    if (!pendingTrustline || !sovereignWallet?.id) {
+      return;
     }
 
+    setIsTrustlineSubmitting(true);
+    setTrustlinePasswordError(null);
+
     try {
-      // Pass walletId and password - setXRPLTrustline handles key derivation internally
-      const result = await setXRPLTrustline(sovereignWallet.id, password, currency, issuer);
-      
+      const result = await setXRPLTrustline(
+        sovereignWallet.id,
+        password,
+        pendingTrustline.currency,
+        pendingTrustline.issuer
+      );
+
       if (!result.success) {
-        toast({
-          title: "Trustline Failed",
-          description: result.error || 'Failed to set trustline',
-          variant: "destructive",
-        });
         throw new Error(result.error || 'Failed to set trustline');
       }
-      
+
       toast({
         title: "Trustline Created",
-        description: `Successfully added ${currency} token`,
+        description: `Successfully added ${pendingTrustline.currency} token`,
       });
+
+      trustlinePromiseRef.current?.resolve();
+      trustlinePromiseRef.current = null;
+      setShowTrustlinePasswordModal(false);
+      setPendingTrustline(null);
     } catch (error: any) {
+      const message = error.message || 'Failed to set trustline';
+      setTrustlinePasswordError(message);
       toast({
-        title: "Error",
-        description: error.message || 'Unknown error',
+        title: "Trustline Failed",
+        description: message,
         variant: "destructive",
       });
-      throw error;
+    } finally {
+      setIsTrustlineSubmitting(false);
     }
+  };
+
+  const handleTrustlinePasswordCancel = () => {
+    setShowTrustlinePasswordModal(false);
+    setTrustlinePasswordError(null);
+    setPendingTrustline(null);
+    trustlinePromiseRef.current?.reject(new Error('Password required'));
+    trustlinePromiseRef.current = null;
   };
 
   // Handle remove token
@@ -692,6 +721,17 @@ To: ${tx.to}`;
           onClose={() => setAddTokenChain(null)}
           onAdd={(tokenData) => handleAddToken(addTokenChain, tokenData)}
           onSetTrustline={addTokenChain === 'xrp' ? handleSetTrustline : undefined}
+        />
+      )}
+
+      {showTrustlinePasswordModal && (
+        <PasswordModal
+          onSubmit={handleTrustlinePasswordSubmit}
+          onCancel={handleTrustlinePasswordCancel}
+          title="Enter Password to Set Trustline"
+          description="Enter your wallet password to authorize the XRPL trustline"
+          isLoading={isTrustlineSubmitting}
+          error={trustlinePasswordError}
         />
       )}
     </div>

@@ -843,13 +843,18 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     const wallet = await db.get('wallets', walletId);
     
     if (!wallet) {
-      recordFailedUnlockAttempt(walletId);
       throw new Error('Wallet not found');
     }
     
     // Decrypt mnemonic using AES-256-GCM
     const salt = Buffer.from(wallet.salt, 'hex');
-    const mnemonic = await decryptData(wallet.encryptedMnemonic, password, salt);
+    let mnemonic = '';
+    try {
+      mnemonic = await decryptData(wallet.encryptedMnemonic, password, salt);
+    } catch {
+      recordFailedUnlockAttempt(walletId);
+      throw new Error('Invalid password');
+    }
     
     // Verify mnemonic is valid
     if (!bip39.validateMnemonic(mnemonic)) {
@@ -926,10 +931,13 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     if (error.message.includes('attempts remaining') || error.message.includes('Too many')) {
       throw error;
     }
+
+    if (error.message === 'Wallet not found' || error.message === 'Invalid password') {
+      throw error;
+    }
     
     console.error('❌ Failed to unlock wallet:', error);
-    recordFailedUnlockAttempt(walletId);
-    throw new Error('Failed to unlock wallet. Check your password.');
+    throw new Error(error?.message || 'Failed to unlock wallet');
   }
 }
 
