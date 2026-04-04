@@ -127,6 +127,9 @@ export async function buildXrpTransaction(
     const prepared = await client.autofill(payment);
     
     return prepared;
+  } catch (error: any) {
+    console.error('Failed to build XRP transaction:', error.message);
+    throw error;
   }
 }
 
@@ -204,6 +207,9 @@ export async function broadcastXrpTransaction(
       hash,
       explorerUrl: `https://livenet.xrpl.org/transactions/${hash}`,
     };
+  } catch (error: any) {
+    console.error('Failed to broadcast XRP transaction:', error.message);
+    throw error;
   }
 }
 
