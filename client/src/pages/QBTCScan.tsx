@@ -11,6 +11,7 @@ interface ScanStats {
   mempoolTx?: number;
   mempoolBytes?: number;
   networkHashPs?: number;
+  lastBlockTime?: number | null;
   // Network health
   peers?: number | null;
   uptime?: number | null;
@@ -104,6 +105,17 @@ export default function QBTCScanPage() {
   const isRefreshingRef = useRef(false);
 
   const hasQuery = useMemo(() => query.trim().length > 0, [query]);
+
+  // If last block is older than 60 seconds, mining is inactive — zero out live metrics
+  const miningInactive = useMemo(() => {
+    if (stats.lastBlockTime == null) return false;
+    const secondsSinceBlock = Math.floor(Date.now() / 1000) - stats.lastBlockTime;
+    return secondsSinceBlock > 60;
+  }, [stats.lastBlockTime]);
+
+  const liveHashRate = miningInactive ? 0 : stats.networkHashPs;
+  const liveTxRate = miningInactive ? 0 : stats.txRate;
+  const livePaymentsPerSec = miningInactive ? 0 : stats.paymentsPerSec;
 
   const fetchStats = async () => {
     try {
@@ -224,7 +236,7 @@ export default function QBTCScanPage() {
             </div>
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
               <p className="text-slate-400 flex items-center gap-1"><Activity className="w-3.5 h-3.5" /> Hash Rate</p>
-              <p className="font-semibold">{formatHashrate(stats.networkHashPs)}</p>
+              <p className="font-semibold">{formatHashrate(liveHashRate)}</p>
             </div>
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
               <p className="text-slate-400 flex items-center gap-1"><Clock3 className="w-3.5 h-3.5" /> Mempool Tx</p>
@@ -244,11 +256,11 @@ export default function QBTCScanPage() {
             </div>
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
               <p className="text-slate-400 flex items-center gap-1"><Zap className="w-3.5 h-3.5" /> Tx/sec</p>
-              <p className="font-semibold">{stats.txRate != null ? stats.txRate.toFixed(2) : '...'}</p>
+              <p className="font-semibold">{liveTxRate != null ? liveTxRate.toFixed(2) : '...'}</p>
             </div>
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
               <p className="text-slate-400 flex items-center gap-1"><Zap className="w-3.5 h-3.5" /> Payments/sec</p>
-              <p className="font-semibold">{stats.paymentsPerSec != null ? stats.paymentsPerSec.toFixed(1) : '...'}</p>
+              <p className="font-semibold">{livePaymentsPerSec != null ? livePaymentsPerSec.toFixed(1) : '...'}</p>
               <p className="text-[10px] text-slate-500 mt-0.5">Total outputs across all txs</p>
             </div>
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">

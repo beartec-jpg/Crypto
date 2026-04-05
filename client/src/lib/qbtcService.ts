@@ -372,10 +372,23 @@ export class QBTCChain {
     );
     if (!result?.unspents) return [];
 
-    const utxos = result.unspents.slice(0, count);
+    // Group UTXOs by txid — multiple outputs in one tx should be one transaction
+    const txGroups = new Map<string, { totalAmount: number; height: number; vouts: number[] }>();
+    for (const u of result.unspents) {
+      const existing = txGroups.get(u.txid);
+      if (existing) {
+        existing.totalAmount += u.amount;
+        existing.vouts.push(u.vout);
+      } else {
+        txGroups.set(u.txid, { totalAmount: u.amount, height: u.height, vouts: [u.vout] });
+      }
+    }
+
+    // Take only the requested count of unique transactions
+    const uniqueTxEntries = Array.from(txGroups.entries()).slice(0, count);
 
     // Pre-fetch block times for all unique heights (always works, no txindex needed)
-    const uniqueHeights = [...new Set(utxos.map(u => u.height))];
+    const uniqueHeights = [...new Set(uniqueTxEntries.map(([, g]) => g.height))];
     const blockTimeMap = new Map<number, number>();
     await Promise.all(
       uniqueHeights.map(async (height) => {
@@ -389,11 +402,11 @@ export class QBTCChain {
       })
     );
 
-    // Try getrawtransaction for full details (requires txindex=1 on node)
+    // Build transaction list
     const transactions: QBTCTransaction[] = [];
     await Promise.all(
-      utxos.map(async (u) => {
-        const blockTime = blockTimeMap.get(u.height);
+      uniqueTxEntries.map(async ([txid, group]) => {
+        const blockTime = blockTimeMap.get(group.height);
         const fallbackTimestamp = blockTime ? new Date(blockTime * 1000) : new Date();
 
         try {
@@ -403,11 +416,13 @@ export class QBTCChain {
             vout: Array<{ value: number; n: number; scriptPubKey: { address?: string } }>;
             time?: number;
             blocktime?: number;
-          }>('getrawtransaction', [u.txid, true]);
+          }>('getrawtransaction', [txid, true]);
 
-          // Get the specific output that belongs to this address
-          const myOutput = rawTx.vout.find((out) => out.n === u.vout);
-          const amount = myOutput ? myOutput.value : u.amount;
+          // Sum all outputs belonging to this address
+          const myOutputs = rawTx.vout.filter((out) => out.scriptPubKey.address === address);
+          const amount = myOutputs.length > 0
+            ? myOutputs.reduce((sum, out) => sum + out.value, 0)
+            : group.totalAmount;
 
           // Determine sender from first input (skip coinbase)
           let fromAddress = '';
@@ -427,7 +442,7 @@ export class QBTCChain {
           const isSend = fromAddress && fromAddress.toLowerCase() === address.toLowerCase();
 
           transactions.push({
-            hash: u.txid,
+            hash: txid,
             type: isSend ? 'send' : 'receive',
             amount: amount.toFixed(8),
             token: 'QBTC' as const,
@@ -440,9 +455,9 @@ export class QBTCChain {
         } catch {
           // getrawtransaction failed (no txindex) — use block header time + UTXO data
           transactions.push({
-            hash: u.txid,
+            hash: txid,
             type: 'receive',
-            amount: u.amount.toFixed(8),
+            amount: group.totalAmount.toFixed(8),
             token: 'QBTC' as const,
             to: address,
             from: '',

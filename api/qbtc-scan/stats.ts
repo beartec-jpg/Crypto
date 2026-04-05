@@ -87,6 +87,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    // Get latest block timestamp for activity detection
+    let lastBlockTime: number | null = null;
+    try {
+      if (blockchainInfo?.bestblockhash) {
+        const tipBlock = await rpcCall('getblock', [blockchainInfo.bestblockhash, 1]);
+        lastBlockTime = tipBlock?.time ?? null;
+      }
+    } catch {
+      // Non-critical
+    }
+
     return res.json({
       selectedNetwork: 'testnet',
       mainnetActive: false,
@@ -98,6 +109,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       mempoolTx: mempoolInfo?.size ?? 0,
       mempoolBytes: mempoolInfo?.bytes ?? 0,
       networkHashPs: netHashPs ?? 0,
+      lastBlockTime,
 
       // New: network health
       peers: connectionCount ?? null,
