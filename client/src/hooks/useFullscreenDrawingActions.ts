@@ -48,7 +48,7 @@ export function useFullscreenDrawingActions({
 
   const handleUpdateDrawing = useCallback((updates: { style: Partial<Drawing['style']> }) => {
     const selectedId = selectedDrawingId;
-    if (!selectedId || selectedId.startsWith('drawing-')) return;
+    if (!selectedId) return;
 
     const drawing = drawings.find(item => item.id === selectedId);
     setDrawings(previous => previous.map(item => (

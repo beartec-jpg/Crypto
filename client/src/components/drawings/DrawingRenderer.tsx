@@ -55,7 +55,7 @@ export function DrawingRenderer({
     }
     
     // For single-point tools, save immediately on first click
-    if (currentTool === 'horizontal' || currentTool === 'text') {
+    if (currentTool === 'horizontal' || currentTool === 'vertical' || currentTool === 'text') {
       const newPoint = { time: point.time as number, price: point.price, snapType: point.snapType };
       const toolDefaults = drawingDefaultsByTool?.[currentTool] || {};
       const useAutoColor = toolDefaults.autoColor ?? autoColorEnabledRef.current;
@@ -85,7 +85,7 @@ export function DrawingRenderer({
       // Save to database
       console.log('[Renderer] Calling saveDrawingMutation.mutate');
       saveDrawingMutation.mutate(newDrawing);
-      toast({ title: 'Drawing Saved', description: `${currentTool === 'text' ? 'text label' : 'horizontal line'} added to chart` });
+      toast({ title: 'Drawing Saved', description: `${currentTool === 'text' ? 'text label' : currentTool === 'vertical' ? 'vertical line' : 'horizontal line'} added to chart` });
 
       if (currentTool === 'text') {
         finishDrawing(currentTool);
@@ -99,7 +99,7 @@ export function DrawingRenderer({
       if (!prev) return { points: [{ time: point.time as number, price: point.price, snapType: point.snapType }] };
       
       const newPoints = [...prev.points, { time: point.time as number, price: point.price, snapType: point.snapType }];
-      const requiredPoints = (currentTool === 'trend_fib' || currentTool === 'fib_retracement') ? 3 : 2;
+      const requiredPoints = currentTool === 'trend_fib' ? 3 : 2;
       
       // If we have enough points, save the drawing
       if (newPoints.length >= requiredPoints) {

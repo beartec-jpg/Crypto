@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Pencil, TrendingUp, Minus, Square, GitBranch, Activity, Type } from 'lucide-react';
+import { Pencil, TrendingUp, Minus, Square, GitBranch, Activity, Type, ArrowUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -65,6 +65,12 @@ const DRAWING_TOOLS: DrawingTool[] = [
     icon: <Minus className="h-4 w-4" />,
     label: 'Horizontal Line',
     description: 'Draw horizontal support/resistance',
+  },
+  {
+    id: 'vertical',
+    icon: <ArrowUpDown className="h-4 w-4" />,
+    label: 'Vertical Line',
+    description: 'Draw vertical time marker',
   },
   {
     id: 'text',

@@ -27,6 +27,7 @@ export type DrawingTool =
 export type ChartDrawingTool = 
   | 'trendline' 
   | 'horizontal' 
+  | 'vertical'
   | 'text'
   | 'rectangle' 
   | 'fib_retracement' 

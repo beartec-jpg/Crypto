@@ -3,20 +3,18 @@ import { OpacitySlider } from './shared/OpacitySlider';
 import { LineWidthSelector } from './shared/LineWidthSelector';
 import { LineStyleSelector } from './shared/LineStyleSelector';
 
-interface HorizontalLineSettingsProps {
+interface VerticalLineSettingsProps {
   drawing: any;
   onUpdate: (updates: any) => void;
 }
 
-export function HorizontalLineSettings({ drawing, onUpdate }: HorizontalLineSettingsProps) {
+export function VerticalLineSettings({ drawing, onUpdate }: VerticalLineSettingsProps) {
   const color = drawing.style?.color || '#facc15';
   const opacity = drawing.style?.opacity ?? 1;
-  const lineWidth = drawing.style?.lineWidth || 2;
+  const lineWidth = drawing.style?.lineWidth || 1;
   const lineStyle = drawing.style?.lineStyle || 'solid';
 
-  // Helper to wrap updates in { style: { ... } } format
   const handleUpdate = (styleUpdates: any) => {
-    console.log('[HorizontalLineSettings] Updating with:', styleUpdates);
     onUpdate({ style: { ...drawing.style, ...styleUpdates } });
   };
 

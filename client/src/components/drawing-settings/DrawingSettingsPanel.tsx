@@ -1,6 +1,7 @@
 import { ChannelSettings } from './ChannelSettings';
 import { TrendlineSettings } from './TrendlineSettings';
 import { HorizontalLineSettings } from './HorizontalLineSettings';
+import { VerticalLineSettings } from './VerticalLineSettings';
 import { FibRetracementSettings } from './FibRetracementSettings';
 import { TrendFibSettings } from './TrendFibSettings';
 import { RectangleSettings } from './RectangleSettings';
@@ -34,6 +35,8 @@ export function DrawingSettingsPanel({
         return <TrendlineSettings drawing={drawing} onUpdate={onUpdate} />;
       case 'horizontal':
         return <HorizontalLineSettings drawing={drawing} onUpdate={onUpdate} />;
+      case 'vertical':
+        return <VerticalLineSettings drawing={drawing} onUpdate={onUpdate} />;
       case 'text':
         return <TextSettings drawing={drawing} onUpdate={onUpdate} />;
       case 'rectangle':

@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { Activity } from 'lucide-react';
+import { Activity, Type, ArrowUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
@@ -32,6 +32,12 @@ const TOOLS: ToolConfig[] = [
     description: 'Draw horizontal support/resistance',
   },
   {
+    id: 'vertical',
+    icon: ArrowUpDown,
+    label: 'Vertical Line',
+    description: 'Draw vertical time marker',
+  },
+  {
     id: 'rectangle',
     imageSrc: '/grok_image_1771526019906.jpg',
     label: 'Rectangle',
@@ -54,6 +60,12 @@ const TOOLS: ToolConfig[] = [
     imageSrc: '/grok_image_1771520978164.jpg',
     label: 'Channel',
     description: 'Parallel price channel',
+  },
+  {
+    id: 'text',
+    icon: Type,
+    label: 'Text Label',
+    description: 'Place text annotation on chart',
   },
   {
     id: 'elliott_wave',

@@ -5,6 +5,7 @@ interface UseFullscreenKeyboardShortcutsParams {
   activeTool: ChartDrawingTool;
   setActiveTool: (tool: ChartDrawingTool) => void;
   activeToolRef: React.MutableRefObject<ChartDrawingTool>;
+  lastUsedToolRef?: React.MutableRefObject<ChartDrawingTool>;
   onSelectTool: (tool: ChartDrawingTool) => void;
   onDeleteSelected: () => void;
   onDeselectAll: () => void;
@@ -16,6 +17,7 @@ export function useFullscreenKeyboardShortcuts({
   activeTool,
   setActiveTool,
   activeToolRef,
+  lastUsedToolRef,
   onSelectTool,
   onDeleteSelected,
   onDeselectAll,
@@ -28,8 +30,9 @@ export function useFullscreenKeyboardShortcuts({
         setActiveTool(null);
         activeToolRef.current = null;
       } else {
-        setActiveTool('trendline');
-        activeToolRef.current = 'trendline';
+        const tool = lastUsedToolRef?.current || 'trendline';
+        setActiveTool(tool);
+        activeToolRef.current = tool;
       }
     },
     onTurnOffDrawing: () => {

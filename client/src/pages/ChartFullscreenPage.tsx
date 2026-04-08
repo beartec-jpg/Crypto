@@ -284,6 +284,7 @@ export function ChartFullscreenPage({
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const activeToolRef = useRef<ChartDrawingTool>(null);
+  const lastUsedToolRef = useRef<ChartDrawingTool>('trendline');
   const dragEditStateRef = useRef<{
     drawingId: string;
     mode: 'point' | 'move';
@@ -2048,11 +2049,20 @@ export function ChartFullscreenPage({
     recordAdd,
   });
 
+  // Wrapper that tracks the last used tool so toggling draw mode restores it
+  const handleSelectToolWithMemory = useCallback((tool: ChartDrawingTool) => {
+    if (tool) {
+      lastUsedToolRef.current = tool;
+    }
+    elliottWaveController.handleSelectTool(tool);
+  }, [elliottWaveController]);
+
   useFullscreenKeyboardShortcuts({
     activeTool,
     setActiveTool,
     activeToolRef,
-    onSelectTool: elliottWaveController.handleSelectTool,
+    lastUsedToolRef,
+    onSelectTool: handleSelectToolWithMemory,
     onDeleteSelected: drawingActions.handleDeleteDrawing,
     onDeselectAll: () => drawingInteraction.setSelectedDrawingId(null),
     onUndo: handleUndo,
@@ -2268,7 +2278,7 @@ export function ChartFullscreenPage({
       <div className="flex-1 relative overflow-hidden">
         <FullscreenChartActionToolbar
           activeTool={activeTool}
-          onSelectTool={elliottWaveController.handleSelectTool}
+          onSelectTool={handleSelectToolWithMemory}
           selectedOscillators={oscillatorPanel.selectedOscillators}
           onToggleOscillator={oscillatorPanel.toggleOscillator}
           onOpenOscillators={() => oscillatorPanel.setShowSelector(true)}
@@ -2321,8 +2331,9 @@ export function ChartFullscreenPage({
               setActiveTool(null);
               activeToolRef.current = null;
             } else {
-              setActiveTool('trendline');
-              activeToolRef.current = 'trendline';
+              const tool = lastUsedToolRef.current || 'trendline';
+              setActiveTool(tool);
+              activeToolRef.current = tool;
             }
           }}
           drawingsVisible={drawingsVisible}
@@ -2502,6 +2513,7 @@ export function ChartFullscreenPage({
           drawings={drawings}
           chart={chartRef.current}
           candleSeries={candleSeriesRef.current}
+          chartContainerRef={chartContainerRef}
           onDeselectWave={waveSelection.handleDeselect}
           onWaveClick={waveSelection.handleWaveClick}
           tempDrawing={tempDrawing}

@@ -225,6 +225,12 @@ function getDistanceToDrawing(
       return lineY === null ? null : Math.abs(clickY - lineY);
     }
 
+    case 'vertical': {
+      if (drawing.points.length < 1) return null;
+      const lineX = timeScale.timeToCoordinate(drawing.points[0].time as Time);
+      return lineX === null ? null : Math.abs(clickX - lineX);
+    }
+
     case 'text': {
       if (drawing.points.length < 1) return null;
       const tx = timeScale.timeToCoordinate(drawing.points[0].time as Time);
