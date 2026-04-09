@@ -69,6 +69,17 @@ export function useDrawingHistory({ drawingsPersistence, setDrawings }: UseDrawi
     setCanRedo(false);
   }, []);
 
+  // Update the stored drawing ID in both stacks when the server assigns a new ID
+  // (local temp IDs like `drawing-${Date.now()}` are replaced by server-assigned UUIDs)
+  const updateDrawingId = useCallback((oldId: string, newId: string) => {
+    undoStackRef.current = undoStackRef.current.map(op =>
+      op.drawing.id === oldId ? { ...op, drawing: { ...op.drawing, id: newId } } : op
+    );
+    redoStackRef.current = redoStackRef.current.map(op =>
+      op.drawing.id === oldId ? { ...op, drawing: { ...op.drawing, id: newId } } : op
+    );
+  }, []);
+
   return {
     canUndo,
     canRedo,
@@ -76,5 +87,6 @@ export function useDrawingHistory({ drawingsPersistence, setDrawings }: UseDrawi
     handleRedo,
     recordAdd,
     recordDelete,
+    updateDrawingId,
   };
 }

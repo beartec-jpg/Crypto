@@ -1514,6 +1514,7 @@ export function ChartFullscreenPage({
     handleRedo,
     recordAdd,
     recordDelete,
+    updateDrawingId,
   } = useDrawingHistory({ drawingsPersistence, setDrawings });
 
   const {
@@ -2047,6 +2048,7 @@ export function ChartFullscreenPage({
   const saveDrawingWithUndo = useSaveDrawingWithUndo({
     saveDrawing: drawingsPersistence.saveDrawing,
     recordAdd,
+    updateDrawingId,
   });
 
   // Wrapper that tracks the last used tool so toggling draw mode restores it
