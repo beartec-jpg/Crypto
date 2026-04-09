@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
-import { Search, Activity, Blocks, Gauge, Clock3, AlertTriangle, ExternalLink, Wifi, GitFork, Zap, Timer, Coins, Hash, HardDrive, Database, Shield, Network, Server } from 'lucide-react';
+import { Search, Activity, Blocks, Gauge, Clock3, AlertTriangle, ExternalLink, Wifi, GitFork, Zap, Timer, Coins, Hash, HardDrive, Database, Shield, Network, Server, BarChart2 } from 'lucide-react';
+import MetricChartModal from '../components/MetricChartModal';
 
 interface ScanStats {
   network?: string;
@@ -29,6 +30,10 @@ interface ScanStats {
   chainSizeBytes?: number | null;
   chainwork?: string | null;
   nodeVersion?: string | null;
+  // Per-block averages
+  avgTxsPerBlock?: number | null;
+  avgBlockTime?: number | null;
+  avgFee?: number | null;
 }
 
 interface ScanResponse {
@@ -95,6 +100,71 @@ function stripSlashes(s?: string | null): string {
   return s.replace(/^\/|\/$/g, '');
 }
 
+function formatBlockTime(seconds?: number | null): string {
+  if (seconds == null) return '...';
+  return `${seconds.toFixed(1)}s`;
+}
+
+function formatFee(satoshis?: number | null): string {
+  if (satoshis == null) return '...';
+  return `${satoshis} sat`;
+}
+
+type MetricKey =
+  | 'difficulty'
+  | 'hashRate'
+  | 'mempoolTx'
+  | 'mempoolBytes'
+  | 'avgFee'
+  | 'txsPerBlock'
+  | 'blockTime'
+  | 'dagTips'
+  | 'peers';
+
+interface MetricConfig {
+  key: MetricKey;
+  label: string;
+  formatter?: (v: number) => string;
+}
+
+const METRIC_CONFIGS: Record<MetricKey, MetricConfig> = {
+  difficulty: { key: 'difficulty', label: 'Difficulty' },
+  hashRate: {
+    key: 'hashRate',
+    label: 'Hash Rate',
+    formatter: (v) => {
+      const units = ['H/s', 'KH/s', 'MH/s', 'GH/s', 'TH/s', 'PH/s'];
+      let val = v;
+      let i = 0;
+      while (val >= 1000 && i < units.length - 1) { val /= 1000; i++; }
+      return `${val.toFixed(2)} ${units[i]}`;
+    },
+  },
+  mempoolTx: { key: 'mempoolTx', label: 'Mempool Tx Count' },
+  mempoolBytes: {
+    key: 'mempoolBytes',
+    label: 'Mempool Size (bytes)',
+    formatter: (v) => `${(v / 1024).toFixed(1)} KB`,
+  },
+  avgFee: {
+    key: 'avgFee',
+    label: 'Avg Fee per Tx',
+    formatter: (v) => `${v} sat`,
+  },
+  txsPerBlock: {
+    key: 'txsPerBlock',
+    label: 'Transactions per Block',
+    formatter: (v) => v.toFixed(1),
+  },
+  blockTime: {
+    key: 'blockTime',
+    label: 'Block Time (seconds)',
+    formatter: (v) => `${v.toFixed(1)}s`,
+  },
+  dagTips: { key: 'dagTips', label: 'DAG Tip Count' },
+  peers: { key: 'peers', label: 'Peer Count' },
+};
+
 export default function QBTCScanPage() {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -102,9 +172,13 @@ export default function QBTCScanPage() {
   const [result, setResult] = useState<ScanResponse | null>(null);
   const [stats, setStats] = useState<ScanStats>({});
   const [overview, setOverview] = useState<ScanOverview>({});
+  const [selectedMetric, setSelectedMetric] = useState<MetricKey | null>(null);
   const isRefreshingRef = useRef(false);
 
   const hasQuery = useMemo(() => query.trim().length > 0, [query]);
+
+  const openChart = useCallback((metric: MetricKey) => setSelectedMetric(metric), []);
+  const closeChart = useCallback(() => setSelectedMetric(null), []);
 
   // If last block is older than 60 seconds, mining is inactive — zero out live metrics
   const miningInactive = useMemo(() => {
@@ -227,64 +301,123 @@ export default function QBTCScanPage() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6 text-sm">
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
-              <p className="text-slate-400 flex items-center gap-1"><Blocks className="w-3.5 h-3.5" /> Blocks</p>
+              <p className="text-slate-400 flex items-center gap-1"><Blocks className="w-3.5 h-3.5" aria-hidden="true" /> Blocks</p>
               <p className="font-semibold">{stats.blocks ?? '...'}</p>
             </div>
-            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
-              <p className="text-slate-400 flex items-center gap-1"><Gauge className="w-3.5 h-3.5" /> Difficulty</p>
+            <button
+              onClick={() => openChart('difficulty')}
+              aria-label="View difficulty history chart"
+              className="rounded-lg border border-slate-700 p-3 bg-slate-950/60 text-left cursor-pointer hover:border-cyan-500/50 transition-colors group"
+            >
+              <p className="text-slate-400 flex items-center gap-1"><Gauge className="w-3.5 h-3.5" aria-hidden="true" /> Difficulty <BarChart2 className="w-3 h-3 ml-auto opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" aria-hidden="true" /></p>
               <p className="font-semibold">{stats.difficulty != null ? Number(stats.difficulty.toFixed(10)) : '...'}</p>
-            </div>
-            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
-              <p className="text-slate-400 flex items-center gap-1"><Activity className="w-3.5 h-3.5" /> Hash Rate</p>
+            </button>
+            <button
+              onClick={() => openChart('hashRate')}
+              aria-label="View hash rate history chart"
+              className="rounded-lg border border-slate-700 p-3 bg-slate-950/60 text-left cursor-pointer hover:border-cyan-500/50 transition-colors group"
+            >
+              <p className="text-slate-400 flex items-center gap-1"><Activity className="w-3.5 h-3.5" aria-hidden="true" /> Hash Rate <BarChart2 className="w-3 h-3 ml-auto opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" aria-hidden="true" /></p>
               <p className="font-semibold">{formatHashrate(liveHashRate)}</p>
-            </div>
-            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
-              <p className="text-slate-400 flex items-center gap-1"><Clock3 className="w-3.5 h-3.5" /> Mempool Tx</p>
+            </button>
+            <button
+              onClick={() => openChart('mempoolTx')}
+              aria-label="View mempool transaction count history chart"
+              className="rounded-lg border border-slate-700 p-3 bg-slate-950/60 text-left cursor-pointer hover:border-cyan-500/50 transition-colors group"
+            >
+              <p className="text-slate-400 flex items-center gap-1"><Clock3 className="w-3.5 h-3.5" aria-hidden="true" /> Mempool Tx <BarChart2 className="w-3 h-3 ml-auto opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" aria-hidden="true" /></p>
               <p className="font-semibold">{stats.mempoolTx ?? '...'}</p>
-            </div>
+            </button>
           </div>
 
           {/* Network Health */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3 text-sm">
-            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
-              <p className="text-slate-400 flex items-center gap-1"><Wifi className="w-3.5 h-3.5" /> Peers</p>
+            <button
+              onClick={() => openChart('peers')}
+              aria-label="View peer count history chart"
+              className="rounded-lg border border-slate-700 p-3 bg-slate-950/60 text-left cursor-pointer hover:border-cyan-500/50 transition-colors group"
+            >
+              <p className="text-slate-400 flex items-center gap-1"><Wifi className="w-3.5 h-3.5" aria-hidden="true" /> Peers <BarChart2 className="w-3 h-3 ml-auto opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" aria-hidden="true" /></p>
               <p className="font-semibold">{stats.peers ?? '...'}</p>
-            </div>
-            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
-              <p className="text-slate-400 flex items-center gap-1"><GitFork className="w-3.5 h-3.5" /> DAG Tips</p>
+            </button>
+            <button
+              onClick={() => openChart('dagTips')}
+              aria-label="View DAG tip count history chart"
+              className="rounded-lg border border-slate-700 p-3 bg-slate-950/60 text-left cursor-pointer hover:border-cyan-500/50 transition-colors group"
+            >
+              <p className="text-slate-400 flex items-center gap-1"><GitFork className="w-3.5 h-3.5" aria-hidden="true" /> DAG Tips <BarChart2 className="w-3 h-3 ml-auto opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" aria-hidden="true" /></p>
               <p className="font-semibold">{stats.dagTips ?? '...'}</p>
-            </div>
+            </button>
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
-              <p className="text-slate-400 flex items-center gap-1"><Zap className="w-3.5 h-3.5" /> Tx/sec</p>
+              <p className="text-slate-400 flex items-center gap-1"><Zap className="w-3.5 h-3.5" aria-hidden="true" /> Tx/sec</p>
               <p className="font-semibold">{liveTxRate != null ? liveTxRate.toFixed(2) : '...'}</p>
             </div>
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
-              <p className="text-slate-400 flex items-center gap-1"><Zap className="w-3.5 h-3.5" /> Payments/sec</p>
+              <p className="text-slate-400 flex items-center gap-1"><Zap className="w-3.5 h-3.5" aria-hidden="true" /> Payments/sec</p>
               <p className="font-semibold">{livePaymentsPerSec != null ? livePaymentsPerSec.toFixed(1) : '...'}</p>
               <p className="text-[10px] text-slate-500 mt-0.5">Total outputs across all txs</p>
             </div>
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
-              <p className="text-slate-400 flex items-center gap-1"><Timer className="w-3.5 h-3.5" /> Uptime</p>
+              <p className="text-slate-400 flex items-center gap-1"><Timer className="w-3.5 h-3.5" aria-hidden="true" /> Uptime</p>
               <p className="font-semibold">{formatUptime(stats.uptime)}</p>
             </div>
+          </div>
+
+          {/* Oscillating Metrics Row */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 text-sm">
+            <button
+              onClick={() => openChart('mempoolBytes')}
+              aria-label="View mempool size in bytes history chart"
+              className="rounded-lg border border-slate-700 p-3 bg-slate-950/60 text-left cursor-pointer hover:border-cyan-500/50 transition-colors group"
+            >
+              <p className="text-slate-400 flex items-center gap-1"><Database className="w-3.5 h-3.5" aria-hidden="true" /> Mempool Bytes <BarChart2 className="w-3 h-3 ml-auto opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" aria-hidden="true" /></p>
+              <p className="font-semibold">{stats.mempoolBytes != null ? (stats.mempoolBytes / 1024).toFixed(1) + ' KB' : '...'}</p>
+            </button>
+            <button
+              onClick={() => openChart('blockTime')}
+              aria-label="View block time history chart"
+              className="rounded-lg border border-slate-700 p-3 bg-slate-950/60 text-left cursor-pointer hover:border-cyan-500/50 transition-colors group"
+            >
+              <p className="text-slate-400 flex items-center gap-1"><Clock3 className="w-3.5 h-3.5" aria-hidden="true" /> Block Time <BarChart2 className="w-3 h-3 ml-auto opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" aria-hidden="true" /></p>
+              <p className="font-semibold">{formatBlockTime(stats.avgBlockTime)}</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">Avg · target 10s</p>
+            </button>
+            <button
+              onClick={() => openChart('txsPerBlock')}
+              aria-label="View transactions per block history chart"
+              className="rounded-lg border border-slate-700 p-3 bg-slate-950/60 text-left cursor-pointer hover:border-cyan-500/50 transition-colors group"
+            >
+              <p className="text-slate-400 flex items-center gap-1"><Activity className="w-3.5 h-3.5" aria-hidden="true" /> Txs/Block <BarChart2 className="w-3 h-3 ml-auto opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" aria-hidden="true" /></p>
+              <p className="font-semibold">{stats.avgTxsPerBlock != null ? stats.avgTxsPerBlock.toFixed(1) : '...'}</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">50-block avg</p>
+            </button>
+            <button
+              onClick={() => openChart('avgFee')}
+              aria-label="View average fee per transaction history chart"
+              className="rounded-lg border border-slate-700 p-3 bg-slate-950/60 text-left cursor-pointer hover:border-cyan-500/50 transition-colors group"
+            >
+              <p className="text-slate-400 flex items-center gap-1"><Coins className="w-3.5 h-3.5" aria-hidden="true" /> Avg Fee <BarChart2 className="w-3 h-3 ml-auto opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" aria-hidden="true" /></p>
+              <p className="font-semibold">{formatFee(stats.avgFee)}</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">Latest block</p>
+            </button>
           </div>
 
           {/* Chain Info */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 text-sm">
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
-              <p className="text-slate-400 flex items-center gap-1"><Coins className="w-3.5 h-3.5" /> Supply</p>
+              <p className="text-slate-400 flex items-center gap-1"><Coins className="w-3.5 h-3.5" aria-hidden="true" /> Supply</p>
               <p className="font-semibold">{formatSupply(stats.circulatingSupply)}</p>
             </div>
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
-              <p className="text-slate-400 flex items-center gap-1"><Hash className="w-3.5 h-3.5" /> Total Txs</p>
+              <p className="text-slate-400 flex items-center gap-1"><Hash className="w-3.5 h-3.5" aria-hidden="true" /> Total Txs</p>
               <p className="font-semibold">{formatNumber(stats.txCount)}</p>
             </div>
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
-              <p className="text-slate-400 flex items-center gap-1"><HardDrive className="w-3.5 h-3.5" /> Chain Size</p>
+              <p className="text-slate-400 flex items-center gap-1"><HardDrive className="w-3.5 h-3.5" aria-hidden="true" /> Chain Size</p>
               <p className="font-semibold">{formatChainSize(stats.chainSizeBytes)}</p>
             </div>
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
-              <p className="text-slate-400 flex items-center gap-1"><Database className="w-3.5 h-3.5" /> UTXO Set</p>
+              <p className="text-slate-400 flex items-center gap-1"><Database className="w-3.5 h-3.5" aria-hidden="true" /> UTXO Set</p>
               <p className="font-semibold">{formatNumber(stats.utxoCount)}</p>
             </div>
           </div>
@@ -410,6 +543,15 @@ export default function QBTCScanPage() {
           )}
         </div>
       </div>
+
+      {selectedMetric && (
+        <MetricChartModal
+          metric={selectedMetric}
+          metricLabel={METRIC_CONFIGS[selectedMetric].label}
+          formatter={METRIC_CONFIGS[selectedMetric].formatter}
+          onClose={closeChart}
+        />
+      )}
     </div>
   );
 }
