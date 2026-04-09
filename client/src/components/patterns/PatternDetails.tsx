@@ -4,25 +4,12 @@ interface PatternDetailsProps {
   item: PatternDetectionItem;
 }
 
-function renderStageBars(stage: number): string {
-  const filled = Math.max(0, Math.min(5, stage));
-  return `${'▰'.repeat(filled)}${'▱'.repeat(5 - filled)}`;
-}
-
 export function PatternDetails({ item }: PatternDetailsProps) {
   const { definition, result } = item;
   const isActive = result.score > 70;
 
   return (
     <div className="mt-3 border-t border-slate-700/60 pt-3 space-y-2.5">
-      {/* Stage progress */}
-      <div>
-        <div className="text-[11px] text-slate-400 mb-1">Stage Progress</div>
-        <div className="text-base text-slate-300 font-mono tracking-widest">
-          {renderStageBars(result.stage)}
-        </div>
-      </div>
-
       {/* Orderflow signals */}
       <div>
         <div className="text-[11px] text-slate-400 mb-1">
