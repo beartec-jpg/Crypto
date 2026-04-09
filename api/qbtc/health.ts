@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { probeAllNodes } from './rpcFailover';
 
 type QbtcNetwork = 'testnet' | 'mainnet';
 
@@ -7,47 +8,29 @@ function parseNetwork(raw: unknown): QbtcNetwork {
   return value === 'mainnet' ? 'mainnet' : 'testnet';
 }
 
-function resolveRpcConfig(network: QbtcNetwork) {
-  if (network === 'mainnet') {
-    const active = process.env.QBTC_MAINNET_ACTIVE === 'true';
-    if (!active) {
-      const error = new Error('QBTC mainnet is not active yet. Switch to testnet.');
-      (error as any).code = 'MAINNET_NOT_ACTIVE';
-      throw error;
-    }
-
-    const rpcUrl = process.env.QBTC_MAINNET_RPC_URL || '';
-    const rpcUser = process.env.QBTC_MAINNET_RPC_USER || '';
-    const rpcPass = process.env.QBTC_MAINNET_RPC_PASSWORD || '';
-
-    if (!rpcUrl) {
-      const error = new Error('QBTC_MAINNET_RPC_URL is not configured.');
-      (error as any).code = 'MAINNET_NOT_ACTIVE';
-      throw error;
-    }
-
-    return { rpcUrl, rpcUser, rpcPass };
+function resolveMainnetConfig() {
+  const active = process.env.QBTC_MAINNET_ACTIVE === 'true';
+  if (!active) {
+    const error = new Error('QBTC mainnet is not active yet. Switch to testnet.');
+    (error as any).code = 'MAINNET_NOT_ACTIVE';
+    throw error;
   }
 
-  return {
-    rpcUrl: process.env.QBTC_RPC_URL || '',
-    rpcUser: process.env.QBTC_RPC_USER || '',
-    rpcPass: process.env.QBTC_RPC_PASSWORD || '',
-  };
+  const rpcUrl = process.env.QBTC_MAINNET_RPC_URL || '';
+  const rpcUser = process.env.QBTC_MAINNET_RPC_USER || '';
+  const rpcPass = process.env.QBTC_MAINNET_RPC_PASSWORD || '';
+
+  if (!rpcUrl) {
+    const error = new Error('QBTC_MAINNET_RPC_URL is not configured.');
+    (error as any).code = 'MAINNET_NOT_ACTIVE';
+    throw error;
+  }
+
+  return { rpcUrl, rpcUser, rpcPass };
 }
 
-async function rpcCall(method: string, params: any[], network: QbtcNetwork) {
-  const { rpcUrl, rpcUser, rpcPass } = resolveRpcConfig(network);
-  if (!rpcUrl) {
-    throw new Error('QBTC_RPC_URL is not configured.');
-  }
-
-  const payload = {
-    jsonrpc: '2.0',
-    id: Date.now(),
-    method,
-    params,
-  };
+async function rpcCallMainnet(method: string, params: any[]): Promise<any> {
+  const { rpcUrl, rpcUser, rpcPass } = resolveMainnetConfig();
 
   const response = await fetch(rpcUrl, {
     method: 'POST',
@@ -55,11 +38,11 @@ async function rpcCall(method: string, params: any[], network: QbtcNetwork) {
       'Content-Type': 'application/json',
       Authorization: `Basic ${Buffer.from(`${rpcUser}:${rpcPass}`).toString('base64')}`,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params }),
     signal: AbortSignal.timeout(10000),
   });
 
-  const data = await response.json();
+  const data = (await response.json()) as any;
   if (data?.error) {
     const error = new Error(data.error.message || 'QBTC RPC error');
     (error as any).code = data.error.code;
@@ -84,18 +67,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const network = parseNetwork(req.query.network);
-    const info = await rpcCall('getblockchaininfo', [], network);
+
+    if (network === 'mainnet') {
+      // Mainnet uses a single node — keep the existing single-node response shape.
+      const info = await rpcCallMainnet('getblockchaininfo', []);
+      return res.status(200).json({
+        ok: true,
+        selectedNetwork: network,
+        mainnetActive: true,
+        chain: info?.chain || null,
+        blocks: info?.blocks ?? null,
+        headers: info?.headers ?? null,
+        verificationProgress: info?.verificationprogress ?? null,
+        dagmode: info?.dagmode ?? null,
+        pqc: info?.pqc ?? null,
+      });
+    }
+
+    // Testnet: probe all nodes and surface per-node health.
+    const nodeStatuses = await probeAllNodes();
+    const onlineNodes = nodeStatuses.filter((n) => n.ok);
+
+    // Pick the best node (highest block count) as the canonical chain summary.
+    const best = onlineNodes.sort((a, b) => (b.blocks ?? 0) - (a.blocks ?? 0))[0] ?? null;
 
     return res.status(200).json({
-      ok: true,
+      ok: onlineNodes.length > 0,
       selectedNetwork: network,
-      mainnetActive: network === 'mainnet',
-      chain: info?.chain || null,
-      blocks: info?.blocks ?? null,
-      headers: info?.headers ?? null,
-      verificationProgress: info?.verificationprogress ?? null,
-      dagmode: info?.dagmode ?? null,
-      pqc: info?.pqc ?? null,
+      mainnetActive: false,
+      // Canonical chain summary from the most up-to-date node.
+      chain: best?.chain ?? null,
+      blocks: best?.blocks ?? null,
+      headers: best?.headers ?? null,
+      verificationProgress: best?.verificationProgress ?? null,
+      dagmode: best?.dagmode ?? null,
+      pqc: best?.pqc ?? null,
+      // Per-node health for network-at-a-glance visibility.
+      nodes: nodeStatuses,
     });
   } catch (error: any) {
     if (error?.code === 'MAINNET_NOT_ACTIVE') {
@@ -109,7 +117,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(502).json({
       ok: false,
-      error: error?.message || 'Failed to reach QBTC RPC node',
+      error: error?.message || 'Failed to reach QBTC RPC nodes',
     });
   }
 }
