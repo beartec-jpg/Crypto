@@ -33,6 +33,12 @@ export interface ElliottWaveData {
   barCount?: number;
   /** When true, highlight the wave in yellow to indicate selection */
   isSelected?: boolean;
+  /**
+   * Stack index for the final-point label when multiple waves share the same
+   * endpoint. Index 0 = closest to the candle; higher values push the label
+   * progressively further away (up for highs, down for lows).
+   */
+  labelOffset?: number;
 }
 
 // Color for the 0→5 diagonal trendline (distinct from the wave color)
@@ -166,18 +172,21 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
           const dotColor = c.isMidAir ? '#f97316' : color;
           const isHigh = isUptrend ? (finalIndex % 2 === 1) : (finalIndex % 2 === 0);
 
+          // Each stack level is 16 px apart so stacked labels don't overlap.
+          const stackOffsetPx = (this._data.labelOffset ?? 0) * 16;
+
           ctx.fillStyle = dotColor;
           ctx.strokeStyle = LABEL_STROKE_COLOR;
           ctx.lineWidth = LABEL_STROKE_WIDTH;
           
           if (isHigh) {
             ctx.textBaseline = 'bottom';
-            ctx.strokeText(c.label, c.x, c.y - 16);
-            ctx.fillText(c.label, c.x, c.y - 16);
+            ctx.strokeText(c.label, c.x, c.y - 16 - stackOffsetPx);
+            ctx.fillText(c.label, c.x, c.y - 16 - stackOffsetPx);
           } else {
             ctx.textBaseline = 'top';
-            ctx.strokeText(c.label, c.x, c.y + 16);
-            ctx.fillText(c.label, c.x, c.y + 16);
+            ctx.strokeText(c.label, c.x, c.y + 16 + stackOffsetPx);
+            ctx.fillText(c.label, c.x, c.y + 16 + stackOffsetPx);
           }
           
           ctx.textAlign = 'left';
