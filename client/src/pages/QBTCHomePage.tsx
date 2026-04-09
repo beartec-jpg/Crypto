@@ -15,6 +15,8 @@ import {
   Wrench,
   ShieldCheck,
   ExternalLink,
+  Coins,
+  TrendingDown,
 } from 'lucide-react';
 
 interface RoadmapPhase {
@@ -45,24 +47,24 @@ const ROADMAP: RoadmapPhase[] = [
     status: 'completed',
     statusLabel: 'Completed ✅',
     items: [
-      'Hybrid ECDSA + CRYSTALS-Dilithium transaction signing',
+      'Hybrid ECDSA + CRYSTALS-Dilithium transaction signing (ML-DSA-44 / NIST FIPS 204)',
       'SPHINCS+ and Falcon signature support',
       'Kyber, NTRU, FrodoKEM key encapsulation',
       'PQC wallet tooling (qbtc_wallet.py with Shamir secret sharing)',
-      '16 MB block weight limit (accommodating larger PQC signatures)',
+      '16 MB block weight limit (accommodating larger PQC signatures ~3,836 B per input)',
     ],
   },
   {
     phase: 3,
-    title: 'Consensus & Protection',
+    title: 'Consensus & Hardening',
     status: 'completed',
     statusLabel: 'Completed ✅',
     items: [
-      'DAG-aware difficulty adjustment algorithm',
-      'GHOSTDAG K=32 for inclusive mining (People\'s Chain)',
-      'Early Protection system (anti-monopolization for first 10,000 blocks)',
-      'Per-IP/subnet throttling, miner ramp-up, activation delays',
-      'RPC extensions exposing DAG data (blue_score, mergeset, selected_parent)',
+      'DAG-aware difficulty adjustment — GetNextWorkRequiredDAG()',
+      'GHOSTDAG K=32 testnet / K=18 mainnet for inclusive mining',
+      'Memory & performance hardening: BFS depth limits, mergeset pruning, m_known_scores cap',
+      'PQC signature cache (Dilithium results cached in CuckooCache)',
+      'RPC extensions exposing DAG data (dagparents, blue_score, dag_tips, ghostdag_k)',
     ],
   },
   {
@@ -71,10 +73,10 @@ const ROADMAP: RoadmapPhase[] = [
     status: 'current',
     statusLabel: 'Current 🔄',
     items: [
-      'QBTC Testnet live on port 28333',
+      'QBTC Testnet live on port 28333 (seed nodes active)',
       'Testnet faucet operational',
       'Web wallet for testnet transactions',
-      'Mining tools (qbtc-mine.sh)',
+      'Block explorer (QBTC Scan) live',
       'Community node operators onboarding',
     ],
   },
@@ -86,9 +88,9 @@ const ROADMAP: RoadmapPhase[] = [
     items: [
       'Security audit of PQC integration',
       'Comprehensive consensus test suite',
-      'P2P network stress testing',
+      'P2P network stress testing (10-node test: 10,000 txs at 13.4 TPS — PASSED)',
       'Merge mining support (AuxPoW with Bitcoin)',
-      'Block explorer',
+      'Mobile wallet',
     ],
   },
   {
@@ -100,15 +102,14 @@ const ROADMAP: RoadmapPhase[] = [
       'Mainnet genesis block',
       'Exchange listings',
       'Full merge-mining with Bitcoin',
-      'Mobile wallet',
       'Hardware wallet PQC support',
     ],
   },
 ];
 
 const STATS = [
-  { label: 'Block Time', value: '~1 second' },
-  { label: 'GHOSTDAG K', value: '32' },
+  { label: 'Block Time', value: '~10 seconds' },
+  { label: 'GHOSTDAG K', value: '32 (testnet) / 18 (mainnet)' },
   { label: 'Max DAG Parents', value: '64' },
   { label: 'PQC Algorithms', value: 'Dilithium, SPHINCS+, Falcon, Kyber, NTRU' },
   { label: 'Genesis', value: 'March 31, 2026' },
@@ -284,6 +285,83 @@ export default function QBTCHomePage() {
           </div>
         </section>
 
+        {/* ── Tokenomics ── */}
+        <section className="space-y-6">
+          <h2 className="text-2xl font-bold text-center">Tokenomics</h2>
+          <p className="text-slate-300 text-center max-w-2xl mx-auto text-sm">
+            QBTC mirrors Bitcoin's economic model — 21M supply cap and halving schedule — scaled for
+            10-second DAG blocks. The smallest unit (0.00000001 QBTC) is called a <strong className="text-cyan-300">qSat</strong>.
+          </p>
+
+          {/* Core parameters */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            {[
+              { label: 'Total Supply', value: '~21,000,000 QBTC' },
+              { label: 'Block Reward', value: '0.83333333 QBTC' },
+              { label: 'Halving Interval', value: '12,600,000 blocks (~4 yrs)' },
+              { label: 'Block Target', value: '10 seconds' },
+            ].map((item) => (
+              <div key={item.label} className="rounded-xl border border-slate-700 bg-slate-900/60 p-4 space-y-1">
+                <p className="text-xs text-slate-400">{item.label}</p>
+                <p className="font-semibold text-cyan-300 leading-snug">{item.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Two-phase model */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/5 p-5 space-y-3">
+              <div className="flex items-center gap-2 text-emerald-400 font-semibold">
+                <Coins className="w-4 h-4" />
+                Phase 1 — Distribution (blocks 0 – 12,599,999 / ~4 years)
+              </div>
+              <ul className="space-y-1.5 text-sm text-slate-300">
+                <li className="flex items-start gap-2"><span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />Empty (coinbase-only) blocks earn the <strong>full block reward</strong>.</li>
+                <li className="flex items-start gap-2"><span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />No transaction activity required — hash power is the only criterion.</li>
+                <li className="flex items-start gap-2"><span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />~10,500,000 QBTC (50% of supply) distributed as a fair-launch.</li>
+              </ul>
+            </div>
+            <div className="rounded-2xl border border-blue-500/40 bg-blue-500/5 p-5 space-y-3">
+              <div className="flex items-center gap-2 text-blue-400 font-semibold">
+                <TrendingDown className="w-4 h-4" />
+                Phase 2+ — Operational (block 12,600,000 onward, forever)
+              </div>
+              <ul className="space-y-1.5 text-sm text-slate-300">
+                <li className="flex items-start gap-2"><span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />Empty blocks remain <strong>valid</strong> so the chain never stalls.</li>
+                <li className="flex items-start gap-2"><span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />Empty blocks earn <strong>zero subsidy</strong> (fees only).</li>
+                <li className="flex items-start gap-2"><span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />Blocks with ≥1 user tx earn the normal halved subsidy + fees, naturally shifting to transaction-driven mining.</li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Comparison table */}
+          <div className="rounded-2xl border border-slate-700 bg-slate-900/60 overflow-hidden text-sm">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-700 text-slate-400 text-xs">
+                  <th className="text-left p-3 pl-4">Parameter</th>
+                  <th className="text-right p-3">Bitcoin</th>
+                  <th className="text-right p-3 pr-4 text-cyan-300">QBTC</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {[
+                  ['Block interval', '600 s', '10 s'],
+                  ['Halving interval', '210,000 blocks (~4 yrs)', '12,600,000 blocks (~4 yrs)'],
+                  ['Initial block reward', '50 BTC', '0.83333333 QBTC'],
+                  ['Total supply', '~21,000,000 BTC', '~21,000,000 QBTC'],
+                ].map(([label, btc, qbtc]) => (
+                  <tr key={label}>
+                    <td className="p-3 pl-4 text-slate-300">{label}</td>
+                    <td className="p-3 text-right text-slate-400">{btc}</td>
+                    <td className="p-3 pr-4 text-right text-cyan-300 font-medium">{qbtc}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
         {/* ── Roadmap ── */}
         <section className="space-y-8">
           <h2 className="text-2xl font-bold text-center">Roadmap</h2>
@@ -377,7 +455,7 @@ export default function QBTCHomePage() {
                   Your DAG is Your Equalizer
                 </div>
                 <p className="text-sm text-slate-400">
-                  With GHOSTDAG K=32 and 1-second blocks, up to 32 concurrent blocks are all
+                  With GHOSTDAG K=32 and 10-second blocks, up to 32 concurrent blocks are all
                   considered valid. Small miners aren't orphaned — everyone earns rewards instead of
                   fighting a winner-take-all race.
                 </p>

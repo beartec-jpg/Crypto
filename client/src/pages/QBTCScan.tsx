@@ -16,8 +16,10 @@ interface ScanStats {
   peers?: number | null;
   uptime?: number | null;
   txCount?: number | null;
-  txRate?: number | null;
-  paymentsPerSec?: number | null;
+  /** Actual blocks confirmed per minute (computed from last two block timestamps). */
+  blocksPerMin?: number | null;
+  /** P2P transactions per second — non-coinbase txs from the last block divided by block interval. */
+  txPerSec?: number | null;
   // Chain info
   circulatingSupply?: string | null;
   utxoCount?: number | null;
@@ -114,8 +116,8 @@ export default function QBTCScanPage() {
   }, [stats.lastBlockTime]);
 
   const liveHashRate = miningInactive ? 0 : stats.networkHashPs;
-  const liveTxRate = miningInactive ? 0 : stats.txRate;
-  const livePaymentsPerSec = miningInactive ? 0 : stats.paymentsPerSec;
+  const liveBlocksPerMin = miningInactive ? 0 : stats.blocksPerMin;
+  const liveTxPerSec = miningInactive ? 0 : stats.txPerSec;
 
   const fetchStats = async () => {
     try {
@@ -255,13 +257,14 @@ export default function QBTCScanPage() {
               <p className="font-semibold">{stats.dagTips ?? '...'}</p>
             </div>
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
-              <p className="text-slate-400 flex items-center gap-1"><Zap className="w-3.5 h-3.5" /> Tx/sec</p>
-              <p className="font-semibold">{liveTxRate != null ? liveTxRate.toFixed(2) : '...'}</p>
+              <p className="text-slate-400 flex items-center gap-1"><Zap className="w-3.5 h-3.5" /> Blocks/min</p>
+              <p className="font-semibold">{liveBlocksPerMin != null ? liveBlocksPerMin.toFixed(1) : '...'}</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">~6 target (10s blocks)</p>
             </div>
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
-              <p className="text-slate-400 flex items-center gap-1"><Zap className="w-3.5 h-3.5" /> Payments/sec</p>
-              <p className="font-semibold">{livePaymentsPerSec != null ? livePaymentsPerSec.toFixed(1) : '...'}</p>
-              <p className="text-[10px] text-slate-500 mt-0.5">Total outputs across all txs</p>
+              <p className="text-slate-400 flex items-center gap-1"><Zap className="w-3.5 h-3.5" /> P2P Tx/sec</p>
+              <p className="font-semibold">{liveTxPerSec != null ? liveTxPerSec.toFixed(2) : '...'}</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">Actual chain transactions/sec</p>
             </div>
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
               <p className="text-slate-400 flex items-center gap-1"><Timer className="w-3.5 h-3.5" /> Uptime</p>

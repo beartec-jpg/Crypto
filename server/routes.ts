@@ -9084,6 +9084,14 @@ CRITICAL DATA RULES:
     }
   });
 
+  // Module-level block cache to avoid repeated RPC calls when the block height hasn't changed.
+  const _qbtcBlockCache: Record<string, {
+    blockHeight: number;
+    lastBlockTime: number;
+    prevBlockTime: number;
+    lastBlockTxCount: number;
+  }> = {};
+
   app.get('/api/qbtc-scan/stats', async (req: Request, res: Response) => {
     try {
       const network = ((req.query.network as string) || 'testnet') as QbtcNetwork;
@@ -9092,6 +9100,53 @@ CRITICAL DATA RULES:
         qbtcRpcCall('getmempoolinfo', [], '', network),
         qbtcRpcCall('getnetworkhashps', [], '', network),
       ]);
+
+      const blockCount: number = blockchainInfo?.blocks ?? 0;
+
+      // Fetch last two blocks to compute blocks/min and P2P tx/sec.
+      // Only re-query when the block height changes (cache hit skips RPC).
+      let blocksPerMin: number | null = null;
+      let txPerSec: number | null = null;
+      let lastBlockTime: number | null = null;
+
+      if (blockCount > 1) {
+        const cached = _qbtcBlockCache[network];
+        if (!cached || cached.blockHeight !== blockCount) {
+          try {
+            const [hash1, hashPrev] = await Promise.all([
+              qbtcRpcCall('getblockhash', [blockCount], '', network),
+              qbtcRpcCall('getblockhash', [blockCount - 1], '', network),
+            ]);
+            const [block1, blockPrev] = await Promise.all([
+              qbtcRpcCall('getblock', [hash1, 1], '', network),
+              qbtcRpcCall('getblock', [hashPrev, 1], '', network),
+            ]);
+            if (block1?.time != null && blockPrev?.time != null) {
+              const txLen = Array.isArray(block1.tx) ? block1.tx.length : (block1.nTx ?? 1);
+              _qbtcBlockCache[network] = {
+                blockHeight: blockCount,
+                lastBlockTime: block1.time as number,
+                prevBlockTime: blockPrev.time as number,
+                lastBlockTxCount: txLen as number,
+              };
+            }
+          } catch {
+            // Ignore — use cached or null values.
+          }
+        }
+
+        const c = _qbtcBlockCache[network];
+        if (c) {
+          const timeDiff = c.lastBlockTime - c.prevBlockTime;
+          if (timeDiff > 0) {
+            blocksPerMin = 60 / timeDiff;
+            // Exclude coinbase; non-user txs clamped to 0.
+            const userTxCount = Math.max(0, c.lastBlockTxCount - 1);
+            txPerSec = userTxCount / timeDiff;
+          }
+          lastBlockTime = c.lastBlockTime;
+        }
+      }
 
       return res.json({
         selectedNetwork: network,
@@ -9104,6 +9159,9 @@ CRITICAL DATA RULES:
         mempoolTx: mempoolInfo?.size ?? 0,
         mempoolBytes: mempoolInfo?.bytes ?? 0,
         networkHashPs: netHashPs ?? 0,
+        lastBlockTime,
+        blocksPerMin,
+        txPerSec,
       });
     } catch (error: any) {
       if (error?.code === 'MAINNET_NOT_ACTIVE') {
