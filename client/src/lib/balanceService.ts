@@ -1,11 +1,12 @@
 // client/src/lib/balanceService.ts
-// Multi-chain balance fetching service - MAINNET ONLY
+// Multi-chain balance fetching service - supports MAINNET and TESTNET
 
 import axios from 'axios';
 import { xrplService } from './xrpService';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { QBTCChain } from './qbtcService';
+import type { TokenNetwork } from './tokenService';
 
 export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana' | 'qbtc';
 
@@ -57,14 +58,17 @@ export async function fetchPrices(): Promise<CoinGeckoPrices> {
 
 /**
  * Fetch Ethereum balance via Etherscan API v2
+ * Supports mainnet (chainid 1) and Sepolia testnet (chainid 11155111)
  */
-export async function fetchEthereumBalance(address: string): Promise<string> {
+export async function fetchEthereumBalance(address: string, network: TokenNetwork = 'mainnet'): Promise<string> {
   try {
-    console.log('🔍 Fetching ETH balance from MAINNET for:', address);
+    const chainId = network === 'testnet' ? 11155111 : 1;
+    const networkLabel = network === 'testnet' ? 'TESTNET (Sepolia)' : 'MAINNET';
+    console.log(`🔍 Fetching ETH balance from ${networkLabel} for:`, address);
     
     const response = await axios.get('https://api.etherscan.io/v2/api', {
       params: {
-        chainid: 1,
+        chainid: chainId,
         module: 'account',
         action: 'balance',
         address,
@@ -79,7 +83,7 @@ export async function fetchEthereumBalance(address: string): Promise<string> {
     if (response.data.status === '1' && response.data.result) {
       const balanceWei = response.data.result;
       const balanceEth = parseFloat(balanceWei) / 1e18;
-      console.log('✅ ETH Balance:', balanceEth, 'ETH');
+      console.log(`✅ ETH Balance (${networkLabel}):`, balanceEth, 'ETH');
       return balanceEth.toFixed(6);
     }
     
@@ -118,12 +122,19 @@ export async function fetchBitcoinBalance(address: string): Promise<string> {
 
 /**
  * Fetch BSC balance via RPC
+ * Supports mainnet and Chapel testnet
  */
-export async function fetchBSCBalance(address: string): Promise<string> {
+export async function fetchBSCBalance(address: string, network: TokenNetwork = 'mainnet'): Promise<string> {
   try {
-    console.log('🔍 Fetching BNB balance from MAINNET for:', address);
+    // BSC mainnet: https://bsc-dataseed.binance.org/
+    // BSC testnet (Chapel): https://data-seed-prebsc-1-s1.binance.org:8545/
+    const rpcUrl = network === 'testnet'
+      ? 'https://data-seed-prebsc-1-s1.binance.org:8545/'
+      : 'https://bsc-dataseed.binance.org/';
+    const networkLabel = network === 'testnet' ? 'TESTNET (Chapel)' : 'MAINNET';
+    console.log(`🔍 Fetching BNB balance from ${networkLabel} for:`, address);
     
-    const response = await axios.post('https://bsc-dataseed.binance.org/', {
+    const response = await axios.post(rpcUrl, {
       jsonrpc: '2.0',
       id: 1,
       method: 'eth_getBalance',
@@ -135,7 +146,7 @@ export async function fetchBSCBalance(address: string): Promise<string> {
     if (response.data.result) {
       const balanceWei = parseInt(response.data.result, 16);
       const balanceBNB = balanceWei / 1e18;
-      console.log('✅ BNB Balance:', balanceBNB, 'BNB');
+      console.log(`✅ BNB Balance (${networkLabel}):`, balanceBNB, 'BNB');
       return balanceBNB.toFixed(6);
     }
     
@@ -287,18 +298,18 @@ export async function fetchBlockNumber(chain: Chain): Promise<number | null> {
 /**
  * Fetch balance for a specific chain
  */
-export async function fetchChainBalance(chain: Chain, address: string): Promise<ChainBalance> {
+export async function fetchChainBalance(chain: Chain, address: string, network: TokenNetwork = 'mainnet'): Promise<ChainBalance> {
   let balance = '0';
 
   switch (chain) {
     case 'ethereum':
-      balance = await fetchEthereumBalance(address);
+      balance = await fetchEthereumBalance(address, network);
       break;
     case 'bitcoin':
       balance = await fetchBitcoinBalance(address);
       break;
     case 'bsc':
-      balance = await fetchBSCBalance(address);
+      balance = await fetchBSCBalance(address, network);
       break;
     case 'xrp':
       balance = await fetchXRPBalance(address);
@@ -324,16 +335,17 @@ export async function fetchAllBalances(addresses: {
   xrp: string;
   solana: string;
   qbtc: string;
-}): Promise<ChainBalance[]> {
+}, network: TokenNetwork = 'mainnet'): Promise<ChainBalance[]> {
   try {
-    console.log('🌐 Fetching all MAINNET balances');
+    const networkLabel = network === 'testnet' ? 'TESTNET' : 'MAINNET';
+    console.log(`🌐 Fetching all ${networkLabel} balances`);
     
     const prices = await fetchPrices();
 
     const [ethBalance, btcBalance, bscBalance, xrpBalance, solBalance, qbtcBalance] = await Promise.all([
-      fetchEthereumBalance(addresses.ethereum),
+      fetchEthereumBalance(addresses.ethereum, network),
       fetchBitcoinBalance(addresses.bitcoin),
-      fetchBSCBalance(addresses.bsc),
+      fetchBSCBalance(addresses.bsc, network),
       fetchXRPBalance(addresses.xrp),
       fetchSolanaBalance(addresses.solana),
       fetchQBTCBalance(addresses.qbtc),
@@ -389,7 +401,7 @@ export async function fetchAllBalances(addresses: {
       timestamp: Date.now(),
     }));
 
-    console.log('✅ All mainnet balances fetched successfully');
+    console.log(`✅ All ${networkLabel} balances fetched successfully`);
     return balances;
   } catch (error) {
     console.error('❌ Failed to fetch all balances:', error);

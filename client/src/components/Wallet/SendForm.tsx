@@ -182,7 +182,8 @@ export default function SendForm({
           // Fetch native balance from chain
           const chainBalance = await fetchChainBalance(
             selectedChain,
-            sovereignWallet.addresses[selectedChain]
+            sovereignWallet.addresses[selectedChain],
+            tokenNetwork
           );
           setBalance(chainBalance.balance);
           

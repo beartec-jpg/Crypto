@@ -163,7 +163,7 @@ export default function WalletDashboard({
 
       setIsLoading(true);
       try {
-        const balances = await fetchAllBalances(sovereignWallet.addresses);
+        const balances = await fetchAllBalances(sovereignWallet.addresses, tokenNetwork);
         setChainBalances(balances);
         
         // Update native token balances
@@ -199,7 +199,7 @@ export default function WalletDashboard({
     
     setIsRefreshing(true);
     try {
-      const balances = await fetchAllBalances(sovereignWallet.addresses);
+      const balances = await fetchAllBalances(sovereignWallet.addresses, tokenNetwork);
       setChainBalances(balances);
       
       // Update native token balances
@@ -421,10 +421,15 @@ export default function WalletDashboard({
 
   // Helper function to get block explorer URL
   const getExplorerUrl = (chain: Chain, hash: string): string => {
+    const isTestnet = tokenNetwork === 'testnet';
     const explorers: Record<Chain, string> = {
-      ethereum: `https://etherscan.io/tx/${hash}`,
+      ethereum: isTestnet
+        ? `https://sepolia.etherscan.io/tx/${hash}`
+        : `https://etherscan.io/tx/${hash}`,
       bitcoin: `https://mempool.space/tx/${hash}`,
-      bsc: `https://bscscan.com/tx/${hash}`,
+      bsc: isTestnet
+        ? `https://testnet.bscscan.com/tx/${hash}`
+        : `https://bscscan.com/tx/${hash}`,
       xrp: `https://xrpscan.com/tx/${hash}`,
       solana: `https://solscan.io/tx/${hash}`,
       qbtc: `http://localhost:28332/tx/${hash}`,
