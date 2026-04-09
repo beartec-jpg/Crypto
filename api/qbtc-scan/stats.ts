@@ -25,6 +25,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       rpcCall('getchaintxstats', [50]).catch(() => null),
     ]);
 
+    // Derive per-block averages from getchaintxstats window
+    const windowBlocks: number = chainTxStats?.window_block_count ?? 0;
+    const avgTxsPerBlock: number | null =
+      windowBlocks > 0 && chainTxStats?.window_tx_count != null
+        ? chainTxStats.window_tx_count / windowBlocks
+        : null;
+    const avgBlockTime: number | null =
+      windowBlocks > 0 && chainTxStats?.window_interval != null
+        ? chainTxStats.window_interval / windowBlocks
+        : null;
+
+    // Best-effort average fee from most recent block
+    let avgFee: number | null = null;
+    try {
+      if (blockchainInfo?.blocks > 0) {
+        const blockStats = await rpcCall('getblockstats', [blockchainInfo.blocks, ['avgfee']]);
+        avgFee = blockStats?.avgfee ?? null;
+      }
+    } catch {
+      // Non-critical
+    }
+
     // gettxoutsetinfo can be slow — run separately with generous timeout
     let txOutSetInfo: any = null;
     try {
@@ -111,6 +133,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // New: node version (from getnetworkinfo)
       nodeVersion: networkInfo?.subversion ?? null,
+
+      // Per-block averages (derived from getchaintxstats window)
+      avgTxsPerBlock,
+      avgBlockTime,
+      avgFee,
     });
   } catch (error: any) {
     return res.status(500).json({ error: error?.message || 'Failed to fetch QBTC scan stats' });
