@@ -924,16 +924,16 @@ const handleAIMarketReview = () => {
         const channelStyle = currentTool === 'channel' 
           ? { autoColor: autoColorEnabledRef.current, labelPosition: 'right' as const, extendRight: true }
           : {};
-        // For fib drawings, default autoTrack to true (unless already set in savedDefaults)
+        // For fib drawings, default autoTrack to true; respect explicit false saved in defaults
         const fibStyle = (currentTool === 'fib_retracement' || currentTool === 'trend_fib')
-          ? { autoTrack: true }
+          ? { autoTrack: savedDefaults.autoTrack ?? true }
           : {};
         
         const newDrawing = {
           id: `drawing-${Date.now()}`,
           type: currentTool,
           points: newPoints,
-          style: { color, lineWidth: 2, ...fibStyle, ...savedDefaults, ...channelStyle }
+          style: { color, lineWidth: 2, ...savedDefaults, ...fibStyle, ...channelStyle }
         };
         
         // Save to database (wrapper adds to local state for instant feedback and handles persistence)

@@ -84,6 +84,23 @@ function applyLineStyle(ctx: CanvasRenderingContext2D, lineStyle?: 'solid' | 'da
   }
 }
 
+/**
+ * Extrapolate a timestamp to an x-coordinate using the visible time range.
+ * Returns null if the time scale boundaries cannot be determined.
+ */
+function extrapolateTimeToX(
+  timestamp: number,
+  timeScale: ReturnType<IChartApi['timeScale']>,
+  chartWidth: number
+): number | null {
+  const leftTime = timeScale.coordinateToTime(0);
+  const rightTime = timeScale.coordinateToTime(chartWidth);
+  if (leftTime === null || rightTime === null) return null;
+  const timeRange = (rightTime as number) - (leftTime as number);
+  if (timeRange === 0) return null;
+  return ((timestamp - (leftTime as number)) / timeRange) * chartWidth;
+}
+
 class TrendLineRenderer implements IPrimitivePaneRenderer {
   private _point1: DrawingPoint;
   private _point2: DrawingPoint;
@@ -868,14 +885,8 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
       const chartWidth = scope.mediaSize.width;
 
       // Extrapolate x coordinate for off-chart timestamps using visible time range
-      const extrapolateX = (timestamp: number): number | null => {
-        const leftTime = timeScale.coordinateToTime(0);
-        const rightTime = timeScale.coordinateToTime(chartWidth);
-        if (leftTime === null || rightTime === null) return null;
-        const timeRange = (rightTime as number) - (leftTime as number);
-        if (timeRange === 0) return null;
-        return ((timestamp - (leftTime as number)) / timeRange) * chartWidth;
-      };
+      const extrapolateX = (timestamp: number): number | null =>
+        extrapolateTimeToX(timestamp, timeScale, chartWidth);
 
       // Handle extend left/right from style
       const extendLeft = this._style.extendLeft ?? false;
@@ -1162,18 +1173,7 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
       let autoTrackRight: number | null = null;
       if (autoTrack && !extendRight && this._style._trackToTime !== undefined) {
         const trackX = timeScale.timeToCoordinate(this._style._trackToTime as Time);
-        if (trackX !== null) {
-          autoTrackRight = trackX;
-        } else {
-          const leftTime = timeScale.coordinateToTime(0);
-          const rightTime = timeScale.coordinateToTime(chartWidth);
-          if (leftTime !== null && rightTime !== null) {
-            const timeRange = (rightTime as number) - (leftTime as number);
-            if (timeRange !== 0) {
-              autoTrackRight = ((this._style._trackToTime - (leftTime as number)) / timeRange) * chartWidth;
-            }
-          }
-        }
+        autoTrackRight = trackX !== null ? trackX : extrapolateTimeToX(this._style._trackToTime, timeScale, chartWidth);
       }
       
       const baseStartX = x3Raw;

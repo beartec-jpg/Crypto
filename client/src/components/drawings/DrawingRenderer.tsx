@@ -125,16 +125,16 @@ export function DrawingRenderer({
         const channelStyle = currentTool === 'channel' 
           ? { autoColor: useAutoColor, labelPosition: 'right' as const, extendRight: true }
           : {};
-        // For fib drawings, default autoTrack to true (unless already set in savedDefaults)
+        // For fib drawings, default autoTrack to true; respect explicit false saved in defaults
         const fibStyle = (currentTool === 'fib_retracement' || currentTool === 'trend_fib')
-          ? { autoTrack: true }
+          ? { autoTrack: savedDefaults.autoTrack ?? true }
           : {};
         
         const newDrawing = {
           id: `drawing-${Date.now()}`,
           type: currentTool,
           points: newPoints,
-          style: { color, lineWidth: 2, ...fibStyle, ...savedDefaults, ...channelStyle, autoColor: useAutoColor }
+          style: { color, lineWidth: 2, ...savedDefaults, ...fibStyle, ...channelStyle, autoColor: useAutoColor }
         };
         
         console.log('[Renderer] Creating new drawing:', newDrawing);
