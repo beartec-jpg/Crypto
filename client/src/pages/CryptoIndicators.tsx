@@ -747,11 +747,22 @@ const handleAIMarketReview = () => {
     });
     
     // Add or update primitives for current drawings (skip if being edited)
+    // Compute last candle time for autoTrack injection
+    const lastCandleTime = candles && candles.length > 0
+      ? Number(candles[candles.length - 1].time)
+      : undefined;
+
     drawings.forEach(drawing => {
       const isBeingEdited = activeEdit && activeEdit.drawingId === drawing.id;
       if (isBeingEdited) return; // Don't render primitive while editing
       
       const existingPrimitive = currentPrimitives.get(drawing.id);
+
+      // For fib drawings with autoTrack, inject the latest candle time at render time
+      const isFibDrawing = drawing.type === 'fib_retracement' || drawing.type === 'trend_fib';
+      const effectiveStyle = (isFibDrawing && (drawing.style?.autoTrack ?? true) && lastCandleTime !== undefined)
+        ? { ...drawing.style, _trackToTime: lastCandleTime }
+        : drawing.style;
       
       if (existingPrimitive) {
         // Update existing primitive
@@ -765,14 +776,14 @@ const handleAIMarketReview = () => {
         }
         
         // Update style
-        existingPrimitive.updateStyle(drawing.style);
+        existingPrimitive.updateStyle(effectiveStyle);
       } else {
         // Create and attach new primitive
         const primitive = createDrawingPrimitive(
           drawing.id,
           drawing.type,
           drawing.points,
-          drawing.style
+          effectiveStyle
         );
         
         if (primitive) {
@@ -797,7 +808,7 @@ const handleAIMarketReview = () => {
       });
       currentPrimitives.clear();
     };
-  }, [chartControls.chartReady, drawings, selectedDrawingId, activeEdit, drawingsVisible]);
+  }, [chartControls.chartReady, drawings, selectedDrawingId, activeEdit, drawingsVisible, candles]);
   
   // Save drawing mutation
   // Drawing mutation wrappers - hook handles refetching and toasts
@@ -913,12 +924,16 @@ const handleAIMarketReview = () => {
         const channelStyle = currentTool === 'channel' 
           ? { autoColor: autoColorEnabledRef.current, labelPosition: 'right' as const, extendRight: true }
           : {};
+        // For fib drawings, default autoTrack to true (unless already set in savedDefaults)
+        const fibStyle = (currentTool === 'fib_retracement' || currentTool === 'trend_fib')
+          ? { autoTrack: true }
+          : {};
         
         const newDrawing = {
           id: `drawing-${Date.now()}`,
           type: currentTool,
           points: newPoints,
-          style: { color, lineWidth: 2, ...savedDefaults, ...channelStyle }
+          style: { color, lineWidth: 2, ...fibStyle, ...savedDefaults, ...channelStyle }
         };
         
         // Save to database (wrapper adds to local state for instant feedback and handles persistence)

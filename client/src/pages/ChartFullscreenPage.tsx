@@ -1979,6 +1979,7 @@ export function ChartFullscreenPage({
     selectedDrawingId: drawingInteraction.selectedDrawingId,
     activeEdit,
     visible: drawingsVisible,
+    candles: candles as Array<{ time: number | string }>,
   });
 
   // Extract wave endpoints from all saved drawings for priority snapping
