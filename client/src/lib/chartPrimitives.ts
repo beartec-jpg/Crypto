@@ -811,15 +811,15 @@ export class RectanglePrimitive implements ISeriesPrimitive<Time> {
 
 const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.272, 1.618];
 const FIB_COLORS: Record<number, string> = {
-  0: '#ffffff',
-  0.236: '#ffffff',
-  0.382: '#ffffff',
-  0.5: '#ffffff',
-  0.618: '#ffffff',
-  0.786: '#ffffff',
-  1: '#ffffff',
-  1.272: '#ffffff',
-  1.618: '#ffffff'
+  0: '#787B86',
+  0.236: '#F7525F',
+  0.382: '#FF9800',
+  0.5: '#4CAF50',
+  0.618: '#089981',
+  0.786: '#9C27B0',
+  1: '#787B86',
+  1.272: '#3179F5',
+  1.618: '#E91E63'
 };
 
 class FibRetracementRenderer implements IPrimitivePaneRenderer {
@@ -1091,17 +1091,17 @@ export class FibRetracementPrimitive implements ISeriesPrimitive<Time> {
 
 const TREND_FIB_LEVELS = [0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618, 2.0, 2.618, 3.618, 4.236];
 const TREND_FIB_COLORS: Record<number, string> = {
-  0.382: '#ffffff',
-  0.5: '#ffffff',
-  0.618: '#ffffff',
-  0.786: '#ffffff',
-  1.0: '#ffffff',
-  1.272: '#ffffff',
-  1.618: '#ffffff',
-  2.0: '#ffffff',
-  3.618: '#ffffff',
-  4.236: '#ffffff',
-  2.618: '#ffffff'
+  0.382: '#FF9800',
+  0.5: '#4CAF50',
+  0.618: '#089981',
+  0.786: '#9C27B0',
+  1.0: '#787B86',
+  1.272: '#3179F5',
+  1.618: '#E91E63',
+  2.0: '#F7525F',
+  3.618: '#FF9800',
+  4.236: '#9C27B0',
+  2.618: '#3179F5'
 };
 class TrendFibRenderer implements IPrimitivePaneRenderer {
   private _points: DrawingPoint[];
@@ -1144,7 +1144,7 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
       const extendRight = this._style.extendRight ?? false;
       
       const baseStartX = x3Raw;
-      const baseEndX = x3Raw + 200;
+      const baseEndX = extendRight ? chartWidth : Math.min(x3Raw + (chartWidth - x3Raw) * 0.5, chartWidth);
       const lineLeft = extendLeft ? 0 : baseStartX;
       const lineRight = extendRight ? chartWidth : baseEndX;
       const isRightLabel = this._style.labelPosition !== 'left';
@@ -1177,7 +1177,7 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
         ctx.beginPath();
         ctx.strokeStyle = color;
         ctx.lineWidth = 1;
-        ctx.setLineDash(level === 1.0 ? [] : [3, 3]);
+        applyLineStyle(ctx, this._style.lineStyle);
         ctx.moveTo(lineLeft, y);
         ctx.lineTo(lineRight, y);
         ctx.stroke();
@@ -1611,11 +1611,153 @@ export class ChannelPrimitive implements ISeriesPrimitive<Time> {
   }
 }
 
-export type DrawingPrimitive = TrendLinePrimitive | HorizontalLinePrimitive | RectanglePrimitive | FibRetracementPrimitive | TrendFibPrimitive | ChannelPrimitive | TextLabelPrimitive;
+export type DrawingPrimitive = TrendLinePrimitive | HorizontalLinePrimitive | RectanglePrimitive | FibRetracementPrimitive | TrendFibPrimitive | ChannelPrimitive | TextLabelPrimitive | VerticalLinePrimitive;
+
+// ── Vertical Line ─────────────────────────────────────────────────────────────
+
+class VerticalLineRenderer implements IPrimitivePaneRenderer {
+  private _point: DrawingPoint;
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null;
+  private _chart: IChartApi | null;
+  private _isSelected: boolean;
+
+  constructor(
+    point: DrawingPoint,
+    style: DrawingStyle,
+    series: ISeriesApi<SeriesType> | null,
+    chart: IChartApi | null,
+    isSelected: boolean
+  ) {
+    this._point = point;
+    this._style = style;
+    this._series = series;
+    this._chart = chart;
+    this._isSelected = isSelected;
+  }
+
+  draw(target: any) {
+    if (!this._series || !this._chart) return;
+
+    const timeScale = this._chart.timeScale();
+    const xRaw = timeScale.timeToCoordinate(this._point.time as Time);
+    if (xRaw === null) return;
+
+    target.useMediaCoordinateSpace((scope: any) => {
+      const ctx = scope.context;
+      const height = scope.mediaSize.height;
+
+      const opacity = this._style.opacity !== undefined ? this._style.opacity : 1;
+      const colorWithOpacity = applyOpacity(this._style.color, opacity);
+      applyLineStyle(ctx, this._style.lineStyle);
+
+      ctx.beginPath();
+      ctx.strokeStyle = colorWithOpacity;
+      ctx.lineWidth = this._style.lineWidth || 1;
+      ctx.moveTo(xRaw, 0);
+      ctx.lineTo(xRaw, height);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      if (this._isSelected) {
+        const y = this._series!.priceToCoordinate(this._point.price);
+        if (y !== null) {
+          ctx.fillStyle = '#22c55e';
+          ctx.beginPath();
+          ctx.arc(xRaw, y, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    });
+  }
+}
+
+class VerticalLinePaneView implements IPrimitivePaneView {
+  private _primitive: VerticalLinePrimitive;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+
+  constructor(primitive: VerticalLinePrimitive) {
+    this._primitive = primitive;
+  }
+
+  update(series: ISeriesApi<SeriesType> | null, chart: IChartApi | null) {
+    this._series = series;
+    this._chart = chart;
+  }
+
+  zOrder(): 'normal' { return 'normal'; }
+
+  renderer() {
+    return new VerticalLineRenderer(
+      this._primitive.getPoint(),
+      this._primitive.getStyle(),
+      this._series,
+      this._chart,
+      this._primitive.isSelected()
+    );
+  }
+}
+
+export class VerticalLinePrimitive implements ISeriesPrimitive<Time> {
+  private _paneViews: VerticalLinePaneView[];
+  private _point: DrawingPoint;
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+  private _selected: boolean = false;
+  private _id: string;
+  private _requestUpdate?: RequestUpdateCallback;
+
+  constructor(id: string, point: DrawingPoint, style: DrawingStyle) {
+    this._id = id;
+    this._point = point;
+    this._style = style;
+    this._paneViews = [new VerticalLinePaneView(this)];
+  }
+
+  attached(param: SeriesAttachedParameter<Time>) {
+    this._series = param.series;
+    this._chart = param.chart;
+    this._requestUpdate = param.requestUpdate;
+  }
+
+  detached() {
+    this._series = null;
+    this._chart = null;
+    this._requestUpdate = undefined;
+  }
+
+  updateAllViews() {
+    this._paneViews.forEach((pv) => pv.update(this._series, this._chart));
+  }
+
+  paneViews() { return this._paneViews; }
+
+  getId() { return this._id; }
+  getPoint() { return this._point; }
+  getStyle() { return this._style; }
+  isSelected() { return this._selected; }
+
+  setSelected(selected: boolean) {
+    this._selected = selected;
+    this._requestUpdate?.();
+  }
+
+  updatePoint(point: DrawingPoint) {
+    this._point = point;
+    this._requestUpdate?.();
+  }
+
+  updateStyle(style: DrawingStyle) {
+    this._style = style;
+    this._requestUpdate?.();
+  }
+}
 
 export function createDrawingPrimitive(
   id: string,
-  type: 'trendline' | 'horizontal' | 'text' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel',
+  type: 'trendline' | 'horizontal' | 'vertical' | 'text' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel',
   points: DrawingPoint[],
   style: DrawingStyle
 ): DrawingPrimitive | null {
@@ -1628,6 +1770,11 @@ export function createDrawingPrimitive(
     case 'horizontal':
       if (points.length >= 1) {
         return new HorizontalLinePrimitive(id, points[0], style);
+      }
+      break;
+    case 'vertical':
+      if (points.length >= 1) {
+        return new VerticalLinePrimitive(id, points[0], style);
       }
       break;
     case 'text':

@@ -27,6 +27,7 @@ interface WaveOverlayStackProps {
   drawings: Drawing[];
   chart: any;
   candleSeries: any;
+  chartContainerRef?: React.RefObject<HTMLDivElement>;
   onDeselectWave: () => void;
   onWaveClick: (waveId: string, event: React.MouseEvent) => void;
 
@@ -51,6 +52,7 @@ export function WaveOverlayStack({
   drawings,
   chart,
   candleSeries,
+  chartContainerRef,
   onDeselectWave,
   onWaveClick,
   tempDrawing,
@@ -105,8 +107,10 @@ export function WaveOverlayStack({
 
       <FullscreenDrawingLayer
         tempDrawing={tempDrawing}
+        activeTool={activeTool}
         chart={chart}
         candleSeries={candleSeries}
+        chartContainerRef={chartContainerRef ?? { current: null }}
         quickMenuPosition={quickMenuPosition}
         selectedDrawingId={selectedDrawingId}
         onSettings={onOpenDrawingSettings}

@@ -77,6 +77,7 @@ export function useKeyboardShortcuts({
       const toolMap: Record<string, string> = {
         't': 'trendline',
         'h': 'horizontal',
+        'v': 'vertical',
         'r': 'rectangle',
         'f': 'fib_retracement',
         'c': 'channel'
