@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { rpcCall as rpcCallFailover } from './rpcFailover';
 
 type QbtcNetwork = 'testnet' | 'mainnet';
 
@@ -19,47 +20,31 @@ function parseNetwork(raw: unknown): QbtcNetwork {
   return value === 'mainnet' ? 'mainnet' : 'testnet';
 }
 
-function resolveRpcConfig(network: QbtcNetwork) {
-  if (network === 'mainnet') {
-    const active = process.env.QBTC_MAINNET_ACTIVE === 'true';
-    if (!active) {
-      const error = new Error('QBTC mainnet is not active yet. Switch to testnet.');
-      (error as any).code = 'MAINNET_NOT_ACTIVE';
-      throw error;
-    }
-
-    const rpcUrl = process.env.QBTC_MAINNET_RPC_URL || '';
-    const rpcUser = process.env.QBTC_MAINNET_RPC_USER || '';
-    const rpcPass = process.env.QBTC_MAINNET_RPC_PASSWORD || '';
-
-    if (!rpcUrl) {
-      const error = new Error('QBTC_MAINNET_RPC_URL is not configured.');
-      (error as any).code = 'MAINNET_NOT_ACTIVE';
-      throw error;
-    }
-
-    return { rpcUrl, rpcUser, rpcPass };
+function resolveMainnetConfig() {
+  const active = process.env.QBTC_MAINNET_ACTIVE === 'true';
+  if (!active) {
+    const error = new Error('QBTC mainnet is not active yet. Switch to testnet.');
+    (error as any).code = 'MAINNET_NOT_ACTIVE';
+    throw error;
   }
 
-  return {
-    rpcUrl: process.env.QBTC_RPC_URL || '',
-    rpcUser: process.env.QBTC_RPC_USER || '',
-    rpcPass: process.env.QBTC_RPC_PASSWORD || '',
-  };
+  const rpcUrl = process.env.QBTC_MAINNET_RPC_URL || '';
+  const rpcUser = process.env.QBTC_MAINNET_RPC_USER || '';
+  const rpcPass = process.env.QBTC_MAINNET_RPC_PASSWORD || '';
+
+  if (!rpcUrl) {
+    const error = new Error('QBTC_MAINNET_RPC_URL is not configured.');
+    (error as any).code = 'MAINNET_NOT_ACTIVE';
+    throw error;
+  }
+
+  return { rpcUrl, rpcUser, rpcPass };
 }
 
-async function rpcCall(method: string, params: any[], network: QbtcNetwork) {
-  const { rpcUrl, rpcUser, rpcPass } = resolveRpcConfig(network);
-  if (!rpcUrl) {
-    throw new Error('QBTC_RPC_URL is not configured.');
-  }
+async function rpcCallMainnet(method: string, params: any[]): Promise<any> {
+  const { rpcUrl, rpcUser, rpcPass } = resolveMainnetConfig();
 
-  const payload = {
-    jsonrpc: '2.0',
-    id: Date.now(),
-    method,
-    params,
-  };
+  const payload = { jsonrpc: '2.0', id: Date.now(), method, params };
 
   const response = await fetch(rpcUrl, {
     method: 'POST',
@@ -71,7 +56,7 @@ async function rpcCall(method: string, params: any[], network: QbtcNetwork) {
     signal: AbortSignal.timeout(30000),
   });
 
-  const data = await response.json();
+  const data = await response.json() as any;
   if (data?.error) {
     const error = new Error(data.error.message || 'QBTC RPC error');
     (error as any).code = data.error.code;
@@ -79,6 +64,14 @@ async function rpcCall(method: string, params: any[], network: QbtcNetwork) {
   }
 
   return data?.result;
+}
+
+async function rpcCall(method: string, params: any[], network: QbtcNetwork): Promise<any> {
+  if (network === 'mainnet') {
+    return rpcCallMainnet(method, params);
+  }
+  const { result } = await rpcCallFailover(method, params);
+  return result;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

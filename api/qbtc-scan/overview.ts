@@ -1,24 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { rpcCall as rpcCallFailover } from '../qbtc/rpcFailover';
 
 async function rpcCall(method: string, params: any[] = []) {
-  const rpcUrl = process.env.QBTC_RPC_URL || '';
-  const rpcUser = process.env.QBTC_RPC_USER || '';
-  const rpcPass = process.env.QBTC_RPC_PASSWORD || '';
-  if (!rpcUrl) throw new Error('QBTC_RPC_URL is not configured.');
-
-  const response = await fetch(rpcUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Basic ${Buffer.from(`${rpcUser}:${rpcPass}`).toString('base64')}`,
-    },
-    body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params }),
-    signal: AbortSignal.timeout(10000),
-  });
-
-  const data = await response.json();
-  if (data?.error) throw new Error(data.error.message || 'QBTC RPC error');
-  return data?.result;
+  const { result } = await rpcCallFailover(method, params);
+  return result;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
