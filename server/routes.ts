@@ -9121,7 +9121,8 @@ CRITICAL DATA RULES:
               qbtcRpcCall('getblock', [hash1, 1], '', network),
               qbtcRpcCall('getblock', [hashPrev, 1], '', network),
             ]);
-            if (block1?.time != null && blockPrev?.time != null) {
+            if (block1?.time !== null && block1?.time !== undefined &&
+                blockPrev?.time !== null && blockPrev?.time !== undefined) {
               const txLen = Array.isArray(block1.tx) ? block1.tx.length : (block1.nTx ?? 1);
               _qbtcBlockCache[network] = {
                 blockHeight: blockCount,
@@ -9138,9 +9139,10 @@ CRITICAL DATA RULES:
         const c = _qbtcBlockCache[network];
         if (c) {
           const timeDiff = c.lastBlockTime - c.prevBlockTime;
-          if (timeDiff > 0) {
+          // Require at least 2 seconds between blocks to avoid unrealistically large values.
+          if (timeDiff >= 2) {
             blocksPerMin = 60 / timeDiff;
-            // Exclude coinbase; non-user txs clamped to 0.
+            // Exclude coinbase; non-user tx count clamped to 0.
             const userTxCount = Math.max(0, c.lastBlockTxCount - 1);
             txPerSec = userTxCount / timeDiff;
           }
