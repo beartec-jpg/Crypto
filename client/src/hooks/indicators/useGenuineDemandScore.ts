@@ -49,8 +49,6 @@ export function useGenuineDemandScore({
         cvdData: partialCvd,
         lookbackBars,
         externalMetrics,
-        scoreHistory,
-        persistHistory: false,
       });
 
       scoreHistory.push(result.score);
@@ -61,8 +59,6 @@ export function useGenuineDemandScore({
       cvdData,
       lookbackBars,
       externalMetrics,
-      scoreHistory,
-      persistHistory: true,
     });
 
     return {

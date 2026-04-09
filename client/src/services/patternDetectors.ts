@@ -308,15 +308,18 @@ const PATTERN_DEFINITIONS: PatternDefinition[] = [
   },
 ];
 
-const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
-
-const HEALTHY_BOTTOM_LOOKBACK_MS: Record<PatternSensitivityProfile, number> = {
-  tame: 336 * HOUR_MS,
-  neutral: 168 * HOUR_MS,
-  aggressive: 72 * HOUR_MS,
+// Lookback in bars (candles) for Healthy Bottom by sensitivity profile.
+// Using bar counts keeps detection relevant to whichever timeframe is selected.
+const HEALTHY_BOTTOM_LOOKBACK_BARS: Record<PatternSensitivityProfile, number> = {
+  tame: 120,
+  neutral: 60,
+  aggressive: 36,
 };
+
+// Baseline bar count used to scale duration-based prerequisites.
+// Represents a minimum number of candles that constitutes a meaningful window
+// regardless of the selected timeframe (e.g. 24 bars on 1h ≈ 24h, on 4h ≈ 4 days).
+const BASE_DURATION_BARS = 24;
 
 function toCandles(prices: number[]) {
   return prices.map((price, index) => ({
@@ -451,35 +454,6 @@ function values(series: Snapshot[]): { prices: number[]; volumes: number[]; cvd:
     volumes: series.map((item) => item.volume),
     cvd: series.map((item) => item.cvdDelta),
   };
-}
-
-function median(valuesList: number[]): number {
-  if (valuesList.length === 0) return FOUR_HOURS_MS;
-  const sorted = [...valuesList].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 0) return (sorted[mid - 1] + sorted[mid]) / 2;
-  return sorted[mid];
-}
-
-function medianIntervalMs(series: Snapshot[]): number {
-  if (series.length < 2) return FOUR_HOURS_MS;
-  const gaps: number[] = [];
-  for (let index = 1; index < series.length; index += 1) {
-    const gap = series[index].timestamp - series[index - 1].timestamp;
-    if (gap > 0) gaps.push(gap);
-  }
-  return Math.max(60_000, median(gaps));
-}
-
-function barsForDuration(series: Snapshot[], durationMs: number): number {
-  const interval = medianIntervalMs(series);
-  return Math.max(1, Math.round(durationMs / interval));
-}
-
-function windowByDuration(series: Snapshot[], durationMs: number): Snapshot[] {
-  if (series.length === 0) return [];
-  const latest = series[series.length - 1].timestamp;
-  return series.filter((item) => item.timestamp >= latest - durationMs);
 }
 
 function rollingHigh(prices: number[], lookback: number): number {
@@ -946,8 +920,8 @@ export function detectHealthyBottom(
   candles1d?: Candle[]
 ): PatternResult {
   const series = getSeries(history, current);
-  const lookbackMs = HEALTHY_BOTTOM_LOOKBACK_MS[profile] ?? (168 * HOUR_MS);
-  const recentWindow = windowByDuration(series, lookbackMs);
+  const lookbackBars = HEALTHY_BOTTOM_LOOKBACK_BARS[profile] ?? 60;
+  const recentWindow = series.slice(-lookbackBars);
   const { prices, volumes } = values(series);
 
   // === PILLAR 1: MARKET STRUCTURE (35 pts) ===
@@ -1091,26 +1065,31 @@ export function detectDistribution(
 ): PatternResult {
   const thresholds = getProfileThresholds(profile).distribution;
   const series = getSeries(history, current);
-  const window14d = windowByDuration(series, 14 * DAY_MS);
+  // Look back 50 bars — scales naturally with whichever timeframe is selected
+  const recentWindow = series.slice(-50);
   const { prices, volumes } = values(series);
 
-  const minPoint = window14d.reduce<Snapshot | null>((lowest, item) => {
+  const minPoint = recentWindow.reduce<Snapshot | null>((lowest, item) => {
     if (!lowest || item.price < lowest.price) return item;
     return lowest;
   }, null);
 
   const rallyPct = minPoint ? toPercentChange(minPoint.price, current.price) : 0;
-  const rallyDays = minPoint ? (current.timestamp - minPoint.timestamp) / DAY_MS : 0;
-  const hadPositiveCvd = window14d.some((item) => item.cvdDelta > 0);
+  const hadPositiveCvd = recentWindow.some((item) => item.cvdDelta > 0);
+  // Require the low to be at least N bars back so we have a meaningful rally
+  const minPointIndex = minPoint ? recentWindow.findIndex((s) => s === minPoint) : -1;
+  const rallyBarsElapsed = minPoint && minPointIndex >= 0 ? recentWindow.length - 1 - minPointIndex : 0;
   const prerequisitesMet =
     rallyPct >= thresholds.rallyMin &&
     hadPositiveCvd &&
-    rallyDays >= thresholds.minRallyDays;
+    // minRallyDays is reused as a bar count: e.g. 3 means the low must be ≥3 bars
+    // back, which scales naturally with the selected timeframe.
+    rallyBarsElapsed >= thresholds.minRallyDays;
 
   const rsi = calculateRSI(toCandles(prices), 14).map((point) => point.value);
   const rsiDiv = detectRSIDivergence(prices, rsi);
   const bb = getLatestBollinger(prices);
-  const resistance = rollingHigh(prices, Math.max(20, barsForDuration(series, 5 * DAY_MS)));
+  const resistance = rollingHigh(prices, 20);
   const volumeSlope = calculateSlope(volumes, 10);
 
   const touchedUpperRecently = bb.hasData && prices.slice(-4).some((price) => price >= bb.upper * 0.997);
@@ -1256,12 +1235,13 @@ export function detectCapitulation(
   profile: PatternSensitivityProfile = 'neutral'
 ): PatternResult {
   const series = getSeries(history, current);
-  const recentWindow = windowByDuration(series, 24 * HOUR_MS);
+  // Last 20 bars: captures a sharp recent drop on any timeframe
+  const recentWindow = series.slice(-20);
   const { prices, volumes } = values(series);
 
-  const bars24h = Math.max(3, barsForDuration(series, DAY_MS));
-  const start24h = prices[Math.max(0, prices.length - bars24h)] ?? current.price;
-  const dropPct = toPercentChange(start24h, current.price);
+  // Measure drop over the last 20 bars (same window as recentWindow)
+  const startPrice = prices[Math.max(0, prices.length - 20)] ?? current.price;
+  const dropPct = toPercentChange(startPrice, current.price);
 
   const priceDropScore = scorePriceDrop(dropPct, profile);
   const oiFlushScore = scoreOIFlush(current.oiChangePct, profile);
@@ -1288,7 +1268,7 @@ export function detectCapitulation(
       weight: 20,
       max: 20,
       value: `${dropPct.toFixed(1)}%`,
-      description: 'Magnitude of price decline in 24h',
+      description: 'Magnitude of price decline over recent bars',
     },
     {
       id: 'oiFlush',
@@ -1450,16 +1430,19 @@ export function detectAccumulation(
 ): PatternResult {
   const thresholds = getProfileThresholds(profile).accumulation;
   const series = getSeries(history, current);
-  const window3d = windowByDuration(series, 3 * DAY_MS);
+  // Last 48 bars: long enough to see a consolidation zone on any timeframe
+  const rangeWindow = series.slice(-48);
   const { prices, volumes } = values(series);
 
-  const max3d = window3d.length > 0 ? Math.max(...window3d.map((item) => item.price)) : current.price;
-  const min3d = window3d.length > 0 ? Math.min(...window3d.map((item) => item.price)) : current.price;
-  const rangePct = toPercentChange(min3d, max3d);
-  const duration3d = window3d.length > 0 ? window3d[window3d.length - 1].timestamp - window3d[0].timestamp : 0;
+  const maxInWindow = rangeWindow.length > 0 ? Math.max(...rangeWindow.map((item) => item.price)) : current.price;
+  const minInWindow = rangeWindow.length > 0 ? Math.min(...rangeWindow.map((item) => item.price)) : current.price;
+  const rangePct = toPercentChange(minInWindow, maxInWindow);
+  // Require at least minDurationFactor * BASE_DURATION_BARS of history to confirm a real base.
+  // minDurationFactor is reused here as a 0–1 ratio of BASE_DURATION_BARS.
+  const minBarsRequired = Math.round(BASE_DURATION_BARS * thresholds.minDurationFactor);
   const prerequisitesMet =
     rangePct <= thresholds.rangeMax &&
-    duration3d >= (3 * DAY_MS * thresholds.minDurationFactor);
+    rangeWindow.length >= minBarsRequired;
 
   const bb = getLatestBollinger(prices);
   const vpoc = calculateVPOC(prices, volumes, 30);
@@ -1500,7 +1483,7 @@ export function detectBearBreakdown(
   const series = getSeries(history, current);
   const { prices, volumes } = values(series);
 
-  const supportLookback = Math.max(15, barsForDuration(series, 36 * HOUR_MS));
+  const supportLookback = 20;
   const support = rollingLow(prices.slice(0, -1), supportLookback);
   const brokeSupport = support > 0 && current.price < support * 0.998;
 
@@ -1555,9 +1538,4 @@ export function runPatternDetectors(
 
     return { definition, result };
   });
-}
-
-export function shouldUpdatePatternSnapshot(previous: Snapshot | null, nextTimestamp: number): boolean {
-  if (!previous) return true;
-  return nextTimestamp - previous.timestamp >= FOUR_HOURS_MS;
 }

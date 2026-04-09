@@ -1,7 +1,6 @@
 import type { Candle, CVDDataItem } from '@/types/chart';
 import {
   runPatternDetectors,
-  shouldUpdatePatternSnapshot,
   type PatternDetectionItem,
   type Snapshot,
 } from '@/services/patternDetectors';
@@ -58,8 +57,6 @@ export interface CalculateGenuineDemandScoreOptions {
   cvdData: CVDDataItem[];
   lookbackBars?: number;
   externalMetrics?: GDSExternalMetrics;
-  scoreHistory?: number[];
-  persistHistory?: boolean;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -83,23 +80,27 @@ function scoreToVerdict(score: number, flags: GDSFlags): string {
   return 'No genuine demand — avoid longs';
 }
 
-// Persistent pattern snapshot history across calls
-let patternSnapshotHistory: Snapshot[] = [];
-
-function buildSnapshot(
-  latestCandle: Candle,
-  cvdDeltaValue: number,
+// Build snapshot history directly from candles so patterns always reflect the
+// currently selected symbol and timeframe, with one data point per bar.
+function buildSnapshotHistory(
+  candles: Candle[],
+  cvdData: CVDDataItem[],
   externalMetrics: GDSExternalMetrics,
-): Snapshot {
-  return {
-    timestamp: latestCandle.time * 1000,
-    price: latestCandle.close,
-    cvdDelta: cvdDeltaValue,
-    oiChangePct: externalMetrics.openInterestChangePct ?? 0,
-    fundingRate: externalMetrics.fundingRate ?? 0,
-    premium: externalMetrics.coinbasePremiumPct ?? 0,
-    volume: latestCandle.volume,
-  };
+): Snapshot[] {
+  const hasCvd = cvdData.length > 0;
+  return candles.map((candle, i) => {
+    // Align CVD by position; fall back to 0 delta when data is absent or sparse
+    const cvdItem = hasCvd ? cvdData[Math.min(i, cvdData.length - 1)] : undefined;
+    return {
+      timestamp: candle.time * 1000,
+      price: candle.close,
+      cvdDelta: cvdItem?.delta ?? 0,
+      oiChangePct: externalMetrics.openInterestChangePct ?? 0,
+      fundingRate: externalMetrics.fundingRate ?? 0,
+      premium: externalMetrics.coinbasePremiumPct ?? 0,
+      volume: candle.volume,
+    };
+  });
 }
 
 function toLegacyComponents(params: {
@@ -173,8 +174,6 @@ export function calculateGenuineDemandScore({
   cvdData,
   lookbackBars = 48,
   externalMetrics = {},
-  scoreHistory = [],
-  persistHistory = false,
 }: CalculateGenuineDemandScoreOptions): GenuineDemandScoreResult {
   const emptyResult: GenuineDemandScoreResult = {
     score: 0,
@@ -280,19 +279,11 @@ export function calculateGenuineDemandScore({
   const flags: GDSFlags = { fakeBreakoutWarning, lowLiquidity, fundingExtreme };
 
   // --- Pattern detection -------------------------------------------------------
-  const currentSnapshot = buildSnapshot(latestCandle, cvdDeltaValue, externalMetrics);
-
-  if (persistHistory) {
-    const previous = patternSnapshotHistory[patternSnapshotHistory.length - 1] ?? null;
-    if (shouldUpdatePatternSnapshot(previous, currentSnapshot.timestamp)) {
-      patternSnapshotHistory = [...patternSnapshotHistory, currentSnapshot].slice(-180);
-    }
-  }
-
-  const patterns = runPatternDetectors(
-    persistHistory ? patternSnapshotHistory.slice(0, -1) : [],
-    currentSnapshot,
-  );
+  // Build one snapshot per candle so patterns are always aligned to the selected
+  // timeframe and symbol — no stale singleton history leaking between sessions.
+  const snapshotHistory = buildSnapshotHistory(candleWindow, cvdWindow, externalMetrics);
+  const currentSnapshot = snapshotHistory[snapshotHistory.length - 1]!;
+  const patterns = runPatternDetectors(snapshotHistory.slice(0, -1), currentSnapshot);
 
   // --- Result ------------------------------------------------------------------
   return {
