@@ -54,6 +54,19 @@ export function useHydratedDrawings({ persistedDrawings, ewLabels, setDrawings }
         },
       }));
 
-    setDrawings([...regularDrawings, ...waveDrawings]);
+    // Merge server wave drawings with existing local state to preserve any locally-set
+    // style properties (e.g. showFuturePredictions: false) that may not yet be reflected
+    // in the server data due to in-flight PATCH requests.
+    setDrawings(prev => {
+      const mergedWaveDrawings = waveDrawings.map(newDrawing => {
+        const existing = prev.find(d => d.id === newDrawing.id && d.type === 'elliott_wave');
+        if (existing) {
+          // Preserve local style which may contain unsaved updates
+          return { ...newDrawing, style: existing.style };
+        }
+        return newDrawing;
+      });
+      return [...regularDrawings, ...mergedWaveDrawings];
+    });
   }, [persistedDrawings, ewLabels, setDrawings]);
 }

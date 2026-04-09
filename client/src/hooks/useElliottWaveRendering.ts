@@ -4,6 +4,87 @@ import { ElliottWavePrimitive } from '@/components/chart/primitives/ElliottWaveP
 import { getDegreeConfiguration } from '@/components/elliottWave/DegreePicker';
 import type { Drawing } from '@/types/drawing';
 
+// Wave degree hierarchy: lower number = higher (more dominant) degree.
+const DEGREE_ORDER_MAP: Record<string, number> = {
+  'grand supercycle': 0,
+  'grand_supercycle': 0,
+  'supercycle': 1,
+  'cycle': 2,
+  'primary': 3,
+  'intermediate': 4,
+  'minor': 5,
+  'minute': 6,
+  'minuette': 7,
+  'sub-minuette': 8,
+  'subminuette': 8,
+  'sub_minuette': 8,
+};
+
+function getDegreeIndex(degreeLabel: string | undefined): number {
+  if (!degreeLabel) return 5;
+  return DEGREE_ORDER_MAP[degreeLabel.toLowerCase()] ?? 5;
+}
+
+/**
+ * Compute a stacking offset (in label-height units) for each EW drawing so
+ * that labels at the same endpoint don't overlap. Within a group the drawing
+ * with the lowest-degree wave is closest to the candle (offset 0) and the
+ * highest-degree wave is furthest from the candle (largest offset), matching
+ * the convention "higher degree = top for uptrends / bottom for downtrends".
+ */
+function computeLabelOffsets(ewDrawings: Drawing[], candleInterval: number): Map<string, number> {
+  const offsets = new Map<string, number>();
+  if (ewDrawings.length === 0) return offsets;
+
+  // Group drawings whose final points share approximately the same time.
+  const tolerance = candleInterval * 0.5;
+  const groups: string[][] = [];
+
+  for (const drawing of ewDrawings) {
+    if (drawing.points.length < 2) {
+      offsets.set(drawing.id, 0);
+      continue;
+    }
+    const lastTime = drawing.points[drawing.points.length - 1].time as number;
+
+    let placed = false;
+    for (const group of groups) {
+      const representative = ewDrawings.find(d => d.id === group[0]);
+      if (!representative || representative.points.length < 2) continue;
+      const repTime = representative.points[representative.points.length - 1].time as number;
+      if (Math.abs(lastTime - repTime) <= tolerance) {
+        group.push(drawing.id);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      groups.push([drawing.id]);
+    }
+  }
+
+  for (const group of groups) {
+    if (group.length === 1) {
+      offsets.set(group[0], 0);
+      continue;
+    }
+
+    // Sort: lower degree (higher getDegreeIndex value) first → gets offset 0.
+    // Higher degree (lower getDegreeIndex value) last → gets the largest offset.
+    const sorted = [...group].sort((idA, idB) => {
+      const dA = ewDrawings.find(d => d.id === idA);
+      const dB = ewDrawings.find(d => d.id === idB);
+      const degA = getDegreeIndex((dA?.style as any)?.degreeLabel);
+      const degB = getDegreeIndex((dB?.style as any)?.degreeLabel);
+      return degB - degA; // descending: Minor (5) before Primary (3) before Cycle (2)
+    });
+
+    sorted.forEach((id, index) => offsets.set(id, index));
+  }
+
+  return offsets;
+}
+
 interface UseElliottWaveRenderingParams {
   candleSeriesRef: React.MutableRefObject<any>;
   chartRef: React.MutableRefObject<any>;
@@ -98,6 +179,11 @@ export function useElliottWaveRendering({
 
     const ewDrawings = drawings.filter(drawing => drawing.type === 'elliott_wave');
     const currentIds = new Set(ewDrawings.map(drawing => drawing.id));
+    const lastCandleTime = candles.length > 0 ? (candles[candles.length - 1].time as number) : undefined;
+    const candleInterval = candles.length >= 2 ? (candles[1].time as number) - (candles[0].time as number) : 3600;
+
+    // Compute stacking offsets so that labels at the same endpoint don't overlap.
+    const labelOffsets = computeLabelOffsets(ewDrawings, candleInterval);
 
     savedEWPrimitivesRef.current.forEach((primitive, id) => {
       if (!currentIds.has(id)) {
@@ -115,8 +201,6 @@ export function useElliottWaveRendering({
 
       const waveType = drawing.style?.waveType ?? 'EW';
       const color = drawing.style?.color ?? '#00CED1';
-      const lastCandleTime = candles.length > 0 ? (candles[candles.length - 1].time as number) : undefined;
-      const candleInterval = candles.length >= 2 ? (candles[1].time as number) - (candles[0].time as number) : 3600;
 
       const data = {
         points: drawing.points.map(point => ({
@@ -132,6 +216,7 @@ export function useElliottWaveRendering({
         candleInterval,
         barCount: candles.length,
         isSelected: drawing.id === selectedWaveId,
+        labelOffset: labelOffsets.get(drawing.id) ?? 0,
       };
 
       const existing = savedEWPrimitivesRef.current.get(drawing.id);
