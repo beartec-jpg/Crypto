@@ -1,8 +1,9 @@
 import type { Snapshot } from '@/services/patternDetectors.ts';
-import { shouldUpdatePatternSnapshot } from '@/services/patternDetectors.ts';
 
 const SNAPSHOT_LIMIT = 180;
 const HISTORY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+// Minimum interval between persisted snapshots (4 hours in ms)
+const SNAPSHOT_MIN_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
 function getKey(symbol: string): string {
   return `gds_history_${symbol}`;
@@ -67,7 +68,7 @@ export class PatternHistoryManager {
 
     const nextHistory = [...history];
 
-    if (shouldUpdatePatternSnapshot(previous, now)) {
+    if (!previous || now - previous.timestamp >= SNAPSHOT_MIN_INTERVAL_MS) {
       nextHistory.push(normalized);
     } else {
       const cleaned = sortAndTrim(nextHistory, now);
