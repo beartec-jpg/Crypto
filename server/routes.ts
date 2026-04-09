@@ -4434,47 +4434,81 @@ Be concise and direct.`;
       const data1h = computeIndicators(bars1h);
       const data4h = computeIndicators(bars4h);
 
+      // Constants for trade idea validation
+      const RSI_BULLISH_THRESHOLD = 55;
+      const RSI_BEARISH_THRESHOLD = 45;
+      const HTF_4H_WEIGHT = 2;     // 4h RSI/MACD weighted twice vs 1h
+      const HTF_1H_WEIGHT = 1;
+      const BIAS_SCORE_THRESHOLD = 2; // Score needed to declare BULLISH or BEARISH
+      const MIN_RISK_REWARD_RATIO = 1.5;
+      const DUPLICATE_ENTRY_THRESHOLD_PCT = 0.001; // 0.1% tolerance for same-entry detection
+
+      // Derive dominant HTF bias from 1h and 4h to anchor trade direction in the prompt
+      const htfBiasScore = (() => {
+        let score = 0;
+        const rsi4h = parseFloat(data4h.rsi);
+        const rsi1h = parseFloat(data1h.rsi);
+        if (rsi4h > RSI_BULLISH_THRESHOLD) score += HTF_4H_WEIGHT; else if (rsi4h < RSI_BEARISH_THRESHOLD) score -= HTF_4H_WEIGHT;
+        if (rsi1h > RSI_BULLISH_THRESHOLD) score += HTF_1H_WEIGHT; else if (rsi1h < RSI_BEARISH_THRESHOLD) score -= HTF_1H_WEIGHT;
+        if (parseFloat(data4h.macd.histogram) > 0) score += HTF_4H_WEIGHT; else if (parseFloat(data4h.macd.histogram) < 0) score -= HTF_4H_WEIGHT;
+        if (parseFloat(data1h.macd.histogram) > 0) score += HTF_1H_WEIGHT; else if (parseFloat(data1h.macd.histogram) < 0) score -= HTF_1H_WEIGHT;
+        return score;
+      })();
+      const dominantBias = htfBiasScore >= BIAS_SCORE_THRESHOLD ? 'BULLISH' : htfBiasScore <= -BIAS_SCORE_THRESHOLD ? 'BEARISH' : 'NEUTRAL';
+
       // Build multi-TF prompt for Grok
       const prompt = `Symbol: ${symbol} | Multi-Timeframe Analysis (5m, 15m, 1h, 4h)
-You are analyzing this asset across 4 timeframes to find trades with cross-timeframe confluence.
 
-**5-Minute Data (Scalp/Entry timing, 15min-1h trades):**
-- Price: $${data5m.currentPrice}, RSI: ${data5m.rsi}, MACD Histogram: ${data5m.macd.histogram}${data5m.macd.crossover !== 'none' ? ` (${data5m.macd.crossover})` : ''}
+**Current Price:** $${data5m.currentPrice}
+**HTF Dominant Bias (1h+4h weighted):** ${dominantBias} (score: ${htfBiasScore})
+
+**5-Minute Data:**
+- RSI: ${data5m.rsi}, MACD Histogram: ${data5m.macd.histogram}${data5m.macd.crossover !== 'none' ? ` (${data5m.macd.crossover})` : ''}
 - Stochastic: %K ${data5m.stoch.k}, %D ${data5m.stoch.d}${data5m.stoch.crossover !== 'none' ? ` (${data5m.stoch.crossover})` : ''}
 - ADX: ${data5m.adx}, ATR: ${data5m.atr}, BB Squeeze: ${data5m.bb.squeeze ? 'YES' : 'No'}
 - VWAP: $${data5m.vwap}, OBV: ${data5m.obv}
 - Structure: ${data5m.bos} BOS, ${data5m.choch} CHoCH
 - Range: High $${data5m.recentHigh}, Low $${data5m.recentLow}
 
-**15-Minute Data (Short-term, 1-4h trades):**
-- Price: $${data15m.currentPrice}, RSI: ${data15m.rsi}, MACD Histogram: ${data15m.macd.histogram}${data15m.macd.crossover !== 'none' ? ` (${data15m.macd.crossover})` : ''}
+**15-Minute Data:**
+- RSI: ${data15m.rsi}, MACD Histogram: ${data15m.macd.histogram}${data15m.macd.crossover !== 'none' ? ` (${data15m.macd.crossover})` : ''}
 - Stochastic: %K ${data15m.stoch.k}, %D ${data15m.stoch.d}${data15m.stoch.crossover !== 'none' ? ` (${data15m.stoch.crossover})` : ''}
 - ADX: ${data15m.adx}, ATR: ${data15m.atr}, BB Squeeze: ${data15m.bb.squeeze ? 'YES' : 'No'}
 - VWAP: $${data15m.vwap}, OBV: ${data15m.obv}
 - Structure: ${data15m.bos} BOS, ${data15m.choch} CHoCH
 - Range: High $${data15m.recentHigh}, Low $${data15m.recentLow}
 
-**1-Hour Data (Medium-term, 4h-1d trades):**
-- Price: $${data1h.currentPrice}, RSI: ${data1h.rsi}, MACD Histogram: ${data1h.macd.histogram}${data1h.macd.crossover !== 'none' ? ` (${data1h.macd.crossover})` : ''}
+**1-Hour Data:**
+- RSI: ${data1h.rsi}, MACD Histogram: ${data1h.macd.histogram}${data1h.macd.crossover !== 'none' ? ` (${data1h.macd.crossover})` : ''}
 - Stochastic: %K ${data1h.stoch.k}, %D ${data1h.stoch.d}${data1h.stoch.crossover !== 'none' ? ` (${data1h.stoch.crossover})` : ''}
 - ADX: ${data1h.adx}, ATR: ${data1h.atr}, BB Squeeze: ${data1h.bb.squeeze ? 'YES' : 'No'}
 - VWAP: $${data1h.vwap}, OBV: ${data1h.obv}
 - Structure: ${data1h.bos} BOS, ${data1h.choch} CHoCH
 - Range: High $${data1h.recentHigh}, Low $${data1h.recentLow}
 
-**4-Hour Data (Long-term, 1-3d trades):**
-- Price: $${data4h.currentPrice}, RSI: ${data4h.rsi}, MACD Histogram: ${data4h.macd.histogram}${data4h.macd.crossover !== 'none' ? ` (${data4h.macd.crossover})` : ''}
+**4-Hour Data:**
+- RSI: ${data4h.rsi}, MACD Histogram: ${data4h.macd.histogram}${data4h.macd.crossover !== 'none' ? ` (${data4h.macd.crossover})` : ''}
 - Stochastic: %K ${data4h.stoch.k}, %D ${data4h.stoch.d}${data4h.stoch.crossover !== 'none' ? ` (${data4h.stoch.crossover})` : ''}
 - ADX: ${data4h.adx}, ATR: ${data4h.atr}, BB Squeeze: ${data4h.bb.squeeze ? 'YES' : 'No'}
 - VWAP: $${data4h.vwap}, OBV: ${data4h.obv}
 - Structure: ${data4h.bos} BOS, ${data4h.choch} CHoCH
 - Range: High $${data4h.recentHigh}, Low $${data4h.recentLow}
 
+**STRICT TRADE IDEA RULES — YOU MUST FOLLOW THESE:**
+1. The dominant HTF bias is ${dominantBias}. Trade ideas MUST align with this bias unless the bias is NEUTRAL and a clear counter-trend A+ setup exists.
+2. NEVER output a LONG and SHORT trade with the same or near-identical entry price. This is a direct contradiction and is strictly forbidden.
+3. Each trade idea must be a DISTINCT setup: different entry level and/or different primary timeframe.
+4. Minimum risk-reward ratio is ${MIN_RISK_REWARD_RATIO}:1. Discard any setup that cannot achieve at least ${MIN_RISK_REWARD_RATIO}:1 R/R.
+5. For LONG: stopLoss MUST be below entry, TP1/TP2 MUST be above entry.
+6. For SHORT: stopLoss MUST be above entry, TP1/TP2 MUST be below entry.
+7. Entry must be at a meaningful level (key support/resistance, VWAP, recent swing) — NOT simply the current price unless price is exactly at that level.
+8. Output a maximum of 2 trade ideas. If only one high-quality setup exists, output just 1.
+9. Do NOT hedge by offering opposing setups. Commit to the directional bias supported by the data.
+
 **Your Task:**
-1. Provide a 2-sentence summary for EACH timeframe's bias and key observation.
-2. Provide a 2-sentence overall cross-TF summary with alignment assessment.
-3. Identify 1-3 best trades that have CROSS-TIMEFRAME CONFLUENCE (higher TF sets bias, lower TF for timing).
-4. Grade each trade A+ to C based on confluence strength.
+1. Summarize each timeframe's bias in 2 sentences, noting the most important indicator reading.
+2. Provide a 2-sentence overall cross-TF confluence summary identifying the dominant trend direction.
+3. Generate 1-2 trade ideas that strictly follow ALL rules above, graded A+ to C on confluence strength.
 
 Respond with ONLY valid JSON in this exact format:
 {
@@ -4490,11 +4524,11 @@ Respond with ONLY valid JSON in this exact format:
       "grade": "A+/A/B/C",
       "primaryTF": "15m/1h/4h",
       "direction": "LONG/SHORT",
-      "entry": "price",
-      "stopLoss": "price",
-      "targets": ["TP1", "TP2"],
-      "confluenceSignals": ["4-6 signals with TF prefix, e.g., '4h bullish bias + 1h RSI oversold + 15m stoch crossover'"],
-      "reasoning": "1 sentence explaining cross-TF logic"
+      "entry": "exact price at key level",
+      "stopLoss": "exact price (below entry for LONG, above entry for SHORT)",
+      "targets": ["TP1 price", "TP2 price"],
+      "confluenceSignals": ["signal 1 with TF prefix", "signal 2", "signal 3", "signal 4"],
+      "reasoning": "1 sentence explaining why this setup has cross-TF confluence"
     }
   ]
 }`;
@@ -4506,12 +4540,12 @@ Respond with ONLY valid JSON in this exact format:
         messages: [
           {
             role: "system",
-            content: "You are a professional crypto trader expert in multi-timeframe analysis. Higher timeframes set the bias, lower timeframes provide entry timing. Always respond with valid JSON only."
+            content: "You are a professional crypto trader specialising in multi-timeframe confluence analysis. Your primary job is to identify the dominant higher-timeframe (1h/4h) directional bias and generate trade ideas that ALIGN with that bias. You never output contradictory LONG and SHORT setups from the same entry price. You always validate that each trade has a minimum 1.5:1 risk-reward ratio before including it. Always respond with valid JSON only, no markdown."
           },
           { role: "user", content: prompt }
         ],
-        temperature: 0.7,
-        max_tokens: 1500
+        temperature: 0.3,
+        max_tokens: 2000
       });
 
       const duration = Date.now() - startTime;
@@ -4531,6 +4565,76 @@ Respond with ONLY valid JSON in this exact format:
         console.error('Failed to parse Grok response:', parseError);
         parsedResult = { multiTFInsights: null, bestTrades: [] };
       }
+
+      // === Server-side validation of trade ideas ===
+      const rawTrades: any[] = parsedResult.bestTrades || [];
+
+      const sanitisedTrades = rawTrades.filter((trade: any) => {
+        const entry = parseFloat(trade.entry);
+        const sl = parseFloat(trade.stopLoss);
+        const tp1 = parseFloat((trade.targets || [])[0]);
+
+        // Reject trades with non-numeric core fields
+        if (isNaN(entry) || isNaN(sl) || isNaN(tp1)) return false;
+
+        const isLong = trade.direction === 'LONG';
+        const isShort = trade.direction === 'SHORT';
+
+        // Validate TP/SL direction logic
+        if (isLong && (sl >= entry || tp1 <= entry)) {
+          console.warn('⚠️ Discarding invalid LONG (SL above entry or TP below entry):', trade);
+          return false;
+        }
+        if (isShort && (sl <= entry || tp1 >= entry)) {
+          console.warn('⚠️ Discarding invalid SHORT (SL below entry or TP above entry):', trade);
+          return false;
+        }
+
+        // Enforce minimum risk-reward ratio
+        const risk = Math.abs(entry - sl);
+        const reward = Math.abs(tp1 - entry);
+        if (risk === 0 || reward / risk < MIN_RISK_REWARD_RATIO) {
+          console.warn(`⚠️ Discarding trade with insufficient R/R (${(reward / risk).toFixed(2)}:1, min ${MIN_RISK_REWARD_RATIO}:1):`, trade);
+          return false;
+        }
+
+        return true;
+      });
+
+      // Remove contradictory pairs: LONG+SHORT within 0.1% of the same entry
+      const dedupedTrades: any[] = [];
+      for (const trade of sanitisedTrades) {
+        const entry = parseFloat(trade.entry);
+        const conflicting = dedupedTrades.find((t: any) => {
+          const tEntry = parseFloat(t.entry);
+          return t.direction !== trade.direction && Math.abs(tEntry - entry) / entry < DUPLICATE_ENTRY_THRESHOLD_PCT;
+        });
+        if (conflicting) {
+          // Keep only the one aligned with dominant HTF bias (or the better R/R if both align)
+          const tradeRR = Math.abs(parseFloat((trade.targets || [])[0]) - entry) / Math.abs(entry - parseFloat(trade.stopLoss));
+          const conflictRR = Math.abs(parseFloat((conflicting.targets || [])[0]) - parseFloat(conflicting.entry)) / Math.abs(parseFloat(conflicting.entry) - parseFloat(conflicting.stopLoss));
+          const tradeAlignsBias = (dominantBias === 'BULLISH' && trade.direction === 'LONG') || (dominantBias === 'BEARISH' && trade.direction === 'SHORT');
+          const conflictAlignsBias = (dominantBias === 'BULLISH' && conflicting.direction === 'LONG') || (dominantBias === 'BEARISH' && conflicting.direction === 'SHORT');
+          if (tradeAlignsBias && !conflictAlignsBias) {
+            // Replace the conflicting (non-aligned) entry with this one
+            const idx = dedupedTrades.indexOf(conflicting);
+            dedupedTrades.splice(idx, 1, trade);
+          } else if (!tradeAlignsBias && conflictAlignsBias) {
+            // Keep the existing aligned trade, discard this one
+          } else if (tradeRR > conflictRR) {
+            // Both same alignment – keep better R/R
+            const idx = dedupedTrades.indexOf(conflicting);
+            dedupedTrades.splice(idx, 1, trade);
+          }
+          console.warn('⚠️ Removed contradictory trade pair from Grok output');
+        } else {
+          dedupedTrades.push(trade);
+        }
+      }
+
+      const validatedTrades = dedupedTrades.slice(0, 2); // Hard cap at 2
+      console.log(`✅ Trade ideas after validation: ${validatedTrades.length} (raw: ${rawTrades.length})`);
+      parsedResult.bestTrades = validatedTrades;
 
       // Save Multi-TF analysis to cache
       try {
