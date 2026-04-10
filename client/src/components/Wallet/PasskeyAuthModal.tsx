@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { Lock, Shield, Key, AlertTriangle, Eye, EyeOff, Check, X, Import, Plus } from 'lucide-react';
+import ColdSignerInstallButton from '@/components/Wallet/ColdSignerInstallButton';
 import { 
   createWallet, 
   importWallet, 
@@ -12,7 +13,6 @@ import {
   removeAllWalletsForUser
 } from '@/lib/walletService';
 import { reconstructMnemonic, splitMnemonic } from '@/lib/shamirService';
-import { coldSignerInstallUrl, requestColdSignerInstall } from '@/lib/coldSignerInstall';
 import { 
   registerPasskey, 
   authenticateWithPasskey, 
@@ -739,15 +739,10 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
                 >
                   Restore from recovery options instead
                 </button>
-                <a
-                  href={coldSignerInstallUrl}
-                  onClick={requestColdSignerInstall}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <ColdSignerInstallButton
+                  label="Install Cold Signer app (offline device)"
                   className="text-sm text-cyan-400 hover:text-cyan-300 transition-colors block w-full"
-                >
-                  Install Cold Signer app (offline device)
-                </a>
+                />
                 <button
                   onClick={() => setMode('create')}
                   className="text-sm text-emerald-500 hover:text-emerald-400 transition-colors block w-full"

@@ -40,10 +40,18 @@ function App() {
     updateStandaloneState();
     const installUrl = new URL(window.location.href);
     const installFromQuery = installUrl.searchParams.get('install') === '1';
+    const popupInstallFlow = installUrl.searchParams.get('popup') === '1';
     const installFromStorage = window.localStorage.getItem(COLD_SIGNER_INSTALL_REQUEST_KEY) !== null;
 
     if (installFromQuery) {
       installUrl.searchParams.delete('install');
+    }
+
+    if (popupInstallFlow) {
+      installUrl.searchParams.delete('popup');
+    }
+
+    if (installFromQuery || popupInstallFlow) {
       window.history.replaceState({}, '', installUrl.toString());
     }
 
@@ -62,6 +70,10 @@ function App() {
     const handleAppInstalled = () => {
       setDeferredPrompt(null);
       setIsStandalone(true);
+
+      if (popupInstallFlow && window.opener) {
+        window.close();
+      }
     };
     
     // Monitor network status

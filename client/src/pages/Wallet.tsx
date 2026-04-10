@@ -11,13 +11,13 @@ import ReceiveModal from '@/components/Wallet/ReceiveModal';
 import BitcoinSendModal from '@/components/Wallet/BitcoinSendModal';
 import SolanaSendModal from '@/components/Wallet/SolanaSendModal';
 import PasskeyAuthModal from '@/components/Wallet/PasskeyAuthModal';
+import ColdSignerInstallButton from '@/components/Wallet/ColdSignerInstallButton';
 import PinEntryModal from '@/components/Wallet/PinEntryModal';
 import SecuritySettings from '@/components/Wallet/SecuritySettings';
 import SecurityEducationCenter from '@/components/Security/SecurityEducationCenter';
 import { getCurrentWallet, migrateWalletToUser, deleteWallet } from '@/lib/walletService';
 import { securityManager, getSecurityRequirements } from '@/lib/securityService';
 import { getWalletTokens, clearWalletTokens, ensureNativeTokens, type Token } from '@/lib/tokenService';
-import { coldSignerInstallUrl, requestColdSignerInstall } from '@/lib/coldSignerInstall';
 import type { TokenNetwork } from '@/lib/tokenService';
 import { deriveWIFFromPrivateKey } from '@/lib/bitcoinService';
 import { usePendingTransactions } from '@/hooks/usePendingTransactions';
@@ -495,15 +495,10 @@ export default function WalletPage() {
                   {isOpeningAuth ? 'Opening…' : 'Unlock Wallet'}
                 </button>
 
-                <a
-                  href={coldSignerInstallUrl}
-                  onClick={requestColdSignerInstall}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <ColdSignerInstallButton
+                  label="Install Cold Signer app before unlocking"
                   className="mt-4 inline-flex items-center gap-2 text-sm text-cyan-300 hover:text-cyan-200 transition-colors"
-                >
-                  Install Cold Signer app before unlocking
-                </a>
+                />
               </div>
             ) : (
               <div className="bg-gray-800 rounded-2xl p-8 mb-8">
@@ -531,15 +526,10 @@ export default function WalletPage() {
                     </p>
                   )}
 
-                  <a
-                    href={coldSignerInstallUrl}
-                    onClick={requestColdSignerInstall}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <ColdSignerInstallButton
+                    label="Install Cold Signer on your offline device first"
                     className="text-center text-sm text-cyan-300 hover:text-cyan-200 transition-colors"
-                  >
-                    Install Cold Signer on your offline device first
-                  </a>
+                  />
                 </div>
 
                 <div className="mt-8 p-4 rounded-xl bg-gray-900/50 border border-gray-700 max-w-2xl mx-auto">
