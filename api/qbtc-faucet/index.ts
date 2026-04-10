@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { rpcCallPinned } from '../_lib/rpcFailover';
+import { rpcCallPinned } from '../_lib/rpcFailover.js';
 
 const CLAIM_AMOUNT = 0.5;
 const RATE_LIMIT_MS = 60 * 60 * 1000;
