@@ -12,6 +12,7 @@ import {
   removeAllWalletsForUser
 } from '@/lib/walletService';
 import { reconstructMnemonic, splitMnemonic } from '@/lib/shamirService';
+import { coldSignerInstallUrl, requestColdSignerInstall } from '@/lib/coldSignerInstall';
 import { 
   registerPasskey, 
   authenticateWithPasskey, 
@@ -739,7 +740,8 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
                   Restore from recovery options instead
                 </button>
                 <a
-                  href="/cold-signer/"
+                  href={coldSignerInstallUrl}
+                  onClick={requestColdSignerInstall}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-sm text-cyan-400 hover:text-cyan-300 transition-colors block w-full"

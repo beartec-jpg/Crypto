@@ -17,6 +17,7 @@ import SecurityEducationCenter from '@/components/Security/SecurityEducationCent
 import { getCurrentWallet, migrateWalletToUser, deleteWallet } from '@/lib/walletService';
 import { securityManager, getSecurityRequirements } from '@/lib/securityService';
 import { getWalletTokens, clearWalletTokens, ensureNativeTokens, type Token } from '@/lib/tokenService';
+import { coldSignerInstallUrl, requestColdSignerInstall } from '@/lib/coldSignerInstall';
 import type { TokenNetwork } from '@/lib/tokenService';
 import { deriveWIFFromPrivateKey } from '@/lib/bitcoinService';
 import { usePendingTransactions } from '@/hooks/usePendingTransactions';
@@ -495,7 +496,8 @@ export default function WalletPage() {
                 </button>
 
                 <a
-                  href="/cold-signer/"
+                  href={coldSignerInstallUrl}
+                  onClick={requestColdSignerInstall}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="mt-4 inline-flex items-center gap-2 text-sm text-cyan-300 hover:text-cyan-200 transition-colors"
@@ -530,7 +532,8 @@ export default function WalletPage() {
                   )}
 
                   <a
-                    href="/cold-signer/"
+                    href={coldSignerInstallUrl}
+                    onClick={requestColdSignerInstall}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-center text-sm text-cyan-300 hover:text-cyan-200 transition-colors"

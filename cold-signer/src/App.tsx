@@ -9,34 +9,110 @@ import { AppStep, UnsignedTransaction, TransactionPreviewData } from './types/co
 import { signTransaction } from './lib/coldSigner';
 import { loadAndDecryptShare, hasStoredShare } from './lib/offlineStorage';
 
+const COLD_SIGNER_INSTALL_REQUEST_KEY = 'cold-signer-install-request';
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
 function App() {
   const [step, setStep] = useState<AppStep>('idle');
   const [hasShare, setHasShare] = useState(false);
+  const [isCheckingShare, setIsCheckingShare] = useState(true);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+  const [installRequested, setInstallRequested] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [scannedData, setScannedData] = useState<UnsignedTransaction | null>(null);
   const [signedTx, setSignedTx] = useState<string>('');
   const [error, setError] = useState<string>('');
 
   useEffect(() => {
-    checkShare();
+    const displayModeQuery = window.matchMedia('(display-mode: standalone)');
+    const updateStandaloneState = () => {
+      const iosStandalone = Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+      setIsStandalone(displayModeQuery.matches || iosStandalone);
+    };
+
+    setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent));
+    updateStandaloneState();
+    const installUrl = new URL(window.location.href);
+    const installFromQuery = installUrl.searchParams.get('install') === '1';
+    const installFromStorage = window.localStorage.getItem(COLD_SIGNER_INSTALL_REQUEST_KEY) !== null;
+
+    if (installFromQuery) {
+      installUrl.searchParams.delete('install');
+      window.history.replaceState({}, '', installUrl.toString());
+    }
+
+    if (installFromStorage) {
+      window.localStorage.removeItem(COLD_SIGNER_INSTALL_REQUEST_KEY);
+    }
+
+    setInstallRequested(installFromQuery || installFromStorage);
+    void checkShare();
+
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setDeferredPrompt(event as BeforeInstallPromptEvent);
+    };
+
+    const handleAppInstalled = () => {
+      setDeferredPrompt(null);
+      setIsStandalone(true);
+    };
     
     // Monitor network status
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
     
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    displayModeQuery.addEventListener('change', updateStandaloneState);
     
     return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      displayModeQuery.removeEventListener('change', updateStandaloneState);
     };
   }, []);
 
   const checkShare = async () => {
-    const exists = await hasStoredShare();
-    setHasShare(exists);
+    try {
+      const exists = await hasStoredShare();
+      setHasShare(exists);
+    } finally {
+      setIsCheckingShare(false);
+    }
   };
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) {
+      return;
+    }
+
+    await deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    setInstallRequested(false);
+
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!installRequested || !deferredPrompt || isStandalone) {
+      return;
+    }
+
+    void handleInstallClick();
+  }, [installRequested, deferredPrompt, isStandalone]);
 
   const handleScanComplete = (data: string) => {
     try {
@@ -108,8 +184,19 @@ function App() {
     setHasShare(true);
   };
 
+  if (isCheckingShare) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-400">Checking secure storage...</p>
+        </div>
+      </div>
+    );
+  }
+
   // Network warning
-  if (isOnline) {
+  if (isOnline && hasShare) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-red-900 text-white p-4">
         <div className="w-full max-w-md text-center">
@@ -133,7 +220,20 @@ function App() {
 
   // Share setup required
   if (!hasShare) {
-    return <ShareManager onShareLoaded={handleShareLoaded} />;
+    return (
+      <ShareManager
+        onShareLoaded={handleShareLoaded}
+        installPrompt={
+          isOnline && !isStandalone
+            ? {
+                canPrompt: deferredPrompt !== null,
+                isIOS,
+                onInstall: handleInstallClick,
+              }
+            : undefined
+        }
+      />
+    );
   }
 
   // Main app flow

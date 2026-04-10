@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, Upload, AlertCircle, CheckCircle, Eye, EyeOff, QrCode } from 'lucide-react';
+import { Shield, Upload, AlertCircle, CheckCircle, Eye, EyeOff, QrCode, Download, Share2 } from 'lucide-react';
 import { encrypt, generateSalt, validatePassword } from '../lib/coldCrypto';
 import { storeEncryptedShare, getStoredShare, clearAllShares } from '../lib/offlineStorage';
 import { EncryptedShare } from '../types/coldTypes';
@@ -8,9 +8,14 @@ import QRScanner from './QRScanner';
 
 interface ShareManagerProps {
   onShareLoaded: () => void;
+  installPrompt?: {
+    canPrompt: boolean;
+    isIOS: boolean;
+    onInstall: () => Promise<void>;
+  };
 }
 
-export default function ShareManager({ onShareLoaded }: ShareManagerProps) {
+export default function ShareManager({ onShareLoaded, installPrompt }: ShareManagerProps) {
   const [hasShare, setHasShare] = useState(false);
   const [share, setShare] = useState('');
   const [password, setPassword] = useState('');
@@ -161,6 +166,44 @@ export default function ShareManager({ onShareLoaded }: ShareManagerProps) {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-4">
       <div className="w-full max-w-md">
+        {installPrompt && (
+          <div className="mb-6 rounded-lg border border-cyan-500/40 bg-cyan-500/10 p-4">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 rounded-lg bg-cyan-500/20 p-2">
+                {installPrompt.isIOS ? (
+                  <Share2 className="h-5 w-5 text-cyan-300" />
+                ) : (
+                  <Download className="h-5 w-5 text-cyan-300" />
+                )}
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-cyan-200">Install on this device before importing your share</p>
+                <p className="mt-1 text-sm text-cyan-100/80">
+                  First-time setup can happen online. Once your Shamir share is stored, this device should stay offline.
+                </p>
+                {installPrompt.isIOS ? (
+                  <p className="mt-3 text-sm text-cyan-100">
+                    Open the browser share menu and choose Add to Home Screen.
+                  </p>
+                ) : installPrompt.canPrompt ? (
+                  <button
+                    type="button"
+                    onClick={() => void installPrompt.onInstall()}
+                    className="mt-3 inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-gray-950 transition-colors hover:bg-cyan-300"
+                  >
+                    <Download className="h-4 w-4" />
+                    Install app
+                  </button>
+                ) : (
+                  <p className="mt-3 text-sm text-cyan-100">
+                    If the install button does not appear, use the browser menu and choose Install app or Add to Home Screen.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-emerald-500/20 rounded-full mb-4">
             <Shield className="w-10 h-10 text-emerald-500" />
