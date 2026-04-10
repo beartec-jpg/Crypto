@@ -115,9 +115,12 @@ export async function signQBTCTransaction(
   let dilithiumSignature = '';
 
   try {
-    // Attempt to load dilithium dynamically
-    // @ts-ignore — dilithium-crystals may not be installed yet
-    const dilithiumModule = await import('dilithium-crystals');
+    // Attempt to load dilithium dynamically at runtime only.
+    // Use an indirect specifier so Vite/Rollup does not require the module at build time.
+    const moduleName = 'dilithium-crystals';
+    // eslint-disable-next-line no-eval
+    const dynamicImport = (0, eval)('import');
+    const dilithiumModule = await dynamicImport(moduleName);
     const dilithium = dilithiumModule.default || dilithiumModule;
 
     const dlSeed = await deriveDilithiumSeed(mnemonic);
