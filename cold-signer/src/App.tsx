@@ -24,6 +24,7 @@ function App() {
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
   const [isPopupInstallFlow, setIsPopupInstallFlow] = useState(false);
+  const [hasInstallIntent, setHasInstallIntent] = useState(false);
   const [postInstallMessage, setPostInstallMessage] = useState('');
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -62,7 +63,8 @@ function App() {
     }
 
     const shouldOpenInstallModal = installFromQuery || popupInstallFlow || installFromStorage;
-  setIsPopupInstallFlow(popupInstallFlow);
+    setIsPopupInstallFlow(popupInstallFlow);
+    setHasInstallIntent(shouldOpenInstallModal);
     setShowInstallModal(shouldOpenInstallModal);
     void checkShare();
 
@@ -215,6 +217,7 @@ function App() {
   };
 
   const canConfigureShare = isStandalone;
+  const isReinstallBrowserFlow = hasInstallIntent && !isStandalone;
 
   if (isCheckingShare) {
     return (
@@ -228,7 +231,7 @@ function App() {
   }
 
   // Network warning
-  if (isOnline && hasShare) {
+  if (isOnline && hasShare && !isReinstallBrowserFlow) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-red-900 text-white p-4">
         <div className="w-full max-w-md text-center">
@@ -264,7 +267,7 @@ function App() {
     );
   }
 
-  if (!hasShare && !canConfigureShare) {
+  if ((!hasShare && !canConfigureShare) || isReinstallBrowserFlow) {
     return (
       <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gray-950 px-4 py-10 text-white">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.18),_transparent_42%),radial-gradient(circle_at_bottom,_rgba(6,182,212,0.16),_transparent_35%)]" />
@@ -278,6 +281,22 @@ function App() {
               Install the dedicated Cold Signer app on this device before importing your Shamir share.
             </p>
           </div>
+
+          {isReinstallBrowserFlow && hasShare && (
+            <div className="mb-6 rounded-2xl border border-amber-400/30 bg-amber-500/10 p-5 text-left text-sm text-amber-100">
+              <p className="font-semibold text-amber-200">Existing cold share detected in browser storage</p>
+              <p className="mt-2">
+                Browser PWAs do not expose a reliable uninstall event, so removing the app icon may leave the encrypted share behind. Clear it here to make this device clean before reinstalling or reprovisioning.
+              </p>
+              <button
+                type="button"
+                onClick={() => void handleEmergencyClearShare()}
+                className="mt-4 w-full rounded-xl bg-amber-300 px-4 py-3 font-semibold text-amber-950 transition-colors hover:bg-amber-200"
+              >
+                Remove Stored Share And Start Clean
+              </button>
+            </div>
+          )}
 
           <div className="space-y-4 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-5 text-sm text-cyan-100">
             <p className="font-semibold text-cyan-200">What happens next</p>
@@ -298,6 +317,11 @@ function App() {
             {postInstallMessage && (
               <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-emerald-200">
                 {postInstallMessage}
+              </p>
+            )}
+            {error && (
+              <p className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-white">
+                {error}
               </p>
             )}
             {isPopupInstallFlow && !isStandalone && (
