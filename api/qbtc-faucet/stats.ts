@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { rpcCall as rpcCallFailover } from '../qbtc/rpcFailover';
+import { rpcCall as rpcCallFailover } from '../_lib/rpcFailover';
 
 async function rpcCall(method: string, params: any[] = []) {
   const { result } = await rpcCallFailover(method, params);
