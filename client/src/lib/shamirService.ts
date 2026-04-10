@@ -1,8 +1,97 @@
-import secrets from 'secrets.js-grempe';
-
 export interface ShamirConfig {
   shares: number;
   threshold: number;
+}
+
+const SHARE_COUNT = 3;
+const SHARE_THRESHOLD = 2;
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  if (hex.length % 2 !== 0) {
+    throw new Error('Invalid hex string');
+  }
+
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+  }
+  return bytes;
+}
+
+function gf256Mul(a: number, b: number): number {
+  let product = 0;
+  let left = a;
+  let right = b;
+
+  for (let i = 0; i < 8; i += 1) {
+    if (right & 1) {
+      product ^= left;
+    }
+
+    const carry = left & 0x80;
+    left = (left << 1) & 0xff;
+
+    if (carry) {
+      left ^= 0x1b;
+    }
+
+    right >>= 1;
+  }
+
+  return product;
+}
+
+function gf256Pow(value: number, exponent: number): number {
+  let result = 1;
+  let base = value;
+  let power = exponent;
+
+  while (power > 0) {
+    if (power & 1) {
+      result = gf256Mul(result, base);
+    }
+
+    base = gf256Mul(base, base);
+    power >>= 1;
+  }
+
+  return result;
+}
+
+function gf256Inv(value: number): number {
+  if (value === 0) {
+    throw new Error('Share indices must be distinct');
+  }
+
+  return gf256Pow(value, 254);
+}
+
+function encodeShare(index: number, shareBytes: Uint8Array): string {
+  return index.toString(16).padStart(2, '0') + bytesToHex(shareBytes);
+}
+
+function decodeShare(share: string): { index: number; bytes: Uint8Array } {
+  if (!share || share.length < 4) {
+    throw new Error('Invalid share');
+  }
+
+  const normalized = share.trim().toLowerCase();
+  const index = parseInt(normalized.slice(0, 2), 16);
+
+  if (!Number.isInteger(index) || index < 1 || index > SHARE_COUNT) {
+    throw new Error('Invalid share index');
+  }
+
+  return {
+    index,
+    bytes: hexToBytes(normalized.slice(2)),
+  };
 }
 
 /**
@@ -19,21 +108,24 @@ export function splitMnemonic(
     throw new Error('Invalid mnemonic');
   }
 
-  if (config.shares < 2 || config.threshold < 2 || config.threshold > config.shares) {
-    throw new Error('Invalid Shamir configuration');
+  if (config.shares !== SHARE_COUNT || config.threshold !== SHARE_THRESHOLD) {
+    throw new Error('Only 2-of-3 Shamir configuration is supported');
   }
 
-  // Trim and normalize the mnemonic
   const normalizedMnemonic = mnemonic.trim().toLowerCase();
-  
-  // Convert mnemonic string to hex for secrets.js
-  const hexMnemonic = Buffer.from(normalizedMnemonic, 'utf8').toString('hex');
-  
-  // Generate shares using secrets.js
-  // secrets.js returns shares as hex strings - keep them as hex
-  const shares = secrets.share(hexMnemonic, config.shares, config.threshold);
-  
-  return shares;
+  const secretBytes = new TextEncoder().encode(normalizedMnemonic);
+  const coefficients = crypto.getRandomValues(new Uint8Array(secretBytes.length));
+
+  return Array.from({ length: SHARE_COUNT }, (_, shareOffset) => {
+    const x = shareOffset + 1;
+    const shareBytes = new Uint8Array(secretBytes.length);
+
+    for (let i = 0; i < secretBytes.length; i += 1) {
+      shareBytes[i] = secretBytes[i] ^ gf256Mul(coefficients[i], x);
+    }
+
+    return encodeShare(x, shareBytes);
+  });
 }
 
 /**
@@ -47,13 +139,22 @@ export function reconstructMnemonic(shares: string[]): string {
   }
 
   try {
-    // Reconstruct the secret (hex shares to hex mnemonic)
-    const hexMnemonic = secrets.combine(shares);
-    
-    // Convert hex back to mnemonic string
-    const mnemonic = Buffer.from(hexMnemonic, 'hex').toString('utf8');
-    
-    return mnemonic;
+    const [shareA, shareB] = shares.slice(0, 2).map(decodeShare);
+
+    if (shareA.bytes.length !== shareB.bytes.length) {
+      throw new Error('Share lengths do not match');
+    }
+
+    const recovered = new Uint8Array(shareA.bytes.length);
+    const denominator = shareA.index ^ shareB.index;
+    const lambdaA = gf256Mul(shareB.index, gf256Inv(denominator));
+    const lambdaB = gf256Mul(shareA.index, gf256Inv(denominator));
+
+    for (let i = 0; i < recovered.length; i += 1) {
+      recovered[i] = gf256Mul(shareA.bytes[i], lambdaA) ^ gf256Mul(shareB.bytes[i], lambdaB);
+    }
+
+    return new TextDecoder().decode(recovered);
   } catch (error) {
     throw new Error(`Failed to reconstruct mnemonic: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
