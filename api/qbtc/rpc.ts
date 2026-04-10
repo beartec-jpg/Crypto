@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { rpcCall as rpcCallFailover } from './rpcFailover';
+import { rpcCall as rpcCallFailover } from '../_lib/rpcFailover';
 
 type QbtcNetwork = 'testnet' | 'mainnet';
 
