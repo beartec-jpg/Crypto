@@ -23,7 +23,8 @@ function App() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
-  const [appInstalledInSession, setAppInstalledInSession] = useState(false);
+  const [isPopupInstallFlow, setIsPopupInstallFlow] = useState(false);
+  const [postInstallMessage, setPostInstallMessage] = useState('');
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [scannedData, setScannedData] = useState<UnsignedTransaction | null>(null);
@@ -61,6 +62,7 @@ function App() {
     }
 
     const shouldOpenInstallModal = installFromQuery || popupInstallFlow || installFromStorage;
+  setIsPopupInstallFlow(popupInstallFlow);
     setShowInstallModal(shouldOpenInstallModal);
     void checkShare();
 
@@ -72,8 +74,14 @@ function App() {
     const handleAppInstalled = () => {
       setDeferredPrompt(null);
       setIsStandalone(true);
-      setAppInstalledInSession(true);
       setShowInstallModal(false);
+
+      if (popupInstallFlow) {
+        setPostInstallMessage('Cold Signer installed. Close this window and reopen it from the installed app icon on the device.');
+        window.setTimeout(() => {
+          window.close();
+        }, 1200);
+      }
     };
     
     // Monitor network status
@@ -188,7 +196,7 @@ function App() {
     setHasShare(true);
   };
 
-  const canConfigureShare = isStandalone || appInstalledInSession;
+  const canConfigureShare = isStandalone;
 
   if (isCheckingShare) {
     return (
@@ -254,6 +262,14 @@ function App() {
               <p>The app is ready to install on this device.</p>
             ) : (
               <p>Waiting for the browser install prompt. If it never appears, this browser may require using its menu and choosing Install app.</p>
+            )}
+            {postInstallMessage && (
+              <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-emerald-200">
+                {postInstallMessage}
+              </p>
+            )}
+            {isPopupInstallFlow && !isStandalone && (
+              <p>This browser window is only for installation. Share import stays disabled here until Cold Signer is opened as the installed app.</p>
             )}
           </div>
 

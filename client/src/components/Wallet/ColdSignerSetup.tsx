@@ -28,6 +28,7 @@ export default function ColdSignerSetup({ mnemonic, onClose }: ColdSignerSetupPr
     try {
       const generatedShares = splitMnemonic(mnemonic, { shares: 3, threshold: 2 });
       setShares(generatedShares);
+      setShowShareQR(1);
       // Store Share 1 (hot share) for cold signer flow
       storeHotShare(generatedShares[0]);
       setStep('shares');
@@ -144,6 +145,26 @@ export default function ColdSignerSetup({ mnemonic, onClose }: ColdSignerSetupPr
           Store each share securely - you need any 2 to sign transactions
         </p>
       </div>
+
+      {shares[1] && (
+        <div className="rounded-lg border border-cyan-500 bg-cyan-500/10 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="font-semibold text-cyan-300">Share 2 for Cold Signer</p>
+              <p className="mt-1 text-sm text-cyan-100">
+                This is the share you transfer to the cold signer device. The QR is opened by default below.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowShareQR(showShareQR === 1 ? null : 1)}
+              className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-3 py-2 text-sm font-semibold text-gray-950 transition-colors hover:bg-cyan-300"
+            >
+              <QrCode className="w-4 h-4" />
+              {showShareQR === 1 ? 'Hide Share 2 QR' : 'Show Share 2 QR'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {shares.map((share, index) => (
         <div key={index} className="bg-gray-800 rounded-lg p-4 space-y-3">
@@ -262,6 +283,39 @@ export default function ColdSignerSetup({ mnemonic, onClose }: ColdSignerSetupPr
           <li>Never connect this device to the internet again</li>
         </ol>
       </div>
+
+      {shares[1] && (
+        <div className="bg-gray-800 rounded-lg p-4 space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-semibold">Share 2 QR for Cold Signer</p>
+              <p className="text-sm text-gray-400">Scan this from the installed Cold Signer app on the offline device.</p>
+            </div>
+            <button
+              onClick={() => setShowShareQR(showShareQR === 1 ? null : 1)}
+              className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-3 py-2 text-sm font-semibold text-gray-950 transition-colors hover:bg-cyan-300"
+            >
+              <QrCode className="w-4 h-4" />
+              {showShareQR === 1 ? 'Hide QR' : 'Show QR'}
+            </button>
+          </div>
+
+          {showShareQR === 1 && (
+            <div className="flex flex-col items-center gap-3 rounded-lg bg-white p-4">
+              <QRCodeSVG
+                value={shares[1]}
+                size={220}
+                bgColor="#ffffff"
+                fgColor="#000000"
+                level="M"
+              />
+              <p className="text-center text-xs font-medium text-gray-800">
+                Scan this QR from the installed Cold Signer app to import Share 2
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="bg-gray-800 rounded-lg p-4 space-y-2">
         <p className="text-sm font-medium">Cold Signer URL:</p>
