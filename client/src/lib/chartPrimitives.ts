@@ -24,6 +24,10 @@ interface DrawingStyle {
   internalLineStyle?: 'solid' | 'dashed' | 'dotted';
   extendLeft?: boolean;
   extendRight?: boolean;
+  /** When true, fib lines extend to the current (latest) candle's x position */
+  autoTrack?: boolean;
+  /** Injected at render time: the timestamp of the latest candle for autoTrack */
+  _trackToTime?: number;
   labelPosition?: 'left' | 'right';
   hiddenLevels?: number[];
   customLabels?: Record<number | string, string>;
@@ -78,6 +82,23 @@ function applyLineStyle(ctx: CanvasRenderingContext2D, lineStyle?: 'solid' | 'da
   } else if (style === 'dashed') {
     ctx.setLineDash([5, 5]);
   }
+}
+
+/**
+ * Extrapolate a timestamp to an x-coordinate using the visible time range.
+ * Returns null if the time scale boundaries cannot be determined.
+ */
+function extrapolateTimeToX(
+  timestamp: number,
+  timeScale: ReturnType<IChartApi['timeScale']>,
+  chartWidth: number
+): number | null {
+  const leftTime = timeScale.coordinateToTime(0);
+  const rightTime = timeScale.coordinateToTime(chartWidth);
+  if (leftTime === null || rightTime === null) return null;
+  const timeRange = (rightTime as number) - (leftTime as number);
+  if (timeRange === 0) return null;
+  return ((timestamp - (leftTime as number)) / timeRange) * chartWidth;
 }
 
 class TrendLineRenderer implements IPrimitivePaneRenderer {
@@ -864,18 +885,14 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
       const chartWidth = scope.mediaSize.width;
 
       // Extrapolate x coordinate for off-chart timestamps using visible time range
-      const extrapolateX = (timestamp: number): number | null => {
-        const leftTime = timeScale.coordinateToTime(0);
-        const rightTime = timeScale.coordinateToTime(chartWidth);
-        if (leftTime === null || rightTime === null) return null;
-        const timeRange = (rightTime as number) - (leftTime as number);
-        if (timeRange === 0) return null;
-        return ((timestamp - (leftTime as number)) / timeRange) * chartWidth;
-      };
+      const extrapolateX = (timestamp: number): number | null =>
+        extrapolateTimeToX(timestamp, timeScale, chartWidth);
 
       // Handle extend left/right from style
       const extendLeft = this._style.extendLeft ?? false;
       const extendRight = this._style.extendRight ?? false;
+      // autoTrack: extend right edge to the latest candle's x position
+      const autoTrack = this._style.autoTrack ?? true;
 
       // Calculate base coordinates with extrapolation for off-chart points
       const x1 = x1Raw !== null ? x1Raw : extrapolateX(this._point1.time);
@@ -884,11 +901,18 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
 
       // Skip if we can't determine all anchor coordinates
       if (x1 === null || x2 === null || x3 === null) return;
+
+      // Resolve autoTrack right edge: use latest candle coordinate when available
+      let autoTrackRight: number | null = null;
+      if (autoTrack && !extendRight && this._style._trackToTime !== undefined) {
+        const trackX = timeScale.timeToCoordinate(this._style._trackToTime as Time);
+        autoTrackRight = trackX !== null ? trackX : extrapolateX(this._style._trackToTime);
+      }
       
       // Determine drawing bounds based on extension and 3 points
       // Lines draw from min(point1.time, point2.time) to point3.time
       const anchorLeft = Math.min(x1, x2);
-      const anchorRight = x3;
+      const anchorRight = autoTrackRight !== null ? Math.max(x3, autoTrackRight) : x3;
       const lineLeft = extendLeft ? 0 : anchorLeft;
       const lineRight = extendRight ? chartWidth : anchorRight;
       const isRightLabel = this._style.labelPosition !== 'left';
@@ -1142,9 +1166,20 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
       
       const extendLeft = this._style.extendLeft ?? false;
       const extendRight = this._style.extendRight ?? false;
+      // autoTrack: extend right edge to the latest candle's x position
+      const autoTrack = this._style.autoTrack ?? true;
+
+      // Resolve autoTrack right edge: use latest candle coordinate when available
+      let autoTrackRight: number | null = null;
+      if (autoTrack && !extendRight && this._style._trackToTime !== undefined) {
+        const trackX = timeScale.timeToCoordinate(this._style._trackToTime as Time);
+        autoTrackRight = trackX !== null ? trackX : extrapolateTimeToX(this._style._trackToTime, timeScale, chartWidth);
+      }
       
       const baseStartX = x3Raw;
-      const baseEndX = extendRight ? chartWidth : Math.min(x3Raw + (chartWidth - x3Raw) * 0.5, chartWidth);
+      const baseEndX = autoTrackRight !== null
+        ? Math.max(x3Raw, autoTrackRight)
+        : extendRight ? chartWidth : Math.min(x3Raw + (chartWidth - x3Raw) * 0.5, chartWidth);
       const lineLeft = extendLeft ? 0 : baseStartX;
       const lineRight = extendRight ? chartWidth : baseEndX;
       const isRightLabel = this._style.labelPosition !== 'left';

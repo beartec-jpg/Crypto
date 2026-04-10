@@ -263,6 +263,8 @@ export interface Drawing {
     internalLineStyle?: 'solid' | 'dashed' | 'dotted';
     extendLeft?: boolean;
     extendRight?: boolean;
+    /** When true, fib lines extend to the current (latest) candle's x position */
+    autoTrack?: boolean;
     labelPosition?: 'left' | 'right';
     hiddenLevels?: number[];
     customLabels?: Record<number | string, string>;
@@ -324,6 +326,8 @@ export interface DrawingDefaults {
   internalLineStyle?: 'solid' | 'dashed' | 'dotted';
   extendLeft?: boolean;
   extendRight?: boolean;
+  /** When true, fib lines extend to the current (latest) candle's x position */
+  autoTrack?: boolean;
   labelPosition?: 'left' | 'right';
   hiddenLevels?: number[];
   customLabels?: Record<number | string, string>;

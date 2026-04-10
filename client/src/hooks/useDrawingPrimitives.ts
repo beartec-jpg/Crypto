@@ -21,6 +21,7 @@ interface UseDrawingPrimitivesOptions {
   selectedDrawingId: string | null;
   activeEdit?: { drawingId: string; pointIndex: number } | null;
   visible: boolean;
+  candles?: Array<{ time: number | string }>;
 }
 
 export function useDrawingPrimitives({
@@ -30,6 +31,7 @@ export function useDrawingPrimitives({
   selectedDrawingId,
   activeEdit = null,
   visible,
+  candles,
 }: UseDrawingPrimitivesOptions): void {
   const primitivesRef = useRef<Map<string, DrawingPrimitive>>(new Map());
 
@@ -59,11 +61,22 @@ export function useDrawingPrimitives({
     });
     
     // Add/update primitives for current drawings
+    // Compute last candle time for autoTrack injection
+    const lastCandleTime = candles && candles.length > 0
+      ? Number(candles[candles.length - 1].time)
+      : undefined;
+
     drawings.forEach(drawing => {
       const isBeingEdited = activeEdit && activeEdit.drawingId === drawing.id;
       if (isBeingEdited) return;
       
       const existingPrimitive = currentPrimitives.get(drawing.id);
+
+      // For fib drawings with autoTrack, inject the latest candle time at render time
+      const isFibDrawing = drawing.type === 'fib_retracement' || drawing.type === 'trend_fib';
+      const effectiveStyle = (isFibDrawing && (drawing.style?.autoTrack ?? true) && lastCandleTime !== undefined)
+        ? { ...drawing.style, _trackToTime: lastCandleTime }
+        : drawing.style;
       
       if (existingPrimitive) {
         // Update existing primitive
@@ -75,14 +88,14 @@ export function useDrawingPrimitives({
           (existingPrimitive as HorizontalLinePrimitive | VerticalLinePrimitive | TextLabelPrimitive).updatePoint(drawing.points[0]);
         }
         
-        existingPrimitive.updateStyle(drawing.style);
+        existingPrimitive.updateStyle(effectiveStyle);
       } else {
         // Create new primitive
         const primitive = createDrawingPrimitive(
           drawing.id,
           drawing.type as 'trendline' | 'horizontal' | 'vertical' | 'text' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel',
           drawing.points,
-          drawing.style
+          effectiveStyle
         );
         
         if (primitive) {
@@ -102,5 +115,5 @@ export function useDrawingPrimitives({
       });
       currentPrimitives.clear();
     };
-  }, [drawings, selectedDrawingId, activeEdit, visible, chartRef, candleSeriesRef]);
+  }, [drawings, selectedDrawingId, activeEdit, visible, chartRef, candleSeriesRef, candles]);
 }

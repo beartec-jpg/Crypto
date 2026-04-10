@@ -75,6 +75,54 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
         </div>
       </div>
 
+      {/* Line Extension Options */}
+      <div>
+        <div className="text-xs text-slate-400 mb-2">Line Extension</div>
+        <div className="space-y-2">
+          {/* Auto Track */}
+          <div className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={drawing.style?.autoTrack ?? true}
+              onChange={(e) => {
+                handleUpdate({ autoTrack: e.target.checked });
+              }}
+              className="rounded border-slate-600 w-4 h-4"
+            />
+            <span className="text-gray-300">Auto Track (follow latest candle)</span>
+          </div>
+          {/* Extend Left / Extend Right */}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => handleUpdate({ extendLeft: !(drawing.style?.extendLeft ?? false) })}
+              className={`flex-1 px-3 py-1.5 rounded text-xs transition-colors ${
+                (drawing.style?.extendLeft ?? false)
+                  ? 'bg-cyan-600 text-white'
+                  : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+              }`}
+            >
+              Extend Left
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const newExtendRight = !(drawing.style?.extendRight ?? false);
+                // Turning on extend right deselects auto track
+                handleUpdate({ extendRight: newExtendRight, ...(newExtendRight ? { autoTrack: false } : {}) });
+              }}
+              className={`flex-1 px-3 py-1.5 rounded text-xs transition-colors ${
+                (drawing.style?.extendRight ?? false)
+                  ? 'bg-cyan-600 text-white'
+                  : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+              }`}
+            >
+              Extend Right
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Label Position */}
       <div>
         <div className="text-xs text-slate-400 mb-2">Label Position</div>
