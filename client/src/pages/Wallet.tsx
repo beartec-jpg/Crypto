@@ -54,6 +54,7 @@ export default function WalletPage() {
   const [pendingWallet, setPendingWallet] = useState<any>(null);
   const [authStep, setAuthStep] = useState<'none' | 'pin' | 'passkey' | 'complete'>('none');
   const [isOpeningAuth, setIsOpeningAuth] = useState(false);
+  const [isOpeningCreateWallet, setIsOpeningCreateWallet] = useState(false);
 
   // Delete wallet states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -230,6 +231,17 @@ export default function WalletPage() {
       }
 
       setIsOpeningAuth(false);
+    }, 0);
+  };
+
+  const handleCreateWalletClick = () => {
+    if (!userId) return;
+
+    setIsOpeningCreateWallet(true);
+    // Defer modal mount by one tick to reduce INP blocking on click.
+    window.setTimeout(() => {
+      setShowPasskeyModal(true);
+      setIsOpeningCreateWallet(false);
     }, 0);
   };
 
@@ -500,12 +512,12 @@ export default function WalletPage() {
 
                 <div className="flex flex-col gap-4 max-w-md mx-auto">
                   <button
-                    onClick={() => setShowPasskeyModal(true)}
-                    disabled={!userId}
+                    onClick={handleCreateWalletClick}
+                    disabled={!userId || isOpeningCreateWallet}
                     className="flex items-center justify-center gap-3 w-full px-6 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
                   >
                     <Shield className="w-5 h-5" />
-                    Create Sovereign Wallet
+                    {isOpeningCreateWallet ? 'Opening…' : 'Create Sovereign Wallet'}
                   </button>
                   
                   {!userId && (

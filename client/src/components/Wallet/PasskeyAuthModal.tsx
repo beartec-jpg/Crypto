@@ -738,6 +738,14 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
                 >
                   Restore from recovery options instead
                 </button>
+                <a
+                  href="/cold-signer/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-cyan-400 hover:text-cyan-300 transition-colors block w-full"
+                >
+                  Install Cold Signer app (offline device)
+                </a>
                 <button
                   onClick={() => setMode('create')}
                   className="text-sm text-emerald-500 hover:text-emerald-400 transition-colors block w-full"
