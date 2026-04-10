@@ -36,12 +36,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ? chainTxStats.window_interval / windowBlocks
         : null;
 
-    // Best-effort average fee from most recent block
+    // Best-effort average fee rate from most recent block (sat/vB)
     let avgFee: number | null = null;
     try {
       if (blockchainInfo?.blocks > 0) {
-        const blockStats = await rpcCall('getblockstats', [blockchainInfo.blocks, ['avgfee']]);
-        avgFee = blockStats?.avgfee ?? null;
+        const blockStats = await rpcCall('getblockstats', [blockchainInfo.blocks, ['avgfeerate']]);
+        avgFee = blockStats?.avgfeerate ?? null;
       }
     } catch {
       // Non-critical

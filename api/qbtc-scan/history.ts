@@ -106,13 +106,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (metric === 'avgFee') {
-      // getblockstats returns per-block fee statistics
+      // getblockstats returns per-block fee rate (sat/vB)
       const blockStats = await Promise.all(
         heights.map(async (h) => {
           try {
-            const s = await rpcCall('getblockstats', [h, ['time', 'avgfee', 'txs']]);
-            if (s?.time == null || s?.avgfee == null) return null;
-            return { time: (s.time as number) * 1000, value: s.avgfee as number };
+            const s = await rpcCall('getblockstats', [h, ['time', 'avgfeerate']]);
+            if (s?.time == null || s?.avgfeerate == null) return null;
+            return { time: (s.time as number) * 1000, value: s.avgfeerate as number };
           } catch {
             return null;
           }

@@ -105,9 +105,9 @@ function formatBlockTime(seconds?: number | null): string {
   return `${seconds.toFixed(1)}s`;
 }
 
-function formatFee(satoshis?: number | null): string {
-  if (satoshis == null) return '...';
-  return `${satoshis} sat`;
+function formatFee(satPerVb?: number | null): string {
+  if (satPerVb == null) return '...';
+  return `${satPerVb} sat/vB`;
 }
 
 type MetricKey =
@@ -148,8 +148,8 @@ const METRIC_CONFIGS: Record<MetricKey, MetricConfig> = {
   },
   avgFee: {
     key: 'avgFee',
-    label: 'Avg Fee per Tx',
-    formatter: (v) => `${v} sat`,
+    label: 'Avg Fee Rate',
+    formatter: (v) => `${v} sat/vB`,
   },
   txsPerBlock: {
     key: 'txsPerBlock',
