@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { probeAllNodes } from '../_lib/rpcFailover';
+import { probeAllNodes } from '../../lib/rpcFailover';
 
 type QbtcNetwork = 'testnet' | 'mainnet';
 
