@@ -330,11 +330,13 @@ export default function CryptoElliottWaveLessons() {
       <div className="min-h-screen bg-[#0e0e0e] text-white p-4 md:p-6 pb-20">
         <div className="max-w-[1200px] mx-auto space-y-6">
           <div className="flex justify-center mb-6">
-            <img 
-              src={bearTecLogoNew} 
-              alt="BearTec Logo" 
-              className="h-[100px] md:h-[120px] w-auto object-contain"
-            />
+            <Link href="/cryptoindicators">
+              <img 
+                src={bearTecLogoNew} 
+                alt="BearTec Logo" 
+                className="h-[100px] md:h-[120px] w-auto object-contain cursor-pointer"
+              />
+            </Link>
           </div>
 
           <Link href="/crypto/training">

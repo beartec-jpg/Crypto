@@ -3911,11 +3911,17 @@ const handleAIMarketReview = () => {
         <div className="relative flex flex-col items-center mb-4 pt-4">
           {/* BearTec Logo - Centered on mobile, left on desktop */}
           <div className="mb-4 md:absolute md:left-0 md:top-[80px] md:mb-0">
-            <img 
-              src={bearTecLogoNew} 
-              alt="BearTec Logo" 
-              className="h-[100px] md:h-[140px] w-auto object-contain"
-            />
+            <button
+              onClick={() => setLocation('/cryptoindicators')}
+              className="cursor-pointer"
+              aria-label="Go to indicators"
+            >
+              <img 
+                src={bearTecLogoNew} 
+                alt="BearTec Logo" 
+                className="h-[100px] md:h-[140px] w-auto object-contain"
+              />
+            </button>
           </div>
           
           {/* Dynamic Market Status Animation - Top Center */}

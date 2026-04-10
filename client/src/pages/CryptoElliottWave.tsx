@@ -7377,7 +7377,9 @@ const aiAnalyze = useMutation({
     <div className="hidden lg:block lg:sticky lg:top-0 z-50 bg-[#0e0e0e]/95 backdrop-blur-sm border-b border-slate-800 px-4 py-3">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img src={bearTecLogoNew} alt="BearTec" className="h-8" />
+          <Link href="/cryptoindicators">
+            <img src={bearTecLogoNew} alt="BearTec" className="h-8 cursor-pointer" />
+          </Link>
           <h1 className="text-xl font-bold">Elliott Wave Analysis</h1>
           <Badge variant="outline" className="bg-red-600/20 text-red-400 border-red-600">
             Elite
@@ -7422,7 +7424,9 @@ const aiAnalyze = useMutation({
         {/* Mobile Toolbar */}
         <div className="flex flex-wrap items-center gap-2 mb-2 p-2 bg-slate-900/95 rounded-lg border border-slate-800 fixed top-0 left-0 right-0 z-40 mx-4 mt-1 lg:static lg:mx-0 lg:mt-0 backdrop-blur-sm">
           <div className="flex items-center gap-2 lg:hidden w-full pb-2 border-b border-slate-700 mb-2">
-            <img src={bearTecLogoNew} alt="BearTec" className="h-8" />
+            <Link href="/cryptoindicators">
+              <img src={bearTecLogoNew} alt="BearTec" className="h-8 cursor-pointer" />
+            </Link>
             <FavoritesOnlySelector 
               value={symbol} 
               onChange={(val) => { incrementTickerClick(val); setSymbol(val); }}

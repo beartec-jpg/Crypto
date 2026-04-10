@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useMarketStateDemo } from '@/hooks/useMarketStateDemo';
 import { useIndicatorsData } from '@/hooks/useIndicatorsData';
-import { useLocation } from 'wouter';
+import { Link, useLocation } from 'wouter';
 
 // Default symbol and timeframe for demo
 const DEFAULT_SYMBOL = 'XRPUSDT';
@@ -100,11 +100,13 @@ export default function CryptoIndicatorsClean() {
             
             {/* Logo */}
             <div className="mb-8">
-              <img 
-                src={bearTecLogoNew} 
-                alt="BearTec Logo" 
-                className="h-20 w-auto"
-              />
+              <Link href="/cryptoindicators">
+                <img 
+                  src={bearTecLogoNew} 
+                  alt="BearTec Logo" 
+                  className="h-20 w-auto cursor-pointer"
+                />
+              </Link>
             </div>
 
             {/* Video Animation */}

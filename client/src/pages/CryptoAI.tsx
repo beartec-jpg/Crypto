@@ -2633,11 +2633,13 @@ export default function CryptoAI() {
         <div className="max-w-[1800px] mx-auto space-y-6">
           {/* BearTec Logo - Top Center */}
         <div className="flex justify-center mb-8">
-          <img 
-            src={bearTecLogoNew} 
-            alt="BearTec Logo" 
-            className="h-[140px] w-auto object-contain"
-          />
+          <Link href="/cryptoindicators">
+            <img 
+              src={bearTecLogoNew} 
+              alt="BearTec Logo" 
+              className="h-[140px] w-auto object-contain cursor-pointer"
+            />
+          </Link>
         </div>
 
         {/* Back Button */}

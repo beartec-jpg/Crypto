@@ -2,6 +2,7 @@
 // Main wallet page with multi-chain support, security tiers, and transaction management
 
 import { useState, useEffect } from 'react';
+import { Link } from 'wouter';
 import { useAccount, useConnect, useDisconnect, useBalance } from 'wagmi';
 import { useUser } from '@clerk/clerk-react';
 import WalletDashboard from '@/components/Wallet/WalletDashboard';
@@ -386,11 +387,13 @@ export default function WalletPage() {
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* BearTec Logo */}
         <div className="flex justify-center mb-8">
-          <img 
-            src={bearTecLogoNew} 
-            alt="BearTec Logo" 
-            className="h-[140px] w-auto object-contain"
-          />
+          <Link href="/cryptoindicators">
+            <img 
+              src={bearTecLogoNew} 
+              alt="BearTec Logo" 
+              className="h-[140px] w-auto object-contain cursor-pointer"
+            />
+          </Link>
         </div>
 
         {/* Controls Row */}
