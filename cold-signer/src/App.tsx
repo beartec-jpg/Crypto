@@ -7,7 +7,7 @@ import AuthGate from './components/AuthGate';
 import ShareManager from './components/ShareManager';
 import { AppStep, UnsignedTransaction, TransactionPreviewData } from './types/coldTypes';
 import { signTransaction } from './lib/coldSigner';
-import { loadAndDecryptShare, hasStoredShare } from './lib/offlineStorage';
+import { clearAllShares, loadAndDecryptShare, hasStoredShare } from './lib/offlineStorage';
 
 const COLD_SIGNER_INSTALL_REQUEST_KEY = 'cold-signer-install-request';
 
@@ -196,6 +196,24 @@ function App() {
     setHasShare(true);
   };
 
+  const handleEmergencyClearShare = async () => {
+    const confirmed = window.confirm(
+      'Remove the stored cold signer share from this browser/device? You will need to reprovision the cold signer before signing again.'
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await clearAllShares();
+      setHasShare(false);
+      setError('Stored cold signer share removed from this browser.');
+    } catch (err) {
+      setError('Failed to remove the stored cold signer share.');
+    }
+  };
+
   const canConfigureShare = isStandalone;
 
   if (isCheckingShare) {
@@ -226,6 +244,20 @@ function App() {
             <p className="text-sm">
               Cold signers must NEVER be connected to the internet. Disable WiFi and mobile data now.
             </p>
+          </div>
+
+          <div className="mt-6 rounded-lg border border-white/20 bg-black/20 p-4 text-left">
+            <p className="font-semibold mb-2">Stuck after uninstall/reinstall?</p>
+            <p className="text-sm text-red-100/90">
+              Uninstalling the PWA may leave the encrypted cold share in browser storage. Remove it here if you need to reprovision this device from scratch.
+            </p>
+            <button
+              type="button"
+              onClick={() => void handleEmergencyClearShare()}
+              className="mt-4 w-full rounded-lg bg-white px-4 py-3 font-semibold text-red-900 transition-colors hover:bg-red-50"
+            >
+              Remove Stored Share
+            </button>
           </div>
         </div>
       </div>
