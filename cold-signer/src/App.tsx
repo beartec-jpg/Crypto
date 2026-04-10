@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { QrCode, Shield, WifiOff, AlertTriangle } from 'lucide-react';
+import { QrCode, Shield, WifiOff, AlertTriangle, Download, X } from 'lucide-react';
 import QRScanner from './components/QRScanner';
 import QRDisplay from './components/QRDisplay';
 import TransactionPreview from './components/TransactionPreview';
@@ -23,7 +23,8 @@ function App() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
-  const [installRequested, setInstallRequested] = useState(false);
+  const [appInstalledInSession, setAppInstalledInSession] = useState(false);
+  const [showInstallModal, setShowInstallModal] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [scannedData, setScannedData] = useState<UnsignedTransaction | null>(null);
   const [signedTx, setSignedTx] = useState<string>('');
@@ -59,7 +60,8 @@ function App() {
       window.localStorage.removeItem(COLD_SIGNER_INSTALL_REQUEST_KEY);
     }
 
-    setInstallRequested(installFromQuery || installFromStorage);
+    const shouldOpenInstallModal = installFromQuery || popupInstallFlow || installFromStorage;
+    setShowInstallModal(shouldOpenInstallModal);
     void checkShare();
 
     const handleBeforeInstallPrompt = (event: Event) => {
@@ -70,10 +72,8 @@ function App() {
     const handleAppInstalled = () => {
       setDeferredPrompt(null);
       setIsStandalone(true);
-
-      if (popupInstallFlow && window.opener) {
-        window.close();
-      }
+      setAppInstalledInSession(true);
+      setShowInstallModal(false);
     };
     
     // Monitor network status
@@ -111,20 +111,12 @@ function App() {
 
     await deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
-    setInstallRequested(false);
 
     if (outcome === 'accepted') {
       setDeferredPrompt(null);
-    }
-  };
-
-  useEffect(() => {
-    if (!installRequested || !deferredPrompt || isStandalone) {
       return;
     }
-
-    void handleInstallClick();
-  }, [installRequested, deferredPrompt, isStandalone]);
+  };
 
   const handleScanComplete = (data: string) => {
     try {
@@ -196,6 +188,8 @@ function App() {
     setHasShare(true);
   };
 
+  const canConfigureShare = isStandalone || appInstalledInSession;
+
   if (isCheckingShare) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
@@ -230,22 +224,118 @@ function App() {
     );
   }
 
+  if (!hasShare && !canConfigureShare) {
+    return (
+      <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gray-950 px-4 py-10 text-white">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.18),_transparent_42%),radial-gradient(circle_at_bottom,_rgba(6,182,212,0.16),_transparent_35%)]" />
+        <div className="relative w-full max-w-lg rounded-3xl border border-white/10 bg-gray-900/85 p-8 shadow-2xl backdrop-blur">
+          <div className="mb-8 text-center">
+            <div className="mx-auto mb-4 inline-flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/15">
+              <Shield className="h-11 w-11 text-emerald-400" />
+            </div>
+            <h1 className="text-3xl font-bold">BearTec Cold Signer</h1>
+            <p className="mt-3 text-gray-300">
+              Install the dedicated Cold Signer app on this device before importing your Shamir share.
+            </p>
+          </div>
+
+          <div className="space-y-4 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-5 text-sm text-cyan-100">
+            <p className="font-semibold text-cyan-200">What happens next</p>
+            <p>1. Install Cold Signer to this device.</p>
+            <p>2. Turn off Wi-Fi and mobile data.</p>
+            <p>3. Enter or scan your Shamir share inside the app.</p>
+          </div>
+
+          <div className="mt-6 space-y-3 rounded-2xl border border-white/10 bg-gray-950/70 p-5 text-sm text-gray-300">
+            <p className="font-semibold text-white">Install status</p>
+            {isIOS ? (
+              <p>Use the browser share menu and choose Add to Home Screen, then reopen Cold Signer from the installed app icon.</p>
+            ) : deferredPrompt ? (
+              <p>The app is ready to install on this device.</p>
+            ) : (
+              <p>Waiting for the browser install prompt. If it never appears, this browser may require using its menu and choosing Install app.</p>
+            )}
+          </div>
+
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => setShowInstallModal(true)}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-gray-950 transition-colors hover:bg-cyan-300"
+            >
+              <Download className="h-5 w-5" />
+              Install Cold Signer
+            </button>
+            {isIOS && (
+              <button
+                type="button"
+                onClick={() => setShowInstallModal(true)}
+                className="rounded-xl border border-white/15 px-5 py-3 font-semibold text-white transition-colors hover:bg-white/5"
+              >
+                Show iPhone steps
+              </button>
+            )}
+          </div>
+        </div>
+
+        {showInstallModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4">
+            <div className="w-full max-w-md rounded-3xl border border-white/10 bg-gray-950 p-6 shadow-2xl">
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-white">Install Cold Signer on this device?</h2>
+                  <p className="mt-2 text-sm text-gray-300">
+                    Install first, then disable network access and import your Shamir share inside the installed app.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowInstallModal(false)}
+                  className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-white/5 hover:text-white"
+                  aria-label="Close install dialog"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4 text-sm text-cyan-100">
+                {isIOS ? (
+                  <p>Tap Share, then choose Add to Home Screen. After it installs, launch Cold Signer from your home screen and continue setup there.</p>
+                ) : deferredPrompt ? (
+                  <p>The browser is ready to show the install prompt for Cold Signer.</p>
+                ) : (
+                  <p>The browser has not exposed the install prompt yet. If it does not appear, use the browser menu and choose Install app.</p>
+                )}
+              </div>
+
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowInstallModal(false)}
+                  className="rounded-xl border border-white/15 px-4 py-2.5 font-semibold text-gray-200 transition-colors hover:bg-white/5 hover:text-white"
+                >
+                  Not now
+                </button>
+                {!isIOS && deferredPrompt && (
+                  <button
+                    type="button"
+                    onClick={() => void handleInstallClick()}
+                    className="rounded-xl bg-cyan-400 px-4 py-2.5 font-semibold text-gray-950 transition-colors hover:bg-cyan-300"
+                  >
+                    Install to device
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // Share setup required
   if (!hasShare) {
-    return (
-      <ShareManager
-        onShareLoaded={handleShareLoaded}
-        installPrompt={
-          isOnline && !isStandalone
-            ? {
-                canPrompt: deferredPrompt !== null,
-                isIOS,
-                onInstall: handleInstallClick,
-              }
-            : undefined
-        }
-      />
-    );
+    return <ShareManager onShareLoaded={handleShareLoaded} />;
   }
 
   // Main app flow
