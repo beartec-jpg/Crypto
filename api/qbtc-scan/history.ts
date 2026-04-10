@@ -13,8 +13,8 @@ type Metric =
 
 type Period = '24h' | '1w' | '1m';
 
-// Metrics that cannot be reconstructed from block history
-const INSTANT_METRICS = new Set<Metric>(['mempoolTx', 'mempoolBytes', 'peers']);
+// Metrics that cannot be reconstructed from block history — we show a live snapshot instead
+const INSTANT_METRICS = new Set<Metric>(['mempoolTx', 'mempoolBytes', 'peers', 'dagTips']);
 
 const QBTC_TARGET_BLOCK_TIME_S = 10;
 
@@ -54,14 +54,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: `Invalid period: ${period}` });
   }
 
-  // Instantaneous metrics have no block-level history
+  // Instant metrics — fetch the current live value and return as a single data point
   if (INSTANT_METRICS.has(metric)) {
-    return res.json({
-      metric,
-      period,
-      data: [],
-      note: 'Historical data is not stored for this metric. Only the live value is available.',
-    });
+    try {
+      const now = Date.now();
+      let value: number | null = null;
+
+      if (metric === 'mempoolTx') {
+        const info = await rpcCall('getmempoolinfo');
+        value = info?.size ?? null;
+      } else if (metric === 'mempoolBytes') {
+        const info = await rpcCall('getmempoolinfo');
+        value = info?.bytes ?? null;
+      } else if (metric === 'peers') {
+        const peers = await rpcCall('getpeerinfo');
+        value = Array.isArray(peers) ? peers.length : null;
+      } else if (metric === 'dagTips') {
+        const info = await rpcCall('getblockchaininfo');
+        value = info?.dag_tips ?? null;
+      }
+
+      const data = value !== null ? [{ time: now, value }] : [];
+      return res.json({ metric, period, data, note: 'Live snapshot — historical tracking coming soon.' });
+    } catch {
+      return res.json({ metric, period, data: [], note: 'Unable to fetch live value.' });
+    }
   }
 
   try {

@@ -127,9 +127,16 @@ export default function MetricChartModal({
             <div className="flex items-center justify-center h-full text-slate-400 text-sm">
               Loading…
             </div>
-          ) : note || data.length === 0 ? (
+          ) : data.length === 0 ? (
             <div className="flex items-center justify-center h-full text-slate-400 text-sm text-center px-4">
               {note ?? 'No historical data available for this metric.'}
+            </div>
+          ) : data.length === 1 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-2">
+              <span className="text-4xl font-bold text-cyan-400">{formatValue(data[0].value)}</span>
+              <span className="text-xs text-slate-400">
+                {note ?? 'Live value — historical tracking coming soon.'}
+              </span>
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
