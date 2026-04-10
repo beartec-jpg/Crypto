@@ -7,25 +7,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     step: 'init',
     env: {
       hasNodes: !!process.env.QBTC_RPC_NODES,
-      nodesCount: (process.env.QBTC_RPC_NODES || '').split(',').filter(Boolean).length,
+      nodesList: process.env.QBTC_RPC_NODES || '(not set)',
       hasAuth: !!process.env.QBTC_RPC_NODES_AUTH,
       hasUser: !!process.env.QBTC_RPC_USER,
       hasPass: !!process.env.QBTC_RPC_PASSWORD,
-      hasFaucetNode: !!process.env.QBTC_FAUCET_NODE,
     },
   };
 
+  // Self-contained RPC call — no imports from _lib
   try {
-    info.step = 'importing';
-    const mod = await import('../_lib/rpcFailover.js');
-    info.step = 'imported';
-    info.exports = Object.keys(mod);
+    const nodesEnv = process.env.QBTC_RPC_NODES || '';
+    const authEnv = process.env.QBTC_RPC_NODES_AUTH || '';
+    const urls = nodesEnv.split(',').map(u => u.trim()).filter(Boolean);
+    const auths = authEnv.split(',').map(a => a.trim());
     
-    info.step = 'calling rpcCall';
-    const { result, nodeUrl } = await mod.rpcCall('getblockcount');
+    if (!urls.length) {
+      info.error = 'No QBTC_RPC_NODES configured';
+      return res.status(200).json(info);
+    }
+
+    info.step = 'calling_rpc';
+    const url = urls[0];
+    const auth = auths[0] || '';
+    const colonIdx = auth.indexOf(':');
+    const user = colonIdx >= 0 ? auth.slice(0, colonIdx) : (process.env.QBTC_RPC_USER || '');
+    const pass = colonIdx >= 0 ? auth.slice(colonIdx + 1) : (process.env.QBTC_RPC_PASSWORD || '');
+    
+    info.targetNode = url;
+    info.authUser = user;
+
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`,
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getblockcount', params: [] }),
+    });
+
+    const data = await resp.json();
     info.step = 'done';
-    info.blockCount = result;
-    info.nodeUrl = nodeUrl;
+    info.rpcResult = data;
   } catch (err: any) {
     info.error = err.message;
     info.stack = err.stack?.split('\n').slice(0, 5);
