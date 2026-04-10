@@ -95,6 +95,7 @@
     "idb": "^8.0.0",
     "input-otp": "^1.4.2",
     "jsonwebtoken": "^9.0.0",
+    "jsqr": "^1.4.0",
     "lightweight-charts": "^5.0.9",
     "lucide-react": "^0.555.0",
     "nanoid": "^5.0.9",

@@ -48,6 +48,13 @@ import BalanceDisplay from './BalanceDisplay';
 import DestinationTagInput from './DestinationTagInput';
 import MemoInput from './MemoInput';
 import NewAccountWarningModal from './NewAccountWarningModal';
+import UnsignedTxQRModal from './UnsignedTxQRModal';
+import SignedTxScannerModal from './SignedTxScannerModal';
+import {
+  isColdSignerConfigured,
+  buildUnsignedTxPayload,
+  serializeForQR,
+} from '@/lib/coldSignerService';
 import type { Chain } from '@/lib/balanceService';
 import type { usePendingTransactions } from '@/hooks/usePendingTransactions';
 
@@ -92,6 +99,11 @@ export default function SendForm({
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showNewAccountWarning, setShowNewAccountWarning] = useState(false);
   const [passkeyAuthenticatedThisSession, setPasskeyAuthenticatedThisSession] = useState(false);
+  const [useColdSigner, setUseColdSigner] = useState(false);
+  const [coldSignerAvailable] = useState(() => isColdSignerConfigured());
+  const [showUnsignedTxQR, setShowUnsignedTxQR] = useState(false);
+  const [showSignedTxScanner, setShowSignedTxScanner] = useState(false);
+  const [unsignedTxPayload, setUnsignedTxPayload] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [estimatedFee, setEstimatedFee] = useState<string>('0.0001');
@@ -343,6 +355,26 @@ export default function SendForm({
 
   const handleConfirmTransaction = async () => {
     setShowPreview(false);
+
+    // Cold signer flow: build unsigned TX QR instead of signing directly
+    if (useColdSigner) {
+      try {
+        const payload = buildUnsignedTxPayload(selectedChain, {
+          to: recipient,
+          amount,
+          fee: estimatedFee,
+          nonce: undefined, // Will be filled by gas estimate
+          chainId: selectedChain === 'ethereum' ? 1 : selectedChain === 'bsc' ? 56 : undefined,
+          destination: selectedChain === 'xrp' ? recipient : undefined,
+          destinationTag: selectedChain === 'xrp' && destinationTag ? parseInt(destinationTag) : undefined,
+        });
+        setUnsignedTxPayload(serializeForQR(payload));
+        setShowUnsignedTxQR(true);
+      } catch (err: any) {
+        setError(err.message || 'Failed to build cold signer payload');
+      }
+      return;
+    }
     
     const requirements = getSecurityRequirements(userId, 'send');
     
@@ -365,6 +397,41 @@ export default function SendForm({
     }
     
     setShowPasswordModal(true);
+  };
+
+  const handleColdSignerSuccess = (result: { hash: string; explorerUrl: string }) => {
+    setShowSignedTxScanner(false);
+    setShowUnsignedTxQR(false);
+
+    if (onAddPendingTransaction) {
+      const fromAddress = sovereignWallet?.addresses?.[selectedChain];
+      onAddPendingTransaction({
+        hash: result.hash,
+        chain: selectedChain,
+        from: fromAddress || '',
+        to: recipient,
+        amount,
+        token: selectedToken?.symbol || getChainSymbol(selectedChain),
+        status: 'pending',
+        confirmations: 0,
+        requiredConfirmations: selectedChain === 'ethereum' ? 6 : 15,
+        timestamp: Date.now(),
+        explorerUrl: result.explorerUrl,
+      });
+    }
+
+    setSuccessData({
+      hash: result.hash,
+      amount,
+      to: recipient,
+      fee: estimatedFee,
+      feeUsd: estimatedFeeUsd,
+      explorerUrl: result.explorerUrl,
+    });
+    setShowSuccessModal(true);
+    setRecipient('');
+    setAmount('');
+    setError(null);
   };
 
   const handlePasswordSubmit = async (password: string) => {
@@ -977,6 +1044,31 @@ export default function SendForm({
           </div>
         )}
 
+        {/* Cold Signer Toggle */}
+        {coldSignerAvailable && (
+          <div className="flex items-center justify-between p-4 rounded-xl bg-gray-900/50 border border-gray-700">
+            <div>
+              <p className="text-sm font-medium">Sign with Cold Signer</p>
+              <p className="text-xs text-gray-400">Generate QR for air-gapped signing</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={useColdSigner}
+              onClick={() => setUseColdSigner(!useColdSigner)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                useColdSigner ? 'bg-emerald-600' : 'bg-gray-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  useColdSigner ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+        )}
+
         {/* Send Button */}
         <button
           onClick={handleSendClick}
@@ -984,7 +1076,7 @@ export default function SendForm({
           className="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 disabled:from-gray-700 disabled:to-gray-700 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
         >
           <Send className="w-5 h-5" />
-          Review Transaction
+          {useColdSigner ? 'Generate Cold Signer QR' : 'Review Transaction'}
         </button>
       </div>
 
@@ -1065,6 +1157,37 @@ export default function SendForm({
           hash={successData.hash}
           explorerUrl={successData.explorerUrl}
           onClose={handleSuccessClose}
+        />
+      )}
+
+      {/* Cold Signer: Unsigned TX QR Display */}
+      {showUnsignedTxQR && unsignedTxPayload && (
+        <UnsignedTxQRModal
+          payload={unsignedTxPayload}
+          chain={selectedChain}
+          to={recipient}
+          amount={amount}
+          fee={estimatedFee}
+          onScanSigned={() => {
+            setShowUnsignedTxQR(false);
+            setShowSignedTxScanner(true);
+          }}
+          onCancel={() => {
+            setShowUnsignedTxQR(false);
+            setUnsignedTxPayload('');
+          }}
+        />
+      )}
+
+      {/* Cold Signer: Signed TX Scanner */}
+      {showSignedTxScanner && (
+        <SignedTxScannerModal
+          chain={selectedChain}
+          to={recipient}
+          amount={amount}
+          token={selectedToken?.symbol || getChainSymbol(selectedChain)}
+          onSuccess={handleColdSignerSuccess}
+          onCancel={() => setShowSignedTxScanner(false)}
         />
       )}
     </>

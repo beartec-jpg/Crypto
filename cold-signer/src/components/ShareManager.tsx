@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Shield, Upload, AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react';
+import { Shield, Upload, AlertCircle, CheckCircle, Eye, EyeOff, QrCode } from 'lucide-react';
 import { encrypt, generateSalt, validatePassword } from '../lib/coldCrypto';
 import { storeEncryptedShare, getStoredShare, clearAllShares } from '../lib/offlineStorage';
 import { EncryptedShare } from '../types/coldTypes';
 import { getShareFingerprint } from '../lib/shamirService';
+import QRScanner from './QRScanner';
 
 interface ShareManagerProps {
   onShareLoaded: () => void;
@@ -18,6 +19,7 @@ export default function ShareManager({ onShareLoaded }: ShareManagerProps) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [showQRScanner, setShowQRScanner] = useState(false);
 
   useEffect(() => {
     checkExistingShare();
@@ -34,6 +36,17 @@ export default function ShareManager({ onShareLoaded }: ShareManagerProps) {
       console.error('Error checking share:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleQRScan = (data: string) => {
+    setShowQRScanner(false);
+    const trimmed = data.trim();
+    if (trimmed) {
+      setShare(trimmed);
+      setSuccess('Share loaded from QR code');
+    } else {
+      setError('QR code was empty');
     }
   };
 
@@ -114,6 +127,15 @@ export default function ShareManager({ onShareLoaded }: ShareManagerProps) {
     );
   }
 
+  if (showQRScanner) {
+    return (
+      <QRScanner
+        onScan={handleQRScan}
+        onCancel={() => setShowQRScanner(false)}
+      />
+    );
+  }
+
   if (hasShare) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-4">
@@ -162,6 +184,14 @@ export default function ShareManager({ onShareLoaded }: ShareManagerProps) {
               rows={4}
               className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-sm"
             />
+            <button
+              type="button"
+              onClick={() => setShowQRScanner(true)}
+              className="mt-2 w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm font-semibold"
+            >
+              <QrCode className="w-4 h-4" />
+              Scan Share QR Code
+            </button>
             {share && (
               <p className="mt-2 text-xs text-gray-400">
                 Fingerprint: {getShareFingerprint(share)}

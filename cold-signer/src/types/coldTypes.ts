@@ -1,4 +1,4 @@
-export type Chain = 'ethereum' | 'bsc' | 'xrp';
+export type Chain = 'ethereum' | 'bsc' | 'xrp' | 'bitcoin' | 'solana' | 'qbtc';
 
 export interface UnsignedTransaction {
   tx: {
@@ -14,6 +14,17 @@ export interface UnsignedTransaction {
     destination?: string;
     destinationTag?: number;
     sequence?: number;
+    // Bitcoin/QBTC specific
+    utxos?: Array<{
+      txid: string;
+      vout: number;
+      value: number;
+      scriptPubKey?: string;
+    }>;
+    changeAddress?: string;
+    // Solana specific
+    recentBlockhash?: string;
+    lamportsPerSignature?: number;
   };
   hotShare: string; // hex-encoded Shamir share
 }

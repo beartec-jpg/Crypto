@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { Shield, AlertCircle, CheckCircle, Copy, Download, Lock } from 'lucide-react';
+import { Shield, AlertCircle, CheckCircle, Copy, Download, Lock, QrCode } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { splitMnemonic, getShareFingerprint } from '../../lib/shamirService';
+import { storeHotShare } from '../../lib/coldSignerService';
 
 async function sha256(input: string): Promise<string> {
   const data = new TextEncoder().encode(input);
@@ -20,11 +22,14 @@ export default function ColdSignerSetup({ mnemonic, onClose }: ColdSignerSetupPr
   const [shares, setShares] = useState<string[]>([]);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [buildHash, setBuildHash] = useState<string>('');
+  const [showShareQR, setShowShareQR] = useState<number | null>(null);
 
   const handleGenerateShares = () => {
     try {
       const generatedShares = splitMnemonic(mnemonic, { shares: 3, threshold: 2 });
       setShares(generatedShares);
+      // Store Share 1 (hot share) for cold signer flow
+      storeHotShare(generatedShares[0]);
       setStep('shares');
       
       // Generate build hash (placeholder - would be real build hash in production)
@@ -170,6 +175,13 @@ export default function ColdSignerSetup({ mnemonic, onClose }: ColdSignerSetupPr
                 <Copy className="w-5 h-5" />
               )}
             </button>
+            <button
+              onClick={() => setShowShareQR(showShareQR === index ? null : index)}
+              className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+              aria-label={`Show QR for share ${index + 1}`}
+            >
+              <QrCode className={`w-5 h-5 ${showShareQR === index ? 'text-emerald-500' : ''}`} />
+            </button>
           </div>
 
           <div className="bg-gray-900 rounded p-3">
@@ -177,6 +189,21 @@ export default function ColdSignerSetup({ mnemonic, onClose }: ColdSignerSetupPr
               {share}
             </p>
           </div>
+
+          {showShareQR === index && (
+            <div className="flex flex-col items-center gap-2 bg-white rounded-lg p-4">
+              <QRCodeSVG
+                value={share}
+                size={220}
+                bgColor="#ffffff"
+                fgColor="#000000"
+                level="M"
+              />
+              <p className="text-xs text-gray-800 font-medium">
+                Scan with cold signer device
+              </p>
+            </div>
+          )}
 
           {index === 0 && (
             <p className="text-xs text-emerald-500">
