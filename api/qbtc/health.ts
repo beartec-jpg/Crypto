@@ -1,5 +1,4 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { probeAllNodes } from '../_lib/rpcFailover.js';
 
 type QbtcNetwork = 'testnet' | 'mainnet';
 
@@ -85,6 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Testnet: probe all nodes and surface per-node health.
+    const { probeAllNodes } = await import('../_lib/rpcFailover.js');
     const nodeStatuses = await probeAllNodes();
     const onlineNodes = nodeStatuses.filter((n) => n.ok);
 

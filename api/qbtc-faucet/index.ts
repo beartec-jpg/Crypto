@@ -1,5 +1,4 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { rpcCallPinned } from '../_lib/rpcFailover.js';
 
 const CLAIM_AMOUNT = 0.5;
 const RATE_LIMIT_MS = 60 * 60 * 1000;
@@ -52,6 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // QBTC_FAUCET_NODE should be set to the URL of the node that holds the faucet wallet.
     const faucetNodeUrl = process.env.QBTC_FAUCET_NODE || undefined;
 
+    const { rpcCallPinned } = await import('../_lib/rpcFailover.js');
     const { result: txid } = await rpcCallPinned(
       faucetNodeUrl,
       'sendtoaddress',

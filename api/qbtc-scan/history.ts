@@ -1,5 +1,4 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { rpcCall as rpcCallFailover } from '../_lib/rpcFailover.js';
 
 type Metric =
   | 'difficulty'
@@ -26,6 +25,7 @@ const PERIOD_CONFIG: Record<Period, { blocksSpan: number; maxPoints: number }> =
 };
 
 async function rpcCall(method: string, params: any[] = []) {
+  const { rpcCall: rpcCallFailover } = await import('../_lib/rpcFailover.js');
   const { result } = await rpcCallFailover(method, params);
   return result;
 }
