@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "installCommand": "npm install --include=dev",
-  "buildCommand": "npx vite build",
+  "installCommand": "npm install --include=dev && cd cold-signer && npm install",
+  "buildCommand": "npx vite build && cd cold-signer && npx vite build && cp -r dist ../dist/cold-signer",
   "outputDirectory": "dist",
   "functions": {
     "api/**/*.ts": {

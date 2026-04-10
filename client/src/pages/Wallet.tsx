@@ -53,6 +53,7 @@ export default function WalletPage() {
   const [showPinModal, setShowPinModal] = useState(false);
   const [pendingWallet, setPendingWallet] = useState<any>(null);
   const [authStep, setAuthStep] = useState<'none' | 'pin' | 'passkey' | 'complete'>('none');
+  const [isOpeningAuth, setIsOpeningAuth] = useState(false);
 
   // Delete wallet states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -212,18 +213,24 @@ export default function WalletPage() {
 
   const handleAuthenticateClick = () => {
     if (!userId) return;
-    
-    const requirements = getSecurityRequirements(userId, 'openWallet');
-    
-    if (requirements.includes('pin')) {
-      setAuthStep('pin');
-      setShowPinModal(true);
-    } else if (requirements.includes('passkey')) {
-      setAuthStep('passkey');
-      setShowPasskeyModal(true);
-    } else {
-      completeWalletUnlock();
-    }
+
+    setIsOpeningAuth(true);
+    // Defer security checks to the next tick so button feedback paints immediately.
+    window.setTimeout(() => {
+      const requirements = getSecurityRequirements(userId, 'openWallet');
+
+      if (requirements.includes('pin')) {
+        setAuthStep('pin');
+        setShowPinModal(true);
+      } else if (requirements.includes('passkey')) {
+        setAuthStep('passkey');
+        setShowPasskeyModal(true);
+      } else {
+        completeWalletUnlock();
+      }
+
+      setIsOpeningAuth(false);
+    }, 0);
   };
 
   const handleConnect = (connectorId: string) => {
@@ -465,11 +472,21 @@ export default function WalletPage() {
                 </p>
                 <button
                   onClick={handleAuthenticateClick}
+                  disabled={isOpeningAuth}
                   className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition-colors inline-flex items-center gap-2"
                 >
                   <Lock className="w-5 h-5" />
-                  Unlock Wallet
+                  {isOpeningAuth ? 'Opening…' : 'Unlock Wallet'}
                 </button>
+
+                <a
+                  href="/cold-signer/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-4 inline-flex items-center gap-2 text-sm text-cyan-300 hover:text-cyan-200 transition-colors"
+                >
+                  Install Cold Signer app before unlocking
+                </a>
               </div>
             ) : (
               <div className="bg-gray-800 rounded-2xl p-8 mb-8">
@@ -496,6 +513,15 @@ export default function WalletPage() {
                       Please sign in to create a wallet
                     </p>
                   )}
+
+                  <a
+                    href="/cold-signer/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-center text-sm text-cyan-300 hover:text-cyan-200 transition-colors"
+                  >
+                    Install Cold Signer on your offline device first
+                  </a>
                 </div>
 
                 <div className="mt-8 p-4 rounded-xl bg-gray-900/50 border border-gray-700 max-w-2xl mx-auto">
