@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { neon } from '@neondatabase/serverless';
+import { neon, type NeonQueryFunction } from '@neondatabase/serverless';
 
 type PredictiveResponse = {
   code?: string;
@@ -42,7 +42,7 @@ async function fetchProfile(origin: string, symbol: string, range: string): Prom
   return await response.json() as PredictiveResponse;
 }
 
-async function ensureTable(sql: ReturnType<typeof neon>): Promise<void> {
+async function ensureTable(sql: NeonQueryFunction<false, false>): Promise<void> {
   await sql`
     CREATE TABLE IF NOT EXISTS liquidation_heatmap_profiles (
       id SERIAL PRIMARY KEY,

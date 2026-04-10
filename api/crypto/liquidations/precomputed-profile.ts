@@ -23,11 +23,11 @@ function toLevels(raw: unknown): StoredLevel[] {
     .map((row: any) => ({
       price: Number(row?.price || 0),
       liquidationValue: Number(row?.liquidationValue || 0),
-      side: row?.side === 'short' ? 'short' : 'long',
+      side: (row?.side === 'short' ? 'short' : 'long') as const,
       score: Number.isFinite(Number(row?.score)) ? Number(row.score) : undefined,
       type: row?.type === 'primary' || row?.type === 'secondary' ? row.type : undefined,
     }))
-    .filter((row: StoredLevel) => row.price > 0 && row.liquidationValue > 0);
+    .filter((row) => row.price > 0 && row.liquidationValue > 0);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
