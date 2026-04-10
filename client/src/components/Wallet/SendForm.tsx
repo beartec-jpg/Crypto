@@ -125,6 +125,14 @@ export default function SendForm({
   } | null>(null);
 
   const isLocked = securityManager.isWalletLocked();
+  const currentSecurityTier = getSecuritySettings(userId).tier;
+  const isColdDeviceMode = currentSecurityTier === 'cold';
+
+  useEffect(() => {
+    if (isColdDeviceMode && coldSignerAvailable) {
+      setUseColdSigner(true);
+    }
+  }, [isColdDeviceMode, coldSignerAvailable]);
 
   // Helper function to calculate and format USD value - Bug 15 fix
   const calculateUsdDisplay = (amount: string, token: Token | null): string | null => {
@@ -1046,18 +1054,29 @@ export default function SendForm({
 
         {/* Cold Signer Toggle */}
         {coldSignerAvailable && (
-          <div className="flex items-center justify-between p-4 rounded-xl bg-gray-900/50 border border-gray-700">
+          <div className={`flex items-center justify-between p-4 rounded-xl border ${
+            isColdDeviceMode
+              ? 'bg-gradient-to-r from-sky-950/80 via-blue-950/70 to-cyan-950/80 border-cyan-400/50'
+              : 'bg-gray-900/50 border-gray-700'
+          }`}>
             <div>
-              <p className="text-sm font-medium">Sign with Cold Signer</p>
-              <p className="text-xs text-gray-400">Generate QR for air-gapped signing</p>
+              <p className="text-sm font-medium">{isColdDeviceMode ? 'Cold Device Mode Active' : 'Sign with Cold Signer'}</p>
+              <p className={`text-xs ${isColdDeviceMode ? 'text-cyan-100/80' : 'text-gray-400'}`}>
+                {isColdDeviceMode ? 'All sends must use the cold signer QR workflow' : 'Generate QR for air-gapped signing'}
+              </p>
             </div>
             <button
               type="button"
               role="switch"
               aria-checked={useColdSigner}
-              onClick={() => setUseColdSigner(!useColdSigner)}
+              onClick={() => {
+                if (!isColdDeviceMode) {
+                  setUseColdSigner(!useColdSigner);
+                }
+              }}
+              disabled={isColdDeviceMode}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                useColdSigner ? 'bg-emerald-600' : 'bg-gray-600'
+                useColdSigner ? (isColdDeviceMode ? 'bg-cyan-400' : 'bg-emerald-600') : 'bg-gray-600'
               }`}
             >
               <span

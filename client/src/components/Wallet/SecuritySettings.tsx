@@ -2,7 +2,7 @@
 // Security tier management UI - Tier 1/2/3 selection and PIN setup
 
 import { useState, useEffect } from 'react';
-import { Shield, Lock, AlertTriangle, Check, ChevronRight, Search } from 'lucide-react';
+import { Shield, Lock, AlertTriangle, Check, ChevronRight, Search, Snowflake } from 'lucide-react';
 import {
   getSecuritySettings,
   changeSecurityTier,
@@ -12,8 +12,10 @@ import {
 } from '@/lib/securityService';
 import { registerPasskey, isPasskeyRegistered } from '@/lib/passkeyService';
 import { unlockWallet } from '@/lib/walletService';
+import { isColdSignerConfigured } from '@/lib/coldSignerService';
 import { runSecurityScan, getSecurityLevel, type SecurityScanResult } from '@/lib/securityScanner';
 import SecurityWarningModal from './SecurityWarningModal';
+import ShamirRecoveryPanel from './ShamirRecoveryPanel';
 
 interface SecuritySettingsProps {
   userId: string;
@@ -61,6 +63,8 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
         return 'amber';
       case 'maximum':
         return 'red';
+      case 'cold':
+        return 'cyan';
     }
   };
 
@@ -72,6 +76,8 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
         return '🟡';
       case 'maximum':
         return '🔴';
+      case 'cold':
+        return '🔵';
     }
   };
 
@@ -110,6 +116,42 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
             'Rate-limited PIN attempts (5 max)',
           ],
         };
+      case 'cold':
+        return {
+          title: 'COLD DEVICE MODE',
+          subtitle: 'Icy blue air-gapped transaction flow',
+          features: [
+            'Outgoing transactions require Cold Signer QR approval',
+            'Share 1 stays on this device, Share 2 stays on the cold device',
+            'Designed for a dedicated offline signer device',
+            'Use recovery or rotation to reprovision lost or replaced devices',
+          ],
+        };
+    }
+  };
+
+  const handleActivateColdMode = async () => {
+    setIsProcessing(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      if (!isColdSignerConfigured()) {
+        throw new Error('Configure and save Share 1 on this device before enabling Cold Device Mode.');
+      }
+
+      if (!isPasskeyRegistered()) {
+        await registerPasskey(userId);
+      }
+
+      changeSecurityTier(userId, 'cold');
+      setCurrentTier('cold');
+      setSuccess('✅ Cold Device Mode enabled. Outgoing transactions now require the cold signer flow.');
+      onSecurityChange?.();
+    } catch (err: any) {
+      setError(err.message || 'Failed to enable Cold Device Mode');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -323,10 +365,12 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
     const isActive = currentTier === tier;
     const canUpgrade = 
       (tier === 'enhanced' && currentTier === 'standard') ||
-      (tier === 'maximum' && (currentTier === 'standard' || currentTier === 'enhanced'));
+      (tier === 'maximum' && (currentTier === 'standard' || currentTier === 'enhanced')) ||
+      (tier === 'cold' && currentTier !== 'cold');
     const canDowngrade = 
       (tier === 'standard' && currentTier !== 'standard') ||
-      (tier === 'enhanced' && currentTier === 'maximum');
+      (tier === 'enhanced' && (currentTier === 'maximum' || currentTier === 'cold')) ||
+      (tier === 'maximum' && currentTier === 'cold');
 
     const getActiveClasses = () => {
       if (!isActive) return 'bg-gray-900/50 border-gray-700';
@@ -338,6 +382,8 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
           return 'bg-amber-900/30 border-amber-500';
         case 'maximum':
           return 'bg-red-900/30 border-red-500';
+        case 'cold':
+          return 'bg-gradient-to-br from-sky-950/80 via-blue-950/70 to-cyan-950/80 border-cyan-400 shadow-[0_0_0_1px_rgba(34,211,238,0.18)]';
       }
     };
 
@@ -375,6 +421,8 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
             onClick={() =>
               tier === 'enhanced'
                 ? handleUpgradeToEnhanced()
+                : tier === 'cold'
+                ? handleActivateColdMode()
                 : handleUpgradeToMaximum()
             }
             disabled={isProcessing}
@@ -383,6 +431,8 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
                 ? 'w-full px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2'
                 : tier === 'maximum'
                 ? 'w-full px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2'
+                : tier === 'cold'
+                ? 'w-full px-4 py-2 rounded-lg bg-cyan-400 text-slate-950 hover:bg-cyan-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2'
                 : 'w-full px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2'
             }
           >
@@ -399,6 +449,12 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
           >
             Switch to {desc.title}
           </button>
+        )}
+
+        {tier === 'cold' && !isColdSignerConfigured() && !isActive && (
+          <p className="mt-3 text-xs text-cyan-200/80">
+            Save Share 1 and complete cold signer setup before enabling this mode.
+          </p>
         )}
       </div>
     );
@@ -445,7 +501,20 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
         {renderTierCard('standard')}
         {renderTierCard('enhanced')}
         {renderTierCard('maximum')}
+        {renderTierCard('cold')}
       </div>
+
+      {currentTier === 'cold' && (
+        <div className="rounded-xl border border-cyan-500/30 bg-gradient-to-br from-sky-950/80 via-blue-950/70 to-cyan-950/80 p-5">
+          <div className="flex items-center gap-3 text-cyan-200">
+            <Snowflake className="w-5 h-5" />
+            <div>
+              <p className="font-semibold">Cold Device Mode is active</p>
+              <p className="text-sm text-cyan-100/80">Send flow should stay on the cold signer path until you switch tiers.</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Security Environment Scan */}
       <div className="pt-6 border-t border-gray-700">
@@ -541,6 +610,10 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
       </div>
 
       {/* Emergency Reset */}
+      <div className="pt-6 border-t border-gray-700">
+        <ShamirRecoveryPanel userId={userId} />
+      </div>
+
       <div className="pt-6 border-t border-gray-700">
         <h3 className="text-lg font-medium mb-4">⚠️ Emergency Reset</h3>
         <div className="p-4 rounded-xl bg-red-900/20 border border-red-700/50">
@@ -751,7 +824,7 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
               <div className="p-4 rounded-lg bg-amber-900/20 border border-amber-700/50">
                 <p className="text-sm text-amber-300">
                   <strong>Warning:</strong> Downgrading to {pendingDowngradeTier.toUpperCase()} will remove additional security protections.
-                  {currentTier === 'maximum' && ' Your PIN will be removed.'}
+                  {(currentTier === 'maximum' || currentTier === 'cold') && ' Your PIN-protected high-security mode will be removed.'}
                 </p>
               </div>
 

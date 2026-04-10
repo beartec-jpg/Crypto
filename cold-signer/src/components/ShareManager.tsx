@@ -6,6 +6,14 @@ import { EncryptedShare } from '../types/coldTypes';
 import { getShareFingerprint } from '../lib/shamirService';
 import QRScanner from './QRScanner';
 
+interface ColdSignerShareImportPayload {
+  type: 'cold-share-import';
+  mode: 'recover' | 'rotate';
+  share: string;
+  fingerprint: string;
+  createdAt: string;
+}
+
 interface ShareManagerProps {
   onShareLoaded: () => void;
   installPrompt?: {
@@ -17,12 +25,14 @@ interface ShareManagerProps {
 
 export default function ShareManager({ onShareLoaded, installPrompt }: ShareManagerProps) {
   const [hasShare, setHasShare] = useState(false);
+  const [isReplacingShare, setIsReplacingShare] = useState(false);
   const [share, setShare] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [importMode, setImportMode] = useState<'recover' | 'rotate' | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showQRScanner, setShowQRScanner] = useState(false);
 
@@ -47,8 +57,33 @@ export default function ShareManager({ onShareLoaded, installPrompt }: ShareMana
   const handleQRScan = (data: string) => {
     setShowQRScanner(false);
     const trimmed = data.trim();
+
+    if (!trimmed) {
+      setError('QR code was empty');
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed) as ColdSignerShareImportPayload;
+
+      if (parsed.type === 'cold-share-import' && parsed.share) {
+        setShare(parsed.share.trim());
+        setImportMode(parsed.mode);
+        setIsReplacingShare(hasShare || parsed.mode === 'rotate');
+        setSuccess(
+          parsed.mode === 'rotate'
+            ? 'Rotation payload loaded. Saving will replace the existing cold share on this device.'
+            : 'Recovery payload loaded. Saving will provision this device with the replacement cold share.'
+        );
+        return;
+      }
+    } catch {
+      // Not a structured payload, fall through to raw share handling.
+    }
+
+    setShare(trimmed);
+    setImportMode(null);
     if (trimmed) {
-      setShare(trimmed);
       setSuccess('Share loaded from QR code');
     } else {
       setError('QR code was empty');
@@ -91,8 +126,14 @@ export default function ShareManager({ onShareLoaded, installPrompt }: ShareMana
 
       await storeEncryptedShare(encryptedShare);
 
-      setSuccess('Share encrypted and stored successfully!');
+      setSuccess(
+        isReplacingShare
+          ? 'Stored share replaced successfully!'
+          : 'Share encrypted and stored successfully!'
+      );
       setHasShare(true);
+      setIsReplacingShare(false);
+      setImportMode(null);
       
       // Clear form
       setShare('');
@@ -141,7 +182,7 @@ export default function ShareManager({ onShareLoaded, installPrompt }: ShareMana
     );
   }
 
-  if (hasShare) {
+  if (hasShare && !isReplacingShare) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-4">
         <div className="w-full max-w-md text-center">
@@ -152,16 +193,34 @@ export default function ShareManager({ onShareLoaded, installPrompt }: ShareMana
           <p className="text-gray-400 mb-8">
             Your encrypted share is ready for signing
           </p>
-          <button
-            onClick={handleReset}
-            className="px-6 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-semibold transition-colors"
-          >
-            Reset Share
-          </button>
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <button
+              onClick={() => {
+                setIsReplacingShare(true);
+                setError('');
+                setSuccess('Scan or paste a replacement payload to reprovision this cold signer.');
+              }}
+              className="px-6 py-2 bg-cyan-500 hover:bg-cyan-400 rounded-lg text-sm font-semibold text-gray-950 transition-colors"
+            >
+              Replace Stored Share
+            </button>
+            <button
+              onClick={handleReset}
+              className="px-6 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-semibold transition-colors"
+            >
+              Reset Share
+            </button>
+          </div>
         </div>
       </div>
     );
   }
+
+  const formHeading = isReplacingShare ? 'Replace Stored Share' : 'Load Your Share';
+  const formSubtitle = isReplacingShare
+    ? 'Scan a recovery or rotation payload, then encrypt the new cold share on this device.'
+    : 'Enter your Shamir share and create a password to encrypt it';
+  const submitLabel = isReplacingShare ? 'Replace Stored Share' : 'Encrypt and Store';
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-4">
@@ -208,11 +267,19 @@ export default function ShareManager({ onShareLoaded, installPrompt }: ShareMana
           <div className="inline-flex items-center justify-center w-16 h-16 bg-emerald-500/20 rounded-full mb-4">
             <Shield className="w-10 h-10 text-emerald-500" />
           </div>
-          <h2 className="text-2xl font-bold mb-2">Load Your Share</h2>
+          <h2 className="text-2xl font-bold mb-2">{formHeading}</h2>
           <p className="text-gray-400">
-            Enter your Shamir share and create a password to encrypt it
+            {formSubtitle}
           </p>
         </div>
+
+        {importMode && (
+          <div className="mb-6 rounded-lg border border-cyan-500/40 bg-cyan-500/10 p-4 text-sm text-cyan-100">
+            {importMode === 'rotate'
+              ? 'Rotation payload detected. Saving will overwrite the old cold share on this device.'
+              : 'Recovery payload detected. Saving will initialize this device with the replacement cold share.'}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Share Input */}
@@ -310,7 +377,7 @@ export default function ShareManager({ onShareLoaded, installPrompt }: ShareMana
             ) : (
               <>
                 <Upload className="w-5 h-5" />
-                Encrypt and Store
+                {submitLabel}
               </>
             )}
           </button>

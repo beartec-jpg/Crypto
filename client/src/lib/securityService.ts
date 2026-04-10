@@ -2,7 +2,7 @@
 // Wallet security management - auto-lock, key protection, session management, 3-tier security
 
 // Security tier types
-export type SecurityTier = 'standard' | 'enhanced' | 'maximum';
+export type SecurityTier = 'standard' | 'enhanced' | 'maximum' | 'cold';
 export type SecurityAction = 'openWallet' | 'viewBalance' | 'receive' | 'send' | 'viewSeed' | 'exportKeys';
 export type AuthMethod = 'pin' | 'password' | 'passkey';
 
@@ -47,6 +47,14 @@ export const SECURITY_REQUIREMENTS: Record<SecurityTier, Record<SecurityAction, 
     receive: [],
     send: ['pin', 'password', 'passkey'], // PIN + Password + Passkey (Bug 21 fix)
     viewSeed: ['pin', 'password', 'passkey'], // PIN + Password + Passkey
+    exportKeys: ['pin', 'password', 'passkey'],
+  },
+  cold: {
+    openWallet: ['pin', 'passkey'],
+    viewBalance: [],
+    receive: [],
+    send: ['passkey'],
+    viewSeed: ['pin', 'password', 'passkey'],
     exportKeys: ['pin', 'password', 'passkey'],
   },
 };

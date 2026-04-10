@@ -35,6 +35,14 @@ export interface ColdUnsignedTx {
   hotShare: string;
 }
 
+export interface ColdSignerShareImportPayload {
+  type: 'cold-share-import';
+  mode: 'recover' | 'rotate';
+  share: string;
+  fingerprint: string;
+  createdAt: string;
+}
+
 const SHARE_STORAGE_KEY = 'cold_signer_hot_share';
 
 /**
@@ -64,6 +72,24 @@ export function isColdSignerConfigured(): boolean {
  */
 export function clearHotShare(): void {
   localStorage.removeItem(SHARE_STORAGE_KEY);
+}
+
+/**
+ * Build a QR payload that a cold signer device can scan to import or replace its stored share.
+ */
+export function createColdSignerShareImportPayload(
+  share: string,
+  mode: 'recover' | 'rotate'
+): string {
+  const payload: ColdSignerShareImportPayload = {
+    type: 'cold-share-import',
+    mode,
+    share,
+    fingerprint: share.slice(0, 8),
+    createdAt: new Date().toISOString(),
+  };
+
+  return JSON.stringify(payload);
 }
 
 /**
