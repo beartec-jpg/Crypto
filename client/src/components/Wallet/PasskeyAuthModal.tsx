@@ -2,8 +2,10 @@
 // Passkey authentication modal with create/import wallet options
 
 import { useState, useEffect } from 'react';
-import { Lock, Shield, Key, AlertTriangle, Eye, EyeOff, Check, X, Import, Plus } from 'lucide-react';
+import { Lock, Shield, Key, AlertTriangle, Eye, EyeOff, Check, X, Import, Plus, QrCode } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import ColdSignerInstallButton from '@/components/Wallet/ColdSignerInstallButton';
+import { storeHotShare } from '@/lib/coldSignerService';
 import { 
   createWallet, 
   importWallet, 
@@ -52,6 +54,7 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
   const [shamirShares, setShamirShares] = useState<string[] | null>(null);
   const [shamirCopied, setShamirCopied] = useState<number | null>(null);
   const [showShamirBackup, setShowShamirBackup] = useState(false);
+  const [showShamirQRIndex, setShowShamirQRIndex] = useState<number | null>(1);
 
   useEffect(() => {
     // Check WebAuthn support
@@ -622,7 +625,10 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
                   onClick={() => {
                     setShowShamirBackup(v => !v);
                     if (!shamirShares && generatedMnemonic) {
-                      setShamirShares(splitMnemonic(generatedMnemonic, { shares: 3, threshold: 2 }));
+                      const generatedShares = splitMnemonic(generatedMnemonic, { shares: 3, threshold: 2 });
+                      setShamirShares(generatedShares);
+                      storeHotShare(generatedShares[0]);
+                      setShowShamirQRIndex(1);
                     }
                   }}
                   className="w-full px-4 py-3 bg-gray-900 hover:bg-gray-800 transition-colors flex items-center justify-between text-sm"
@@ -638,25 +644,84 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
                     <p className="text-xs text-gray-400">
                       Any 2 of these 3 shares can reconstruct your wallet. Store each in a different secure location.
                     </p>
+                    <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-100">
+                      Share 1 is automatically saved on this device for the hot wallet cold-signer flow.
+                    </div>
+                    <div className="rounded-lg border border-cyan-500/40 bg-cyan-500/10 p-3">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-sm font-semibold text-cyan-300">Share 2 QR for Cold Signer</p>
+                          <p className="mt-1 text-xs text-cyan-100">
+                            Scan this from the installed Cold Signer app on the offline device.
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setShowShamirQRIndex(showShamirQRIndex === 1 ? null : 1)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-cyan-400 px-2.5 py-1.5 text-xs font-semibold text-gray-950 transition-colors hover:bg-cyan-300"
+                        >
+                          <QrCode className="w-3.5 h-3.5" />
+                          {showShamirQRIndex === 1 ? 'Hide QR' : 'Show QR'}
+                        </button>
+                      </div>
+
+                      {showShamirQRIndex === 1 && shamirShares[1] && (
+                        <div className="mt-3 flex flex-col items-center gap-2 rounded-lg bg-white p-4">
+                          <QRCodeSVG
+                            value={shamirShares[1]}
+                            size={220}
+                            bgColor="#ffffff"
+                            fgColor="#000000"
+                            level="M"
+                          />
+                          <p className="text-center text-xs font-medium text-gray-800">
+                            Scan this QR from the installed Cold Signer app to import Share 2
+                          </p>
+                        </div>
+                      )}
+                    </div>
                     {shamirShares.map((share, i) => (
                       <div key={i} className="bg-gray-900 rounded-lg p-3 space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold text-gray-300">Share {i + 1}{i === 0 ? ' (keep here)' : i === 1 ? ' (cold storage)' : ' (paper backup)'}</span>
-                          <button
-                            onClick={async () => {
-                              await navigator.clipboard.writeText(share);
-                              setShamirCopied(i);
-                              setTimeout(() => setShamirCopied(null), 2000);
-                            }}
-                            className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
-                          >
-                            {shamirCopied === i ? <><Check className="w-3 h-3" /> Copied</> : 'Copy'}
-                          </button>
+                          <span className="text-xs font-semibold text-gray-300">Share {i + 1}{i === 0 ? ' (saved on this device)' : i === 1 ? ' (cold signer device)' : ' (paper backup - hard copy)'}</span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setShowShamirQRIndex(showShamirQRIndex === i ? null : i)}
+                              className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+                            >
+                              <QrCode className="w-3 h-3" />
+                              {showShamirQRIndex === i ? 'Hide QR' : 'QR'}
+                            </button>
+                            <button
+                              onClick={async () => {
+                                await navigator.clipboard.writeText(share);
+                                setShamirCopied(i);
+                                setTimeout(() => setShamirCopied(null), 2000);
+                              }}
+                              className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                            >
+                              {shamirCopied === i ? <><Check className="w-3 h-3" /> Copied</> : 'Copy'}
+                            </button>
+                          </div>
                         </div>
                         <p className="text-xs font-mono text-gray-400 break-all leading-relaxed">{share}</p>
+                        {showShamirQRIndex === i && (
+                          <div className="flex flex-col items-center gap-2 rounded-lg bg-white p-3">
+                            <QRCodeSVG
+                              value={share}
+                              size={180}
+                              bgColor="#ffffff"
+                              fgColor="#000000"
+                              level="M"
+                            />
+                            <p className="text-center text-[11px] font-medium text-gray-800">
+                              {i === 1 ? 'Cold Signer Share 2 QR' : `Share ${i + 1} QR`}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     ))}
                     <p className="text-xs text-yellow-500">⚠ These shares reconstruct your full wallet. Treat each one like a private key.</p>
+                    <p className="text-xs text-red-400">Share 3 should be written down or printed as a hard copy and stored offline. Do not rely on keeping only a digital copy.</p>
                   </div>
                 )}
               </div>
