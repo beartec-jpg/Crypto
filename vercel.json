@@ -23,6 +23,11 @@
       "schedule": "* * * * *"
     }
   ],
+  "env": {
+    "QBTC_RPC_NODES": "http://89.167.109.241:28332,http://46.62.156.169:28332,http://37.27.47.236:28332",
+    "QBTC_FAUCET_NODE": "http://89.167.109.241:28332",
+    "QBTC_FAUCET_WALLET": "miner"
+  },
   "rewrites": [
     { "source": "/api/crypto/elliott-wave/labels/:id", "destination": "/api/crypto/elliott-wave/labels/[id]" },
     { "source": "/api/crypto/projection-lines/:id", "destination": "/api/crypto/projection-lines/[id]" },
