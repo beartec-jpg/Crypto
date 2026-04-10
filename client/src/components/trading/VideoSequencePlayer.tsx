@@ -50,6 +50,21 @@ export function VideoSequencePlayer({
   const transitionVideoRef = useRef<HTMLVideoElement>(null);
   const bullVideoRef = useRef<HTMLVideoElement>(null);
 
+  const skipToEnd = () => {
+    // Keep final loop behavior unchanged; skip is for intro/transition only.
+    if (videoPhase === 'final') return;
+
+    const activeVideo = videoPhase === 'transition'
+      ? transitionVideoRef.current
+      : bearVideoRef.current;
+
+    if (!activeVideo || !Number.isFinite(activeVideo.duration) || activeVideo.duration <= 0) {
+      return;
+    }
+
+    activeVideo.currentTime = Math.max(0, activeVideo.duration - 0.05);
+  };
+
   // Detect market status changes and trigger video sequences
   useEffect(() => {
     // Only trigger transition if we're past initial phase and market state actually changed
@@ -112,7 +127,11 @@ export function VideoSequencePlayer({
   }, [videoPhase, targetMarketState]);
 
   return (
-    <div className="w-full flex justify-center relative">
+    <div
+      className="w-full flex justify-center relative"
+      onClick={skipToEnd}
+      onTouchStart={skipToEnd}
+    >
       {/* Bear Video */}
       <video 
         ref={bearVideoRef}
