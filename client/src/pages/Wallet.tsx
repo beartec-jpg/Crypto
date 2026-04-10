@@ -49,7 +49,6 @@ export default function WalletPage() {
   
   const [showBitcoinSend, setShowBitcoinSend] = useState(false);
   const [showSolanaSend, setShowSolanaSend] = useState(false);
-  const [showReceiveModal, setShowReceiveModal] = useState(false);
   
   const [isWalletUnlocked, setIsWalletUnlocked] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
@@ -186,7 +185,6 @@ export default function WalletPage() {
       setPendingWallet(null);
     }
     setMode('dashboard');
-    setShowReceiveModal(false);
     setIsWalletUnlocked(true);
     setIsPasskeyAuthenticated(true);
     setAuthStep('complete');
@@ -578,9 +576,9 @@ export default function WalletPage() {
                   <span className="hidden sm:inline">Send</span>
                 </button>
                 <button
-                  onClick={() => setShowReceiveModal(true)}
+                  onClick={() => setMode('receive')}
                   className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 ${
-                    showReceiveModal
+                    mode === 'receive'
                       ? 'bg-emerald-600 text-white'
                       : 'text-gray-400 hover:text-white'
                   }`}
@@ -603,7 +601,11 @@ export default function WalletPage() {
                 </button>
                 <button
                   onClick={() => setMode('security')}
-                  className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 text-gray-400 hover:text-white`}
+                  className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 ${
+                    mode === 'security'
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
                   title="Security"
                 >
                   <Shield className="w-4 h-4 flex-shrink-0" />
@@ -651,6 +653,17 @@ export default function WalletPage() {
                 />
               )}
 
+              {mode === 'receive' && sovereignWallet && (
+                <ReceiveModal
+                  addresses={sovereignWallet.addresses}
+                  selectedChain={selectedChain}
+                  onSelectChain={setSelectedChain}
+                  onClose={() => setMode('dashboard')}
+                  tokenNetwork={tokenNetwork}
+                  inline
+                />
+              )}
+
               {mode === 'settings' && (
                 <SettingsSection 
                   sovereignWallet={sovereignWallet} 
@@ -660,23 +673,12 @@ export default function WalletPage() {
               )}
 
               {mode === 'security' && (
-                <SecurityEducationCenter onBack={() => setMode('dashboard')} />
+                <SecurityEducationCenter />
               )}
             </div>
           </>
         )}
       </div>
-
-      {/* Receive Modal */}
-      {showReceiveModal && sovereignWallet && (
-        <ReceiveModal
-          addresses={sovereignWallet.addresses}
-          selectedChain={selectedChain}
-          onSelectChain={setSelectedChain}
-          onClose={() => setShowReceiveModal(false)}
-          tokenNetwork={tokenNetwork}
-        />
-      )}
 
       {/* Bitcoin Send Modal */}
       {showBitcoinSend && sovereignWallet && (

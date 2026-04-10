@@ -20,6 +20,7 @@ interface ReceiveModalProps {
   onSelectChain: (chain: Chain) => void;
   onClose: () => void;
   tokenNetwork?: 'mainnet' | 'testnet';
+  inline?: boolean;
 }
 
 const CHAIN_CONFIG: Record<Chain, { name: string; symbol: string; color: string; warning: string }> = {
@@ -69,6 +70,7 @@ export default function ReceiveModal({
   onSelectChain,
   onClose,
   tokenNetwork = 'testnet',
+  inline = false,
 }: ReceiveModalProps) {
   const [copied, setCopied] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -130,20 +132,34 @@ export default function ReceiveModal({
     setIsDropdownOpen(false);
   };
 
+  const wrapperClassName = inline
+    ? 'bg-gray-800 rounded-2xl p-6'
+    : 'fixed inset-0 bg-gray-900 z-50 overflow-y-auto';
+
+  const headerClassName = inline
+    ? 'mb-6 flex items-center justify-between'
+    : 'sticky top-0 bg-gray-900 border-b border-gray-800 px-4 py-4 flex items-center justify-between';
+
+  const contentClassName = inline
+    ? 'space-y-6'
+    : 'max-w-md mx-auto px-4 py-6 space-y-6';
+
   return (
-    <div className="fixed inset-0 bg-gray-900 z-50 overflow-y-auto">
+    <div className={wrapperClassName}>
       {/* Header */}
-      <div className="sticky top-0 bg-gray-900 border-b border-gray-800 px-4 py-4 flex items-center justify-between">
+      <div className={headerClassName}>
         <h1 className="text-xl font-bold">Receive Crypto</h1>
-        <button
-          onClick={onClose}
-          className="p-2 rounded-lg hover:bg-gray-800 transition-colors"
-        >
-          <X className="w-6 h-6 text-gray-400" />
-        </button>
+        {!inline && (
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            <X className="w-6 h-6 text-gray-400" />
+          </button>
+        )}
       </div>
 
-      <div className="max-w-md mx-auto px-4 py-6 space-y-6">
+      <div className={contentClassName}>
         {/* Chain Selector Dropdown */}
         <div className="relative">
           <label className="text-sm text-gray-400 mb-2 block">Select Network</label>
@@ -253,13 +269,14 @@ export default function ReceiveModal({
           </p>
         </div>
 
-        {/* Back Button */}
-        <button
-          onClick={onClose}
-          className="w-full py-4 bg-gray-800 rounded-xl hover:bg-gray-700 transition-colors font-medium"
-        >
-          Back to Wallet
-        </button>
+        {!inline && (
+          <button
+            onClick={onClose}
+            className="w-full py-4 bg-gray-800 rounded-xl hover:bg-gray-700 transition-colors font-medium"
+          >
+            Back to Wallet
+          </button>
+        )}
       </div>
     </div>
   );
