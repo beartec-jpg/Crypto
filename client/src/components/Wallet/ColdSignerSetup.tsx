@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Shield, AlertCircle, CheckCircle, Copy, Download, Lock, QrCode } from 'lucide-react';
+import { Eye, EyeOff, Shield, AlertCircle, CheckCircle, Copy, Download, Lock, QrCode } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { splitMnemonic, getShareFingerprint } from '../../lib/shamirService';
 import { storeHotShare } from '../../lib/coldSignerService';
@@ -15,7 +15,7 @@ interface ColdSignerSetupProps {
   onClose: () => void;
 }
 
-type SetupStep = 'intro' | 'shares' | 'download' | 'complete';
+type SetupStep = 'intro' | 'password' | 'shares' | 'download' | 'complete';
 
 export default function ColdSignerSetup({ mnemonic, onClose }: ColdSignerSetupProps) {
   const [step, setStep] = useState<SetupStep>('intro');
@@ -23,20 +23,41 @@ export default function ColdSignerSetup({ mnemonic, onClose }: ColdSignerSetupPr
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [buildHash, setBuildHash] = useState<string>('');
   const [showShareQR, setShowShareQR] = useState<number | null>(null);
+  const [sharePassword, setSharePassword] = useState('');
+  const [sharePasswordConfirm, setSharePasswordConfirm] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [pendingShares, setPendingShares] = useState<string[]>([]);
 
   const handleGenerateShares = () => {
     try {
       const generatedShares = splitMnemonic(mnemonic, { shares: 3, threshold: 2 });
-      setShares(generatedShares);
-      setShowShareQR(1);
-      // Store Share 1 (hot share) for cold signer flow
-      storeHotShare(generatedShares[0]);
-      setStep('shares');
-      
-      // Generate build hash (placeholder - would be real build hash in production)
-      sha256('cold-signer-build').then(hash => setBuildHash(hash));
+      setPendingShares(generatedShares);
+      setStep('password');
     } catch (error) {
       console.error('Failed to generate shares:', error);
+    }
+  };
+
+  const handlePasswordSubmit = async () => {
+    setPasswordError('');
+    if (sharePassword.length < 8) {
+      setPasswordError('Password must be at least 8 characters');
+      return;
+    }
+    if (sharePassword !== sharePasswordConfirm) {
+      setPasswordError('Passwords do not match');
+      return;
+    }
+    try {
+      await storeHotShare(pendingShares[0], sharePassword);
+      setShares(pendingShares);
+      setShowShareQR(1);
+      setStep('shares');
+      sha256('cold-signer-build').then(hash => setBuildHash(hash));
+    } catch (error) {
+      setPasswordError('Failed to encrypt share');
+      console.error('Failed to store share:', error);
     }
   };
 
@@ -404,11 +425,89 @@ export default function ColdSignerSetup({ mnemonic, onClose }: ColdSignerSetupPr
     </div>
   );
 
+  const renderPassword = () => (
+    <div className="space-y-6">
+      <div className="text-center">
+        <div className="inline-flex items-center justify-center w-16 h-16 bg-emerald-500/20 rounded-full mb-4">
+          <Lock className="w-10 h-10 text-emerald-500" />
+        </div>
+        <h2 className="text-2xl font-bold mb-2">Encrypt Hot Share</h2>
+        <p className="text-gray-400">
+          Set a password to encrypt Share 1 on this device. You will need this password to sign transactions later.
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">Password</label>
+          <div className="relative">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={sharePassword}
+              onChange={(e) => { setSharePassword(e.target.value); setPasswordError(''); }}
+              placeholder="Enter a strong password"
+              autoComplete="off"
+              className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 pr-12"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(v => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+            >
+              {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">Confirm Password</label>
+          <input
+            type={showPassword ? 'text' : 'password'}
+            value={sharePasswordConfirm}
+            onChange={(e) => { setSharePasswordConfirm(e.target.value); setPasswordError(''); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') void handlePasswordSubmit(); }}
+            placeholder="Confirm password"
+            autoComplete="off"
+            className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+        </div>
+        {passwordError && (
+          <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+            {passwordError}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-amber-500/10 border border-amber-500/40 rounded-lg p-4">
+        <p className="text-sm text-amber-200">
+          <strong>Remember this password.</strong> You will need it every time you send a cold-signed transaction or rotate shares.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <button
+          onClick={() => setStep('intro')}
+          className="px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg font-semibold transition-colors"
+        >
+          Back
+        </button>
+        <button
+          onClick={() => void handlePasswordSubmit()}
+          disabled={!sharePassword || !sharePasswordConfirm}
+          className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
+        >
+          <Lock className="w-5 h-5" />
+          Encrypt & Continue
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-900 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           {step === 'intro' && renderIntro()}
+          {step === 'password' && renderPassword()}
           {step === 'shares' && renderShares()}
           {step === 'download' && renderDownload()}
           {step === 'complete' && renderComplete()}

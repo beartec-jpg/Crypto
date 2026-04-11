@@ -44,20 +44,88 @@ export interface ColdSignerShareImportPayload {
 }
 
 const SHARE_STORAGE_KEY = 'cold_signer_hot_share';
+const SHARE_SALT_KEY = 'cold_signer_hot_share_salt';
 
 /**
- * Store the hot share (Share 1) in localStorage.
- * Called during ColdSignerSetup after splitting.
+ * Derive an AES-256-GCM key from a password + salt via PBKDF2.
  */
-export function storeHotShare(share: string): void {
-  localStorage.setItem(SHARE_STORAGE_KEY, share);
+async function deriveKey(password: string, salt: Uint8Array, usage: 'encrypt' | 'decrypt'): Promise<CryptoKey> {
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+  const keyBits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+    keyMaterial,
+    256
+  );
+  return crypto.subtle.importKey(
+    'raw',
+    keyBits,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    [usage]
+  );
 }
 
 /**
- * Retrieve the hot share from localStorage.
+ * Encrypt and store the hot share (Share 1) in localStorage.
+ * Called during ColdSignerSetup / rotation after splitting.
  */
-export function getHotShare(): string | null {
-  return localStorage.getItem(SHARE_STORAGE_KEY);
+export async function storeHotShare(share: string, password: string): Promise<void> {
+  const salt = crypto.getRandomValues(new Uint8Array(32));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(password, salt, 'encrypt');
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    new TextEncoder().encode(share)
+  );
+  const combined = new Uint8Array(iv.length + encrypted.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(encrypted), iv.length);
+
+  localStorage.setItem(SHARE_STORAGE_KEY, bufToHex(combined));
+  localStorage.setItem(SHARE_SALT_KEY, bufToHex(salt));
+}
+
+function bufToHex(buf: Uint8Array): string {
+  return Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function hexToBuf(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+  }
+  return bytes;
+}
+
+/**
+ * Retrieve and decrypt the hot share from localStorage.
+ * Returns null if not stored, throws on wrong password.
+ */
+export async function getHotShare(password: string): Promise<string | null> {
+  const encryptedHex = localStorage.getItem(SHARE_STORAGE_KEY);
+  const saltHex = localStorage.getItem(SHARE_SALT_KEY);
+  if (!encryptedHex || !saltHex) return null;
+
+  const salt = hexToBuf(saltHex);
+  const combined = hexToBuf(encryptedHex);
+  const iv = combined.slice(0, 12);
+  const ciphertext = combined.slice(12);
+
+  const key = await deriveKey(password, salt, 'decrypt');
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    ciphertext
+  );
+  return new TextDecoder().decode(decrypted);
 }
 
 /**
@@ -72,6 +140,7 @@ export function isColdSignerConfigured(): boolean {
  */
 export function clearHotShare(): void {
   localStorage.removeItem(SHARE_STORAGE_KEY);
+  localStorage.removeItem(SHARE_SALT_KEY);
 }
 
 /**
@@ -97,7 +166,7 @@ export function createColdSignerShareImportPayload(
  * The payload includes the transaction data and the hot share so the cold signer
  * can reconstruct the mnemonic (hotShare + coldShare = 2-of-3 threshold).
  */
-export function buildUnsignedTxPayload(
+export async function buildUnsignedTxPayload(
   chain: Chain,
   txParams: {
     to: string;
@@ -114,9 +183,10 @@ export function buildUnsignedTxPayload(
     changeAddress?: string;
     recentBlockhash?: string;
     lamportsPerSignature?: number;
-  }
-): ColdUnsignedTx {
-  const hotShare = getHotShare();
+  },
+  password: string
+): Promise<ColdUnsignedTx> {
+  const hotShare = await getHotShare(password);
   if (!hotShare) {
     throw new Error('Cold signer not configured — hot share missing');
   }

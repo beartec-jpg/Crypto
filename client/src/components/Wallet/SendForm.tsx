@@ -103,6 +103,8 @@ export default function SendForm({
   const [coldSignerAvailable] = useState(() => isColdSignerConfigured());
   const [showUnsignedTxQR, setShowUnsignedTxQR] = useState(false);
   const [showSignedTxScanner, setShowSignedTxScanner] = useState(false);
+  const [showColdSignerPassword, setShowColdSignerPassword] = useState(false);
+  const [coldSignerPassword, setColdSignerPassword] = useState('');
   const [unsignedTxPayload, setUnsignedTxPayload] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
@@ -361,26 +363,37 @@ export default function SendForm({
     setShowNewAccountWarning(false);
   };
 
+  const handleColdSignerPasswordSubmit = async () => {
+    try {
+      const payload = await buildUnsignedTxPayload(selectedChain, {
+        to: recipient,
+        amount,
+        fee: estimatedFee,
+        nonce: undefined,
+        chainId: selectedChain === 'ethereum' ? 1 : selectedChain === 'bsc' ? 56 : undefined,
+        destination: selectedChain === 'xrp' ? recipient : undefined,
+        destinationTag: selectedChain === 'xrp' && destinationTag ? parseInt(destinationTag) : undefined,
+      }, coldSignerPassword);
+      setShowColdSignerPassword(false);
+      setColdSignerPassword('');
+      setUnsignedTxPayload(serializeForQR(payload));
+      setShowUnsignedTxQR(true);
+    } catch (err: any) {
+      setError(err.message === 'Cold signer not configured — hot share missing'
+        ? err.message
+        : 'Incorrect password or failed to decrypt hot share');
+      setShowColdSignerPassword(false);
+      setColdSignerPassword('');
+    }
+  };
+
   const handleConfirmTransaction = async () => {
     setShowPreview(false);
 
-    // Cold signer flow: build unsigned TX QR instead of signing directly
+    // Cold signer flow: prompt for password to decrypt hot share
     if (useColdSigner) {
-      try {
-        const payload = buildUnsignedTxPayload(selectedChain, {
-          to: recipient,
-          amount,
-          fee: estimatedFee,
-          nonce: undefined, // Will be filled by gas estimate
-          chainId: selectedChain === 'ethereum' ? 1 : selectedChain === 'bsc' ? 56 : undefined,
-          destination: selectedChain === 'xrp' ? recipient : undefined,
-          destinationTag: selectedChain === 'xrp' && destinationTag ? parseInt(destinationTag) : undefined,
-        });
-        setUnsignedTxPayload(serializeForQR(payload));
-        setShowUnsignedTxQR(true);
-      } catch (err: any) {
-        setError(err.message || 'Failed to build cold signer payload');
-      }
+      setShowColdSignerPassword(true);
+      setColdSignerPassword('');
       return;
     }
     
@@ -1186,6 +1199,47 @@ export default function SendForm({
           explorerUrl={successData.explorerUrl}
           onClose={handleSuccessClose}
         />
+      )}
+
+      {/* Cold Signer: Password to decrypt hot share */}
+      {showColdSignerPassword && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
+            <div className="text-center">
+              <h3 className="text-lg font-semibold text-white">Enter Hot Share Password</h3>
+              <p className="mt-1 text-sm text-gray-400">
+                Decrypt your hot share to build the unsigned transaction.
+              </p>
+            </div>
+            <input
+              type="password"
+              value={coldSignerPassword}
+              onChange={(e) => setColdSignerPassword(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && coldSignerPassword) void handleColdSignerPasswordSubmit(); }}
+              placeholder="Password"
+              autoComplete="off"
+              autoFocus
+              className="w-full rounded-xl border border-gray-600 bg-gray-900 px-4 py-3 text-white outline-none focus:border-cyan-400"
+            />
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => { setShowColdSignerPassword(false); setColdSignerPassword(''); }}
+                className="flex-1 rounded-xl bg-gray-700 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleColdSignerPasswordSubmit()}
+                disabled={!coldSignerPassword}
+                className="flex-1 rounded-xl bg-cyan-400 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-cyan-300 disabled:opacity-40"
+              >
+                Decrypt & Continue
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Cold Signer: Unsigned TX QR Display */}

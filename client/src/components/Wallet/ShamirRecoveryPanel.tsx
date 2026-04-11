@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Check, Copy, HardDrive, QrCode, RefreshCw, Shield, Snowflake } from 'lucide-react';
+import { Check, Copy, Eye, EyeOff, HardDrive, Lock, QrCode, RefreshCw, Shield, Snowflake, X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '@/components/ui/button';
 import { getCurrentWallet, deriveAddressesFromMnemonic } from '@/lib/walletService';
 import { splitMnemonic, reconstructMnemonic, getShareFingerprint } from '@/lib/shamirService';
 import { storeHotShare, getHotShare, createColdSignerShareImportPayload } from '@/lib/coldSignerService';
+import { hasPinSetup, verifyPin } from '@/lib/securityService';
 
 interface ShamirRecoveryPanelProps {
   userId: string;
@@ -23,6 +24,23 @@ export default function ShamirRecoveryPanel({ userId }: ShamirRecoveryPanelProps
   const [showShare2Qr, setShowShare2Qr] = useState(true);
   const [walletAddresses, setWalletAddresses] = useState<Record<string, string> | null>(null);
   const [share2ImportPayload, setShare2ImportPayload] = useState<string>('');
+  // PIN gate
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  // Password for hot share decrypt/encrypt
+  const [showHotShareAuth, setShowHotShareAuth] = useState(false);
+  const [hotSharePassword, setHotSharePassword] = useState('');
+  const [hotSharePasswordError, setHotSharePasswordError] = useState<string | null>(null);
+  const [showHotSharePassword, setShowHotSharePassword] = useState(false);
+  const [isDecrypting, setIsDecrypting] = useState(false);
+  // Password for encrypting new share after generation
+  const [newSharePassword, setNewSharePassword] = useState('');
+  const [newSharePasswordConfirm, setNewSharePasswordConfirm] = useState('');
+  const [showNewSharePassword, setShowNewSharePassword] = useState(false);
+  const [newSharePasswordError, setNewSharePasswordError] = useState<string | null>(null);
+  const [pendingNewShares, setPendingNewShares] = useState<string[] | null>(null);
 
   useEffect(() => {
     async function loadWallet() {
@@ -65,20 +83,47 @@ export default function ShamirRecoveryPanel({ userId }: ShamirRecoveryPanelProps
       }
 
       const nextShares = splitMnemonic(mnemonic, { shares: 3, threshold: 2 });
-      storeHotShare(nextShares[0]);
-      setGeneratedShares(nextShares);
-      setShare2ImportPayload(createColdSignerShareImportPayload(nextShares[1], mode));
-      setShowShare2Qr(true);
-      setSuccess(
-        mode === 'rotate'
-          ? 'New Shamir set generated. Share 1 replaced on this device, and the Share 2 QR below will replace the cold signer share.'
-          : 'Recovery set generated. Share 1 is stored on this device and Share 2 can now provision a replacement cold signer device.'
-      );
+      // Don't store yet — need password first
+      setPendingNewShares(nextShares);
+      setNewSharePassword('');
+      setNewSharePasswordConfirm('');
+      setNewSharePasswordError(null);
     } catch (err) {
       setGeneratedShares(null);
       setError(err instanceof Error ? err.message : 'Failed to generate replacement shares');
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleEncryptNewShares = async () => {
+    setNewSharePasswordError(null);
+    if (!pendingNewShares) return;
+
+    if (newSharePassword.length < 8) {
+      setNewSharePasswordError('Password must be at least 8 characters');
+      return;
+    }
+    if (newSharePassword !== newSharePasswordConfirm) {
+      setNewSharePasswordError('Passwords do not match');
+      return;
+    }
+
+    try {
+      await storeHotShare(pendingNewShares[0], newSharePassword);
+      setGeneratedShares(pendingNewShares);
+      setShare2ImportPayload(createColdSignerShareImportPayload(pendingNewShares[1], mode));
+      setShowShare2Qr(true);
+      setPendingNewShares(null);
+      setNewSharePassword('');
+      setNewSharePasswordConfirm('');
+      setSuccess(
+        mode === 'rotate'
+          ? 'New Shamir set generated. Share 1 encrypted and stored on this device.'
+          : 'Recovery set generated. Share 1 encrypted and stored on this device.'
+      );
+    } catch (err) {
+      setNewSharePasswordError('Failed to encrypt share');
     }
   };
 
@@ -89,13 +134,59 @@ export default function ShamirRecoveryPanel({ userId }: ShamirRecoveryPanelProps
   };
 
   const populateShare1FromDevice = () => {
-    const hotShare = getHotShare();
-    if (hotShare) {
-      setShareInputs((prev) => [hotShare, prev[1], prev[2]]);
-    } else {
-      setError('No hot share found on this device. You may need to set up cold signing first.');
+    setShowHotShareAuth(true);
+    setHotSharePassword('');
+    setHotSharePasswordError(null);
+  };
+
+  const handleHotShareUnlock = async () => {
+    setHotSharePasswordError(null);
+    setIsDecrypting(true);
+    try {
+      const hotShare = await getHotShare(hotSharePassword);
+      if (hotShare) {
+        setShareInputs((prev) => [hotShare, prev[1], prev[2]]);
+        setShowHotShareAuth(false);
+        setHotSharePassword('');
+      } else {
+        setHotSharePasswordError('No hot share found on this device.');
+      }
+    } catch {
+      setHotSharePasswordError('Incorrect password or corrupted share');
+    } finally {
+      setIsDecrypting(false);
     }
   };
+
+  const handleUnlockPanel = async () => {
+    setPinError(null);
+    setIsVerifying(true);
+    try {
+      const valid = await verifyPin(userId, pinInput);
+      if (!valid) {
+        setPinError('Incorrect PIN');
+        return;
+      }
+      setIsUnlocked(true);
+      setPinInput('');
+    } catch (err) {
+      setPinError(err instanceof Error ? err.message : 'Verification failed');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleConfirmAndClose = () => {
+    setGeneratedShares(null);
+    setShareInputs(['', '', '']);
+    setShare2ImportPayload('');
+    setSuccess(null);
+    setError(null);
+    setIsUnlocked(false);
+    setPinInput('');
+  };
+
+  const hasPinConfigured = hasPinSetup(userId);
 
   return (
     <div className="rounded-xl border border-cyan-500/30 bg-gradient-to-br from-sky-950/80 via-blue-950/70 to-cyan-950/80 p-6 shadow-[0_0_0_1px_rgba(56,189,248,0.08)]">
@@ -111,7 +202,57 @@ export default function ShamirRecoveryPanel({ userId }: ShamirRecoveryPanelProps
         </div>
       </div>
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-2">
+      {!isUnlocked ? (
+        <div className="rounded-xl border border-white/10 bg-gray-950/60 p-6">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <div className="rounded-2xl bg-amber-400/15 p-3">
+              <Lock className="h-6 w-6 text-amber-300" />
+            </div>
+            <div>
+              <p className="font-semibold text-white">Authentication Required</p>
+              <p className="mt-1 text-sm text-gray-400">
+                {hasPinConfigured
+                  ? 'Enter your 6-digit PIN to access share recovery and rotation.'
+                  : 'PIN setup is required before accessing Shamir share management. Configure a PIN in Security Settings first.'}
+              </p>
+            </div>
+            {hasPinConfigured && (
+              <>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={pinInput}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                    setPinInput(val);
+                    setPinError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && pinInput.length === 6) void handleUnlockPanel();
+                  }}
+                  placeholder="••••••"
+                  autoComplete="off"
+                  className="w-40 rounded-xl border border-white/20 bg-gray-900 px-4 py-3 text-center font-mono text-lg tracking-[0.3em] text-white outline-none transition-colors focus:border-cyan-400"
+                />
+                {pinError && (
+                  <p className="text-sm text-red-400">{pinError}</p>
+                )}
+                <Button
+                  type="button"
+                  onClick={() => void handleUnlockPanel()}
+                  disabled={pinInput.length !== 6 || isVerifying}
+                  className="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                >
+                  {isVerifying ? 'Verifying...' : 'Unlock'}
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="mb-5 grid gap-3 sm:grid-cols-2">
         <button
           type="button"
           onClick={() => setMode('recover')}
@@ -162,14 +303,62 @@ export default function ShamirRecoveryPanel({ userId }: ShamirRecoveryPanelProps
                   className="inline-flex items-center gap-1 rounded-lg bg-cyan-400/15 px-2 py-1 text-[11px] font-semibold text-cyan-300 transition-colors hover:bg-cyan-400/25"
                 >
                   <HardDrive className="h-3 w-3" />
-                  Populate from device
+                  Load hot share
                 </button>
               )}
             </div>
+            {index === 0 && showHotShareAuth && (
+              <div className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+                <p className="mb-2 text-xs text-amber-200">Enter your password to decrypt the hot share</p>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type={showHotSharePassword ? 'text' : 'password'}
+                      value={hotSharePassword}
+                      onChange={(e) => {
+                        setHotSharePassword(e.target.value);
+                        setHotSharePasswordError(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && hotSharePassword) void handleHotShareUnlock();
+                      }}
+                      placeholder="Password"
+                      autoComplete="off"
+                      className="w-full rounded-lg border border-white/20 bg-gray-900 px-3 py-1.5 pr-8 text-sm text-white outline-none focus:border-cyan-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowHotSharePassword(v => !v)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                    >
+                      {showHotSharePassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleHotShareUnlock()}
+                    disabled={!hotSharePassword || isDecrypting}
+                    className="rounded-lg bg-cyan-400 px-3 py-1.5 text-xs font-semibold text-slate-950 transition-colors hover:bg-cyan-300 disabled:opacity-40"
+                  >
+                    {isDecrypting ? '...' : 'Unlock'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowHotShareAuth(false); setHotSharePassword(''); setHotSharePasswordError(null); }}
+                    className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                {hotSharePasswordError && (
+                  <p className="mt-1.5 text-xs text-red-400">{hotSharePasswordError}</p>
+                )}
+              </div>
+            )}
             <textarea
               value={share}
               onChange={(event) => handleShareInputChange(index, event.target.value)}
-              placeholder={index === 0 ? 'Paste share 1 or populate from device' : `Paste existing share ${index + 1}`}
+              placeholder={index === 0 ? 'Paste share 1 or click Load hot share' : `Paste existing share ${index + 1}`}
               rows={5}
               className="w-full rounded-xl border border-white/10 bg-gray-950/60 px-3 py-2 font-mono text-xs text-gray-200 outline-none transition-colors focus:border-cyan-400"
             />
@@ -193,12 +382,71 @@ export default function ShamirRecoveryPanel({ userId }: ShamirRecoveryPanelProps
         <Button
           type="button"
           onClick={() => void handleGenerate()}
-          disabled={isProcessing}
+          disabled={isProcessing || !!pendingNewShares || !!generatedShares}
           className="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
         >
           {isProcessing ? 'Generating...' : mode === 'rotate' ? 'Rotate Shamir Set' : 'Recover New Shamir Set'}
         </Button>
       </div>
+
+      {pendingNewShares && !generatedShares && (
+        <div className="mt-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 space-y-4">
+          <div>
+            <p className="font-semibold text-white">Set password for new hot share</p>
+            <p className="mt-1 text-sm text-amber-100/80">
+              This password encrypts Share 1 on this device. You will need it to sign transactions or rotate shares in the future.
+            </p>
+          </div>
+          <div className="space-y-3">
+            <div className="relative">
+              <input
+                type={showNewSharePassword ? 'text' : 'password'}
+                value={newSharePassword}
+                onChange={(e) => { setNewSharePassword(e.target.value); setNewSharePasswordError(null); }}
+                placeholder="Password (min 8 characters)"
+                autoComplete="off"
+                className="w-full rounded-xl border border-white/20 bg-gray-900 px-4 py-3 pr-10 text-sm text-white outline-none focus:border-cyan-400"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewSharePassword(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+              >
+                {showNewSharePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            <input
+              type={showNewSharePassword ? 'text' : 'password'}
+              value={newSharePasswordConfirm}
+              onChange={(e) => { setNewSharePasswordConfirm(e.target.value); setNewSharePasswordError(null); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleEncryptNewShares(); }}
+              placeholder="Confirm password"
+              autoComplete="off"
+              className="w-full rounded-xl border border-white/20 bg-gray-900 px-4 py-3 text-sm text-white outline-none focus:border-cyan-400"
+            />
+            {newSharePasswordError && (
+              <p className="text-sm text-red-400">{newSharePasswordError}</p>
+            )}
+          </div>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => { setPendingNewShares(null); setNewSharePassword(''); setNewSharePasswordConfirm(''); }}
+              className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-gray-600"
+            >
+              Cancel
+            </button>
+            <Button
+              type="button"
+              onClick={() => void handleEncryptNewShares()}
+              disabled={!newSharePassword || !newSharePasswordConfirm}
+              className="bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+            >
+              Encrypt & Store
+            </Button>
+          </div>
+        </div>
+      )}
 
       {generatedShares && (
         <div className="mt-6 space-y-4 rounded-2xl border border-white/10 bg-gray-950/55 p-4">
@@ -275,7 +523,17 @@ export default function ShamirRecoveryPanel({ userId }: ShamirRecoveryPanelProps
             <p className="font-semibold">Important</p>
             <p className="mt-1">Old shares should be considered retired once the new set is fully deployed. Replace the cold signer share and destroy obsolete paper or digital copies you no longer need.</p>
           </div>
+
+          <Button
+            type="button"
+            onClick={handleConfirmAndClose}
+            className="w-full bg-emerald-500 text-white hover:bg-emerald-400"
+          >
+            Confirm & Close
+          </Button>
         </div>
+      )}
+        </>
       )}
     </div>
   );

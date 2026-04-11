@@ -5,7 +5,6 @@ import { useState, useEffect } from 'react';
 import { Lock, Shield, Key, AlertTriangle, Eye, EyeOff, Check, X, Import, Plus, QrCode } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import ColdSignerInstallButton from '@/components/Wallet/ColdSignerInstallButton';
-import { storeHotShare } from '@/lib/coldSignerService';
 import { 
   createWallet, 
   importWallet, 
@@ -627,7 +626,6 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
                     if (!shamirShares && generatedMnemonic) {
                       const generatedShares = splitMnemonic(generatedMnemonic, { shares: 3, threshold: 2 });
                       setShamirShares(generatedShares);
-                      storeHotShare(generatedShares[0]);
                       setShowShamirQRIndex(1);
                     }
                   }}
@@ -645,7 +643,7 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
                       Any 2 of these 3 shares can reconstruct your wallet. Store each in a different secure location.
                     </p>
                     <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-100">
-                      Share 1 is automatically saved on this device for the hot wallet cold-signer flow.
+                      To activate cold signing, go to Security Settings and run Cold Signer Setup — this will encrypt Share 1 with a password on this device.
                     </div>
                     <div className="rounded-lg border border-cyan-500/40 bg-cyan-500/10 p-3">
                       <div className="flex items-start justify-between gap-4">
