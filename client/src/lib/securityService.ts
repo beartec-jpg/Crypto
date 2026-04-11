@@ -320,6 +320,14 @@ export function changeSecurityTier(userId: string, newTier: SecurityTier): void 
 }
 
 /**
+ * Check if user has a PIN set up
+ */
+export function hasPinSetup(userId: string): boolean {
+  const settings = getSecuritySettings(userId);
+  return !!(settings.pinHash && settings.pinSalt);
+}
+
+/**
  * Setup PIN for Maximum tier
  */
 export async function setupPin(userId: string, pin: string): Promise<void> {

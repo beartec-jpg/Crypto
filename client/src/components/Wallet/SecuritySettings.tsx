@@ -7,6 +7,7 @@ import {
   getSecuritySettings,
   changeSecurityTier,
   setupPin,
+  hasPinSetup,
   emergencySecurityReset,
   type SecurityTier,
 } from '@/lib/securityService';
@@ -41,6 +42,7 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showDowngradeConfirm, setShowDowngradeConfirm] = useState(false);
   const [pendingDowngradeTier, setPendingDowngradeTier] = useState<SecurityTier | null>(null);
+  const [pendingColdActivation, setPendingColdActivation] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
   const [scanResult, setScanResult] = useState<SecurityScanResult | null>(null);
   const [isScanning, setIsScanning] = useState(false);
@@ -144,6 +146,15 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
         await registerPasskey(userId);
       }
 
+      // Cold mode requires PIN — if no PIN set up yet, start PIN setup flow first
+      if (!hasPinSetup(userId)) {
+        setSetupMode('pin-setup');
+        // Store that we're setting up for cold mode so we complete activation after PIN setup
+        setPendingColdActivation(true);
+        setIsProcessing(false);
+        return;
+      }
+
       changeSecurityTier(userId, 'cold');
       setCurrentTier('cold');
       setSuccess('✅ Cold Device Mode enabled. Outgoing transactions now require the cold signer flow.');
@@ -216,16 +227,22 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
       // Setup PIN
       await setupPin(userId, pinInput);
 
-      // Change tier
-      changeSecurityTier(userId, 'maximum');
-      setCurrentTier('maximum');
+      // Change tier — cold if that was pending, otherwise maximum
+      const targetTier = pendingColdActivation ? 'cold' : 'maximum';
+      changeSecurityTier(userId, targetTier);
+      setCurrentTier(targetTier);
 
-      // Clear PIN inputs
+      // Clear PIN inputs and state
       setPinInput('');
       setPinConfirm('');
       setSetupMode(null);
 
-      setSuccess('✅ Upgraded to Maximum security with PIN protection');
+      if (pendingColdActivation) {
+        setPendingColdActivation(false);
+        setSuccess('✅ Cold Device Mode enabled with PIN protection. Outgoing transactions now require the cold signer flow.');
+      } else {
+        setSuccess('✅ Upgraded to Maximum security with PIN protection');
+      }
       onSecurityChange?.();
     } catch (err: any) {
       setError(err.message || 'Failed to setup PIN');

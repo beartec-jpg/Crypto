@@ -16,7 +16,7 @@ import PinEntryModal from '@/components/Wallet/PinEntryModal';
 import SecuritySettings from '@/components/Wallet/SecuritySettings';
 import SecurityEducationCenter from '@/components/Security/SecurityEducationCenter';
 import { getCurrentWallet, migrateWalletToUser, deleteWallet } from '@/lib/walletService';
-import { securityManager, getSecurityRequirements } from '@/lib/securityService';
+import { securityManager, getSecurityRequirements, hasPinSetup, setupPin } from '@/lib/securityService';
 import { getWalletTokens, clearWalletTokens, ensureNativeTokens, type Token } from '@/lib/tokenService';
 import type { TokenNetwork } from '@/lib/tokenService';
 import { deriveWIFFromPrivateKey } from '@/lib/bitcoinService';
@@ -52,8 +52,13 @@ export default function WalletPage() {
   
   const [isWalletUnlocked, setIsWalletUnlocked] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
+  const [showPinSetup, setShowPinSetup] = useState(false);
+  const [pinSetupValue, setPinSetupValue] = useState('');
+  const [pinConfirmValue, setPinConfirmValue] = useState('');
+  const [pinSetupStep, setPinSetupStep] = useState<'enter' | 'confirm'>('enter');
+  const [pinSetupError, setPinSetupError] = useState<string | null>(null);
   const [pendingWallet, setPendingWallet] = useState<any>(null);
-  const [authStep, setAuthStep] = useState<'none' | 'pin' | 'passkey' | 'complete'>('none');
+  const [authStep, setAuthStep] = useState<'none' | 'pin' | 'pin-setup' | 'passkey' | 'complete'>('none');
   const [isOpeningAuth, setIsOpeningAuth] = useState(false);
   const [isOpeningCreateWallet, setIsOpeningCreateWallet] = useState(false);
 
@@ -147,8 +152,13 @@ export default function WalletPage() {
       setPendingWallet(wallet);
       
       if (requirements.includes('pin')) {
-        setAuthStep('pin');
-        setShowPinModal(true);
+        if (!hasPinSetup(userId)) {
+          setAuthStep('pin-setup');
+          setShowPinSetup(true);
+        } else {
+          setAuthStep('pin');
+          setShowPinModal(true);
+        }
       } else if (requirements.includes('passkey')) {
         setAuthStep('passkey');
         setShowPasskeyModal(true);
@@ -174,8 +184,13 @@ export default function WalletPage() {
 
   const handlePinCancel = () => {
     setShowPinModal(false);
+    setShowPinSetup(false);
     setAuthStep('none');
     setPendingWallet(null);
+    setPinSetupValue('');
+    setPinConfirmValue('');
+    setPinSetupStep('enter');
+    setPinSetupError(null);
   };
 
   const completeWalletUnlock = (walletOverride?: any) => {
@@ -221,8 +236,13 @@ export default function WalletPage() {
       const requirements = getSecurityRequirements(userId, 'openWallet');
 
       if (requirements.includes('pin')) {
-        setAuthStep('pin');
-        setShowPinModal(true);
+        if (!hasPinSetup(userId)) {
+          setAuthStep('pin-setup');
+          setShowPinSetup(true);
+        } else {
+          setAuthStep('pin');
+          setShowPinModal(true);
+        }
       } else if (requirements.includes('passkey')) {
         setAuthStep('passkey');
         setShowPasskeyModal(true);
@@ -711,6 +731,186 @@ export default function WalletPage() {
           title="Enter PIN to Unlock Wallet"
           description="Your security settings require PIN verification"
         />
+      )}
+
+      {/* PIN Setup Modal - shown when PIN is required but never set up */}
+      {showPinSetup && userId && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-2xl max-w-md w-full">
+            <div className="flex items-center justify-between p-6 border-b border-gray-700">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-amber-600 flex items-center justify-center">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold">
+                    {pinSetupStep === 'enter' ? 'Create Your PIN' : 'Confirm Your PIN'}
+                  </h2>
+                  <p className="text-sm text-gray-400">
+                    {pinSetupStep === 'enter'
+                      ? 'Your security tier requires a 6-digit PIN. Set one now to continue.'
+                      : 'Re-enter your PIN to confirm'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handlePinCancel}
+                className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                <span className="text-xl">&times;</span>
+              </button>
+            </div>
+            <div className="p-6">
+              {pinSetupError && (
+                <div className="mb-4 p-3 rounded-lg bg-red-900/20 border border-red-700/50 flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0" />
+                  <p className="text-sm text-red-400">{pinSetupError}</p>
+                </div>
+              )}
+              {/* PIN dots */}
+              <div className="flex items-center justify-center gap-3 mb-6">
+                {[...Array(6)].map((_, i) => {
+                  const currentVal = pinSetupStep === 'enter' ? pinSetupValue : pinConfirmValue;
+                  return (
+                    <div
+                      key={i}
+                      className={`w-4 h-4 rounded-full border-2 transition-all ${
+                        i < currentVal.length
+                          ? 'bg-amber-400 border-amber-400'
+                          : 'bg-transparent border-gray-600'
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+              {/* Numpad */}
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-3">
+                  {['1','2','3','4','5','6','7','8','9'].map((num) => (
+                    <button
+                      key={num}
+                      onClick={() => {
+                        setPinSetupError(null);
+                        if (pinSetupStep === 'enter') {
+                          const next = pinSetupValue + num;
+                          if (next.length <= 6) setPinSetupValue(next);
+                        } else {
+                          const next = pinConfirmValue + num;
+                          if (next.length <= 6) {
+                            setPinConfirmValue(next);
+                            // Auto-submit on 6 digits in confirm step
+                            if (next.length === 6) {
+                              if (next !== pinSetupValue) {
+                                setPinSetupError('PINs do not match. Try again.');
+                                setPinConfirmValue('');
+                              } else {
+                                // PINs match - save and proceed
+                                setupPin(userId, next).then(() => {
+                                  setShowPinSetup(false);
+                                  setPinSetupValue('');
+                                  setPinConfirmValue('');
+                                  setPinSetupStep('enter');
+                                  setPinSetupError(null);
+                                  // Now continue to passkey if needed, else unlock
+                                  const reqs = getSecurityRequirements(userId, 'openWallet');
+                                  if (reqs.includes('passkey')) {
+                                    setAuthStep('passkey');
+                                    setShowPasskeyModal(true);
+                                  } else {
+                                    completeWalletUnlock();
+                                  }
+                                  toast({ title: 'PIN Created', description: 'Your 6-digit PIN has been set up successfully.' });
+                                }).catch((err) => {
+                                  setPinSetupError(err.message || 'Failed to save PIN');
+                                  setPinConfirmValue('');
+                                });
+                              }
+                            }
+                          }
+                        }
+                      }}
+                      className="w-full aspect-square rounded-xl bg-gray-700 hover:bg-gray-600 transition-colors text-2xl font-semibold"
+                    >
+                      {num}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <button
+                    onClick={() => {
+                      if (pinSetupStep === 'enter') {
+                        setPinSetupValue(pinSetupValue.slice(0, -1));
+                      } else {
+                        setPinConfirmValue(pinConfirmValue.slice(0, -1));
+                      }
+                    }}
+                    className="w-full aspect-square rounded-xl bg-gray-700 hover:bg-gray-600 transition-colors flex items-center justify-center text-sm"
+                  >
+                    ⌫
+                  </button>
+                  <button
+                    onClick={() => {
+                      setPinSetupError(null);
+                      if (pinSetupStep === 'enter') {
+                        const next = pinSetupValue + '0';
+                        if (next.length <= 6) setPinSetupValue(next);
+                      } else {
+                        const next = pinConfirmValue + '0';
+                        if (next.length <= 6) {
+                          setPinConfirmValue(next);
+                          if (next.length === 6) {
+                            if (next !== pinSetupValue) {
+                              setPinSetupError('PINs do not match. Try again.');
+                              setPinConfirmValue('');
+                            } else {
+                              setupPin(userId, next).then(() => {
+                                setShowPinSetup(false);
+                                setPinSetupValue('');
+                                setPinConfirmValue('');
+                                setPinSetupStep('enter');
+                                setPinSetupError(null);
+                                const reqs = getSecurityRequirements(userId, 'openWallet');
+                                if (reqs.includes('passkey')) {
+                                  setAuthStep('passkey');
+                                  setShowPasskeyModal(true);
+                                } else {
+                                  completeWalletUnlock();
+                                }
+                                toast({ title: 'PIN Created', description: 'Your 6-digit PIN has been set up successfully.' });
+                              }).catch((err) => {
+                                setPinSetupError(err.message || 'Failed to save PIN');
+                                setPinConfirmValue('');
+                              });
+                            }
+                          }
+                        }
+                      }
+                    }}
+                    className="w-full aspect-square rounded-xl bg-gray-700 hover:bg-gray-600 transition-colors text-2xl font-semibold"
+                  >
+                    0
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (pinSetupStep === 'enter' && pinSetupValue.length === 6) {
+                        setPinSetupStep('confirm');
+                        setPinSetupError(null);
+                      }
+                    }}
+                    disabled={pinSetupStep === 'enter' && pinSetupValue.length < 6}
+                    className={`w-full aspect-square rounded-xl transition-colors flex items-center justify-center text-sm font-medium ${
+                      pinSetupStep === 'enter' && pinSetupValue.length === 6
+                        ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                        : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    {pinSetupStep === 'enter' ? 'Next →' : 'Clear'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Passkey Auth Modal */}
