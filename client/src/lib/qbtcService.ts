@@ -66,7 +66,7 @@ function hmacSha512(key: Uint8Array, data: Uint8Array): Uint8Array {
 export function getQBTCRpcSettings(): QBTCRpcSettings {
   const defaults: QBTCRpcSettings = {
     network: 'testnet',
-    rpcUrl: 'http://localhost:28332',
+    rpcUrl: '/api/qbtc/rpc',
     feeRate: 10,
   };
 

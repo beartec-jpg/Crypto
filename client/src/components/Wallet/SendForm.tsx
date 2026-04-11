@@ -764,6 +764,7 @@ export default function SendForm({
         {selectedChain === 'qbtc' && (
           <div className="space-y-3 p-4 rounded-xl border border-cyan-500/30 bg-cyan-500/5">
             <p className="text-sm font-medium text-cyan-200">QuantumBTC Node Settings</p>
+            <p className="text-xs text-gray-500">Transactions are routed through your API proxy. These settings are for display only.</p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
@@ -789,7 +790,8 @@ export default function SendForm({
                     const next = setQBTCRpcSettings({ rpcUrl: e.target.value });
                     setQbtcSettings(next);
                   }}
-                  placeholder="http://localhost:28332"
+                  placeholder="/api/qbtc/rpc"
+                  autoComplete="off"
                   className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700"
                 />
               </div>
@@ -802,6 +804,9 @@ export default function SendForm({
                     const next = setQBTCRpcSettings({ username: e.target.value || undefined });
                     setQbtcSettings(next);
                   }}
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
                   className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700"
                 />
               </div>
@@ -815,6 +820,9 @@ export default function SendForm({
                     const next = setQBTCRpcSettings({ password: e.target.value || undefined });
                     setQbtcSettings(next);
                   }}
+                  autoComplete="new-password"
+                  data-1p-ignore
+                  data-lpignore="true"
                   className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700"
                 />
               </div>
@@ -829,6 +837,7 @@ export default function SendForm({
                     const next = setQBTCRpcSettings({ feeRate: Math.max(10, Number(e.target.value || 10)) });
                     setQbtcSettings(next);
                   }}
+                  autoComplete="off"
                   className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700"
                 />
               </div>
