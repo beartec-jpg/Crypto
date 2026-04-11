@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Check, Copy, QrCode, RefreshCw, Shield, Snowflake } from 'lucide-react';
+import { Check, Copy, HardDrive, QrCode, RefreshCw, Shield, Snowflake } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '@/components/ui/button';
 import { getCurrentWallet, deriveAddressesFromMnemonic } from '@/lib/walletService';
 import { splitMnemonic, reconstructMnemonic, getShareFingerprint } from '@/lib/shamirService';
-import { storeHotShare, createColdSignerShareImportPayload } from '@/lib/coldSignerService';
+import { storeHotShare, getHotShare, createColdSignerShareImportPayload } from '@/lib/coldSignerService';
 
 interface ShamirRecoveryPanelProps {
   userId: string;
@@ -22,6 +22,7 @@ export default function ShamirRecoveryPanel({ userId }: ShamirRecoveryPanelProps
   const [isProcessing, setIsProcessing] = useState(false);
   const [showShare2Qr, setShowShare2Qr] = useState(true);
   const [walletAddresses, setWalletAddresses] = useState<Record<string, string> | null>(null);
+  const [share2ImportPayload, setShare2ImportPayload] = useState<string>('');
 
   useEffect(() => {
     async function loadWallet() {
@@ -66,6 +67,7 @@ export default function ShamirRecoveryPanel({ userId }: ShamirRecoveryPanelProps
       const nextShares = splitMnemonic(mnemonic, { shares: 3, threshold: 2 });
       storeHotShare(nextShares[0]);
       setGeneratedShares(nextShares);
+      setShare2ImportPayload(createColdSignerShareImportPayload(nextShares[1], mode));
       setShowShare2Qr(true);
       setSuccess(
         mode === 'rotate'
@@ -86,9 +88,14 @@ export default function ShamirRecoveryPanel({ userId }: ShamirRecoveryPanelProps
     window.setTimeout(() => setCopiedItem(null), 2000);
   };
 
-  const share2ImportPayload = generatedShares
-    ? createColdSignerShareImportPayload(generatedShares[1], mode)
-    : '';
+  const populateShare1FromDevice = () => {
+    const hotShare = getHotShare();
+    if (hotShare) {
+      setShareInputs((prev) => [hotShare, prev[1], prev[2]]);
+    } else {
+      setError('No hot share found on this device. You may need to set up cold signing first.');
+    }
+  };
 
   return (
     <div className="rounded-xl border border-cyan-500/30 bg-gradient-to-br from-sky-950/80 via-blue-950/70 to-cyan-950/80 p-6 shadow-[0_0_0_1px_rgba(56,189,248,0.08)]">
@@ -144,13 +151,25 @@ export default function ShamirRecoveryPanel({ userId }: ShamirRecoveryPanelProps
       <div className="grid gap-3 md:grid-cols-3">
         {shareInputs.map((share, index) => (
           <label key={index} className="block">
-            <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-cyan-200">
-              Existing Share {index + 1}
-            </span>
+            <div className="mb-2 flex items-center justify-between">
+              <span className="block text-xs font-semibold uppercase tracking-wide text-cyan-200">
+                Existing Share {index + 1}
+              </span>
+              {index === 0 && (
+                <button
+                  type="button"
+                  onClick={populateShare1FromDevice}
+                  className="inline-flex items-center gap-1 rounded-lg bg-cyan-400/15 px-2 py-1 text-[11px] font-semibold text-cyan-300 transition-colors hover:bg-cyan-400/25"
+                >
+                  <HardDrive className="h-3 w-3" />
+                  Populate from device
+                </button>
+              )}
+            </div>
             <textarea
               value={share}
               onChange={(event) => handleShareInputChange(index, event.target.value)}
-              placeholder={`Paste existing share ${index + 1}`}
+              placeholder={index === 0 ? 'Paste share 1 or populate from device' : `Paste existing share ${index + 1}`}
               rows={5}
               className="w-full rounded-xl border border-white/10 bg-gray-950/60 px-3 py-2 font-mono text-xs text-gray-200 outline-none transition-colors focus:border-cyan-400"
             />
