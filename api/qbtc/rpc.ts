@@ -12,6 +12,7 @@ const ALLOWED_METHODS = new Set([
   'getblockhash',
   'gettxout',
   'getrawmempool',
+  'listunspent',
 ]);
 
 function parseNetwork(raw: unknown): QbtcNetwork {
