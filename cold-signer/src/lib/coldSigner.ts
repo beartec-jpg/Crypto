@@ -11,6 +11,8 @@ import { Chain, UnsignedTransaction } from '../types/coldTypes';
 import { reconstructMnemonic } from './shamirService';
 import { signQBTCTransaction } from './qbtcSigner';
 
+const BIP39_ENGLISH_WORDLIST = bip39.wordlists.english;
+
 const DERIVATION_PATHS: Record<Chain, string> = {
   ethereum: "m/44'/60'/0'/0/0",
   bsc: "m/44'/60'/0'/0/0",
@@ -312,11 +314,10 @@ export async function signTransaction(
     console.log('[ColdSigner] First word:', mnemonic.split(' ')[0], 'Last word:', mnemonic.split(' ').slice(-1)[0]);
 
     // Validate mnemonic
-    if (!bip39.validateMnemonic(mnemonic)) {
+    if (!bip39.validateMnemonic(mnemonic, BIP39_ENGLISH_WORDLIST)) {
       // Attempt to diagnose: check word count, check if words are in BIP-39 wordlist
       const words = mnemonic.split(' ');
-      const wordlist = bip39.wordlists.english;
-      const invalidWords = words.filter(w => !wordlist.includes(w));
+      const invalidWords = words.filter(w => !BIP39_ENGLISH_WORDLIST.includes(w));
       
       throw new Error(
         `Invalid mnemonic reconstructed from shares ` +
