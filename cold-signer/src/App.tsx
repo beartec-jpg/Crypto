@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { QrCode, Shield, WifiOff, AlertTriangle, Download, X } from 'lucide-react';
+import { QrCode, Shield, WifiOff, AlertTriangle, Download, X, Eye, EyeOff, Lock } from 'lucide-react';
 import QRScanner from './components/QRScanner';
 import QRDisplay from './components/QRDisplay';
 import TransactionPreview from './components/TransactionPreview';
@@ -32,6 +32,12 @@ function App() {
   const [signedTx, setSignedTx] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [pendingShareImport, setPendingShareImport] = useState<{ share: string; mode: 'recover' | 'rotate' } | null>(null);
+  const [showShareView, setShowShareView] = useState(false);
+  const [shareViewPassword, setShareViewPassword] = useState('');
+  const [shareViewData, setShareViewData] = useState('');
+  const [shareViewError, setShareViewError] = useState('');
+  const [shareViewLoading, setShareViewLoading] = useState(false);
+  const [showSharePassword, setShowSharePassword] = useState(false);
   useEffect(() => {
     const displayModeQuery = window.matchMedia('(display-mode: standalone)');
     const updateStandaloneState = () => {
@@ -166,14 +172,15 @@ function App() {
   const handleAuthenticated = async (password: string) => {
     if (!scannedData) return;
 
-    setStep('signing');
     setError('');
 
-    try {
-      // Load and decrypt the cold share
-      const coldShare = await loadAndDecryptShare('cold-share', password);
+    // Decrypt share first — AuthGate stays mounted, so its catch shows errors
+    const coldShare = await loadAndDecryptShare('cold-share', password);
 
-      // Sign the transaction
+    // Decryption succeeded — now safe to leave AuthGate
+    setStep('signing');
+
+    try {
       const signed = await signTransaction(
         coldShare,
         scannedData.hotShare,
@@ -184,8 +191,7 @@ function App() {
       setStep('complete');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Signing failed');
-      setStep('auth');
-      throw err; // Re-throw to show error in AuthGate
+      setStep('idle');
     }
   };
 
@@ -205,6 +211,30 @@ function App() {
 
   const handleShareLoaded = () => {
     setHasShare(true);
+    setError('');
+  };
+
+  const handleShowShare = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setShareViewError('');
+    setShareViewLoading(true);
+
+    try {
+      const decrypted = await loadAndDecryptShare('cold-share', shareViewPassword);
+      setShareViewData(decrypted);
+    } catch (err) {
+      setShareViewError(err instanceof Error ? err.message : 'Failed to decrypt share');
+    } finally {
+      setShareViewLoading(false);
+    }
+  };
+
+  const handleCloseShareView = () => {
+    setShowShareView(false);
+    setShareViewPassword('');
+    setShareViewData('');
+    setShareViewError('');
+    setShowSharePassword(false);
   };
 
   const handleEmergencyClearShare = async () => {
@@ -477,6 +507,100 @@ function App() {
     );
   }
 
+  // Show Share view
+  if (showShareView) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-cyan-500/20 rounded-full mb-4">
+              <Lock className="w-10 h-10 text-cyan-400" />
+            </div>
+            <h2 className="text-2xl font-bold mb-2">View Cold Share</h2>
+            <p className="text-gray-400">
+              {shareViewData ? 'Your decrypted cold share' : 'Enter your password to reveal the stored share'}
+            </p>
+          </div>
+
+          {!shareViewData ? (
+            <form onSubmit={handleShowShare} className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium mb-2">Password</label>
+                <div className="relative">
+                  <input
+                    type={showSharePassword ? 'text' : 'password'}
+                    value={shareViewPassword}
+                    onChange={(e) => setShareViewPassword(e.target.value)}
+                    placeholder="Enter your cold signer password"
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 pr-12"
+                    autoFocus
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSharePassword(!showSharePassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
+                  >
+                    {showSharePassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              {shareViewError && (
+                <div className="bg-red-500/10 border border-red-500 rounded-lg p-3">
+                  <p className="text-red-500 text-sm">{shareViewError}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={handleCloseShareView}
+                  className="px-6 py-3 bg-gray-800 hover:bg-gray-700 rounded-lg font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={shareViewLoading || !shareViewPassword}
+                  className="px-6 py-3 bg-cyan-600 hover:bg-cyan-700 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {shareViewLoading ? (
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    'Decrypt'
+                  )}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="space-y-6">
+              <div className="bg-gray-800 border border-cyan-500/30 rounded-lg p-4">
+                <label className="block text-xs font-medium text-cyan-400 mb-2">COLD SHARE (Share 2)</label>
+                <p className="text-sm font-mono break-all select-all text-white leading-relaxed">
+                  {shareViewData}
+                </p>
+              </div>
+
+              <div className="bg-yellow-500/10 border border-yellow-500 rounded-lg p-4">
+                <p className="text-yellow-500 text-sm">
+                  ⚠️ Do not share this with anyone or transmit it over the internet. This share is part of your wallet&apos;s Shamir secret.
+                </p>
+              </div>
+
+              <button
+                onClick={handleCloseShareView}
+                className="w-full px-6 py-3 bg-gray-800 hover:bg-gray-700 rounded-lg font-semibold transition-colors"
+              >
+                Done — Hide Share
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // Idle state
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-4">
@@ -510,6 +634,15 @@ function App() {
         >
           <QrCode className="w-8 h-8" />
           Scan Transaction QR
+        </button>
+
+        {/* Show Share Button */}
+        <button
+          onClick={() => setShowShareView(true)}
+          className="w-full mt-3 px-6 py-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 text-gray-300"
+        >
+          <Eye className="w-5 h-5" />
+          Show Stored Share
         </button>
 
         {/* Info */}
