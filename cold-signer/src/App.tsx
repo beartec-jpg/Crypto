@@ -772,7 +772,8 @@ function App() {
           <div className="inline-flex items-center justify-center w-20 h-20 bg-emerald-500/20 rounded-full mb-4">
             <Shield className="w-12 h-12 text-emerald-500" />
           </div>
-          <h1 className="text-3xl font-bold mb-2">BearTec Cold Signer</h1>
+          <h1 className="text-3xl font-bold mb-1">BearTec Cold Signer</h1>
+          <p className="text-xs text-emerald-600 font-mono mb-1">v1.2.0</p>
           <p className="text-gray-400">Air-gapped transaction signing</p>
         </div>
 
@@ -805,6 +806,15 @@ function App() {
         >
           <Eye className="w-5 h-5" />
           Show Stored Share
+        </button>
+
+        {/* Remove Share Button */}
+        <button
+          onClick={() => setRemoveShareStep('password')}
+          className="w-full mt-2 px-6 py-3 bg-transparent hover:bg-red-500/10 border border-red-500/40 hover:border-red-500 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 text-red-400 hover:text-red-300 text-sm"
+        >
+          <AlertTriangle className="w-4 h-4" />
+          Remove Stored Share
         </button>
 
         {/* Info */}
