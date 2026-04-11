@@ -499,7 +499,7 @@ function App() {
             <ol className="text-sm text-gray-400 space-y-2 list-decimal list-inside">
               <li>Scan unsigned transaction QR from hot wallet</li>
               <li>Review transaction details carefully</li>
-              <li>Authenticate with PIN and password</li>
+              <li>Authenticate with your password</li>
               <li>View signed transaction QR</li>
               <li>Scan signed QR with hot wallet to broadcast</li>
             </ol>

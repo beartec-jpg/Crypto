@@ -7,27 +7,14 @@ interface AuthGateProps {
 }
 
 export default function AuthGate({ onAuthenticated, onCancel }: AuthGateProps) {
-  const [pin, setPin] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handlePinChange = (value: string) => {
-    if (/^\d*$/.test(value) && value.length <= 6) {
-      setPin(value);
-      setError('');
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
-    if (pin.length !== 6) {
-      setError('PIN must be 6 digits');
-      return;
-    }
 
     if (!password) {
       setError('Password is required');
@@ -37,14 +24,10 @@ export default function AuthGate({ onAuthenticated, onCancel }: AuthGateProps) {
     setIsLoading(true);
 
     try {
-      // PIN is used for rate limiting / user verification
-      // In a production system, PIN could be hashed and stored for additional verification
-      // For now, the password is the main authentication factor
       await onAuthenticated(password);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed');
       setPassword('');
-      setPin('');
     } finally {
       setIsLoading(false);
     }
@@ -59,28 +42,11 @@ export default function AuthGate({ onAuthenticated, onCancel }: AuthGateProps) {
           </div>
           <h2 className="text-2xl font-bold mb-2">Authentication Required</h2>
           <p className="text-gray-400">
-            Enter your PIN and password to sign the transaction
+            Enter your password to sign the transaction
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* PIN Input */}
-          <div>
-            <label className="block text-sm font-medium mb-2">
-              6-Digit PIN
-            </label>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={pin}
-              onChange={(e) => handlePinChange(e.target.value)}
-              placeholder="••••••"
-              maxLength={6}
-              className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-center text-2xl tracking-widest"
-              autoFocus
-            />
-          </div>
-
           {/* Password Input */}
           <div>
             <label className="block text-sm font-medium mb-2">
@@ -93,6 +59,8 @@ export default function AuthGate({ onAuthenticated, onCancel }: AuthGateProps) {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
                 className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 pr-12"
+                autoFocus
+                autoComplete="off"
               />
               <button
                 type="button"
@@ -126,7 +94,7 @@ export default function AuthGate({ onAuthenticated, onCancel }: AuthGateProps) {
             </button>
             <button
               type="submit"
-              disabled={isLoading || pin.length !== 6 || !password}
+              disabled={isLoading || !password}
               className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isLoading ? (
@@ -143,7 +111,7 @@ export default function AuthGate({ onAuthenticated, onCancel }: AuthGateProps) {
 
         <div className="mt-6 bg-yellow-500/10 border border-yellow-500 rounded-lg p-4">
           <p className="text-yellow-500 text-sm">
-            🔒 Your credentials unlock the encrypted share stored on this device
+            🔒 Your password unlocks the encrypted share stored on this device
           </p>
         </div>
       </div>
