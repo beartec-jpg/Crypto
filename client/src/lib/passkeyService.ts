@@ -8,7 +8,22 @@ import type {
 } from '@simplewebauthn/types';
 
 const RP_NAME = 'BearTec Crypto Wallet';
-const RP_ID = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+
+/**
+ * Extract the registrable (apex) domain so that passkeys work
+ * on both beartec.uk and www.beartec.uk.
+ */
+function getApexDomain(): string {
+  if (typeof window === 'undefined') return 'localhost';
+  const host = window.location.hostname;
+  // localhost / IP — return as-is
+  if (host === 'localhost' || /^\d+\./.test(host)) return host;
+  // Strip leading sub-domains to keep only the last two segments
+  const parts = host.split('.');
+  return parts.length > 2 ? parts.slice(-2).join('.') : host;
+}
+
+const RP_ID = getApexDomain();
 
 /**
  * Check if WebAuthn is supported in this browser

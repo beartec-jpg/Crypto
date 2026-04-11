@@ -279,12 +279,55 @@ export async function signTransaction(
   let mnemonic = '';
   
   try {
+    const coldTrimmed = coldShare.trim().toLowerCase();
+    const hotTrimmed = hotShare.trim().toLowerCase();
+
+    // Log share diagnostics (visible in dev tools on the cold device)
+    console.log('[ColdSigner] Cold share index:', coldTrimmed.slice(0, 2), 'fingerprint:', coldTrimmed.slice(0, 8), 'length:', coldTrimmed.length);
+    console.log('[ColdSigner] Hot share index:', hotTrimmed.slice(0, 2), 'fingerprint:', hotTrimmed.slice(0, 8), 'length:', hotTrimmed.length);
+
+    // Validate share lengths match before attempting reconstruction
+    const coldBody = coldTrimmed.slice(2);
+    const hotBody = hotTrimmed.slice(2);
+    if (coldBody.length !== hotBody.length) {
+      throw new Error(
+        `Share length mismatch — cold share body (${coldBody.length} hex chars) vs hot share body (${hotBody.length} hex chars). ` +
+        'These shares may be from different Shamir splits.'
+      );
+    }
+
+    // Validate share indices are different
+    const coldIndex = parseInt(coldTrimmed.slice(0, 2), 16);
+    const hotIndex = parseInt(hotTrimmed.slice(0, 2), 16);
+    if (coldIndex === hotIndex) {
+      throw new Error(
+        `Both shares have the same index (${coldIndex}). ` +
+        'You need two DIFFERENT shares (e.g. Share 1 + Share 2) to reconstruct the wallet.'
+      );
+    }
+
     // Reconstruct mnemonic from 2 shares
     mnemonic = reconstructMnemonic([coldShare, hotShare]);
+    console.log('[ColdSigner] Reconstructed mnemonic word count:', mnemonic.split(' ').length);
+    console.log('[ColdSigner] First word:', mnemonic.split(' ')[0], 'Last word:', mnemonic.split(' ').slice(-1)[0]);
 
     // Validate mnemonic
     if (!bip39.validateMnemonic(mnemonic)) {
-      throw new Error('Invalid mnemonic reconstructed from shares');
+      // Attempt to diagnose: check word count, check if words are in BIP-39 wordlist
+      const words = mnemonic.split(' ');
+      const wordlist = bip39.wordlists.english;
+      const invalidWords = words.filter(w => !wordlist.includes(w));
+      
+      throw new Error(
+        `Invalid mnemonic reconstructed from shares ` +
+        `(${words.length} words, ${invalidWords.length} invalid). ` +
+        `Cold: idx=${coldIndex} fp=${coldTrimmed.slice(0, 8)} len=${coldTrimmed.length}. ` +
+        `Hot: idx=${hotIndex} fp=${hotTrimmed.slice(0, 8)} len=${hotTrimmed.length}. ` +
+        (invalidWords.length > 0
+          ? `Invalid words: ${invalidWords.slice(0, 3).join(', ')}... ` 
+          : 'All words valid but checksum failed. ') +
+        'The shares are likely from different Shamir splits.'
+      );
     }
 
     const { chain } = unsignedTx.tx;

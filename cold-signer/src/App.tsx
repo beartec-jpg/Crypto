@@ -38,6 +38,11 @@ function App() {
   const [shareViewError, setShareViewError] = useState('');
   const [shareViewLoading, setShareViewLoading] = useState(false);
   const [showSharePassword, setShowSharePassword] = useState(false);
+  const [removeShareStep, setRemoveShareStep] = useState<'hidden' | 'password' | 'confirm'>('hidden');
+  const [removeSharePassword, setRemoveSharePassword] = useState('');
+  const [removeShareError, setRemoveShareError] = useState('');
+  const [removeShareLoading, setRemoveShareLoading] = useState(false);
+  const [showRemovePassword, setShowRemovePassword] = useState(false);
   useEffect(() => {
     const displayModeQuery = window.matchMedia('(display-mode: standalone)');
     const updateStandaloneState = () => {
@@ -235,6 +240,44 @@ function App() {
     setShareViewData('');
     setShareViewError('');
     setShowSharePassword(false);
+  };
+
+  const handleRemoveSharePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRemoveShareError('');
+    setRemoveShareLoading(true);
+
+    try {
+      // Verify password is correct before allowing removal
+      await loadAndDecryptShare('cold-share', removeSharePassword);
+      setRemoveShareStep('confirm');
+    } catch (err) {
+      setRemoveShareError(err instanceof Error ? err.message : 'Invalid password');
+    } finally {
+      setRemoveShareLoading(false);
+    }
+  };
+
+  const handleRemoveShareConfirm = async () => {
+    setRemoveShareLoading(true);
+    try {
+      await clearAllShares();
+      setHasShare(false);
+      setRemoveShareStep('hidden');
+      setRemoveSharePassword('');
+      setRemoveShareError('');
+    } catch (err) {
+      setRemoveShareError('Failed to remove share');
+    } finally {
+      setRemoveShareLoading(false);
+    }
+  };
+
+  const handleCloseRemoveShare = () => {
+    setRemoveShareStep('hidden');
+    setRemoveSharePassword('');
+    setRemoveShareError('');
+    setShowRemovePassword(false);
   };
 
   const handleEmergencyClearShare = async () => {
@@ -504,6 +547,125 @@ function App() {
         initialImport={pendingShareImport}
         onImportHandled={() => setPendingShareImport(null)}
       />
+    );
+  }
+
+  // Remove Share flow
+  if (removeShareStep !== 'hidden') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-red-500/20 rounded-full mb-4">
+              <AlertTriangle className="w-10 h-10 text-red-500" />
+            </div>
+            <h2 className="text-2xl font-bold mb-2">Remove Cold Share</h2>
+            <p className="text-gray-400">
+              {removeShareStep === 'password'
+                ? 'Enter your password to proceed'
+                : 'Final confirmation required'}
+            </p>
+          </div>
+
+          {removeShareStep === 'password' && (
+            <form onSubmit={handleRemoveSharePassword} className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium mb-2">Password</label>
+                <div className="relative">
+                  <input
+                    type={showRemovePassword ? 'text' : 'password'}
+                    value={removeSharePassword}
+                    onChange={(e) => setRemoveSharePassword(e.target.value)}
+                    placeholder="Enter your cold signer password"
+                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 pr-12"
+                    autoFocus
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowRemovePassword(!showRemovePassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
+                  >
+                    {showRemovePassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              {removeShareError && (
+                <div className="bg-red-500/10 border border-red-500 rounded-lg p-3">
+                  <p className="text-red-500 text-sm">{removeShareError}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={handleCloseRemoveShare}
+                  className="px-6 py-3 bg-gray-800 hover:bg-gray-700 rounded-lg font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={removeShareLoading || !removeSharePassword}
+                  className="px-6 py-3 bg-red-600 hover:bg-red-700 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {removeShareLoading ? (
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    'Verify'
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {removeShareStep === 'confirm' && (
+            <div className="space-y-6">
+              <div className="bg-red-500/10 border-2 border-red-500 rounded-lg p-6">
+                <p className="text-red-400 font-bold text-lg mb-3">⚠️ Are you sure?</p>
+                <p className="text-red-300 text-sm mb-3">
+                  This action is <strong>irreversible</strong>. The encrypted cold share will be permanently deleted from this device.
+                </p>
+                <p className="text-red-300 text-sm mb-3">
+                  If you do not have another copy of this share, <strong>this may compromise the safety of your holdings</strong>. You will not be able to sign transactions until a new share is provisioned.
+                </p>
+                <p className="text-red-200 text-sm font-semibold">
+                  Do you wish to continue?
+                </p>
+              </div>
+
+              {removeShareError && (
+                <div className="bg-red-500/10 border border-red-500 rounded-lg p-3">
+                  <p className="text-red-500 text-sm">{removeShareError}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={handleCloseRemoveShare}
+                  className="px-6 py-3 bg-gray-800 hover:bg-gray-700 rounded-lg font-semibold transition-colors"
+                >
+                  Keep Share
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleRemoveShareConfirm()}
+                  disabled={removeShareLoading}
+                  className="px-6 py-3 bg-red-600 hover:bg-red-700 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {removeShareLoading ? (
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    'Yes, Remove Share'
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     );
   }
 
