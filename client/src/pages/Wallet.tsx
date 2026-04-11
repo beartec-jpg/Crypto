@@ -569,8 +569,7 @@ export default function WalletPage() {
         ) : (
           <>
                         {/* Mode Navigation - RESPONSIVE */}
-            {mode !== 'security' && (
-              <div className="flex items-center gap-1 sm:gap-2 bg-gray-800 rounded-lg p-1 mb-6 overflow-x-auto">
+            <div className="flex items-center gap-1 sm:gap-2 bg-gray-800 rounded-lg p-1 mb-6 overflow-x-auto">
                 <button
                   onClick={() => setMode('dashboard')}
                   className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 ${
@@ -642,7 +641,6 @@ export default function WalletPage() {
                   <span className="hidden sm:inline">Faucet</span>
                 </button>
               </div>
-            )}
 
             {/* Main Content */}
             <div>
