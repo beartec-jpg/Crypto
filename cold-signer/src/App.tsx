@@ -31,7 +31,7 @@ function App() {
   const [scannedData, setScannedData] = useState<UnsignedTransaction | null>(null);
   const [signedTx, setSignedTx] = useState<string>('');
   const [error, setError] = useState<string>('');
-
+  const [pendingShareImport, setPendingShareImport] = useState<{ share: string; mode: 'recover' | 'rotate' } | null>(null);
   useEffect(() => {
     const displayModeQuery = window.matchMedia('(display-mode: standalone)');
     const updateStandaloneState = () => {
@@ -130,17 +130,26 @@ function App() {
 
   const handleScanComplete = (data: string) => {
     try {
-      const parsed = JSON.parse(data) as UnsignedTransaction;
+      const parsed = JSON.parse(data);
+
+      // Detect share import payloads (from rotation/recovery QR)
+      if (parsed.type === 'cold-share-import' && parsed.share) {
+        setPendingShareImport({ share: parsed.share, mode: parsed.mode || 'recover' });
+        setStep('idle');
+        setError('');
+        return;
+      }
       
+      // Otherwise treat as unsigned transaction
       if (!parsed.tx || !parsed.hotShare) {
         throw new Error('Invalid QR code format');
       }
       
-      setScannedData(parsed);
+      setScannedData(parsed as UnsignedTransaction);
       setStep('preview');
       setError('');
     } catch (err) {
-      setError('Invalid QR code. Please scan a valid transaction QR.');
+      setError('Invalid QR code. Please scan a valid transaction or share import QR.');
       setStep('idle');
     }
   };
@@ -455,6 +464,17 @@ function App() {
 
   if (step === 'complete' && signedTx) {
     return <QRDisplay data={signedTx} onComplete={handleComplete} />;
+  }
+
+  // Share import scanned from main scanner — show ShareManager in replace mode
+  if (pendingShareImport) {
+    return (
+      <ShareManager
+        onShareLoaded={handleShareLoaded}
+        initialImport={pendingShareImport}
+        onImportHandled={() => setPendingShareImport(null)}
+      />
+    );
   }
 
   // Idle state

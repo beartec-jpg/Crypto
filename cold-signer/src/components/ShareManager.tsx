@@ -21,9 +21,14 @@ interface ShareManagerProps {
     isIOS: boolean;
     onInstall: () => Promise<void>;
   };
+  initialImport?: {
+    share: string;
+    mode: 'recover' | 'rotate';
+  } | null;
+  onImportHandled?: () => void;
 }
 
-export default function ShareManager({ onShareLoaded, installPrompt }: ShareManagerProps) {
+export default function ShareManager({ onShareLoaded, installPrompt, initialImport, onImportHandled }: ShareManagerProps) {
   const [hasShare, setHasShare] = useState(false);
   const [isReplacingShare, setIsReplacingShare] = useState(false);
   const [share, setShare] = useState('');
@@ -39,6 +44,21 @@ export default function ShareManager({ onShareLoaded, installPrompt }: ShareMana
   useEffect(() => {
     checkExistingShare();
   }, []);
+
+  // Pre-fill from main scanner share import
+  useEffect(() => {
+    if (initialImport) {
+      setShare(initialImport.share);
+      setImportMode(initialImport.mode);
+      setIsReplacingShare(hasShare || initialImport.mode === 'rotate');
+      setSuccess(
+        initialImport.mode === 'rotate'
+          ? 'Rotation payload loaded. Saving will replace the existing cold share on this device.'
+          : 'Recovery payload loaded. Set a password and save to store on this device.'
+      );
+      onImportHandled?.();
+    }
+  }, [initialImport]);
 
   const checkExistingShare = async () => {
     try {
