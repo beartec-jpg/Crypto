@@ -13,11 +13,12 @@ async function sha256(input: string): Promise<string> {
 interface ColdSignerSetupProps {
   mnemonic: string;
   onClose: () => void;
+  walletId?: string;
 }
 
 type SetupStep = 'intro' | 'password' | 'shares' | 'download' | 'complete';
 
-export default function ColdSignerSetup({ mnemonic, onClose }: ColdSignerSetupProps) {
+export default function ColdSignerSetup({ mnemonic, onClose, walletId }: ColdSignerSetupProps) {
   const [step, setStep] = useState<SetupStep>('intro');
   const [shares, setShares] = useState<string[]>([]);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
@@ -50,7 +51,7 @@ export default function ColdSignerSetup({ mnemonic, onClose }: ColdSignerSetupPr
       return;
     }
     try {
-      await storeHotShare(pendingShares[0], sharePassword);
+      await storeHotShare(pendingShares[0], sharePassword, walletId);
       setShares(pendingShares);
       setShowShareQR(1);
       setStep('shares');

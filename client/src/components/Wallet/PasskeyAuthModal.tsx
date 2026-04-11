@@ -627,7 +627,7 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
                     if (!shamirShares && generatedMnemonic) {
                       const generatedShares = splitMnemonic(generatedMnemonic, { shares: 3, threshold: 2 });
                       setShamirShares(generatedShares);
-                      void storeHotShare(generatedShares[0], password);
+                      void storeHotShare(generatedShares[0], password, walletId ?? undefined);
                       setShowShamirQRIndex(1);
                     }
                   }}

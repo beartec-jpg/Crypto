@@ -45,6 +45,7 @@ export interface ColdSignerShareImportPayload {
 
 const SHARE_STORAGE_KEY = 'cold_signer_hot_share';
 const SHARE_SALT_KEY = 'cold_signer_hot_share_salt';
+const SHARE_WALLET_ID_KEY = 'cold_signer_hot_share_wallet_id';
 
 /**
  * Derive an AES-256-GCM key from a password + salt via PBKDF2.
@@ -75,8 +76,9 @@ async function deriveKey(password: string, salt: Uint8Array, usage: 'encrypt' | 
 /**
  * Encrypt and store the hot share (Share 1) in localStorage.
  * Called during ColdSignerSetup / rotation after splitting.
+ * @param walletId - Optional wallet ID to bind this share to, preventing stale-share reuse
  */
-export async function storeHotShare(share: string, password: string): Promise<void> {
+export async function storeHotShare(share: string, password: string, walletId?: string): Promise<void> {
   const salt = crypto.getRandomValues(new Uint8Array(32));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveKey(password, salt, 'encrypt');
@@ -91,6 +93,9 @@ export async function storeHotShare(share: string, password: string): Promise<vo
 
   localStorage.setItem(SHARE_STORAGE_KEY, bufToHex(combined));
   localStorage.setItem(SHARE_SALT_KEY, bufToHex(salt));
+  if (walletId) {
+    localStorage.setItem(SHARE_WALLET_ID_KEY, walletId);
+  }
 }
 
 function bufToHex(buf: Uint8Array): string {
@@ -108,11 +113,27 @@ function hexToBuf(hex: string): Uint8Array {
 /**
  * Retrieve and decrypt the hot share from localStorage.
  * Returns null if not stored, throws on wrong password.
+ * @param walletId - If provided, validates the share belongs to this wallet.
+ *   Auto-clears and returns null if the stored share is from a different wallet.
  */
-export async function getHotShare(password: string): Promise<string | null> {
+export async function getHotShare(password: string, walletId?: string): Promise<string | null> {
   const encryptedHex = localStorage.getItem(SHARE_STORAGE_KEY);
   const saltHex = localStorage.getItem(SHARE_SALT_KEY);
   if (!encryptedHex || !saltHex) return null;
+
+  // Stale-share guard: if a wallet ID is provided and it doesn't match the
+  // stored one, the stored share belongs to a previous wallet — clear it.
+  if (walletId) {
+    const storedWalletId = localStorage.getItem(SHARE_WALLET_ID_KEY);
+    if (storedWalletId && storedWalletId !== walletId) {
+      console.warn(
+        `[coldSignerService] Hot share belongs to wallet ${storedWalletId} but ` +
+        `current wallet is ${walletId}. Clearing stale share.`
+      );
+      clearHotShare();
+      return null;
+    }
+  }
 
   const salt = hexToBuf(saltHex);
   const combined = hexToBuf(encryptedHex);
@@ -141,6 +162,7 @@ export function isColdSignerConfigured(): boolean {
 export function clearHotShare(): void {
   localStorage.removeItem(SHARE_STORAGE_KEY);
   localStorage.removeItem(SHARE_SALT_KEY);
+  localStorage.removeItem(SHARE_WALLET_ID_KEY);
 }
 
 /**
@@ -184,9 +206,10 @@ export async function buildUnsignedTxPayload(
     recentBlockhash?: string;
     lamportsPerSignature?: number;
   },
-  password: string
+  password: string,
+  walletId?: string
 ): Promise<ColdUnsignedTx> {
-  const hotShare = await getHotShare(password);
+  const hotShare = await getHotShare(password, walletId);
   if (!hotShare) {
     throw new Error('Cold signer not configured — hot share missing');
   }

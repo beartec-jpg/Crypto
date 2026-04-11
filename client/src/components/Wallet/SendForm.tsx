@@ -373,7 +373,7 @@ export default function SendForm({
         chainId: selectedChain === 'ethereum' ? 1 : selectedChain === 'bsc' ? 56 : undefined,
         destination: selectedChain === 'xrp' ? recipient : undefined,
         destinationTag: selectedChain === 'xrp' && destinationTag ? parseInt(destinationTag) : undefined,
-      }, coldSignerPassword);
+      }, coldSignerPassword, sovereignWallet?.id);
       setShowColdSignerPassword(false);
       setColdSignerPassword('');
       setUnsignedTxPayload(serializeForQR(payload));

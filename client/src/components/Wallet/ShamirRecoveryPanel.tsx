@@ -23,6 +23,7 @@ export default function ShamirRecoveryPanel({ userId }: ShamirRecoveryPanelProps
   const [isProcessing, setIsProcessing] = useState(false);
   const [showShare2Qr, setShowShare2Qr] = useState(true);
   const [walletAddresses, setWalletAddresses] = useState<Record<string, string> | null>(null);
+  const [walletId, setWalletId] = useState<string | null>(null);
   const [share2ImportPayload, setShare2ImportPayload] = useState<string>('');
   // PIN gate
   const [isUnlocked, setIsUnlocked] = useState(false);
@@ -46,6 +47,7 @@ export default function ShamirRecoveryPanel({ userId }: ShamirRecoveryPanelProps
     async function loadWallet() {
       const wallet = await getCurrentWallet(userId);
       setWalletAddresses(wallet?.addresses ?? null);
+      setWalletId(wallet?.id ?? null);
     }
 
     void loadWallet();
@@ -110,7 +112,7 @@ export default function ShamirRecoveryPanel({ userId }: ShamirRecoveryPanelProps
     }
 
     try {
-      await storeHotShare(pendingNewShares[0], newSharePassword);
+      await storeHotShare(pendingNewShares[0], newSharePassword, walletId ?? undefined);
       setGeneratedShares(pendingNewShares);
       setShare2ImportPayload(createColdSignerShareImportPayload(pendingNewShares[1], mode));
       setShowShare2Qr(true);
