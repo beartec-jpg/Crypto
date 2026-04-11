@@ -134,8 +134,8 @@ export default function WalletPage() {
     const checkWalletAndSecurity = async () => {
       if (!userId) return;
       
-      // Skip if already unlocked or in progress
-      if (authStep === 'complete') return;
+      // Skip if already unlocked or auth is in progress
+      if (authStep !== 'none') return;
       
       const wallet = await getCurrentWallet(userId);
       if (!wallet) {
