@@ -15,6 +15,23 @@ const MONTHLY_AI_CREDITS: Record<string, number> = {
 const ALLOWED_TIERS = ['intermediate', 'pro', 'elite'];
 const ADMIN_EMAIL = 'beartec@beartec.uk';
 
+const AI_MIN_RISK_REWARD_RATIO = 1.5;
+const XAI_PRIMARY_MODEL = 'grok-4';
+const XAI_FALLBACK_MODEL = 'grok-4-1-fast-reasoning';
+const XAI_THINKING_BUDGET = parseInt(process.env.XAI_THINKING_BUDGET || '10000', 10);
+
+function extractTextContent(message: any): string {
+  if (!message) return '';
+  if (typeof message.content === 'string') return message.content;
+  if (Array.isArray(message.content)) {
+    const textBlock = message.content.find((b: any) => b.type === 'text');
+    if (textBlock?.text) return textBlock.text;
+    const reasoningBlock = message.content.find((b: any) => b.type === 'reasoning_content' || b.type === 'thinking');
+    return reasoningBlock?.thinking || reasoningBlock?.text || '';
+  }
+  return '';
+}
+
 async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: string } | null> {
   try {
     const authHeader = req.headers.authorization;
@@ -263,15 +280,20 @@ ${clusterList}
                               mfi < 20 ? 'OVERSOLD (money flowing in)' : 'NEUTRAL';
     const adxInterpretation = adx > 40 ? 'STRONG TREND' : adx > 25 ? 'TRENDING' : 'WEAK/RANGING';
     const diInterpretation = plusDI > minusDI ? 'BULLISH' : 'BEARISH';
+
+    // Send up to 3 unmitigated FVG zones with price ranges so the model can reference specific levels
+    const topBullFVGs = bullFVG.slice(-3).map((fvg: any) => `$${fvg.low?.toFixed(4)}-$${fvg.high?.toFixed(4)} [${formatEventTime(fvg.time)}]`).join(' | ');
+    const topBearFVGs = bearFVG.slice(-3).map((fvg: any) => `$${fvg.low?.toFixed(4)}-$${fvg.high?.toFixed(4)} [${formatEventTime(fvg.time)}]`).join(' | ');
       
-    const prompt = `You are a professional SMC/ICT trader with expertise in order flow analysis. Analyze ${symbol} on the ${interval} timeframe using ALL the data provided below.
+    const prompt = `You are a professional SMC/ICT trader. Think carefully before committing to a trade idea. Analyze ${symbol} on the ${interval} timeframe.
 
 **PRICE ACTION:**
 - Current Price: $${currentPrice.toFixed(4)}
-- Position in Range: ${rangeHigh !== rangeLow ? ((currentPrice - rangeLow) / (rangeHigh - rangeLow) * 100).toFixed(1) : 50}% (0%=low, 100%=high)
+- Position in Range: ${rangeHigh !== rangeLow ? ((currentPrice - rangeLow) / (rangeHigh - rangeLow) * 100).toFixed(1) : 50}% (0%=range low, 100%=range high)
 - Volume Profile POC: $${poc?.toFixed(4) || 'N/A'}
 - Value Area High (VAH): $${vah?.toFixed(4) || 'N/A'}
 - Value Area Low (VAL): $${val?.toFixed(4) || 'N/A'}
+- ATR(14): $${atr.toFixed(4)}
 
 **CUMULATIVE VOLUME DELTA (CVD):**
 - Current CVD: ${cvd?.toFixed(0) || 0}
@@ -289,46 +311,51 @@ ${clusterList}
 ${orderflowAnalysis}
 ${liquidationAnalysis}
 
-**MARKET STRUCTURE (Swing Pivots - 5-bar lookback):**
+**MARKET STRUCTURE (Swing Pivots):**
 - Range: $${rangeLow.toFixed(4)} - $${rangeHigh.toFixed(4)}
 - Swing Highs (oldest to newest): ${swingHighs.length > 0 ? swingHighs.slice(-20).map((sh: any) => `$${sh.price?.toFixed(4)} [${formatEventTime(sh.time)}]`).join(' → ') : 'None'}
 - Swing Lows (oldest to newest): ${swingLows.length > 0 ? swingLows.slice(-20).map((sl: any) => `$${sl.price?.toFixed(4)} [${formatEventTime(sl.time)}]`).join(' → ') : 'None'}
 
-**SMC/ICT ORDER FLOW SIGNALS (all events with timestamps):**
+**SMC/ICT STRUCTURAL LEVELS:**
 - Bullish Order Blocks (${bullishOB.length}): ${bullishOB.length > 0 ? bullishOB.map((ob: any) => `$${ob.low?.toFixed(4)}-$${ob.high?.toFixed(4)} [${formatEventTime(ob.time)}]`).join(' → ') : 'None'}
 - Bearish Order Blocks (${bearishOB.length}): ${bearishOB.length > 0 ? bearishOB.map((ob: any) => `$${ob.low?.toFixed(4)}-$${ob.high?.toFixed(4)} [${formatEventTime(ob.time)}]`).join(' → ') : 'None'}
-- Bullish FVGs (${bullFVG.length}): ${bullFVG.length > 0 ? bullFVG.map((fvg: any) => `$${fvg.low?.toFixed(4)}-$${fvg.high?.toFixed(4)} [${formatEventTime(fvg.time)}]`).join(' → ') : 'None'}
-- Bearish FVGs (${bearFVG.length}): ${bearFVG.length > 0 ? bearFVG.map((fvg: any) => `$${fvg.low?.toFixed(4)}-$${fvg.high?.toFixed(4)} [${formatEventTime(fvg.time)}]`).join(' → ') : 'None'}
+- Bullish FVG zones (up to 3 most recent): ${topBullFVGs || 'None'}
+- Bearish FVG zones (up to 3 most recent): ${topBearFVGs || 'None'}
 - Buy Imbalances: ${buyImbalancesCount || 0} | Sell Imbalances: ${sellImbalancesCount || 0}
 - Absorption Events (${absorption.length}): ${absorption.length > 0 ? absorption.map((a: any) => `${a.type} $${a.price?.toFixed(4)} [${formatEventTime(a.time)}]`).join(' → ') : 'None'}
 - Hidden Divergences (${hiddenDivergences.length}): ${hiddenDivergences.length > 0 ? hiddenDivergences.map((d: any) => `${d.type} $${d.price?.toFixed(4)} [${formatEventTime(d.time)}]`).join(' → ') : 'None'}
 - Liquidity Grabs (${liquidityGrabs.length}): ${liquidityGrabs.length > 0 ? liquidityGrabs.map((lg: any) => `${lg.type} $${lg.price?.toFixed(4)} [${formatEventTime(lg.time)}]`).join(' → ') : 'None'}
 
-**ANALYSIS REQUIREMENTS:**
-1. Evaluate the OVERALL market structure and bias based on ALL available data
-2. Look for CONFLUENCE between multiple signals (OBs + FVGs + oscillators + orderflow)
-3. Consider liquidation clusters as potential reversal zones
-4. Weight more heavily: RSI extremes, MACD crosses, CVD divergences, and absorption events
-5. Only suggest trades with 3+ confluence factors
-6. If no high-probability setup exists, say so clearly
-7. Use the timestamps to understand the SEQUENCE of events - analyze how earlier events led to later ones, and use ALL data points to determine the highest probability outcome
+**PROFESSIONAL SMC/ICT TRADING RULES — MANDATORY:**
+1. ENTRY: MUST be at a specific FVG zone or OB level — NEVER at the current market price. Choose the nearest unfilled FVG or OB that price is likely to retrace to.
+2. STOP LOSS: Place behind the entry structure — below the OB/FVG low for LONG (above for SHORT). Use ATR ($${atr.toFixed(4)}) as a minimum buffer beyond the structural low/high.
+3. TP1: Nearest opposing structural level (swing pivot, FVG, or OB on the other side). This is a realistic, achievable first target.
+4. TP2: Next major level beyond TP1 (the bigger structural target).
+5. RISK/REWARD: Only present setups with R/R ≥ ${AI_MIN_RISK_REWARD_RATIO}. Calculate: reward = |TP1 - entry|, risk = |entry - SL|. If R/R < ${AI_MIN_RISK_REWARD_RATIO}, do NOT include the trade — return an empty alerts array instead.
+6. CONFLUENCE: Require 3+ confirming signals (oscillators, CVD, OI, FVG/OB alignment, volume delta).
+7. If no valid SMC/ICT setup with R/R ≥ ${AI_MIN_RISK_REWARD_RATIO} exists, return empty alerts and explain in marketInsights.
 
-Return ONLY valid JSON in this exact format:
+Return ONLY valid JSON:
 {
   "alerts": [
     {
-      "grade": "A+/A/B/C/D/E",
+      "grade": "A+/A/B/C",
       "direction": "LONG/SHORT",
-      "entry": "exact price or range",
-      "stopLoss": "exact price",
-      "targets": ["TP1 price", "TP2 price", "TP3 price"],
+      "entryZone": "FVG/OB zone e.g. $1.3200-$1.3250",
+      "entry": "exact entry price (midpoint of zone or OB level)",
+      "stopLoss": "exact SL price",
+      "slRationale": "e.g. below OB low at $1.3190 + 1 ATR ($${atr.toFixed(4)}) buffer",
+      "targets": ["TP1 price", "TP2 price"],
+      "tp1Rationale": "e.g. nearest swing high / bearish OB at $X",
+      "tp2Rationale": "e.g. next major swing high / FVG fill at $X",
       "confluenceSignals": ["signal1", "signal2", "signal3"],
       "confluenceCount": 5,
-      "reasoning": "detailed explanation referencing specific indicator values"
+      "riskRewardRatio": 2.1,
+      "reasoning": "SMC/ICT explanation: why this FVG/OB is the entry, what confirms the direction"
     }
   ],
   "marketInsights": {
-    "summary": "Comprehensive market analysis covering trend, momentum, and key levels. Reference specific indicator readings.",
+    "summary": "Comprehensive market analysis covering structure, momentum, key levels and why a trade is or is not valid.",
     "bias": "BULLISH/BEARISH/NEUTRAL",
     "keyLevels": ["important price level 1", "important price level 2"]
   }
@@ -339,41 +366,78 @@ Return ONLY valid JSON in this exact format:
       apiKey: apiKey,
     });
 
-    console.log('🤖 Calling xAI Grok for comprehensive order flow analysis...');
+    console.log(`🤖 Calling xAI ${XAI_PRIMARY_MODEL} (thinking enabled) for order flow analysis...`);
     const startTime = Date.now();
 
-    const completion = await openai.chat.completions.create({
-      model: 'grok-3-fast',
-      messages: [
-        { role: 'system', content: 'You are an expert SMC/ICT trader with deep knowledge of order flow, volume analysis, and technical indicators. Provide professional-grade analysis. Return ONLY valid JSON.' },
-        { role: 'user', content: prompt }
-      ],
-      max_tokens: 3000,
-      temperature: 0.3
-    });
+    let completion: any;
+    try {
+      completion = await (openai.chat.completions.create as any)({
+        model: XAI_PRIMARY_MODEL,
+        messages: [
+          { role: 'system', content: 'You are a professional SMC/ICT trader. Think through the structural analysis carefully before committing to a trade idea. Return ONLY valid JSON.' },
+          { role: 'user', content: prompt }
+        ],
+        thinking: { type: 'enabled', budget_tokens: XAI_THINKING_BUDGET },
+        temperature: 1,
+        max_tokens: 16000
+      });
+    } catch (primaryModelError: any) {
+      console.warn(`⚠️ ${XAI_PRIMARY_MODEL} failed (${primaryModelError.message}), falling back to ${XAI_FALLBACK_MODEL}`);
+      completion = await openai.chat.completions.create({
+        model: XAI_FALLBACK_MODEL,
+        messages: [
+          { role: 'system', content: 'You are a professional SMC/ICT trader. Think through the structural analysis carefully before committing to a trade idea. Return ONLY valid JSON.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 8000
+      });
+    }
 
     const duration = Date.now() - startTime;
     console.log(`✅ Grok response received in ${duration}ms`);
 
-    const content = completion.choices[0]?.message?.content || '';
+    const rawContent = extractTextContent(completion.choices[0]?.message);
     
     let result: { alerts: any[]; marketInsights: any } = { alerts: [], marketInsights: {} };
     
     try {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
+        const rawAlerts = Array.isArray(parsed.alerts) ? parsed.alerts : [];
+
+        // Post-processing: enforce R/R >= AI_MIN_RISK_REWARD_RATIO server-side
+        const filteredAlerts = rawAlerts
+          .map((a: any) => {
+            const entryNum = parseFloat(String(a.entry).replace(/[^0-9.-]/g, '')) || 0;
+            const slNum = parseFloat(String(a.stopLoss).replace(/[^0-9.-]/g, '')) || 0;
+            const tp1Num = parseFloat(String(a.targets?.[0]).replace(/[^0-9.-]/g, '')) || 0;
+            const risk = Math.abs(entryNum - slNum);
+            const reward = Math.abs(tp1Num - entryNum);
+            const rr = risk > 0 && reward > 0 ? reward / risk : 0;
+            return {
+              grade: a.grade || 'C',
+              direction: a.direction || 'NEUTRAL',
+              entryZone: a.entryZone || '',
+              entry: a.entry || 'N/A',
+              stopLoss: a.stopLoss || 'N/A',
+              slRationale: a.slRationale || '',
+              targets: Array.isArray(a.targets) ? a.targets : [],
+              tp1Rationale: a.tp1Rationale || '',
+              tp2Rationale: a.tp2Rationale || '',
+              confluenceSignals: Array.isArray(a.confluenceSignals) ? a.confluenceSignals : [],
+              confluenceCount: typeof a.confluenceCount === 'number' ? a.confluenceCount : 0,
+              riskRewardRatio: parseFloat(rr.toFixed(2)),
+              reasoning: a.reasoning || '',
+              _rr: rr
+            };
+          })
+          .filter((a: any) => a._rr >= AI_MIN_RISK_REWARD_RATIO)
+          .map(({ _rr, ...a }: any) => a);
+
         result = {
-          alerts: Array.isArray(parsed.alerts) ? parsed.alerts.map((a: any) => ({
-            grade: a.grade || 'C',
-            direction: a.direction || 'NEUTRAL',
-            entry: a.entry || 'N/A',
-            stopLoss: a.stopLoss || 'N/A',
-            targets: Array.isArray(a.targets) ? a.targets : [],
-            confluenceSignals: Array.isArray(a.confluenceSignals) ? a.confluenceSignals : [],
-            confluenceCount: typeof a.confluenceCount === 'number' ? a.confluenceCount : 0,
-            reasoning: a.reasoning || ''
-          })) : [],
+          alerts: filteredAlerts,
           marketInsights: {
             summary: parsed.marketInsights?.summary || '',
             bias: parsed.marketInsights?.bias || 'NEUTRAL',
@@ -384,7 +448,7 @@ Return ONLY valid JSON in this exact format:
       }
     } catch (parseError: any) {
       console.error('❌ Failed to parse Grok response:', parseError.message);
-      result = { alerts: [], marketInsights: { summary: content.substring(0, 500) } };
+      result = { alerts: [], marketInsights: { summary: rawContent.substring(0, 500) } };
     }
 
     if (!isAdmin && cryptoUserId && pool && dbAvailable) {

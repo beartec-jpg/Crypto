@@ -3,6 +3,22 @@ import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
 
 const ADMIN_EMAIL = 'beartec@beartec.uk';
+const AI_MIN_RISK_REWARD_RATIO = 1.5;
+const XAI_PRIMARY_MODEL = 'grok-4';
+const XAI_FALLBACK_MODEL = 'grok-4-1-fast-reasoning';
+const XAI_THINKING_BUDGET = parseInt(process.env.XAI_THINKING_BUDGET || '10000', 10);
+
+function extractTextContent(message: any): string {
+  if (!message) return '';
+  if (typeof message.content === 'string') return message.content;
+  if (Array.isArray(message.content)) {
+    const textBlock = message.content.find((b: any) => b.type === 'text');
+    if (textBlock?.text) return textBlock.text;
+    const reasoningBlock = message.content.find((b: any) => b.type === 'reasoning_content' || b.type === 'thinking');
+    return reasoningBlock?.thinking || reasoningBlock?.text || '';
+  }
+  return '';
+}
 
 async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: string } | null> {
   try {
@@ -166,6 +182,95 @@ function detectBOSCHoCH(bars: any[]): { bos: number; choch: number } {
   return { bos, choch };
 }
 
+function detectFVGs(bars: any[]): { bullish: Array<{low: number; high: number}>; bearish: Array<{low: number; high: number}> } {
+  const bullish: Array<{low: number; high: number}> = [];
+  const bearish: Array<{low: number; high: number}> = [];
+  const recent = bars.slice(-100);
+  for (let i = 2; i < recent.length; i++) {
+    // Bullish FVG: gap between bar[i-2].high and bar[i].low (bar[i-1] is the impulse up)
+    if (recent[i].low > recent[i - 2].high) {
+      bullish.push({ low: recent[i - 2].high, high: recent[i].low });
+    }
+    // Bearish FVG: gap between bar[i-2].low and bar[i].high (bar[i-1] is the impulse down)
+    if (recent[i].high < recent[i - 2].low) {
+      bearish.push({ low: recent[i].high, high: recent[i - 2].low });
+    }
+  }
+  return { bullish: bullish.slice(-3), bearish: bearish.slice(-3) };
+}
+
+function detectOrderBlocks(bars: any[]): { bullish: Array<{low: number; high: number}>; bearish: Array<{low: number; high: number}> } {
+  const bullish: Array<{low: number; high: number}> = [];
+  const bearish: Array<{low: number; high: number}> = [];
+  const recent = bars.slice(-100);
+  for (let i = 1; i < recent.length - 3; i++) {
+    const isBullishImpulse = recent[i + 1].close > recent[i].high && recent[i + 2].close > recent[i].high;
+    const isBearishImpulse = recent[i + 1].close < recent[i].low && recent[i + 2].close < recent[i].low;
+    // Bearish OB: last bullish candle before a bearish impulse
+    if (recent[i].close > recent[i].open && isBearishImpulse) {
+      bearish.push({ low: recent[i].low, high: recent[i].high });
+    }
+    // Bullish OB: last bearish candle before a bullish impulse
+    if (recent[i].close < recent[i].open && isBullishImpulse) {
+      bullish.push({ low: recent[i].low, high: recent[i].high });
+    }
+  }
+  return { bullish: bullish.slice(-3), bearish: bearish.slice(-3) };
+}
+
+function calculateVolumeProfile(bars: any[]): { poc: number; vah: number; val: number } {
+  const recent = bars.slice(-200);
+  if (recent.length === 0) return { poc: 0, vah: 0, val: 0 };
+  const low = Math.min(...recent.map(b => b.low));
+  const high = Math.max(...recent.map(b => b.high));
+  const range = high - low;
+  if (range === 0) return { poc: recent[recent.length - 1].close, vah: high, val: low };
+  const buckets = 50;
+  const bucketSize = range / buckets;
+  const volumeBuckets = new Array(buckets).fill(0);
+  for (const bar of recent) {
+    const startBucket = Math.floor((bar.low - low) / bucketSize);
+    const endBucket = Math.min(Math.floor((bar.high - low) / bucketSize), buckets - 1);
+    const barsInBucket = endBucket - startBucket + 1;
+    for (let b = Math.max(0, startBucket); b <= endBucket; b++) {
+      volumeBuckets[b] += bar.volume / Math.max(1, barsInBucket);
+    }
+  }
+  const pocBucket = volumeBuckets.indexOf(Math.max(...volumeBuckets));
+  const poc = low + (pocBucket + 0.5) * bucketSize;
+  const totalVolume = volumeBuckets.reduce((a, b) => a + b, 0);
+  const targetVolume = totalVolume * 0.7;
+  let accumulated = 0;
+  let vahBucket = pocBucket;
+  let valBucket = pocBucket;
+  let upper = pocBucket;
+  let lower = pocBucket;
+  while (accumulated < targetVolume && (upper < buckets - 1 || lower > 0)) {
+    const upVol = upper < buckets - 1 ? volumeBuckets[upper + 1] : 0;
+    const downVol = lower > 0 ? volumeBuckets[lower - 1] : 0;
+    if (upVol >= downVol && upper < buckets - 1) { upper++; accumulated += upVol; vahBucket = upper; }
+    else if (lower > 0) { lower--; accumulated += downVol; valBucket = lower; }
+    else break;
+  }
+  return {
+    poc,
+    vah: low + (vahBucket + 1) * bucketSize,
+    val: low + valBucket * bucketSize
+  };
+}
+
+function detectSwingPivots(bars: any[], lookback = 5): { highs: number[]; lows: number[] } {
+  const recent = bars.slice(-100);
+  const highs: number[] = [];
+  const lows: number[] = [];
+  for (let i = lookback; i < recent.length - lookback; i++) {
+    const window = recent.slice(i - lookback, i + lookback + 1);
+    if (recent[i].high === Math.max(...window.map(b => b.high))) highs.push(recent[i].high);
+    if (recent[i].low === Math.min(...window.map(b => b.low))) lows.push(recent[i].low);
+  }
+  return { highs: highs.slice(-5), lows: lows.slice(-5) };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
@@ -279,6 +384,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const vwapCalc = calculateVWAP(bars);
       const obv = calculateOBV(bars);
       const boschoch = detectBOSCHoCH(bars);
+      const fvgs = detectFVGs(bars);
+      const obs = detectOrderBlocks(bars);
+      const volProfile = calculateVolumeProfile(bars);
+      const swings = detectSwingPivots(bars);
       const recentHigh = Math.max(...bars.slice(-20).map(b => b.high));
       const recentLow = Math.min(...bars.slice(-20).map(b => b.low));
 
@@ -294,6 +403,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         obv: (obv.obv / 1000000).toFixed(2) + 'M',
         bos: boschoch.bos,
         choch: boschoch.choch,
+        poc: volProfile.poc.toFixed(4),
+        vah: volProfile.vah.toFixed(4),
+        val: volProfile.val.toFixed(4),
+        bullFVGs: fvgs.bullish.map(f => `$${f.low.toFixed(4)}-$${f.high.toFixed(4)}`).join(' | ') || 'None',
+        bearFVGs: fvgs.bearish.map(f => `$${f.low.toFixed(4)}-$${f.high.toFixed(4)}`).join(' | ') || 'None',
+        bullOBs: obs.bullish.map(o => `$${o.low.toFixed(4)}-$${o.high.toFixed(4)}`).join(' | ') || 'None',
+        bearOBs: obs.bearish.map(o => `$${o.low.toFixed(4)}-$${o.high.toFixed(4)}`).join(' | ') || 'None',
+        swingHighs: swings.highs.map(h => `$${h.toFixed(4)}`).join(' → ') || 'None',
+        swingLows: swings.lows.map(l => `$${l.toFixed(4)}`).join(' → ') || 'None',
         recentHigh: recentHigh.toFixed(4),
         recentLow: recentLow.toFixed(4)
       };
@@ -304,67 +422,62 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const data1h = computeIndicators(bars1h);
     const data4h = computeIndicators(bars4h);
 
-    const prompt = `Symbol: ${symbol} | Multi-Timeframe Analysis (5m, 15m, 1h, 4h)
-You are analyzing this asset across 4 timeframes to find trades with cross-timeframe confluence.
+    const fmtTF = (label: string, d: ReturnType<typeof computeIndicators>) => `
+**${label}:**
+- Price: $${d.currentPrice}, RSI: ${d.rsi}, MACD hist: ${d.macd.histogram}${d.macd.crossover !== 'none' ? ` (${d.macd.crossover})` : ''}
+- Stoch: %K ${d.stoch.k}, %D ${d.stoch.d}${d.stoch.crossover !== 'none' ? ` (${d.stoch.crossover})` : ''} | ADX: ${d.adx} | ATR: ${d.atr}
+- Volume Profile: POC $${d.poc} | VAH $${d.vah} | VAL $${d.val}
+- VWAP: $${d.vwap} | OBV: ${d.obv} | BOS: ${d.bos} | CHoCH: ${d.choch}
+- Bullish FVGs: ${d.bullFVGs} | Bearish FVGs: ${d.bearFVGs}
+- Bullish OBs: ${d.bullOBs} | Bearish OBs: ${d.bearOBs}
+- Swing Highs: ${d.swingHighs} | Swing Lows: ${d.swingLows}
+- Range: $${d.recentLow} - $${d.recentHigh}`;
 
-**5-Minute Data (Scalp/Entry timing):**
-- Price: $${data5m.currentPrice}, RSI: ${data5m.rsi}, MACD: ${data5m.macd.histogram}${data5m.macd.crossover !== 'none' ? ` (${data5m.macd.crossover})` : ''}
-- Stochastic: %K ${data5m.stoch.k}, %D ${data5m.stoch.d}${data5m.stoch.crossover !== 'none' ? ` (${data5m.stoch.crossover})` : ''}
-- ADX: ${data5m.adx}, ATR: ${data5m.atr}, BB Squeeze: ${data5m.bb.squeeze ? 'YES' : 'No'}
-- VWAP: $${data5m.vwap}, OBV: ${data5m.obv}, BOS: ${data5m.bos}, CHoCH: ${data5m.choch}
-- Range: $${data5m.recentLow} - $${data5m.recentHigh}
+    const prompt = `Symbol: ${symbol} | Multi-Timeframe SMC/ICT Analysis
+Think carefully through the structural analysis across all 4 timeframes before identifying trade setups.
+${fmtTF('5-Minute (Entry timing / scalp)', data5m)}
+${fmtTF('15-Minute (Short-term structure)', data15m)}
+${fmtTF('1-Hour (Medium-term bias)', data1h)}
+${fmtTF('4-Hour (Higher-timeframe bias)', data4h)}
 
-**15-Minute Data (Short-term):**
-- Price: $${data15m.currentPrice}, RSI: ${data15m.rsi}, MACD: ${data15m.macd.histogram}${data15m.macd.crossover !== 'none' ? ` (${data15m.macd.crossover})` : ''}
-- Stochastic: %K ${data15m.stoch.k}, %D ${data15m.stoch.d}${data15m.stoch.crossover !== 'none' ? ` (${data15m.stoch.crossover})` : ''}
-- ADX: ${data15m.adx}, ATR: ${data15m.atr}, BB Squeeze: ${data15m.bb.squeeze ? 'YES' : 'No'}
-- VWAP: $${data15m.vwap}, OBV: ${data15m.obv}, BOS: ${data15m.bos}, CHoCH: ${data15m.choch}
-- Range: $${data15m.recentLow} - $${data15m.recentHigh}
-
-**1-Hour Data (Medium-term):**
-- Price: $${data1h.currentPrice}, RSI: ${data1h.rsi}, MACD: ${data1h.macd.histogram}${data1h.macd.crossover !== 'none' ? ` (${data1h.macd.crossover})` : ''}
-- Stochastic: %K ${data1h.stoch.k}, %D ${data1h.stoch.d}${data1h.stoch.crossover !== 'none' ? ` (${data1h.stoch.crossover})` : ''}
-- ADX: ${data1h.adx}, ATR: ${data1h.atr}, BB Squeeze: ${data1h.bb.squeeze ? 'YES' : 'No'}
-- VWAP: $${data1h.vwap}, OBV: ${data1h.obv}, BOS: ${data1h.bos}, CHoCH: ${data1h.choch}
-- Range: $${data1h.recentLow} - $${data1h.recentHigh}
-
-**4-Hour Data (Long-term):**
-- Price: $${data4h.currentPrice}, RSI: ${data4h.rsi}, MACD: ${data4h.macd.histogram}${data4h.macd.crossover !== 'none' ? ` (${data4h.macd.crossover})` : ''}
-- Stochastic: %K ${data4h.stoch.k}, %D ${data4h.stoch.d}${data4h.stoch.crossover !== 'none' ? ` (${data4h.stoch.crossover})` : ''}
-- ADX: ${data4h.adx}, ATR: ${data4h.atr}, BB Squeeze: ${data4h.bb.squeeze ? 'YES' : 'No'}
-- VWAP: $${data4h.vwap}, OBV: ${data4h.obv}, BOS: ${data4h.bos}, CHoCH: ${data4h.choch}
-- Range: $${data4h.recentLow} - $${data4h.recentHigh}
-
-**Your Task:**
-1. Provide a 2-sentence summary for EACH timeframe's bias and key observation.
-2. Provide a 2-sentence overall cross-TF summary with alignment assessment.
-3. Identify 1-3 best trades with CROSS-TIMEFRAME CONFLUENCE (higher TF sets bias, lower TF for timing).
-4. Grade each trade A+ to C based on confluence strength.
+**PROFESSIONAL SMC/ICT TRADING RULES — MANDATORY:**
+1. HIGHER TF SETS BIAS: Use 4h/1h to determine direction. Use 15m/5m for entry timing.
+2. ENTRY: MUST be at a specific FVG zone or OB level from the entry-timeframe data — NEVER at current market price.
+3. STOP LOSS: Place behind the entry structure. For LONG: below OB/FVG low + 1 ATR buffer. For SHORT: above OB/FVG high + 1 ATR buffer.
+4. TP1: Nearest opposing structural level on the entry timeframe (swing pivot, FVG, OB).
+5. TP2: Next major structural level aligned with the higher-TF bias.
+6. RISK/REWARD: Only include trades with R/R ≥ ${AI_MIN_RISK_REWARD_RATIO}. Calculate reward = |TP1 - entry|, risk = |entry - SL|. DISCARD any setup where R/R < ${AI_MIN_RISK_REWARD_RATIO}.
+7. If no valid cross-TF setup with R/R ≥ ${AI_MIN_RISK_REWARD_RATIO} exists, return an empty bestTrades array.
 
 Respond with ONLY valid JSON:
 {
   "multiTFInsights": {
-    "5m": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
-    "15m": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
-    "1h": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
-    "4h": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
-    "overallSummary": "2 sentences on cross-TF alignment"
+    "5m": { "summary": "2 sentences on structure and bias", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
+    "15m": { "summary": "2 sentences on structure and bias", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
+    "1h": { "summary": "2 sentences on structure and bias", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
+    "4h": { "summary": "2 sentences on structure and bias", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
+    "overallSummary": "2 sentences on cross-TF alignment and what it means for trade selection"
   },
   "bestTrades": [
     {
       "grade": "A+/A/B/C",
       "primaryTF": "15m/1h/4h",
       "direction": "LONG/SHORT",
-      "entry": "price",
-      "stopLoss": "price",
-      "targets": ["TP1", "TP2"],
-      "confluenceSignals": ["4-6 signals with TF prefix"],
-      "reasoning": "1 sentence explaining cross-TF logic"
+      "entryZone": "FVG/OB zone e.g. $X-$Y",
+      "entry": "exact entry price",
+      "stopLoss": "exact SL price",
+      "slRationale": "e.g. below OB low at $X + ATR buffer",
+      "targets": ["TP1 price", "TP2 price"],
+      "tp1Rationale": "e.g. nearest opposing swing high / bearish OB at $X",
+      "tp2Rationale": "e.g. next major structural level / FVG fill at $X",
+      "confluenceSignals": ["4h BEARISH bias", "1h bearish OB at $X", "15m FVG entry zone", "RSI divergence", "CVD falling"],
+      "riskRewardRatio": 2.1,
+      "reasoning": "Cross-TF logic: 4h/1h bias confirms direction, 15m FVG provides entry, structure-based SL and level-to-level targets"
     }
   ]
 }`;
 
-    console.log('🤖 Calling xAI Grok for multi-TF analysis...');
+    console.log(`🤖 Calling xAI ${XAI_PRIMARY_MODEL} (thinking enabled) for multi-TF analysis...`);
     const startTime = Date.now();
 
     const openai = new OpenAI({
@@ -372,15 +485,30 @@ Respond with ONLY valid JSON:
       apiKey: apiKey,
     });
 
-    const completion = await openai.chat.completions.create({
-      model: 'grok-3',
-      messages: [
-        { role: 'system', content: 'You are a professional crypto trader expert in multi-timeframe analysis. Higher timeframes set the bias, lower timeframes provide entry timing. Always respond with valid JSON only.' },
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0.7,
-      max_tokens: 1500
-    });
+    let completion: any;
+    try {
+      completion = await (openai.chat.completions.create as any)({
+        model: XAI_PRIMARY_MODEL,
+        messages: [
+          { role: 'system', content: 'You are a professional SMC/ICT trader specializing in multi-timeframe analysis. Higher timeframes set the bias; lower timeframes provide entry timing. Think through the structural analysis carefully before committing to a trade idea. Always respond with valid JSON only.' },
+          { role: 'user', content: prompt }
+        ],
+        thinking: { type: 'enabled', budget_tokens: XAI_THINKING_BUDGET },
+        temperature: 1,
+        max_tokens: 16000
+      });
+    } catch (primaryModelError: any) {
+      console.warn(`⚠️ ${XAI_PRIMARY_MODEL} failed (${primaryModelError.message}), falling back to ${XAI_FALLBACK_MODEL}`);
+      completion = await openai.chat.completions.create({
+        model: XAI_FALLBACK_MODEL,
+        messages: [
+          { role: 'system', content: 'You are a professional SMC/ICT trader specializing in multi-timeframe analysis. Higher timeframes set the bias; lower timeframes provide entry timing. Always respond with valid JSON only.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 8000
+      });
+    }
 
     const duration = Date.now() - startTime;
     const inputTokens = completion.usage?.prompt_tokens || 0;
@@ -389,11 +517,29 @@ Respond with ONLY valid JSON:
 
     console.log(`✅ Multi-TF analysis complete (${duration}ms, ~$${estimatedCost.toFixed(6)})`);
 
-    let parsedResult;
+    let parsedResult: { multiTFInsights: any; bestTrades: any[] };
     try {
-      let content = completion.choices[0].message.content || '{}';
-      content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      parsedResult = JSON.parse(content);
+      let rawContent = extractTextContent(completion.choices[0]?.message);
+      rawContent = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
+      const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { multiTFInsights: null, bestTrades: [] };
+
+      // Post-processing: enforce R/R >= AI_MIN_RISK_REWARD_RATIO server-side
+      const rawTrades = Array.isArray(parsed.bestTrades) ? parsed.bestTrades : [];
+      const filteredTrades = rawTrades
+        .map((t: any) => {
+          const entryNum = parseFloat(String(t.entry).replace(/[^0-9.-]/g, '')) || 0;
+          const slNum = parseFloat(String(t.stopLoss).replace(/[^0-9.-]/g, '')) || 0;
+          const tp1Num = parseFloat(String(t.targets?.[0]).replace(/[^0-9.-]/g, '')) || 0;
+          const risk = Math.abs(entryNum - slNum);
+          const reward = Math.abs(tp1Num - entryNum);
+          const rr = risk > 0 && reward > 0 ? reward / risk : 0;
+          return { ...t, riskRewardRatio: parseFloat(rr.toFixed(2)), _rr: rr };
+        })
+        .filter((t: any) => t._rr >= AI_MIN_RISK_REWARD_RATIO)
+        .map(({ _rr, ...t }: any) => t);
+
+      parsedResult = { multiTFInsights: parsed.multiTFInsights || null, bestTrades: filteredTrades };
     } catch (parseError) {
       console.error('Failed to parse Grok response:', parseError);
       parsedResult = { multiTFInsights: null, bestTrades: [] };
