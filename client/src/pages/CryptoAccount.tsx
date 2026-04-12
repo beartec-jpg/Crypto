@@ -305,7 +305,7 @@ export default function CryptoAccount() {
                 Security
               </h3>
               <p className="text-sm text-gray-400 mb-4">
-                Manage your password, two-factor authentication, and connected accounts via the Clerk security centre.
+                Manage your password, two-factor authentication, and connected accounts via the Clerk security center.
               </p>
               {isDevelopment ? (
                 <p className="text-sm text-yellow-500">Dev mode — security settings managed via Clerk in production.</p>
@@ -316,7 +316,7 @@ export default function CryptoAccount() {
                   onClick={openUserProfile}
                 >
                   <Key className="w-4 h-4 mr-2" />
-                  Manage Password &amp; Security
+                  Manage Password & Security
                 </Button>
               )}
             </div>
