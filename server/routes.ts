@@ -126,9 +126,12 @@ function checkXaiApiKey(): { configured: boolean; error?: string } {
   return { configured: true };
 }
 
-// Model routing: default to Grok 4 for better reasoning, with Grok 3 fallback.
-const XAI_DEFAULT_MODEL = process.env.XAI_MODEL || process.env.XAI_TRADING_MODEL || "grok-4-1-fast-reasoning";
-const XAI_FALLBACK_MODEL = process.env.XAI_FALLBACK_MODEL || process.env.XAI_TRADING_FALLBACK_MODEL || "grok-4";
+// Model routing: Grok 4 with thinking for AI trade analysis; fast-reasoning as fallback.
+const XAI_DEFAULT_MODEL = process.env.XAI_MODEL || process.env.XAI_TRADING_MODEL || "grok-4";
+const XAI_FALLBACK_MODEL = process.env.XAI_FALLBACK_MODEL || process.env.XAI_TRADING_FALLBACK_MODEL || "grok-4-1-fast-reasoning";
+
+// Budget tokens for Grok 4 extended thinking on trade analysis
+const XAI_THINKING_BUDGET = parseInt(process.env.XAI_THINKING_BUDGET || "10000", 10);
 
 function isModelSelectionError(error: any): boolean {
   const message = String(error?.message || '').toLowerCase();
@@ -141,31 +144,56 @@ async function createXaiChatCompletionWithFallback(params: {
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
   temperature: number;
   max_tokens: number;
+  enableThinking?: boolean; // Use Grok 4 extended thinking
 }) {
   const primaryModel = params.preferredModel || XAI_DEFAULT_MODEL;
-  const modelCandidates = primaryModel === XAI_FALLBACK_MODEL
-    ? [primaryModel]
-    : [primaryModel, XAI_FALLBACK_MODEL];
+  // When thinking is requested, always start with grok-4 then fall back to fast-reasoning
+  const modelCandidates = params.enableThinking
+    ? ['grok-4', XAI_FALLBACK_MODEL]
+    : primaryModel === XAI_FALLBACK_MODEL
+      ? [primaryModel]
+      : [primaryModel, XAI_FALLBACK_MODEL];
 
   let lastError: any = null;
   for (const model of modelCandidates) {
+    const useThinking = params.enableThinking && model === 'grok-4';
     try {
-      return await xai.chat.completions.create({
+      const requestParams: any = {
         model,
         messages: params.messages,
-        temperature: params.temperature,
+        // Thinking mode requires temperature=1 per xAI spec; otherwise use caller value
+        temperature: useThinking ? 1 : params.temperature,
         max_tokens: params.max_tokens,
-      });
+      };
+      if (useThinking) {
+        requestParams.thinking = { type: 'enabled', budget_tokens: XAI_THINKING_BUDGET };
+      }
+      console.log(`🧠 xAI request: model=${model}${useThinking ? ` thinking(budget=${XAI_THINKING_BUDGET})` : ''}`);
+      return await xai.chat.completions.create(requestParams);
     } catch (error: any) {
       lastError = error;
       if (!isModelSelectionError(error) || model === modelCandidates[modelCandidates.length - 1]) {
         throw error;
       }
-      console.warn(`⚠️ xAI model '${model}' unavailable, retrying with fallback '${XAI_FALLBACK_MODEL}'`);
+      console.warn(`⚠️ xAI model '${model}' unavailable, retrying with fallback '${modelCandidates[modelCandidates.indexOf(model) + 1]}'`);
     }
   }
 
   throw lastError;
+}
+
+// Extract text content from xAI response — handles both string content and content-block arrays
+// (Grok 4 thinking returns reasoning in reasoning_content; final text is always in .content)
+function extractTextContent(message: any): string {
+  const content = message?.content;
+  if (!content) return '{}';
+  if (typeof content === 'string') return content;
+  // Content-block array (some xAI thinking responses)
+  if (Array.isArray(content)) {
+    const textBlock = content.find((b: any) => b.type === 'text');
+    return textBlock?.text || '{}';
+  }
+  return String(content);
 }
 
 
@@ -529,7 +557,133 @@ function calculateADX(bars: CandleBar[], period: number = 14): number {
   return isNaN(dx) ? 25 : dx;
 }
 
+// ===== SMC / STRUCTURAL HELPERS (used by multi-TF and single-TF AI endpoints) =====
+
+// Thresholds for structural detection helpers
+const MIN_FVG_GAP_ATR_MULTIPLE = 0.5;    // FVG must span at least 50% of ATR to be significant
+const MIN_OB_BODY_ATR_MULTIPLE = 0.8;    // Order Block candle body must be ≥ 80% of ATR
+const MIN_OB_VOLUME_MULTIPLE = 1.2;      // Order Block candle volume must be ≥ 120% of avg volume
+const DEFAULT_VOLUME_PROFILE_BINS = 40;  // Resolution for volume profile histogram
+const VALUE_AREA_PERCENTAGE = 0.7;       // Standard 70% value area (VAH/VAL)
+
+// Lightweight FVG detection (server-side) — returns only unmitigated FVGs
+function detectFVGServer(bars: CandleBar[]): { bullFVG: { low: number; high: number }[]; bearFVG: { low: number; high: number }[] } {
+  const bullFVG: { low: number; high: number }[] = [];
+  const bearFVG: { low: number; high: number }[] = [];
+  if (bars.length < 10) return { bullFVG, bearFVG };
+
+  const atr = calculateATR(bars, 14);
+
+  for (let i = 2; i < bars.length; i++) {
+    // Bullish FVG: current low > two-bars-ago high
+    if (bars[i].low > bars[i - 2].high) {
+      const gapSize = bars[i].low - bars[i - 2].high;
+      if (gapSize >= atr * MIN_FVG_GAP_ATR_MULTIPLE) {
+        const low = bars[i - 2].high;
+        const high = bars[i].low;
+        // Check if mitigated by a later bar
+        let mitigated = false;
+        for (let j = i + 1; j < bars.length; j++) {
+          if (bars[j].low <= low) { mitigated = true; break; }
+        }
+        if (!mitigated) bullFVG.push({ low, high });
+      }
+    }
+    // Bearish FVG: current high < two-bars-ago low
+    if (bars[i].high < bars[i - 2].low) {
+      const gapSize = bars[i - 2].low - bars[i].high;
+      if (gapSize >= atr * MIN_FVG_GAP_ATR_MULTIPLE) {
+        const low = bars[i].high;
+        const high = bars[i - 2].low;
+        let mitigated = false;
+        for (let j = i + 1; j < bars.length; j++) {
+          if (bars[j].high >= high) { mitigated = true; break; }
+        }
+        if (!mitigated) bearFVG.push({ low, high });
+      }
+    }
+  }
+
+  // Return most recent 3 of each (closest to current price action)
+  return {
+    bullFVG: bullFVG.slice(-3),
+    bearFVG: bearFVG.slice(-3),
+  };
+}
+
+// Lightweight Order Block detection (server-side) — impulse candle before displacement
+function detectOrderBlocksServer(bars: CandleBar[]): { bullishOB: { price: number; low: number; high: number }[]; bearishOB: { price: number; low: number; high: number }[] } {
+  const bullishOB: { price: number; low: number; high: number }[] = [];
+  const bearishOB: { price: number; low: number; high: number }[] = [];
+  if (bars.length < 10) return { bullishOB, bearishOB };
+
+  const atr = calculateATR(bars, 14);
+  const avgVol = bars.slice(-20).reduce((s, b) => s + b.volume, 0) / Math.min(20, bars.length);
+
+  for (let i = 1; i < bars.length - 2; i++) {
+    const prev = bars[i - 1];
+    const curr = bars[i];
+    const next = bars[i + 1];
+    const body = Math.abs(curr.close - curr.open);
+
+    // Bullish OB: last bearish candle before a bullish impulse that breaks above its high
+    if (curr.close < curr.open && next.close > curr.high && body >= atr * MIN_OB_BODY_ATR_MULTIPLE && curr.volume >= avgVol * MIN_OB_VOLUME_MULTIPLE) {
+      bullishOB.push({ price: (curr.low + curr.high) / 2, low: curr.low, high: curr.high });
+    }
+    // Bearish OB: last bullish candle before a bearish impulse that breaks below its low
+    if (curr.close > curr.open && next.close < curr.low && body >= atr * MIN_OB_BODY_ATR_MULTIPLE && curr.volume >= avgVol * MIN_OB_VOLUME_MULTIPLE) {
+      bearishOB.push({ price: (curr.low + curr.high) / 2, low: curr.low, high: curr.high });
+    }
+  }
+
+  return {
+    bullishOB: bullishOB.slice(-3),
+    bearishOB: bearishOB.slice(-3),
+  };
+}
+
+// Volume Profile: POC, VAH, VAL (server-side)
+function calculateVolumeProfileServer(bars: CandleBar[], bins = DEFAULT_VOLUME_PROFILE_BINS): { poc: number; vah: number; val: number } {
+  if (bars.length === 0) return { poc: 0, vah: 0, val: 0 };
+  const prices = bars.flatMap(b => [b.high, b.low]);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  if (max === min) return { poc: min, vah: max, val: min };
+
+  const binSize = (max - min) / bins;
+  const profile: { price: number; volume: number }[] = Array.from({ length: bins }, (_, i) => ({
+    price: min + i * binSize + binSize / 2,
+    volume: 0,
+  }));
+
+  for (const bar of bars) {
+    const range = bar.high - bar.low;
+    if (range === 0) continue;
+    for (let i = 0; i < bins; i++) {
+      const binLow = min + i * binSize;
+      const binHigh = binLow + binSize;
+      const overlap = Math.min(bar.high, binHigh) - Math.max(bar.low, binLow);
+      if (overlap > 0) profile[i].volume += (bar.volume * overlap) / range;
+    }
+  }
+
+  const poc = profile.reduce((a, b) => (a.volume > b.volume ? a : b)).price;
+  const totalVolume = profile.reduce((s, b) => s + b.volume, 0);
+  const sorted = [...profile].sort((a, b) => b.volume - a.volume);
+  let cumVol = 0;
+  const valueArea: number[] = [];
+  for (const bin of sorted) {
+    cumVol += bin.volume;
+    valueArea.push(bin.price);
+    if (cumVol >= totalVolume * VALUE_AREA_PERCENTAGE) break;
+  }
+  return { poc, vah: Math.max(...valueArea), val: Math.min(...valueArea) };
+}
+
 // ===== END TECHNICAL INDICATOR FUNCTIONS =====
+
+// Minimum R/R required for any AI-generated trade setup (used in prompts and post-processing)
+const AI_MIN_RISK_REWARD_RATIO = 1.5;
 
 // In-memory cache for liquidation data (5 min TTL)
 interface LiquidationCache {
@@ -3658,16 +3812,15 @@ Be concise and direct.`;
         const vwapCalc = calculateVWAP(bars);
         const obv = calculateOBV(bars);
         const boschoch = detectBOSCHoCH(bars);
+        const fvgs = detectFVGServer(bars);
+        const obs = detectOrderBlocksServer(bars);
+        const vp = calculateVolumeProfileServer(bars);
         
-        // Recent swing points
-        const swings = bars.slice(-50).map((b, i, arr) => {
-          const isHigh = i > 1 && i < arr.length - 2 && b.high > arr[i-1].high && b.high > arr[i-2].high && b.high > arr[i+1].high && b.high > arr[i+2].high;
-          const isLow = i > 1 && i < arr.length - 2 && b.low < arr[i-1].low && b.low < arr[i-2].low && b.low < arr[i+1].low && b.low < arr[i+2].low;
-          return { time: b.time, high: isHigh ? b.high : null, low: isLow ? b.low : null };
-        }).filter(s => s.high || s.low);
+        // Recent swing pivots (last 5 of each)
+        const swingPts = detectSwingPoints(bars, 5);
 
-        const recentHigh = Math.max(...bars.slice(-20).map(b => b.high));
-        const recentLow = Math.min(...bars.slice(-20).map(b => b.low));
+        const recentHigh = Math.max(...bars.slice(-20).map((b: CandleBar) => b.high));
+        const recentLow = Math.min(...bars.slice(-20).map((b: CandleBar) => b.low));
 
         return {
           currentPrice,
@@ -3683,7 +3836,17 @@ Be concise and direct.`;
           choch: boschoch.choch,
           recentHigh: recentHigh.toFixed(4),
           recentLow: recentLow.toFixed(4),
-          swings: swings.slice(-5)
+          swingHighs: swingPts.swingHighs.slice(-5).map(s => s.price.toFixed(4)),
+          swingLows: swingPts.swingLows.slice(-5).map(s => s.price.toFixed(4)),
+          fvgs: {
+            bullish: fvgs.bullFVG.map(f => `$${f.low.toFixed(4)}-$${f.high.toFixed(4)}`),
+            bearish: fvgs.bearFVG.map(f => `$${f.low.toFixed(4)}-$${f.high.toFixed(4)}`),
+          },
+          orderBlocks: {
+            bullish: obs.bullishOB.map(o => `$${o.low.toFixed(4)}-$${o.high.toFixed(4)}`),
+            bearish: obs.bearishOB.map(o => `$${o.low.toFixed(4)}-$${o.high.toFixed(4)}`),
+          },
+          volumeProfile: { poc: vp.poc.toFixed(4), vah: vp.vah.toFixed(4), val: vp.val.toFixed(4) },
         };
       };
 
@@ -3698,7 +3861,7 @@ Be concise and direct.`;
       const HTF_4H_WEIGHT = 2;     // 4h RSI/MACD weighted twice vs 1h
       const HTF_1H_WEIGHT = 1;
       const BIAS_SCORE_THRESHOLD = 2; // Score needed to declare BULLISH or BEARISH
-      const MIN_RISK_REWARD_RATIO = 1.5;
+      const MIN_RISK_REWARD_RATIO = AI_MIN_RISK_REWARD_RATIO;
       const DUPLICATE_ENTRY_THRESHOLD_PCT = 0.001; // 0.1% tolerance for same-entry detection
 
       // Derive dominant HTF bias from 1h and 4h to anchor trade direction in the prompt
@@ -3715,95 +3878,91 @@ Be concise and direct.`;
       const dominantBias = htfBiasScore >= BIAS_SCORE_THRESHOLD ? 'BULLISH' : htfBiasScore <= -BIAS_SCORE_THRESHOLD ? 'BEARISH' : 'NEUTRAL';
 
       // Build multi-TF prompt for Grok
-      const prompt = `Symbol: ${symbol} | Multi-Timeframe Analysis (5m, 15m, 1h, 4h)
+      const fmt = (arr: string[]) => arr.length > 0 ? arr.join(', ') : 'none';
+      const prompt = `Symbol: ${symbol} | Multi-Timeframe Analysis
+Current Price: $${data5m.currentPrice}
+HTF Dominant Bias (1h+4h): ${dominantBias}
 
-**Current Price:** $${data5m.currentPrice}
-**HTF Dominant Bias (1h+4h weighted):** ${dominantBias} (score: ${htfBiasScore})
+5m | RSI:${data5m.rsi} MACD:${data5m.macd.histogram}${data5m.macd.crossover !== 'none' ? `(${data5m.macd.crossover})` : ''} Stoch:%K${data5m.stoch.k}/%D${data5m.stoch.d} ADX:${data5m.adx} ATR:${data5m.atr}
+  VWAP:$${data5m.vwap} OBV:${data5m.obv} Squeeze:${data5m.bb.squeeze ? 'YES' : 'no'} BOS:${data5m.bos} CHoCH:${data5m.choch}
+  Range: H$${data5m.recentHigh}/L$${data5m.recentLow} VP: POC$${data5m.volumeProfile.poc}/VAH$${data5m.volumeProfile.vah}/VAL$${data5m.volumeProfile.val}
+  Swing Highs: ${fmt(data5m.swingHighs)} | Swing Lows: ${fmt(data5m.swingLows)}
+  Bullish FVGs: ${fmt(data5m.fvgs.bullish)} | Bearish FVGs: ${fmt(data5m.fvgs.bearish)}
+  Bullish OBs: ${fmt(data5m.orderBlocks.bullish)} | Bearish OBs: ${fmt(data5m.orderBlocks.bearish)}
 
-**5-Minute Data:**
-- RSI: ${data5m.rsi}, MACD Histogram: ${data5m.macd.histogram}${data5m.macd.crossover !== 'none' ? ` (${data5m.macd.crossover})` : ''}
-- Stochastic: %K ${data5m.stoch.k}, %D ${data5m.stoch.d}${data5m.stoch.crossover !== 'none' ? ` (${data5m.stoch.crossover})` : ''}
-- ADX: ${data5m.adx}, ATR: ${data5m.atr}, BB Squeeze: ${data5m.bb.squeeze ? 'YES' : 'No'}
-- VWAP: $${data5m.vwap}, OBV: ${data5m.obv}
-- Structure: ${data5m.bos} BOS, ${data5m.choch} CHoCH
-- Range: High $${data5m.recentHigh}, Low $${data5m.recentLow}
+15m | RSI:${data15m.rsi} MACD:${data15m.macd.histogram}${data15m.macd.crossover !== 'none' ? `(${data15m.macd.crossover})` : ''} Stoch:%K${data15m.stoch.k}/%D${data15m.stoch.d} ADX:${data15m.adx} ATR:${data15m.atr}
+  VWAP:$${data15m.vwap} OBV:${data15m.obv} Squeeze:${data15m.bb.squeeze ? 'YES' : 'no'} BOS:${data15m.bos} CHoCH:${data15m.choch}
+  Range: H$${data15m.recentHigh}/L$${data15m.recentLow} VP: POC$${data15m.volumeProfile.poc}/VAH$${data15m.volumeProfile.vah}/VAL$${data15m.volumeProfile.val}
+  Swing Highs: ${fmt(data15m.swingHighs)} | Swing Lows: ${fmt(data15m.swingLows)}
+  Bullish FVGs: ${fmt(data15m.fvgs.bullish)} | Bearish FVGs: ${fmt(data15m.fvgs.bearish)}
+  Bullish OBs: ${fmt(data15m.orderBlocks.bullish)} | Bearish OBs: ${fmt(data15m.orderBlocks.bearish)}
 
-**15-Minute Data:**
-- RSI: ${data15m.rsi}, MACD Histogram: ${data15m.macd.histogram}${data15m.macd.crossover !== 'none' ? ` (${data15m.macd.crossover})` : ''}
-- Stochastic: %K ${data15m.stoch.k}, %D ${data15m.stoch.d}${data15m.stoch.crossover !== 'none' ? ` (${data15m.stoch.crossover})` : ''}
-- ADX: ${data15m.adx}, ATR: ${data15m.atr}, BB Squeeze: ${data15m.bb.squeeze ? 'YES' : 'No'}
-- VWAP: $${data15m.vwap}, OBV: ${data15m.obv}
-- Structure: ${data15m.bos} BOS, ${data15m.choch} CHoCH
-- Range: High $${data15m.recentHigh}, Low $${data15m.recentLow}
+1h | RSI:${data1h.rsi} MACD:${data1h.macd.histogram}${data1h.macd.crossover !== 'none' ? `(${data1h.macd.crossover})` : ''} Stoch:%K${data1h.stoch.k}/%D${data1h.stoch.d} ADX:${data1h.adx} ATR:${data1h.atr}
+  VWAP:$${data1h.vwap} OBV:${data1h.obv} Squeeze:${data1h.bb.squeeze ? 'YES' : 'no'} BOS:${data1h.bos} CHoCH:${data1h.choch}
+  Range: H$${data1h.recentHigh}/L$${data1h.recentLow} VP: POC$${data1h.volumeProfile.poc}/VAH$${data1h.volumeProfile.vah}/VAL$${data1h.volumeProfile.val}
+  Swing Highs: ${fmt(data1h.swingHighs)} | Swing Lows: ${fmt(data1h.swingLows)}
+  Bullish FVGs: ${fmt(data1h.fvgs.bullish)} | Bearish FVGs: ${fmt(data1h.fvgs.bearish)}
+  Bullish OBs: ${fmt(data1h.orderBlocks.bullish)} | Bearish OBs: ${fmt(data1h.orderBlocks.bearish)}
 
-**1-Hour Data:**
-- RSI: ${data1h.rsi}, MACD Histogram: ${data1h.macd.histogram}${data1h.macd.crossover !== 'none' ? ` (${data1h.macd.crossover})` : ''}
-- Stochastic: %K ${data1h.stoch.k}, %D ${data1h.stoch.d}${data1h.stoch.crossover !== 'none' ? ` (${data1h.stoch.crossover})` : ''}
-- ADX: ${data1h.adx}, ATR: ${data1h.atr}, BB Squeeze: ${data1h.bb.squeeze ? 'YES' : 'No'}
-- VWAP: $${data1h.vwap}, OBV: ${data1h.obv}
-- Structure: ${data1h.bos} BOS, ${data1h.choch} CHoCH
-- Range: High $${data1h.recentHigh}, Low $${data1h.recentLow}
+4h | RSI:${data4h.rsi} MACD:${data4h.macd.histogram}${data4h.macd.crossover !== 'none' ? `(${data4h.macd.crossover})` : ''} Stoch:%K${data4h.stoch.k}/%D${data4h.stoch.d} ADX:${data4h.adx} ATR:${data4h.atr}
+  VWAP:$${data4h.vwap} OBV:${data4h.obv} Squeeze:${data4h.bb.squeeze ? 'YES' : 'no'} BOS:${data4h.bos} CHoCH:${data4h.choch}
+  Range: H$${data4h.recentHigh}/L$${data4h.recentLow} VP: POC$${data4h.volumeProfile.poc}/VAH$${data4h.volumeProfile.vah}/VAL$${data4h.volumeProfile.val}
+  Swing Highs: ${fmt(data4h.swingHighs)} | Swing Lows: ${fmt(data4h.swingLows)}
+  Bullish FVGs: ${fmt(data4h.fvgs.bullish)} | Bearish FVGs: ${fmt(data4h.fvgs.bearish)}
+  Bullish OBs: ${fmt(data4h.orderBlocks.bullish)} | Bearish OBs: ${fmt(data4h.orderBlocks.bearish)}
 
-**4-Hour Data:**
-- RSI: ${data4h.rsi}, MACD Histogram: ${data4h.macd.histogram}${data4h.macd.crossover !== 'none' ? ` (${data4h.macd.crossover})` : ''}
-- Stochastic: %K ${data4h.stoch.k}, %D ${data4h.stoch.d}${data4h.stoch.crossover !== 'none' ? ` (${data4h.stoch.crossover})` : ''}
-- ADX: ${data4h.adx}, ATR: ${data4h.atr}, BB Squeeze: ${data4h.bb.squeeze ? 'YES' : 'No'}
-- VWAP: $${data4h.vwap}, OBV: ${data4h.obv}
-- Structure: ${data4h.bos} BOS, ${data4h.choch} CHoCH
-- Range: High $${data4h.recentHigh}, Low $${data4h.recentLow}
+TRADE PLANNING RULES:
+1. HTF bias is ${dominantBias}. All trades MUST align with this bias (no counter-trend trades unless bias is NEUTRAL with an A+ opposing setup).
+2. ENTRY: Place entry at an FVG zone, Order Block, or key swing level — NOT at current price unless price is exactly at that level. Prefer waiting for a pullback into an FVG or OB confluence.
+3. STOP LOSS: Place SL behind the nearest structural level — below the entry OB/FVG low for LONGs, above the entry OB/FVG high for SHORTs. Size using 1-2x ATR as a guide but anchor to structure.
+4. TARGET: Trade level-to-level. TP1 = previous swing pivot or nearest opposing FVG/OB. TP2 = next major structural level (swing high/low, VAH/VAL, or POC on HTF).
+5. Minimum R/R: ${MIN_RISK_REWARD_RATIO}:1 to TP1. Discard any setup below this threshold.
+6. LONG: SL strictly below entry, TP1/TP2 strictly above entry.
+7. SHORT: SL strictly above entry, TP1/TP2 strictly below entry.
+8. No contradictory LONG and SHORT at the same entry. Maximum 2 trade ideas total.
+9. If no high-quality setup exists at a structural level, output 0 trades and say why in overallSummary.
 
-**STRICT TRADE IDEA RULES — YOU MUST FOLLOW THESE:**
-1. The dominant HTF bias is ${dominantBias}. Trade ideas MUST align with this bias unless the bias is NEUTRAL and a clear counter-trend A+ setup exists.
-2. NEVER output a LONG and SHORT trade with the same or near-identical entry price. This is a direct contradiction and is strictly forbidden.
-3. Each trade idea must be a DISTINCT setup: different entry level and/or different primary timeframe.
-4. Minimum risk-reward ratio is ${MIN_RISK_REWARD_RATIO}:1. Discard any setup that cannot achieve at least ${MIN_RISK_REWARD_RATIO}:1 R/R.
-5. For LONG: stopLoss MUST be below entry, TP1/TP2 MUST be above entry.
-6. For SHORT: stopLoss MUST be above entry, TP1/TP2 MUST be below entry.
-7. Entry must be at a meaningful level (key support/resistance, VWAP, recent swing) — NOT simply the current price unless price is exactly at that level.
-8. Output a maximum of 2 trade ideas. If only one high-quality setup exists, output just 1.
-9. Do NOT hedge by offering opposing setups. Commit to the directional bias supported by the data.
-
-**Your Task:**
-1. Summarize each timeframe's bias in 2 sentences, noting the most important indicator reading.
-2. Provide a 2-sentence overall cross-TF confluence summary identifying the dominant trend direction.
-3. Generate 1-2 trade ideas that strictly follow ALL rules above, graded A+ to C on confluence strength.
-
-Respond with ONLY valid JSON in this exact format:
+OUTPUT: Valid JSON only, no markdown.
 {
   "multiTFInsights": {
-    "5m": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
-    "15m": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
-    "1h": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
-    "4h": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
-    "overallSummary": "2 sentences on cross-TF alignment and dominant trend"
+    "5m": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["label: $X"] },
+    "15m": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["label: $X"] },
+    "1h": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["label: $X"] },
+    "4h": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["label: $X"] },
+    "overallSummary": "2 sentences on cross-TF alignment, dominant trend, and whether a high-quality structural setup exists"
   },
   "bestTrades": [
     {
       "grade": "A+/A/B/C",
       "primaryTF": "15m/1h/4h",
       "direction": "LONG/SHORT",
-      "entry": "exact price at key level",
-      "stopLoss": "exact price (below entry for LONG, above entry for SHORT)",
-      "targets": ["TP1 price", "TP2 price"],
-      "confluenceSignals": ["signal 1 with TF prefix", "signal 2", "signal 3", "signal 4"],
-      "reasoning": "1 sentence explaining why this setup has cross-TF confluence"
+      "entry": 1.2345,
+      "stopLoss": 1.2280,
+      "targets": [1.2420, 1.2520],
+      "entryRationale": "FVG $1.23-$1.235 + bullish OB confluence on 15m",
+      "slRationale": "Below OB low $1.228 (1.5x ATR)",
+      "tp1Rationale": "Previous swing high $1.242",
+      "tp2Rationale": "4h VAH $1.252",
+      "confluenceSignals": ["15m bullish FVG $1.23-$1.235", "1h BOS bullish", "4h RSI above 55", "VWAP support"],
+      "reasoning": "1 sentence: why this is a high-probability level-to-level setup."
     }
   ]
 }`;
 
-      console.log('🤖 Calling xAI Grok for multi-TF analysis...');
+      console.log('🤖 Calling xAI Grok 4 (thinking) for multi-TF analysis...');
       const startTime = Date.now();
 
       const response = await createXaiChatCompletionWithFallback({
         messages: [
           {
             role: "system",
-            content: "You are a professional crypto trader specialising in multi-timeframe confluence analysis. Your primary job is to identify the dominant higher-timeframe (1h/4h) directional bias and generate trade ideas that ALIGN with that bias. You never output contradictory LONG and SHORT setups from the same entry price. You always validate that each trade has a minimum 1.5:1 risk-reward ratio before including it. Always respond with valid JSON only, no markdown."
+            content: `You are an elite crypto trader specialising in SMC/ICT multi-timeframe analysis. Your edge is identifying high-probability setups where price is approaching a key structural level (FVG, Order Block, swing pivot) with cross-timeframe confluence. You think in levels: you identify WHERE price is going (the target level), WHERE to enter (the entry level — always an FVG, OB, or confirmed pivot), and WHERE your invalidation is (structural stop behind the entry zone). You never generate a trade that is just "enter at current price with an ATR stop" — that is not a trade setup, it is a guess. You require a minimum ${MIN_RISK_REWARD_RATIO}:1 R/R to TP1. You never output contradictory LONG+SHORT setups. If no quality structural setup exists, you say so. Always respond with valid JSON only, no markdown.`
           },
           { role: "user", content: prompt }
         ],
         temperature: 0.3,
-        max_tokens: 2000
+        max_tokens: 16000,
+        enableThinking: true,
       });
 
       const duration = Date.now() - startTime;
@@ -3816,7 +3975,7 @@ Respond with ONLY valid JSON in this exact format:
 
       let parsedResult;
       try {
-        let content = response.choices[0].message.content || '{}';
+        let content = extractTextContent(response.choices[0].message);
         content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         parsedResult = JSON.parse(content);
       } catch (parseError) {
@@ -4171,89 +4330,90 @@ Respond with ONLY valid JSON in this exact format:
       };
       
       // ===== BUILD REFINED PROMPT =====
-      const prompt = `Symbol: ${symbol} | Timeframe: ${interval} | Duration: ${expectedDuration}
-SL/TP: Use 1-2x ATR for SL; targets at 1:1 to 1:3 R/R aligned with key levels.
+      // Build FVG strings - show up to 3 nearest unmitigated zones from the client data
+      const bullFVGStr = bullFVG?.length
+        ? bullFVG.slice(-3).map((f: any) => `$${f.low?.toFixed(4)}-$${f.high?.toFixed(4)}`).join(', ')
+        : 'none';
+      const bearFVGStr = bearFVG?.length
+        ? bearFVG.slice(-3).map((f: any) => `$${f.low?.toFixed(4)}-$${f.high?.toFixed(4)}`).join(', ')
+        : 'none';
+      const bullOBStr = bullishOB?.length
+        ? bullishOB.slice(-3).map((o: any) => `$${o.price?.toFixed(4)}`).join(', ')
+        : 'none';
+      const bearOBStr = bearishOB?.length
+        ? bearishOB.slice(-3).map((o: any) => `$${o.price?.toFixed(4)}`).join(', ')
+        : 'none';
 
-**Current Market Data:**
-- Price: $${currentPrice.toFixed(4)}
-- OHLC (last bar): O $${lastBar.open.toFixed(4)}, H $${lastBar.high.toFixed(4)}, L $${lastBar.low.toFixed(4)}, C $${lastBar.close.toFixed(4)}
-- 50-bar Change: ${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)}%
-- Swing Highs: ${swingHighsStr}
-- Swing Lows: ${swingLowsStr}
-- Volume Profile: POC $${poc.toFixed(4)}, VAH $${vah.toFixed(4)}, VAL $${val.toFixed(4)}
-- CVD: ${cvd.toFixed(0)} (${cvdTrend})
-- OBV: ${(obv.obv / 1000000).toFixed(2)}M${obv.divergence !== 'none' ? ` (${obv.divergence} divergence)` : ''}
+      const prompt = `${symbol} | ${interval} | Expected hold: ${expectedDuration}
+Price: $${currentPrice.toFixed(4)} | Last bar: O$${lastBar.open.toFixed(4)} H$${lastBar.high.toFixed(4)} L$${lastBar.low.toFixed(4)} C$${lastBar.close.toFixed(4)}
+50-bar change: ${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)}%
 
-**Oscillators & Momentum:**
-- RSI (14): ${rsi.toFixed(2)} (${rsiLabel})
-- MACD (12,26,9): Histogram ${macd.histogram.toFixed(6)}, ${macdMomentum} momentum${macd.crossover !== 'none' ? `, ${macd.crossover} crossover` : ''}${macd.divergence !== 'none' ? `, ${macd.divergence} divergence` : ''}
-- CCI (20): ${cci.toFixed(2)} ${cci > 100 ? '(OVERBOUGHT)' : cci < -100 ? '(OVERSOLD)' : '(neutral)'}
-- Stochastic (14,3,3): %K ${stoch.k.toFixed(2)}, %D ${stoch.d.toFixed(2)} (${stochLabel})${stoch.crossover !== 'none' ? `, ${stoch.crossover} crossover` : ''}
-- MFI (14): ${mfi.mfi.toFixed(2)} (${mfiLabel})${mfi.divergence !== 'none' ? `, ${mfi.divergence}` : ''}
-- CMF: ${cmf.cmf > 0 ? '+' : ''}${cmf.cmf.toFixed(3)} (${cmf.label})
+STRUCTURAL LEVELS (use these for entry/SL/target decisions):
+- Swing Highs: ${swingHighsStr} | Swing Lows: ${swingLowsStr}
+- VP: POC $${poc.toFixed(4)}, VAH $${vah.toFixed(4)}, VAL $${val.toFixed(4)}
+- VWAP: $${vwapCalc.vwap.toFixed(4)} (${vwapCalc.label})
+- Bullish FVGs (unmitigated, nearest first): ${bullFVGStr}
+- Bearish FVGs (unmitigated, nearest first): ${bearFVGStr}
+- Bullish OBs: ${bullOBStr} | Bearish OBs: ${bearOBStr}
+- BOS: ${boschoch.bos} | CHoCH: ${boschoch.choch} | Displacement: ${displacement.displacement ? displacement.direction : 'none'}
+- Liquidity Grabs: ${liquidityGrabCount || 0}${liquidityGrabs?.length ? ` (${liquidityGrabs[liquidityGrabs.length - 1]?.type} @ $${liquidityGrabs[liquidityGrabs.length - 1]?.price?.toFixed(4)})` : ''}
 
-**Trend & Volatility:**
-- ADX (14): ${adx.toFixed(2)} (${adx > 25 ? 'STRONG TREND' : adx < 20 ? 'weak' : 'moderate'})
-- +DI/-DI: ${plusDI.toFixed(2)}/${minusDI.toFixed(2)} (${plusDI > minusDI ? 'bullish' : 'bearish'} momentum)
-- ATR (14): ${atr.toFixed(6)}
-- Bollinger (20,2): Middle $${bb.middle.toFixed(4)}${bb.squeeze ? ', SQUEEZE' : ''}, Bandwidth ${(bb.bandwidth * 100).toFixed(2)}%
-- VWAP: $${vwapCalc.vwap.toFixed(4)} (price in ${vwapCalc.label})
+MOMENTUM & VOLUME:
+- RSI: ${rsi.toFixed(2)} (${rsiLabel}) | CCI: ${cci.toFixed(2)} ${cci > 100 ? '(OB)' : cci < -100 ? '(OS)' : ''} | Stoch %K/${stoch.k.toFixed(1)} %D/${stoch.d.toFixed(1)} (${stochLabel})${stoch.crossover !== 'none' ? ` ${stoch.crossover}` : ''}
+- MACD hist: ${macd.histogram.toFixed(6)} (${macdMomentum})${macd.crossover !== 'none' ? ` ${macd.crossover}` : ''}${macd.divergence !== 'none' ? ` ${macd.divergence} div` : ''}
+- MFI: ${mfi.mfi.toFixed(2)} (${mfiLabel})${mfi.divergence !== 'none' ? ` ${mfi.divergence}` : ''} | CMF: ${cmf.cmf > 0 ? '+' : ''}${cmf.cmf.toFixed(3)} (${cmf.label})
+- CVD: ${cvd.toFixed(0)} (${cvdTrend}) | OBV: ${(obv.obv / 1000000).toFixed(2)}M${obv.divergence !== 'none' ? ` ${obv.divergence} div` : ''}
+- Absorption events: ${absorptionCount || 0}${absorption?.length ? ` (${absorption[absorption.length - 1]?.type} @ $${absorption[absorption.length - 1]?.price?.toFixed(4)})` : ''} | Hidden divs: ${_hiddenDivergenceCount || 0}
 
-**Order Flow & SMC/ICT:**
-- Bullish OBs: ${bullishOBCount || 0}${bullishOB?.length ? ` (nearest $${bullishOB[bullishOB.length - 1]?.price?.toFixed(4)})` : ''}
-- Bearish OBs: ${bearishOBCount || 0}${bearishOB?.length ? ` (nearest $${bearishOB[bearishOB.length - 1]?.price?.toFixed(4)})` : ''}
-- Bullish FVGs: ${bullFVGCount || 0}${bullFVG?.length ? ` ($${bullFVG[bullFVG.length - 1]?.low?.toFixed(4)}-$${bullFVG[bullFVG.length - 1]?.high?.toFixed(4)})` : ''}
-- Bearish FVGs: ${bearFVGCount || 0}${bearFVG?.length ? ` ($${bearFVG[bearFVG.length - 1]?.low?.toFixed(4)}-$${bearFVG[bearFVG.length - 1]?.high?.toFixed(4)})` : ''}
-- Absorption: ${absorptionCount || 0}${absorption?.length ? ` (${absorption[absorption.length - 1]?.type} at $${absorption[absorption.length - 1]?.price?.toFixed(4)})` : ''}
-- Volume Imbalances: Buy ${buyImbalancesCount || 0}, Sell ${sellImbalancesCount || 0}
-- BOS: ${boschoch.bos} | CHoCH: ${boschoch.choch}
-- Displacement: ${displacement.displacement ? `YES (${displacement.direction})` : 'none'}
-- Liquidity Grabs: ${liquidityGrabCount || 0}${liquidityGrabs?.length ? ` (${liquidityGrabs[liquidityGrabs.length - 1]?.type} at $${liquidityGrabs[liquidityGrabs.length - 1]?.price?.toFixed(4)})` : ''}
-- Hidden Divergences (price vs CVD): ${_hiddenDivergenceCount || 0}
-- Oscillator divergence flags: MACD=${macd.divergence}, MFI=${mfi.divergence}, OBV=${obv.divergence}
+TREND & VOLATILITY:
+- ADX: ${adx.toFixed(2)} (${adx > 25 ? 'STRONG' : adx < 20 ? 'weak' : 'moderate'}) | +DI/${plusDI.toFixed(2)} -DI/${minusDI.toFixed(2)} (${plusDI > minusDI ? 'bullish' : 'bearish'})
+- ATR: ${atr.toFixed(6)} | BB: mid $${bb.middle.toFixed(4)}${bb.squeeze ? ' SQUEEZE' : ''} BW ${(bb.bandwidth * 100).toFixed(2)}%
 
-**Institutional Sentiment:**
-- Open Interest: ${oiTrend !== 'N/A' ? `${oiTrend.toUpperCase()} (${oiDelta > 0 ? '+' : ''}${oiDelta.toFixed(2)}% delta)` : 'N/A'}
-- Funding Rate: ${fundingValue.toFixed(4)}% (${fundingBias})
-- Long/Short Ratio: ${lsRatio.toFixed(2)} (${lsRatio > 1.2 ? 'longs dominant' : lsRatio < 0.8 ? 'shorts dominant' : 'balanced'})
+INSTITUTIONAL:
+- OI: ${oiTrend !== 'N/A' ? `${oiTrend.toUpperCase()} (${oiDelta > 0 ? '+' : ''}${oiDelta.toFixed(2)}%)` : 'N/A'} | Funding: ${fundingValue.toFixed(4)}% (${fundingBias}) | L/S Ratio: ${lsRatio.toFixed(2)} (${lsRatio > 1.2 ? 'longs dom' : lsRatio < 0.8 ? 'shorts dom' : 'balanced'})
 
-**Decision Packet (compact canonical context):**
-${JSON.stringify(decisionPacket)}
+TASK — Think like a professional SMC/ICT trader:
+1. Identify the most significant structural levels from the data above. The best setups trade FROM a level TO a level.
+2. Only generate a trade if price is at or approaching a high-quality entry zone (unmitigated FVG, Order Block, or key swing with confluence). Do NOT invent an entry at current price.
+3. ENTRY: Inside the FVG range or at the OB level. If no clear FVG/OB is present, use the nearest swing/VWAP/POC confluence.
+4. STOP LOSS: Place behind the entry structure — below the OB/FVG low for LONG, above the OB/FVG high for SHORT. Use 1-2x ATR as a minimum buffer but anchor to structure.
+5. TARGETS: Trade level-to-level. TP1 = nearest opposing structural level (swing high/low, FVG, OB on the other side). TP2 = next major level beyond TP1.
+6. Min R/R ≥${AI_MIN_RISK_REWARD_RATIO}:1 to TP1. Discard any setup that cannot achieve this.
+7. Grade: A+ (6+ confluence), A (5), B (4), C (3). Output 1-3 setups only if they genuinely qualify.
+8. If market is choppy / no clear structural setup exists, output 0 alerts and explain in marketInsights.
 
-**TASK:**
-Use the Decision Packet as primary context; use other lines only if needed.
-Find 1-3 trades with min 4 confluence factors, R/R ≥0.75. Grade: A+ (8+), A (7), B (5-6), C (3-4), D (2), E (1).
-Use ATR for SL sizing. List 4-6 confluence signals per trade. Be concise.
-
-**JSON Output:**
+JSON output only, no markdown:
 {
   "marketInsights": {
-    "summary": "Exactly 2 sentences: bias + key setup.",
+    "summary": "2 sentences: structural bias and whether a setup is valid.",
     "bias": "BULLISH|BEARISH|NEUTRAL",
-    "keyLevels": ["POC: $X", "VAL: $Y", "Swing High: $Z"]
+    "keyLevels": ["POC: $X", "Swing High: $Y", "Bullish FVG: $A-$B"]
   },
   "alerts": [
     {
-      "grade": "A+|A|B|C|D|E",
+      "grade": "A+|A|B|C",
       "direction": "LONG|SHORT",
       "entry": 1.2345,
-      "stopLoss": 1.2300,
-      "targets": [1.2400, 1.2500],
-      "confluenceSignals": ["Bullish FVG at $1.23", "RSI oversold bounce", "CVD rising", "OB support"],
-      "confluenceCount": 6,
-      "reasoning": "Exactly 1 sentence explaining the trade."
+      "stopLoss": 1.2280,
+      "targets": [1.2420, 1.2520],
+      "entryZone": "Bullish FVG $1.23-$1.235 + OB confluence",
+      "slRationale": "Below OB low $1.228 (1.5x ATR buffer)",
+      "tp1Rationale": "Previous swing high $1.242",
+      "confluenceSignals": ["Bullish FVG at $1.23", "RSI oversold bounce", "CVD rising", "BOS bullish", "OI rising"],
+      "confluenceCount": 5,
+      "reasoning": "1 sentence: structural level + confirmation."
     }
   ]
 }`;
 
-      console.log('🤖 Calling xAI Grok for order flow analysis...');
+      console.log('🤖 Calling xAI Grok 4 (thinking) for order flow analysis...');
       const startTime = Date.now();
       
       const response = await createXaiChatCompletionWithFallback({
         messages: [
           {
             role: "system",
-            content: "You are a professional crypto trader specializing in SMC/ICT, technical analysis, order flow, and institutional sentiment. Return ONLY valid JSON. summary=2 sentences, reasoning=1 sentence per trade. Prefer concise, high-signal features over verbose data dumps."
+            content: `You are an elite crypto trader with deep expertise in SMC/ICT, order flow, and multi-indicator confluence. Your trading philosophy: identify the dominant structural trend, wait for price to pull back into a high-quality entry zone (unmitigated FVG or Order Block), set your stop behind the structure, and target the next major level. You never "guess" an entry at current price — every entry has a specific structural justification. You require minimum ${AI_MIN_RISK_REWARD_RATIO}:1 R/R to TP1 and at least 4 confluence factors. If no genuine setup exists, you say so clearly. Return ONLY valid JSON, no markdown.`
           },
           {
             role: "user",
@@ -4261,20 +4421,21 @@ Use ATR for SL sizing. List 4-6 confluence signals per trade. Be concise.
           }
         ],
         temperature: 0.3,
-        max_tokens: 1000
+        max_tokens: 16000,
+        enableThinking: true,
       });
 
-      const content = response.choices[0].message.content || "{}";
+      const rawContent = extractTextContent(response.choices[0].message);
       const duration = Date.now() - startTime;
 
       // Parse JSON response
       let result;
       try {
         // Remove markdown code blocks if present
-        const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        const cleanContent = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         result = JSON.parse(cleanContent);
       } catch (parseError) {
-        console.error('Failed to parse Grok response:', content);
+        console.error('Failed to parse Grok response:', rawContent);
         result = { alerts: [] };
       }
 
@@ -4282,7 +4443,7 @@ Use ATR for SL sizing. List 4-6 confluence signals per trade. Be concise.
       if (result.alerts && Array.isArray(result.alerts) && result.alerts.length > 0) {
         const originalCount = result.alerts.length;
         
-        // 1. Calculate R/R and filter out trades with R/R <= 0.75
+        // 1. Calculate R/R and filter out trades with R/R < 1.5
         result.alerts = result.alerts.filter((alert: any) => {
           // Parse entry - handle range format (e.g., "1.9875-1.9901")
           const entryStr = String(alert.entry || '0');
@@ -4304,8 +4465,8 @@ Use ATR for SL sizing. List 4-6 confluence signals per trade. Be concise.
           // Attach calculated R/R to the alert for frontend display
           alert.calculatedRR = rrRatio;
           
-          if (rrRatio < 0.75) {
-            console.log(`⚠️ Filtering trade: R/R too low (${rrRatio.toFixed(2)}:1)`);
+          if (rrRatio < AI_MIN_RISK_REWARD_RATIO) {
+            console.log(`⚠️ Filtering trade: R/R too low (${rrRatio.toFixed(2)}:1, min ${AI_MIN_RISK_REWARD_RATIO}:1)`);
             return false;
           }
           return true;
@@ -4358,7 +4519,7 @@ Use ATR for SL sizing. List 4-6 confluence signals per trade. Be concise.
         if (result.alerts.length === 0 && originalCount > 0) {
           result.marketInsights = result.marketInsights || {};
           result.marketInsights.noTradesReason = result.marketInsights.noTradesReason || 
-            `${originalCount} potential setup(s) were identified but filtered out due to insufficient Risk/Reward ratio (below 0.75:1) or being duplicate entries. Wait for better market conditions with clearer structure.`;
+            `${originalCount} potential setup(s) were identified but filtered out due to insufficient Risk/Reward ratio (below ${AI_MIN_RISK_REWARD_RATIO}:1) or being duplicate entries. Wait for price to reach a key structural level (FVG, Order Block, or major swing) before entering.`;
         }
       }
 
