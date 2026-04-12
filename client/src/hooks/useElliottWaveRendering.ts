@@ -218,8 +218,8 @@ export function useElliottWaveRendering({
         barCount: candles.length,
         isSelected: drawing.id === selectedWaveId,
         labelOffset: labelOffsets.get(drawing.id) ?? 0,
-        customPointLabels: (drawing.style as any)?.customPointLabels as Record<number, string> | undefined,
-        hiddenPointLabels: (drawing.style as any)?.hiddenPointLabels as number[] | undefined,
+        customPointLabels: drawing.style.customPointLabels,
+        hiddenPointLabels: drawing.style.hiddenPointLabels,
       };
 
       const existing = savedEWPrimitivesRef.current.get(drawing.id);

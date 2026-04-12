@@ -171,7 +171,8 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
 
   const handleLabelSetConfirm = () => {
     if (!selectedWaveType || !selectedLabelSet) return;
-    const patternType = `undefined_${selectedWaveType === '3wave' ? '3' : '5'}_${selectedLabelSet}`;
+    const waveCount = selectedWaveType === '3wave' ? '3' : '5';
+    const patternType = `undefined_${waveCount}_${selectedLabelSet}`;
     onSelect('Undefined', 'undefined', patternType);
     resetState();
   };
