@@ -48,6 +48,7 @@ export class MemStorage implements IStorage {
       id,
       userEmail: post.userEmail || null,
       userName: post.userName || null,
+      userImageUrl: post.userImageUrl || null,
       content: post.content,
       createdAt: now,
     };

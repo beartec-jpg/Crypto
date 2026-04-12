@@ -13,13 +13,13 @@ const TIER_HIERARCHY: Record<BaseTier, number> = {
   elite: 4,
 };
 
-// Monthly AI Trade credits per tier (all tiers now use monthly credits)
+// Monthly AI Trade credits per tier — reduced to reflect Grok 4 extended-thinking cost
 const MONTHLY_AI_CREDITS: Record<BaseTier, number> = {
   free: 0,
   beginner: 0,
-  intermediate: 200,
-  pro: 400,
-  elite: 500,
+  intermediate: 100,
+  pro: 200,
+  elite: 300,
 };
 
 // Monthly Elliott Wave AI credits (separate from trade AI)

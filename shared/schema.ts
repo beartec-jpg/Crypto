@@ -6,6 +6,7 @@ export const feedbackBoard = pgTable("feedback_board", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userEmail: varchar("user_email"), // Email of poster (null for anonymous)
   userName: varchar("user_name"), // Display name
+  userImageUrl: varchar("user_image_url"), // Clerk profile picture URL
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -23,6 +24,7 @@ export const feedbackBoardReplies = pgTable("feedback_board_replies", {
 export const insertFeedbackBoardSchema = z.object({
   userEmail: z.string().optional().nullable(),
   userName: z.string().optional().nullable(),
+  userImageUrl: z.string().optional().nullable(),
   content: z.string().min(1),
 });
 
