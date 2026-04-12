@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Check, Waves, AlertCircle, Loader2 } from 'lucide-react';
+import { Check, AlertCircle, Loader2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { useToast } from '@/hooks/use-toast';
@@ -48,7 +48,6 @@ function ClerkSignInButton({ children, mode }: { children: React.ReactNode; mode
 
 interface SubscriptionData {
   tier: string;
-  hasElliottAddon: boolean;
   canUseElliott: boolean;
   canUseAI: boolean;
   hasUnlimitedAI: boolean;
@@ -148,16 +147,11 @@ export default function CryptoSubscribe() {
     checkoutMutation.mutate({ tier, type: 'base_tier' });
   };
 
-  const handleAddon = () => {
-    checkoutMutation.mutate({ type: 'elliott_addon' });
-  };
-
   const handleManage = () => {
     checkoutMutation.mutate({ type: 'portal' });
   };
 
   const currentTier = subscription?.tier || 'free';
-  const hasElliottAddon = subscription?.hasElliottAddon || false;
 
   const tiers = [
     {
@@ -211,7 +205,6 @@ export default function CryptoSubscribe() {
         'Everything in Pro',
         'AI Trade Analysis: 1h auto-refresh',
         '24 manual AI triggers per day',
-        'Full Elliott Wave analysis',
         'Custom indicator requests',
         'Priority support',
       ],
@@ -328,80 +321,6 @@ export default function CryptoSubscribe() {
                   </Card>
                 ))}
               </div>
-
-              {currentTier !== 'elite' && !hasElliottAddon && (
-                <Card className="max-w-2xl mx-auto bg-gradient-to-r from-purple-900/50 to-pink-900/50 border-purple-500">
-                  <CardHeader>
-                    <div className="flex items-center gap-3">
-                      <Waves className="w-8 h-8 text-purple-400" />
-                      <div>
-                        <CardTitle className="text-white">Elliott Wave Add-on</CardTitle>
-                        <CardDescription className="text-purple-300">
-                          Add Elliott Wave analysis to any tier
-                        </CardDescription>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-2xl font-bold text-white">£10/mo</p>
-                        <p className="text-sm text-purple-300">
-                          Access all Elliott Wave tools while keeping your current tier features
-                        </p>
-                      </div>
-                      <Button
-                        onClick={handleAddon}
-                        disabled={checkoutMutation.isPending}
-                        className="bg-purple-600 hover:bg-purple-700"
-                      >
-                        {checkoutMutation.isPending ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          'Add Elliott Wave'
-                        )}
-                      </Button>
-                    </div>
-                    <ul className="mt-4 space-y-1 text-sm text-purple-200">
-                      <li className="flex items-center gap-2">
-                        <Check className="w-4 h-4 text-purple-400" />
-                        Full Elliott Wave pattern detection
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Check className="w-4 h-4 text-purple-400" />
-                        Wave Stack degree analysis
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Check className="w-4 h-4 text-purple-400" />
-                        Fibonacci projections & targets
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Check className="w-4 h-4 text-purple-400" />
-                        Simulated wave overlays
-                      </li>
-                    </ul>
-                  </CardContent>
-                </Card>
-              )}
-              
-              {hasElliottAddon && currentTier !== 'elite' && (
-                <Card className="max-w-2xl mx-auto bg-gradient-to-r from-green-900/50 to-emerald-900/50 border-green-500">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Waves className="w-8 h-8 text-green-400" />
-                        <div>
-                          <p className="font-bold text-white">Elliott Wave Add-on Active</p>
-                          <p className="text-sm text-green-300">
-                            You have full access to Elliott Wave analysis
-                          </p>
-                        </div>
-                      </div>
-                      <Badge className="bg-green-600 text-white">Active</Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
             </>
           )}
         </ClerkSignedIn>

@@ -130,8 +130,8 @@ function checkXaiApiKey(): { configured: boolean; error?: string } {
 const XAI_DEFAULT_MODEL = process.env.XAI_MODEL || process.env.XAI_TRADING_MODEL || "grok-4";
 const XAI_FALLBACK_MODEL = process.env.XAI_FALLBACK_MODEL || process.env.XAI_TRADING_FALLBACK_MODEL || "grok-4-1-fast-reasoning";
 
-// Budget tokens for Grok 4 extended thinking on trade analysis
-const XAI_THINKING_BUDGET = parseInt(process.env.XAI_THINKING_BUDGET || "10000", 10);
+// Budget tokens for Grok 4 extended thinking on trade analysis (conservative to control cost)
+const XAI_THINKING_BUDGET = parseInt(process.env.XAI_THINKING_BUDGET || "6000", 10);
 
 function isModelSelectionError(error: any): boolean {
   const message = String(error?.message || '').toLowerCase();
@@ -6904,7 +6904,7 @@ Return JSON:
   app.post("/api/crypto/feedback-board", async (req, res) => {
     try {
       console.log('[Feedback] POST request received:', JSON.stringify(req.body));
-      const { content, userEmail, userName } = req.body;
+      const { content, userEmail, userName, userImageUrl } = req.body;
       
       if (!content || content.trim().length === 0) {
         console.log('[Feedback] Validation failed: content is empty');
@@ -6916,6 +6916,7 @@ Return JSON:
         content: content.trim(),
         userEmail: userEmail || null,
         userName: userName || null,
+        userImageUrl: userImageUrl || null,
       });
       
       console.log('[Feedback] Post created successfully:', post.id);

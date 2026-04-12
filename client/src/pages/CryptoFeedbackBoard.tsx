@@ -26,6 +26,7 @@ interface FeedbackPost {
   id: string;
   userEmail: string | null;
   userName: string | null;
+  userImageUrl: string | null;
   content: string;
   createdAt: string;
   replies: FeedbackReply[];
@@ -45,7 +46,7 @@ function getInitials(name: string | null, email: string | null): string {
   return '??';
 }
 
-function Avatar({ email, name, size = 'md' }: { email: string | null; name: string | null; size?: 'sm' | 'md' }) {
+function Avatar({ email, name, imageUrl, size = 'md' }: { email: string | null; name: string | null; imageUrl?: string | null; size?: 'sm' | 'md' }) {
   const isAdmin = email === ADMIN_EMAIL;
   const sizeClasses = size === 'sm' ? 'w-8 h-8 text-xs' : 'w-10 h-10 text-sm';
   
@@ -55,6 +56,16 @@ function Avatar({ email, name, size = 'md' }: { email: string | null; name: stri
         src={bearAvatar} 
         alt="BearTec Admin" 
         className={`${sizeClasses} rounded-full object-cover border-2 border-[#00c4b4]`}
+      />
+    );
+  }
+
+  if (imageUrl) {
+    return (
+      <img
+        src={imageUrl}
+        alt={name || 'User'}
+        className={`${sizeClasses} rounded-full object-cover`}
       />
     );
   }
@@ -100,6 +111,7 @@ export default function CryptoFeedbackBoard() {
   const userName = user?.firstName && user?.lastName 
     ? `${user.firstName} ${user.lastName}` 
     : user?.firstName || null;
+  const userImageUrl = user?.profileImageUrl || null;
 
   const { data: posts = [], isLoading } = useQuery<FeedbackPost[]>({
     queryKey: ['/api/crypto/feedback-board'],
@@ -111,6 +123,7 @@ export default function CryptoFeedbackBoard() {
         content,
         userEmail,
         userName,
+        userImageUrl,
       });
       return response.json();
     },
@@ -268,7 +281,7 @@ export default function CryptoFeedbackBoard() {
               <Card key={post.id} className="bg-[#1a1a1a] border-[#2a2e39]" data-testid={`card-post-${post.id}`}>
                 <CardContent className="p-4">
                   <div className="flex gap-3">
-                    <Avatar email={post.userEmail} name={post.userName} />
+                    <Avatar email={post.userEmail} name={post.userName} imageUrl={post.userImageUrl} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-2">
