@@ -231,8 +231,8 @@ function calculateVolumeProfile(bars: any[]): { poc: number; vah: number; val: n
   for (const bar of recent) {
     const startBucket = Math.floor((bar.low - low) / bucketSize);
     const endBucket = Math.min(Math.floor((bar.high - low) / bucketSize), buckets - 1);
+    const barsInBucket = endBucket - startBucket + 1;
     for (let b = Math.max(0, startBucket); b <= endBucket; b++) {
-      const barsInBucket = endBucket - startBucket + 1;
       volumeBuckets[b] += bar.volume / Math.max(1, barsInBucket);
     }
   }
