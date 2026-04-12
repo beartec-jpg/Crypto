@@ -11,6 +11,7 @@ export const USER_SELECTABLE_DEGREES = [
   { name: 'Minor',            color: '#0000FF', impulseLabels: ['1',   '2',    '3',     '4',    '5'  ], correctionLabels: ['A',   'B',   'C'  ], complexLabels: ['W',   'X',   'Y',   'Z'  ] },
   { name: 'Minute',           color: '#8B00FF', impulseLabels: ['i',   'ii',   'iii',   'iv',   'v'  ], correctionLabels: ['a',   'b',   'c'  ], complexLabels: ['w',   'x',   'y',   'z'  ] },
   { name: 'Minuette',         color: '#FF1493', impulseLabels: ['(i)', '(ii)', '(iii)', '(iv)', '(v)'], correctionLabels: ['(a)', '(b)', '(c)'], complexLabels: ['(w)', '(x)', '(y)', '(z)'] },
+  { name: 'Undefined',        color: '#AAAAAA', impulseLabels: ['?',   '?',    '?',     '?',    '?'  ], correctionLabels: ['?',   '?',   '?'  ], complexLabels: ['?',   '?',   '?',   '?'  ] },
 ];
 
 export const SUBMINUETTE_DEGREE = {
@@ -22,6 +23,12 @@ export const SUBMINUETTE_DEGREE = {
 };
 
 export function getDegreeConfiguration(selectedDegreeName: string) {
+  if (selectedDegreeName === 'Undefined') {
+    return {
+      impulse:    { color: '#AAAAAA', labels: [], degree: 'Undefined' },
+      correction: { color: '#AAAAAA', labels: [], degree: 'Undefined' },
+    };
+  }
   const degreeIndex = USER_SELECTABLE_DEGREES.findIndex(d => d.name === selectedDegreeName);
   if (degreeIndex === -1) {
     const fallback = USER_SELECTABLE_DEGREES[5]; // Minor
@@ -30,10 +37,13 @@ export function getDegreeConfiguration(selectedDegreeName: string) {
       correction: { color: USER_SELECTABLE_DEGREES[6].color, labels: USER_SELECTABLE_DEGREES[6].correctionLabels, degree: USER_SELECTABLE_DEGREES[6].name },
     };
   }
-  const selected = USER_SELECTABLE_DEGREES[degreeIndex];
-  const lowerDegree = degreeIndex === USER_SELECTABLE_DEGREES.length - 1
+  // Exclude the "Undefined" entry (last) from the lower-degree lookup
+  const standardDegrees = USER_SELECTABLE_DEGREES.filter(d => d.name !== 'Undefined');
+  const standardIndex = standardDegrees.findIndex(d => d.name === selectedDegreeName);
+  const selected = standardDegrees[standardIndex];
+  const lowerDegree = standardIndex === standardDegrees.length - 1
     ? SUBMINUETTE_DEGREE
-    : USER_SELECTABLE_DEGREES[degreeIndex + 1];
+    : standardDegrees[standardIndex + 1];
   return {
     impulse: { color: selected.color, labels: selected.impulseLabels, degree: selected.name },
     correction: { color: lowerDegree.color, labels: lowerDegree.correctionLabels, degree: lowerDegree.name },
@@ -131,18 +141,50 @@ interface DegreePickerProps {
 
 export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
   const [selectedDegree, setSelectedDegree] = useState('Minor');
-  const [step, setStep] = useState<'degree' | 'wave' | 'subpattern'>('degree');
+  const [step, setStep] = useState<'degree' | 'wave' | 'subpattern' | 'measured' | 'wavetype' | 'labelset'>('degree');
   const [selectedWaveLabel, setSelectedWaveLabel] = useState<string | null>(null);
   const [selectedCanonical, setSelectedCanonical] = useState<CanonicalWave | null>(null);
   const [selectedPattern, setSelectedPattern] = useState<string | null>(null);
+  const [selectedMeasurement, setSelectedMeasurement] = useState<'measured' | 'unmeasured' | null>(null);
+  const [selectedWaveType, setSelectedWaveType] = useState<'3wave' | '5wave' | null>(null);
+  const [selectedLabelSet, setSelectedLabelSet] = useState<'numeric' | 'alpha' | null>(null);
 
   const degreeConfig = USER_SELECTABLE_DEGREES.find(d => d.name === selectedDegree)!;
 
   const handleDegreeConfirm = () => {
-    setStep('wave');
-    setSelectedWaveLabel(null);
-    setSelectedCanonical(null);
-    setSelectedPattern(null);
+    if (selectedDegree === 'Undefined') {
+      setStep('measured');
+      setSelectedMeasurement(null);
+      setSelectedWaveType(null);
+      setSelectedLabelSet(null);
+    } else {
+      setStep('wave');
+      setSelectedWaveLabel(null);
+      setSelectedCanonical(null);
+      setSelectedPattern(null);
+    }
+  };
+
+  const handleMeasurementSelect = (measurement: 'measured' | 'unmeasured') => {
+    setSelectedMeasurement(measurement);
+    setStep('wavetype');
+    setSelectedWaveType(null);
+    setSelectedLabelSet(null);
+  };
+
+  const handleWaveTypeSelect = (waveType: '3wave' | '5wave') => {
+    setSelectedWaveType(waveType);
+    setStep('labelset');
+    setSelectedLabelSet(null);
+  };
+
+  const handleLabelSetConfirm = () => {
+    if (!selectedWaveType || !selectedLabelSet) return;
+    const waveCount = selectedWaveType === '3wave' ? '3' : '5';
+    const measuredSuffix = selectedMeasurement === 'measured' ? '_measured' : '';
+    const patternType = `undefined_${waveCount}_${selectedLabelSet}${measuredSuffix}`;
+    onSelect('Undefined', 'undefined', patternType);
+    resetState();
   };
 
   const handleWaveSelect = (label: string) => {
@@ -173,6 +215,9 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
     setSelectedWaveLabel(null);
     setSelectedCanonical(null);
     setSelectedPattern(null);
+    setSelectedMeasurement(null);
+    setSelectedWaveType(null);
+    setSelectedLabelSet(null);
   };
 
   const handleClose = () => {
@@ -184,6 +229,9 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
 
   const stepTitle =
     step === 'degree'     ? 'Select Elliott Wave Degree' :
+    step === 'measured'   ? 'Measured or unmeasured?' :
+    step === 'wavetype'   ? 'Select wave move type' :
+    step === 'labelset'   ? 'Select label set' :
     step === 'wave'       ? 'Which wave are you drawing?' :
                             'Choose pattern type';
 
@@ -216,7 +264,7 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
                     <span className="text-white font-medium">{degree.name}</span>
                   </div>
                   <div className="text-xs text-slate-400">
-                    {degree.impulseLabels.join(' ')}
+                    {degree.name === 'Undefined' ? 'Custom labels' : degree.impulseLabels.join(' ')}
                   </div>
                 </button>
               ))}
@@ -235,6 +283,150 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
                 className="flex-1"
               >
                 Cancel
+              </Button>
+            </div>
+          </>
+        ) : step === 'measured' ? (
+          <>
+            <p className="text-sm text-slate-300 mb-3">
+              Degree: <span className="font-bold text-white">Undefined</span>
+            </p>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => handleMeasurementSelect('measured')}
+                className="w-full px-4 py-4 rounded-lg flex flex-col gap-1 transition-all bg-slate-800 border border-slate-600 hover:bg-slate-700 text-left"
+              >
+                <span className="text-white font-medium">Measured</span>
+                <span className="text-xs text-slate-400">Show Fibonacci retracement &amp; extension targets as you draw</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleMeasurementSelect('unmeasured')}
+                className="w-full px-4 py-4 rounded-lg flex flex-col gap-1 transition-all bg-slate-800 border border-slate-600 hover:bg-slate-700 text-left"
+              >
+                <span className="text-white font-medium">Unmeasured</span>
+                <span className="text-xs text-slate-400">Draw freely without Fibonacci guidance</span>
+              </button>
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <Button
+                onClick={() => setStep('degree')}
+                variant="outline"
+                className="flex-1"
+              >
+                ← Back
+              </Button>
+              <Button
+                onClick={handleClose}
+                variant="outline"
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+            </div>
+          </>
+        ) : step === 'wavetype' ? (
+          <>
+            <p className="text-sm text-slate-300 mb-3">
+              Degree: <span className="font-bold text-white">Undefined</span>
+            </p>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => handleWaveTypeSelect('3wave')}
+                className="w-full px-4 py-4 rounded-lg flex items-center justify-between transition-all bg-slate-800 border border-slate-600 hover:bg-slate-700"
+              >
+                <span className="text-white font-medium">3-wave move</span>
+                <span className="text-xs text-slate-400">A · B · C</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleWaveTypeSelect('5wave')}
+                className="w-full px-4 py-4 rounded-lg flex items-center justify-between transition-all bg-slate-800 border border-slate-600 hover:bg-slate-700"
+              >
+                <span className="text-white font-medium">5-wave move</span>
+                <span className="text-xs text-slate-400">1 · 2 · 3 · 4 · 5</span>
+              </button>
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <Button
+                onClick={() => setStep('measured')}
+                variant="outline"
+                className="flex-1"
+              >
+                ← Back
+              </Button>
+              <Button
+                onClick={handleClose}
+                variant="outline"
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+            </div>
+          </>
+        ) : step === 'labelset' ? (
+          <>
+            <p className="text-sm text-slate-300 mb-3">
+              Degree: <span className="font-bold text-white">Undefined</span>
+              {' · '}
+              <span className={selectedMeasurement === 'measured' ? 'text-cyan-400' : 'text-slate-300'}>
+                {selectedMeasurement === 'measured' ? 'Measured' : 'Unmeasured'}
+              </span>
+              {' · '}
+              Move: <span className="font-bold text-white">{selectedWaveType === '3wave' ? '3-wave' : '5-wave'}</span>
+            </p>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setSelectedLabelSet('numeric')}
+                className={`w-full px-4 py-4 rounded-lg flex items-center justify-between transition-all ${
+                  selectedLabelSet === 'numeric'
+                    ? 'bg-blue-600 border-2 border-blue-400'
+                    : 'bg-slate-800 border border-slate-600 hover:bg-slate-700'
+                }`}
+              >
+                <span className="text-white font-medium">12345</span>
+                <span className="text-xs text-slate-400">
+                  {selectedWaveType === '3wave' ? '1 · 2 · 3' : '1 · 2 · 3 · 4 · 5'}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedLabelSet('alpha')}
+                className={`w-full px-4 py-4 rounded-lg flex items-center justify-between transition-all ${
+                  selectedLabelSet === 'alpha'
+                    ? 'bg-blue-600 border-2 border-blue-400'
+                    : 'bg-slate-800 border border-slate-600 hover:bg-slate-700'
+                }`}
+              >
+                <span className="text-white font-medium">ABCDE</span>
+                <span className="text-xs text-slate-400">
+                  {selectedWaveType === '3wave' ? 'A · B · C' : 'A · B · C · D · E'}
+                </span>
+              </button>
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <Button
+                onClick={handleLabelSetConfirm}
+                disabled={!selectedLabelSet}
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+              >
+                Start Drawing
+              </Button>
+              <Button
+                onClick={() => setStep('wavetype')}
+                variant="outline"
+                className="flex-1"
+              >
+                ← Back
               </Button>
             </div>
           </>
