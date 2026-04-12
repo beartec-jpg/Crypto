@@ -483,6 +483,7 @@ Respond with ONLY valid JSON:
     const openai = new OpenAI({
       baseURL: 'https://api.x.ai/v1',
       apiKey: apiKey,
+      timeout: 110000,
     });
 
     let completion: any;
@@ -595,3 +596,8 @@ Respond with ONLY valid JSON:
     res.status(500).json({ error: error.message, success: false });
   }
 }
+
+export const config = {
+  maxDuration: 120,
+  memory: 1024,
+};

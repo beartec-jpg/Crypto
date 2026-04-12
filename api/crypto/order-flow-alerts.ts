@@ -364,6 +364,7 @@ Return ONLY valid JSON:
     const openai = new OpenAI({
       baseURL: 'https://api.x.ai/v1',
       apiKey: apiKey,
+      timeout: 110000,
     });
 
     console.log(`🤖 Calling xAI ${XAI_PRIMARY_MODEL} (thinking enabled) for order flow analysis...`);
@@ -586,3 +587,8 @@ Return ONLY valid JSON:
     });
   }
 }
+
+export const config = {
+  maxDuration: 120,
+  memory: 1024,
+};
