@@ -55,6 +55,12 @@ interface TradeAlert {
   confluenceSignals: string[];
   reasoning: string;
   confluenceCount: number;
+  // Structural context fields (may be absent on older cached data)
+  entryZone?: string;
+  slRationale?: string;
+  tp1Rationale?: string;
+  tp2Rationale?: string;
+  entryRationale?: string;
 }
 
 interface FVG {
@@ -3776,8 +3782,29 @@ export default function CryptoAI() {
                                   <div className="grid grid-cols-3 gap-2 text-xs">
                                     <div><span className="text-gray-500">Entry:</span> <span className="text-[#00c4b4] font-semibold">{alert.entry}</span></div>
                                     <div><span className="text-gray-500">SL:</span> <span className="text-[#ff5252] font-semibold">{alert.stopLoss}</span></div>
-                                    <div><span className="text-gray-500">TP:</span> <span className="text-[#4caf50] font-semibold">{alert.targets[0]}</span></div>
+                                    <div><span className="text-gray-500">TP1:</span> <span className="text-[#4caf50] font-semibold">{alert.targets[0]}</span></div>
                                   </div>
+                                  {alert.targets[1] && (
+                                    <div className="text-xs">
+                                      <span className="text-gray-500">TP2:</span> <span className="text-[#4caf50] font-semibold">{alert.targets[1]}</span>
+                                    </div>
+                                  )}
+                                  {(alert.entryZone || alert.entryRationale) && (
+                                    <div className="text-xs text-cyan-400/80 bg-cyan-900/10 rounded px-2 py-1">
+                                      <span className="text-gray-500">Entry zone: </span>{alert.entryZone || alert.entryRationale}
+                                    </div>
+                                  )}
+                                  {alert.slRationale && (
+                                    <div className="text-xs text-red-400/80 bg-red-900/10 rounded px-2 py-1">
+                                      <span className="text-gray-500">SL: </span>{alert.slRationale}
+                                    </div>
+                                  )}
+                                  {(alert.tp1Rationale || alert.tp2Rationale) && (
+                                    <div className="text-xs text-green-400/80 bg-green-900/10 rounded px-2 py-1">
+                                      {alert.tp1Rationale && <div><span className="text-gray-500">TP1: </span>{alert.tp1Rationale}</div>}
+                                      {alert.tp2Rationale && <div><span className="text-gray-500">TP2: </span>{alert.tp2Rationale}</div>}
+                                    </div>
+                                  )}
                                   <div className="text-xs text-gray-400">{alert.reasoning}</div>
                                   <Button
                                     onClick={() => trackTrade(alert)}
