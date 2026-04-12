@@ -14,6 +14,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import {
   calcRetracementLevels,
+  calcTrendBasedExtension,
   type FibLevel,
 } from '@/lib/elliottWave/fibCalculator';
 
@@ -77,6 +78,14 @@ function getPatternConfig(
     case 'undefined_5_numeric':
       return { labels: ['0', '1', '2', '3', '4', '5'], total: 6 };
     case 'undefined_5_alpha':
+      return { labels: ['0', 'A', 'B', 'C', 'D', 'E'], total: 6 };
+    case 'undefined_3_numeric_measured':
+      return { labels: ['0', '1', '2', '3'], total: 4 };
+    case 'undefined_3_alpha_measured':
+      return { labels: ['0', 'A', 'B', 'C'], total: 4 };
+    case 'undefined_5_numeric_measured':
+      return { labels: ['0', '1', '2', '3', '4', '5'], total: 6 };
+    case 'undefined_5_alpha_measured':
       return { labels: ['0', 'A', 'B', 'C', 'D', 'E'], total: 6 };
     case 'impulse':
     case 'leading_diagonal':
@@ -170,6 +179,52 @@ export function useElliottWave(): UseElliottWaveResult {
     const isImpulse = ['impulse', 'leading_diagonal', 'ending_diagonal', 'truncated'].includes(currentPatternType);
     const isDiagonal = ['leading_diagonal', 'ending_diagonal'].includes(currentPatternType);
     const isCorrection = ['zigzag', 'flat', 'combination', 'wxy'].includes(currentPatternType);
+    const isMeasured5 = ['undefined_5_numeric_measured', 'undefined_5_alpha_measured'].includes(currentPatternType);
+    const isMeasured3 = ['undefined_3_numeric_measured', 'undefined_3_alpha_measured'].includes(currentPatternType);
+
+    if (isMeasured5) {
+      if (n === 2) {
+        // After point 1: retracement targets of wave 0→1
+        return calcRetracementLevels(p[0], p[1], [0.236, 0.382, 0.5, 0.618, 0.786]).map(l => ({
+          ...l, label: `Retrace ${(l.ratio * 100).toFixed(1)}%`, color: '#60a5fa',
+        }));
+      }
+      if (n === 3) {
+        // After point 2: trend-based extension for wave 3/C from point 2, measured against wave 0→1
+        return calcTrendBasedExtension(p[0], p[1], p[2], [1.0, 1.382, 1.618, 2.618]).map(l => ({
+          ...l, label: `Ext ${(l.ratio * 100).toFixed(1)}%`, color: '#22c55e',
+        }));
+      }
+      if (n === 4) {
+        // After point 3: retracement of wave 2→3 only (not whole move)
+        return calcRetracementLevels(p[2], p[3], [0.236, 0.382, 0.5, 0.618, 0.786]).map(l => ({
+          ...l, label: `Retrace ${(l.ratio * 100).toFixed(1)}%`, color: '#60a5fa',
+        }));
+      }
+      if (n === 5) {
+        // After point 4: trend-based extension for wave 5 from point 4, measured against wave 2→3
+        return calcTrendBasedExtension(p[2], p[3], p[4], [0.618, 1.0]).map(l => ({
+          ...l, label: `Ext ${(l.ratio * 100).toFixed(1)}%`, color: '#22c55e',
+        }));
+      }
+      return [];
+    }
+
+    if (isMeasured3) {
+      if (n === 2) {
+        // After point 1: retracement targets of wave 0→1
+        return calcRetracementLevels(p[0], p[1], [0.236, 0.382, 0.5, 0.618, 0.786]).map(l => ({
+          ...l, label: `Retrace ${(l.ratio * 100).toFixed(1)}%`, color: '#60a5fa',
+        }));
+      }
+      if (n === 3) {
+        // After point 2: trend-based extension for wave C/3 from point 2, measured against wave 0→1
+        return calcTrendBasedExtension(p[0], p[1], p[2], [1.0, 1.382, 1.618, 2.618]).map(l => ({
+          ...l, label: `Ext ${(l.ratio * 100).toFixed(1)}%`, color: '#22c55e',
+        }));
+      }
+      return [];
+    }
 
     if (isImpulse) {
       if (n === 2) {

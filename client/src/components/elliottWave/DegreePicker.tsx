@@ -141,10 +141,11 @@ interface DegreePickerProps {
 
 export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
   const [selectedDegree, setSelectedDegree] = useState('Minor');
-  const [step, setStep] = useState<'degree' | 'wave' | 'subpattern' | 'wavetype' | 'labelset'>('degree');
+  const [step, setStep] = useState<'degree' | 'wave' | 'subpattern' | 'measured' | 'wavetype' | 'labelset'>('degree');
   const [selectedWaveLabel, setSelectedWaveLabel] = useState<string | null>(null);
   const [selectedCanonical, setSelectedCanonical] = useState<CanonicalWave | null>(null);
   const [selectedPattern, setSelectedPattern] = useState<string | null>(null);
+  const [selectedMeasurement, setSelectedMeasurement] = useState<'measured' | 'unmeasured' | null>(null);
   const [selectedWaveType, setSelectedWaveType] = useState<'3wave' | '5wave' | null>(null);
   const [selectedLabelSet, setSelectedLabelSet] = useState<'numeric' | 'alpha' | null>(null);
 
@@ -152,7 +153,8 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
 
   const handleDegreeConfirm = () => {
     if (selectedDegree === 'Undefined') {
-      setStep('wavetype');
+      setStep('measured');
+      setSelectedMeasurement(null);
       setSelectedWaveType(null);
       setSelectedLabelSet(null);
     } else {
@@ -161,6 +163,13 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
       setSelectedCanonical(null);
       setSelectedPattern(null);
     }
+  };
+
+  const handleMeasurementSelect = (measurement: 'measured' | 'unmeasured') => {
+    setSelectedMeasurement(measurement);
+    setStep('wavetype');
+    setSelectedWaveType(null);
+    setSelectedLabelSet(null);
   };
 
   const handleWaveTypeSelect = (waveType: '3wave' | '5wave') => {
@@ -172,7 +181,8 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
   const handleLabelSetConfirm = () => {
     if (!selectedWaveType || !selectedLabelSet) return;
     const waveCount = selectedWaveType === '3wave' ? '3' : '5';
-    const patternType = `undefined_${waveCount}_${selectedLabelSet}`;
+    const measuredSuffix = selectedMeasurement === 'measured' ? '_measured' : '';
+    const patternType = `undefined_${waveCount}_${selectedLabelSet}${measuredSuffix}`;
     onSelect('Undefined', 'undefined', patternType);
     resetState();
   };
@@ -205,6 +215,7 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
     setSelectedWaveLabel(null);
     setSelectedCanonical(null);
     setSelectedPattern(null);
+    setSelectedMeasurement(null);
     setSelectedWaveType(null);
     setSelectedLabelSet(null);
   };
@@ -218,6 +229,7 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
 
   const stepTitle =
     step === 'degree'     ? 'Select Elliott Wave Degree' :
+    step === 'measured'   ? 'Measured or unmeasured?' :
     step === 'wavetype'   ? 'Select wave move type' :
     step === 'labelset'   ? 'Select label set' :
     step === 'wave'       ? 'Which wave are you drawing?' :
@@ -274,6 +286,48 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
               </Button>
             </div>
           </>
+        ) : step === 'measured' ? (
+          <>
+            <p className="text-sm text-slate-300 mb-3">
+              Degree: <span className="font-bold text-white">Undefined</span>
+            </p>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => handleMeasurementSelect('measured')}
+                className="w-full px-4 py-4 rounded-lg flex flex-col gap-1 transition-all bg-slate-800 border border-slate-600 hover:bg-slate-700 text-left"
+              >
+                <span className="text-white font-medium">Measured</span>
+                <span className="text-xs text-slate-400">Show Fibonacci retracement &amp; extension targets as you draw</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleMeasurementSelect('unmeasured')}
+                className="w-full px-4 py-4 rounded-lg flex flex-col gap-1 transition-all bg-slate-800 border border-slate-600 hover:bg-slate-700 text-left"
+              >
+                <span className="text-white font-medium">Unmeasured</span>
+                <span className="text-xs text-slate-400">Draw freely without Fibonacci guidance</span>
+              </button>
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <Button
+                onClick={() => setStep('degree')}
+                variant="outline"
+                className="flex-1"
+              >
+                ← Back
+              </Button>
+              <Button
+                onClick={handleClose}
+                variant="outline"
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+            </div>
+          </>
         ) : step === 'wavetype' ? (
           <>
             <p className="text-sm text-slate-300 mb-3">
@@ -301,7 +355,7 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
 
             <div className="mt-4 flex gap-2">
               <Button
-                onClick={() => setStep('degree')}
+                onClick={() => setStep('measured')}
                 variant="outline"
                 className="flex-1"
               >
@@ -320,6 +374,10 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
           <>
             <p className="text-sm text-slate-300 mb-3">
               Degree: <span className="font-bold text-white">Undefined</span>
+              {' · '}
+              <span className={selectedMeasurement === 'measured' ? 'text-cyan-400' : 'text-slate-300'}>
+                {selectedMeasurement === 'measured' ? 'Measured' : 'Unmeasured'}
+              </span>
               {' · '}
               Move: <span className="font-bold text-white">{selectedWaveType === '3wave' ? '3-wave' : '5-wave'}</span>
             </p>
