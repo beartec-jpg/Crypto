@@ -18,7 +18,7 @@ const ADMIN_EMAIL = 'beartec@beartec.uk';
 const AI_MIN_RISK_REWARD_RATIO = 1.5;
 const XAI_PRIMARY_MODEL = 'grok-4';
 const XAI_FALLBACK_MODEL = 'grok-4-1-fast-reasoning';
-const XAI_THINKING_BUDGET = parseInt(process.env.XAI_THINKING_BUDGET || '10000', 10);
+const XAI_THINKING_BUDGET = parseInt(process.env.XAI_THINKING_BUDGET || '5000', 10);
 
 function extractTextContent(message: any): string {
   if (!message) return '';
@@ -364,7 +364,7 @@ Return ONLY valid JSON:
     const openai = new OpenAI({
       baseURL: 'https://api.x.ai/v1',
       apiKey: apiKey,
-      timeout: 110000,
+      timeout: 250000,
     });
 
     console.log(`🤖 Calling xAI ${XAI_PRIMARY_MODEL} (thinking enabled) for order flow analysis...`);
@@ -589,6 +589,6 @@ Return ONLY valid JSON:
 }
 
 export const config = {
-  maxDuration: 120,
+  maxDuration: 300,
   memory: 1024,
 };
