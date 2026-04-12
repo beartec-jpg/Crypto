@@ -18,6 +18,7 @@ const DEGREE_ORDER_MAP: Record<string, number> = {
   'sub-minuette': 8,
   'subminuette': 8,
   'sub_minuette': 8,
+  'undefined': 9,
 };
 
 function getDegreeIndex(degreeLabel: string | undefined): number {
@@ -217,6 +218,8 @@ export function useElliottWaveRendering({
         barCount: candles.length,
         isSelected: drawing.id === selectedWaveId,
         labelOffset: labelOffsets.get(drawing.id) ?? 0,
+        customPointLabels: (drawing.style as any)?.customPointLabels as Record<number, string> | undefined,
+        hiddenPointLabels: (drawing.style as any)?.hiddenPointLabels as number[] | undefined,
       };
 
       const existing = savedEWPrimitivesRef.current.get(drawing.id);

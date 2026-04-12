@@ -39,6 +39,10 @@ export interface ElliottWaveData {
    * progressively further away (up for highs, down for lows).
    */
   labelOffset?: number;
+  /** Custom label text overrides keyed by point index */
+  customPointLabels?: Record<number, string>;
+  /** Point indices whose labels should not be rendered */
+  hiddenPointLabels?: number[];
 }
 
 // Color for the 0→5 diagonal trendline (distinct from the wave color)
@@ -85,10 +89,13 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
         return x;
       };
 
-      const coords = this._data.points.map(p => ({
+      const hiddenSet = new Set<number>(this._data.hiddenPointLabels ?? []);
+      const customLabels = this._data.customPointLabels ?? {};
+
+      const coords = this._data.points.map((p, i) => ({
         x: resolveX(p.time),
         y: this._series!.priceToCoordinate(p.price),
-        label: p.label,
+        label: hiddenSet.has(i) ? undefined : (customLabels[i] ?? p.label),
         isMidAir: p.isMidAir,
       }));
 

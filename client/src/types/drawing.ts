@@ -298,6 +298,10 @@ export interface Drawing {
     showPointLabels?: boolean;
     /** For elliott_wave drawings: whether to display future wave prediction fibonacci levels */
     showFuturePredictions?: boolean;
+    /** For elliott_wave drawings: custom overrides for individual point labels keyed by point index */
+    customPointLabels?: Record<number, string>;
+    /** For elliott_wave drawings: indices of points whose labels should be hidden */
+    hiddenPointLabels?: number[];
   };
 }
 

@@ -70,6 +70,14 @@ function getPatternConfig(
         labels: ['0', wrap('a'), wrap('b'), wrap('c'), wrap('d'), `${wrap('e')}/${parent}`],
         total: 6,
       };
+    case 'undefined_3_numeric':
+      return { labels: ['0', '1', '2', '3'], total: 4 };
+    case 'undefined_3_alpha':
+      return { labels: ['0', 'A', 'B', 'C'], total: 4 };
+    case 'undefined_5_numeric':
+      return { labels: ['0', '1', '2', '3', '4', '5'], total: 6 };
+    case 'undefined_5_alpha':
+      return { labels: ['0', 'A', 'B', 'C', 'D', 'E'], total: 6 };
     case 'impulse':
     case 'leading_diagonal':
     case 'ending_diagonal':

@@ -23,15 +23,36 @@ export function ElliottWaveSettings({ drawing, onUpdate }: ElliottWaveSettingsPr
   const fontSize       = style.fontSize        ?? '12px';
   const showFuturePredictions = style.showFuturePredictions ?? true;
 
+  // Per-point label customisation
+  const customPointLabels: Record<number, string> = style.customPointLabels ?? {};
+  const hiddenPointLabels: number[] = style.hiddenPointLabels ?? [];
+
+  // Build ordered list of point labels from drawing points
+  const pointLabels: string[] = (drawing.points ?? []).map(
+    (p: any, i: number) => customPointLabels[i] ?? p.label ?? String(i),
+  );
+
   const handleUpdate = (styleUpdates: any) => {
     onUpdate({ style: { ...style, ...styleUpdates } });
   };
 
+  const handleLabelRename = (index: number, value: string) => {
+    const updated = { ...customPointLabels, [index]: value };
+    handleUpdate({ customPointLabels: updated });
+  };
+
+  const handleLabelVisibility = (index: number, visible: boolean) => {
+    const updated = visible
+      ? hiddenPointLabels.filter(i => i !== index)
+      : [...hiddenPointLabels.filter(i => i !== index), index];
+    handleUpdate({ hiddenPointLabels: updated });
+  };
+
   return (
     <div className="space-y-4 p-4 bg-slate-900 rounded-lg">
-      {/* Main Impulse Line */}
+      {/* Main Wave Line */}
       <div className="border-b border-slate-700 pb-4">
-        <div className="text-sm font-semibold text-white mb-3">Main Impulse Line</div>
+        <div className="text-sm font-semibold text-white mb-3">Wave Lines</div>
 
         <div className="space-y-3">
           <div className="flex items-center gap-3">
@@ -62,7 +83,7 @@ export function ElliottWaveSettings({ drawing, onUpdate }: ElliottWaveSettingsPr
 
       {/* Zigzag Correction Line */}
       <div className="border-b border-slate-700 pb-4">
-        <div className="text-sm font-semibold text-white mb-3">Zigzag Correction</div>
+        <div className="text-sm font-semibold text-white mb-3">Correction Lines</div>
 
         <div className="space-y-3">
           <div className="flex items-center gap-3">
@@ -86,6 +107,52 @@ export function ElliottWaveSettings({ drawing, onUpdate }: ElliottWaveSettingsPr
         </div>
       </div>
 
+      {/* Point Labels */}
+      {pointLabels.length > 0 && (
+        <div className="border-b border-slate-700 pb-4">
+          <div className="text-sm font-semibold text-white mb-1">Point Labels</div>
+          <p className="text-xs text-slate-500 mb-3">Toggle visibility or rename each label</p>
+
+          <div className="space-y-2">
+            {pointLabels.map((label, i) => {
+              const isHidden = hiddenPointLabels.includes(i);
+              return (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id={`ew-label-vis-${i}`}
+                    checked={!isHidden}
+                    onChange={(e) => handleLabelVisibility(i, e.target.checked)}
+                    className="rounded border-slate-600 w-4 h-4 cursor-pointer flex-shrink-0"
+                  />
+                  <input
+                    type="text"
+                    value={label}
+                    onChange={(e) => handleLabelRename(i, e.target.value)}
+                    disabled={isHidden}
+                    className="flex-1 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 flex items-center gap-3">
+            <label className="text-xs text-slate-400 whitespace-nowrap">Font Size:</label>
+            <select
+              value={fontSize}
+              onChange={(e) => handleUpdate({ fontSize: e.target.value })}
+              className="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500"
+            >
+              <option value="8px">8px</option>
+              <option value="10px">10px</option>
+              <option value="12px">12px</option>
+              <option value="14px">14px</option>
+            </select>
+          </div>
+        </div>
+      )}
+
       {/* Degree Label */}
       <div className="border-b border-slate-700 pb-4">
         <div className="text-sm font-semibold text-white mb-3">Degree Label</div>
@@ -106,21 +173,7 @@ export function ElliottWaveSettings({ drawing, onUpdate }: ElliottWaveSettingsPr
               onChange={(e) => handleUpdate({ showLabel: e.target.checked })}
               className="rounded border-slate-600 w-4 h-4 cursor-pointer"
             />
-            <label htmlFor="ew-show-label" className="text-xs text-slate-300 cursor-pointer">Show Label</label>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <label className="text-xs text-slate-400 whitespace-nowrap">Font Size:</label>
-            <select
-              value={fontSize}
-              onChange={(e) => handleUpdate({ fontSize: e.target.value })}
-              className="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-cyan-500"
-            >
-              <option value="8px">8px</option>
-              <option value="10px">10px</option>
-              <option value="12px">12px</option>
-              <option value="14px">14px</option>
-            </select>
+            <label htmlFor="ew-show-label" className="text-xs text-slate-300 cursor-pointer">Show Degree Label</label>
           </div>
         </div>
       </div>
