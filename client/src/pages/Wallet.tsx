@@ -674,6 +674,7 @@ export default function WalletPage() {
               {mode === 'receive' && sovereignWallet && (
                 <ReceiveModal
                   addresses={sovereignWallet.addresses}
+                  publicKeys={sovereignWallet.publicKeys}
                   selectedChain={selectedChain}
                   onSelectChain={setSelectedChain}
                   onClose={() => setMode('dashboard')}

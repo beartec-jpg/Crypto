@@ -62,6 +62,14 @@ interface Wallet {
     qbtc: string;
     qbtcMainnet: string;
   };
+  publicKeys?: {
+    ethereum: string;
+    bitcoin: string;
+    bsc: string;
+    xrp: string;
+    solana: string;
+    qbtc: string;
+  };
   createdAt: string;
   mnemonicBackedUp?: boolean;
 }
@@ -1003,6 +1011,7 @@ export async function getCurrentWallet(userId: string): Promise<Wallet | null> {
     return {
       id: wallet.id,
       addresses,
+      publicKeys: wallet.publicKeys,
       createdAt: wallet.createdAt,
       mnemonicBackedUp: wallet.mnemonicBackedUp,
     };

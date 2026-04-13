@@ -16,6 +16,14 @@ interface ReceiveModalProps {
     qbtc: string;
     qbtcMainnet: string;
   };
+  publicKeys?: {
+    ethereum: string;
+    bitcoin: string;
+    bsc: string;
+    xrp: string;
+    solana: string;
+    qbtc: string;
+  };
   selectedChain: Chain;
   onSelectChain: (chain: Chain) => void;
   onClose: () => void;
@@ -66,6 +74,7 @@ const CHAINS: Chain[] = ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana', 'qbtc'];
 
 export default function ReceiveModal({
   addresses,
+  publicKeys,
   selectedChain,
   onSelectChain,
   onClose,
@@ -73,12 +82,14 @@ export default function ReceiveModal({
   inline = false,
 }: ReceiveModalProps) {
   const [copied, setCopied] = useState(false);
+  const [copiedQbtcPubKey, setCopiedQbtcPubKey] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   
   const config = CHAIN_CONFIG[selectedChain];
   const address = selectedChain === 'qbtc' && tokenNetwork === 'mainnet'
     ? (addresses.qbtcMainnet || addresses.qbtc)
     : addresses[selectedChain];
+  const qbtcPublicKey = selectedChain === 'qbtc' ? publicKeys?.qbtc || '' : '';
 
   const handleCopy = async () => {
     try {
@@ -100,6 +111,18 @@ export default function ReceiveModal({
       });
     } catch (error) {
       // User cancelled
+    }
+  };
+
+  const handleCopyQbtcPublicKey = async () => {
+    if (!qbtcPublicKey) return;
+
+    try {
+      await navigator.clipboard.writeText(qbtcPublicKey);
+      setCopiedQbtcPubKey(true);
+      setTimeout(() => setCopiedQbtcPubKey(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy QBTC public key:', error);
     }
   };
 
@@ -240,6 +263,33 @@ export default function ReceiveModal({
             </button>
           </div>
         </div>
+
+        {selectedChain === 'qbtc' && qbtcPublicKey && (
+          <div>
+            <label className="text-sm text-gray-400 mb-2 block">
+              QBTC Public Key Hex
+            </label>
+            <div className="flex items-stretch gap-2">
+              <div className="flex-1 bg-gray-800 rounded-xl p-4 font-mono text-sm break-all border border-gray-700">
+                {qbtcPublicKey}
+              </div>
+              <button
+                onClick={handleCopyQbtcPublicKey}
+                className={`px-4 rounded-xl transition-colors flex items-center justify-center ${
+                  copiedQbtcPubKey
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                }`}
+                title="Copy QBTC public key"
+              >
+                {copiedQbtcPubKey ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              Use this compressed public key hex when creating QBTC sale offers or swap transactions.
+            </p>
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div className="flex gap-3">
