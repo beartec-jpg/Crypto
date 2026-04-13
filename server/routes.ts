@@ -8459,6 +8459,54 @@ CRITICAL DATA RULES:
     }
   });
 
+  app.post('/api/swap/secret/seller', async (req: Request, res: Response) => {
+    try {
+      const { db } = await import('./db');
+      const { atomicSwaps } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+
+      const { swapId, signature } = req.body || {};
+      if (!swapId || !signature) {
+        return res.status(400).json({ error: 'swapId and signature are required' });
+      }
+
+      const [swap] = await db.select().from(atomicSwaps).where(eq(atomicSwaps.id, swapId));
+      if (!swap) return res.status(404).json({ error: 'Swap not found' });
+
+      if (swap.status !== 'EVM_LOCKED' && swap.status !== 'COMPLETE') {
+        return res.status(409).json({ error: `Secret is unavailable in status: ${swap.status}` });
+      }
+      if (!swap.qbtcHtlcTxid || !swap.evmContractId) {
+        return res.status(409).json({ error: 'Swap lock legs are incomplete' });
+      }
+      if (!swap.secret) {
+        return res.status(422).json({ error: 'Secret is not available for this swap yet' });
+      }
+
+      const { ethers } = await import('ethers');
+      const message = `QBTC_SWAP_SECRET:${swap.id}`;
+
+      let recoveredAddress = '';
+      try {
+        recoveredAddress = ethers.verifyMessage(message, String(signature)).toLowerCase();
+      } catch {
+        return res.status(400).json({ error: 'Invalid seller signature' });
+      }
+
+      if (recoveredAddress !== String(swap.sellerEvmAddress).toLowerCase()) {
+        return res.status(403).json({ error: 'Signature does not match seller EVM address' });
+      }
+
+      return res.json({
+        swapId: swap.id,
+        message,
+        secret: swap.secret,
+      });
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message || 'Failed to retrieve seller secret' });
+    }
+  });
+
   // ─── EVM Withdraw monitor (runs every 60 s) ────────────────────────────────
   // Polls EVM_LOCKED swaps to check if the seller has claimed USDC (revealing
   // the secret). When found, stores the secret and transitions to COMPLETE so
