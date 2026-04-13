@@ -119,6 +119,47 @@ function statusLabel(status: SwapStatus | string) {
   }
 }
 
+function getDisplayError(error: unknown, fallback: string): string {
+  if (typeof error === 'string' && error.trim() !== '') {
+    return error;
+  }
+
+  if (error && typeof error === 'object') {
+    const typedError = error as {
+      message?: unknown;
+      response?: {
+        data?: {
+          error?: unknown;
+          message?: unknown;
+        };
+      };
+    };
+
+    const responseError = typedError.response?.data?.error;
+    if (typeof responseError === 'string' && responseError.trim() !== '') {
+      return responseError;
+    }
+
+    if (responseError && typeof responseError === 'object') {
+      const nestedMessage = (responseError as { message?: unknown }).message;
+      if (typeof nestedMessage === 'string' && nestedMessage.trim() !== '') {
+        return nestedMessage;
+      }
+    }
+
+    const responseMessage = typedError.response?.data?.message;
+    if (typeof responseMessage === 'string' && responseMessage.trim() !== '') {
+      return responseMessage;
+    }
+
+    if (typeof typedError.message === 'string' && typedError.message.trim() !== '') {
+      return typedError.message;
+    }
+  }
+
+  return fallback;
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function TestnetBanner() {
@@ -288,8 +329,8 @@ function CreateOfferForm({ onOfferCreated }: { onOfferCreated: () => void }) {
       setSellerPubKeyHex('');
       onOfferCreated();
       setTimeout(() => setSuccess(false), 4000);
-    } catch (err: any) {
-      setError(err?.response?.data?.error || err.message || 'Failed to post offer');
+    } catch (err: unknown) {
+      setError(getDisplayError(err, 'Failed to post offer'));
     } finally {
       setLoading(false);
     }
@@ -419,8 +460,8 @@ function AcceptOfferModal({
         buyerPubKeyHex,
       });
       onSwapStarted(data);
-    } catch (err: any) {
-      setError(err?.response?.data?.error || err.message || 'Failed to accept offer');
+    } catch (err: unknown) {
+      setError(getDisplayError(err, 'Failed to accept offer'));
     } finally {
       setLoading(false);
     }
