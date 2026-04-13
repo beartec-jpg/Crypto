@@ -15,20 +15,21 @@ import ColdSignerInstallButton from '@/components/Wallet/ColdSignerInstallButton
 import PinEntryModal from '@/components/Wallet/PinEntryModal';
 import SecuritySettings from '@/components/Wallet/SecuritySettings';
 import SecurityEducationCenter from '@/components/Security/SecurityEducationCenter';
+import MarketplaceTab from '@/components/Wallet/MarketplaceTab';
 import { getCurrentWallet, migrateWalletToUser, deleteWallet } from '@/lib/walletService';
 import { securityManager, getSecurityRequirements, hasPinSetup, setupPin } from '@/lib/securityService';
 import { getWalletTokens, clearWalletTokens, ensureNativeTokens, type Token } from '@/lib/tokenService';
 import type { TokenNetwork } from '@/lib/tokenService';
 import { deriveWIFFromPrivateKey } from '@/lib/bitcoinService';
 import { usePendingTransactions } from '@/hooks/usePendingTransactions';
-import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle, Send, QrCode, Settings as SettingsIcon, Pickaxe } from 'lucide-react';
+import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle, Send, QrCode, Settings as SettingsIcon, ArrowLeftRight } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import type { Chain } from '@/lib/balanceService';
 
-type WalletMode = 'dashboard' | 'send' | 'receive' | 'settings' | 'security';
+type WalletMode = 'dashboard' | 'send' | 'receive' | 'settings' | 'security' | 'marketplace';
 
 export default function WalletPage() {
   const { user } = useUser();
@@ -631,14 +632,16 @@ export default function WalletPage() {
                   <span className="hidden sm:inline">Security</span>
                 </button>
                 <button
-                  onClick={() => {
-                    window.location.href = '/qbtc-faucet';
-                  }}
-                  className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 text-cyan-300 hover:text-cyan-200`}
-                  title="QBTC Faucet"
+                  onClick={() => setMode('marketplace')}
+                  className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 ${
+                    mode === 'marketplace'
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                  title="Marketplace"
                 >
-                  <Pickaxe className="w-4 h-4 flex-shrink-0" />
-                  <span className="hidden sm:inline">Faucet</span>
+                  <ArrowLeftRight className="w-4 h-4 flex-shrink-0" />
+                  <span className="hidden sm:inline">Swap</span>
                 </button>
               </div>
 
@@ -693,6 +696,16 @@ export default function WalletPage() {
 
               {mode === 'security' && (
                 <SecurityEducationCenter />
+              )}
+
+              {mode === 'marketplace' && sovereignWallet && (
+                <MarketplaceTab
+                  userId={userId}
+                  walletId={sovereignWallet.id}
+                  walletAddress={sovereignWallet.addresses?.qbtc || ''}
+                  walletPubKey={sovereignWallet.publicKeys?.qbtc || ''}
+                  walletEvmAddress={sovereignWallet.addresses?.ethereum || ''}
+                />
               )}
             </div>
           </>
