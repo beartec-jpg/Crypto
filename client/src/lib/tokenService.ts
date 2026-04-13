@@ -249,10 +249,11 @@ export async function fetchERC20TokenInfo(
   // Multiple reliable RPC endpoints - cycles through on failure
   const RPC_ENDPOINTS = {
     ethereum: network === 'testnet' ? [
-      'https://sepolia.infura.io/v3/84842078b09946638c03eedb7d5225e4',
-      'https://sepolia.lodestar.io',
-      'https://eth-sepolia-public.unifra.io',
-      'https://endpoints.omnirpc.io/sepolia',
+      'https://ethereum-sepolia-rpc.publicnode.com',
+      'https://1rpc.io/sepolia',
+      'https://sepolia.gateway.tenderly.co',
+      'https://rpc.sepolia.org',
+      'https://rpc2.sepolia.org',
     ] : [
       'https://eth.llamarpc.com',
       'https://rpc.ankr.com/eth',
