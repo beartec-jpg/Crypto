@@ -270,6 +270,101 @@ app.post('/api/swap/accept/:offerId', async (req, res) => {
   }
 });
 
+// ─── GET /api/swap/stats — marketplace TX statistics + price history ────────
+
+app.get('/api/swap/stats', async (_req, res) => {
+  try {
+    // Aggregate offer stats
+    const offerStats = await pool.query(`
+      SELECT
+        COUNT(*)::int AS total_offers,
+        COUNT(*) FILTER (WHERE status = 'OPEN')::int AS open_offers,
+        COUNT(*) FILTER (WHERE status = 'LOCKED')::int AS locked_offers,
+        COUNT(*) FILTER (WHERE status = 'MATCHED')::int AS matched_offers,
+        COUNT(*) FILTER (WHERE status = 'CANCELLED')::int AS cancelled_offers,
+        COALESCE(SUM(qbtc_amount::numeric) FILTER (WHERE status IN ('LOCKED','MATCHED')), 0) AS total_qbtc_listed
+      FROM swap_offers
+    `);
+
+    // Aggregate swap stats
+    const swapStats = await pool.query(`
+      SELECT
+        COUNT(*)::int AS total_swaps,
+        COUNT(*) FILTER (WHERE status = 'COMPLETE')::int AS completed_swaps,
+        COUNT(*) FILTER (WHERE status = 'EXPIRED')::int AS expired_swaps,
+        COUNT(*) FILTER (WHERE status IN ('PENDING_QBTC_LOCK','QBTC_LOCKED','EVM_LOCKED'))::int AS active_swaps,
+        COALESCE(SUM(qbtc_amount::numeric) FILTER (WHERE status = 'COMPLETE'), 0) AS total_qbtc_volume,
+        COALESCE(SUM(usdc_amount::numeric) FILTER (WHERE status = 'COMPLETE'), 0) AS total_usdc_volume
+      FROM atomic_swaps
+    `);
+
+    // Price history: completed swaps ordered by time, computing USDC per QBTC
+    const priceHistory = await pool.query(`
+      SELECT
+        id,
+        qbtc_amount::numeric AS qbtc,
+        usdc_amount::numeric AS usdc,
+        updated_at AS completed_at
+      FROM atomic_swaps
+      WHERE status = 'COMPLETE' AND qbtc_amount::numeric > 0
+      ORDER BY updated_at ASC
+    `);
+
+    const pricePoints = priceHistory.rows.map((r: any) => ({
+      time: r.completed_at,
+      pricePerQbtc: parseFloat((r.usdc / r.qbtc).toFixed(6)),
+      qbtcAmount: parseFloat(r.qbtc),
+      usdcAmount: parseFloat(r.usdc),
+    }));
+
+    // Also include open/locked offers as "ask" prices for current market view
+    const askPrices = await pool.query(`
+      SELECT
+        id,
+        qbtc_amount::numeric AS qbtc,
+        usdc_amount_requested::numeric AS usdc,
+        created_at
+      FROM swap_offers
+      WHERE status IN ('OPEN', 'LOCKED') AND qbtc_amount::numeric > 0
+      ORDER BY created_at ASC
+    `);
+
+    const currentAsks = askPrices.rows.map((r: any) => ({
+      offerId: r.id,
+      pricePerQbtc: parseFloat((r.usdc / r.qbtc).toFixed(6)),
+      qbtcAmount: parseFloat(r.qbtc),
+      usdcAmount: parseFloat(r.usdc),
+    }));
+
+    const o = offerStats.rows[0] || {};
+    const s = swapStats.rows[0] || {};
+
+    return res.json({
+      offers: {
+        total: o.total_offers || 0,
+        open: o.open_offers || 0,
+        locked: o.locked_offers || 0,
+        matched: o.matched_offers || 0,
+        cancelled: o.cancelled_offers || 0,
+        totalQbtcListed: parseFloat(o.total_qbtc_listed) || 0,
+      },
+      swaps: {
+        total: s.total_swaps || 0,
+        completed: s.completed_swaps || 0,
+        expired: s.expired_swaps || 0,
+        active: s.active_swaps || 0,
+        totalQbtcVolume: parseFloat(s.total_qbtc_volume) || 0,
+        totalUsdcVolume: parseFloat(s.total_usdc_volume) || 0,
+      },
+      priceHistory: pricePoints,
+      currentAsks,
+    });
+  } catch (err: any) {
+    console.error('GET /api/swap/stats:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to fetch stats' });
+  }
+});
+
 // ─── GET /api/swap/:swapId ──────────────────────────────────────────────────
 
 app.get('/api/swap/:swapId', async (req, res) => {
@@ -550,101 +645,6 @@ async function pollEvmLocked() {
 }
 
 // ─── Start ──────────────────────────────────────────────────────────────────
-
-// ─── GET /api/swap/stats — marketplace TX statistics + price history ────────
-
-app.get('/api/swap/stats', async (_req, res) => {
-  try {
-    // Aggregate offer stats
-    const offerStats = await pool.query(`
-      SELECT
-        COUNT(*)::int AS total_offers,
-        COUNT(*) FILTER (WHERE status = 'OPEN')::int AS open_offers,
-        COUNT(*) FILTER (WHERE status = 'LOCKED')::int AS locked_offers,
-        COUNT(*) FILTER (WHERE status = 'MATCHED')::int AS matched_offers,
-        COUNT(*) FILTER (WHERE status = 'CANCELLED')::int AS cancelled_offers,
-        COALESCE(SUM(qbtc_amount::numeric) FILTER (WHERE status IN ('LOCKED','MATCHED')), 0) AS total_qbtc_listed
-      FROM swap_offers
-    `);
-
-    // Aggregate swap stats
-    const swapStats = await pool.query(`
-      SELECT
-        COUNT(*)::int AS total_swaps,
-        COUNT(*) FILTER (WHERE status = 'COMPLETE')::int AS completed_swaps,
-        COUNT(*) FILTER (WHERE status = 'EXPIRED')::int AS expired_swaps,
-        COUNT(*) FILTER (WHERE status IN ('PENDING_QBTC_LOCK','QBTC_LOCKED','EVM_LOCKED'))::int AS active_swaps,
-        COALESCE(SUM(qbtc_amount::numeric) FILTER (WHERE status = 'COMPLETE'), 0) AS total_qbtc_volume,
-        COALESCE(SUM(usdc_amount::numeric) FILTER (WHERE status = 'COMPLETE'), 0) AS total_usdc_volume
-      FROM atomic_swaps
-    `);
-
-    // Price history: completed swaps ordered by time, computing USDC per QBTC
-    const priceHistory = await pool.query(`
-      SELECT
-        id,
-        qbtc_amount::numeric AS qbtc,
-        usdc_amount::numeric AS usdc,
-        updated_at AS completed_at
-      FROM atomic_swaps
-      WHERE status = 'COMPLETE' AND qbtc_amount::numeric > 0
-      ORDER BY updated_at ASC
-    `);
-
-    const pricePoints = priceHistory.rows.map((r: any) => ({
-      time: r.completed_at,
-      pricePerQbtc: parseFloat((r.usdc / r.qbtc).toFixed(6)),
-      qbtcAmount: parseFloat(r.qbtc),
-      usdcAmount: parseFloat(r.usdc),
-    }));
-
-    // Also include open/locked offers as "ask" prices for current market view
-    const askPrices = await pool.query(`
-      SELECT
-        id,
-        qbtc_amount::numeric AS qbtc,
-        usdc_amount_requested::numeric AS usdc,
-        created_at
-      FROM swap_offers
-      WHERE status IN ('OPEN', 'LOCKED') AND qbtc_amount::numeric > 0
-      ORDER BY created_at ASC
-    `);
-
-    const currentAsks = askPrices.rows.map((r: any) => ({
-      offerId: r.id,
-      pricePerQbtc: parseFloat((r.usdc / r.qbtc).toFixed(6)),
-      qbtcAmount: parseFloat(r.qbtc),
-      usdcAmount: parseFloat(r.usdc),
-    }));
-
-    const o = offerStats.rows[0] || {};
-    const s = swapStats.rows[0] || {};
-
-    return res.json({
-      offers: {
-        total: o.total_offers || 0,
-        open: o.open_offers || 0,
-        locked: o.locked_offers || 0,
-        matched: o.matched_offers || 0,
-        cancelled: o.cancelled_offers || 0,
-        totalQbtcListed: parseFloat(o.total_qbtc_listed) || 0,
-      },
-      swaps: {
-        total: s.total_swaps || 0,
-        completed: s.completed_swaps || 0,
-        expired: s.expired_swaps || 0,
-        active: s.active_swaps || 0,
-        totalQbtcVolume: parseFloat(s.total_qbtc_volume) || 0,
-        totalUsdcVolume: parseFloat(s.total_usdc_volume) || 0,
-      },
-      priceHistory: pricePoints,
-      currentAsks,
-    });
-  } catch (err: any) {
-    console.error('GET /api/swap/stats:', err.message);
-    return res.status(500).json({ error: err.message || 'Failed to fetch stats' });
-  }
-});
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`[swap-server] Listening on 0.0.0.0:${PORT}`);
