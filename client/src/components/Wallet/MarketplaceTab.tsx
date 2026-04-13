@@ -483,6 +483,7 @@ export default function MarketplaceTab({
   // Accept modal
   const [acceptLoading, setAcceptLoading] = useState(false);
   const [acceptError, setAcceptError] = useState('');
+  const [acceptSuccess, setAcceptSuccess] = useState<AcceptResponse | null>(null);
 
   const isMainnet = isSwapMainnetActive();
 
@@ -546,14 +547,17 @@ export default function MarketplaceTab({
     setAcceptLoading(true);
     setAcceptError('');
     try {
-      await axios.post<AcceptResponse>(`${SWAP_API}/api/swap/accept/${selectedOffer.id}`, {
+      const { data } = await axios.post<AcceptResponse>(`${SWAP_API}/api/swap/accept/${selectedOffer.id}`, {
         buyerQbtcAddress: walletAddress,
         buyerEvmAddress: walletEvmAddress,
         buyerPubKeyHex: walletPubKey,
       });
       setSelectedOffer(null);
+      setAcceptSuccess(data);
       fetchOffers();
       fetchMySwaps();
+      // Auto-dismiss after 30s
+      setTimeout(() => setAcceptSuccess(null), 30_000);
     } catch (err: unknown) {
       setAcceptError(getDisplayError(err, 'Failed to accept offer'));
     } finally {
@@ -591,6 +595,33 @@ export default function MarketplaceTab({
           <span className="font-mono text-slate-400">{walletPubKey.slice(0, 12)}…</span>
         </div>
       </div>
+
+      {/* ─── Accept Success Banner ─── */}
+      {acceptSuccess && (
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            <span className="text-emerald-300 font-bold text-sm">Swap Accepted!</span>
+            <button onClick={() => setAcceptSuccess(null)} className="ml-auto text-slate-500 hover:text-slate-300 text-xs">✕</button>
+          </div>
+          <p className="text-emerald-200/80 text-xs">
+            Swap <span className="font-mono">{acceptSuccess.swapId.slice(0, 8)}…</span> created.
+            The seller now needs to lock <span className="font-semibold">{acceptSuccess.qbtcAmount} QBTC</span> in the HTLC.
+            Once confirmed, you'll be prompted to lock your USDC via MetaMask.
+            This page auto-refreshes every 15 seconds.
+          </p>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="rounded-lg border border-slate-700 bg-slate-950/40 p-2">
+              <span className="text-slate-500">QBTC Refund</span>
+              <p className="font-mono text-amber-300">{new Date(acceptSuccess.qbtcLocktime * 1000).toLocaleString()}</p>
+            </div>
+            <div className="rounded-lg border border-slate-700 bg-slate-950/40 p-2">
+              <span className="text-slate-500">USDC Refund</span>
+              <p className="font-mono text-purple-300">{new Date(acceptSuccess.evmLocktime * 1000).toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── Active Swaps ─── */}
       {activeSwaps.length > 0 && (
