@@ -338,6 +338,7 @@ export async function fetchAllBalances(addresses: {
 }, network: TokenNetwork = 'mainnet'): Promise<ChainBalance[]> {
   try {
     const networkLabel = network === 'testnet' ? 'TESTNET' : 'MAINNET';
+    const shouldValueInUsd = network === 'mainnet';
     console.log(`🌐 Fetching all ${networkLabel} balances`);
     
     const prices = await fetchPrices();
@@ -355,37 +356,37 @@ export async function fetchAllBalances(addresses: {
       {
         chain: 'ethereum',
         balance: ethBalance,
-        usdValue: parseFloat(ethBalance) * prices.ethereum.usd,
-        usdPrice: prices.ethereum.usd,
-        priceChange24h: prices.ethereum.usd_24h_change,
+        usdValue: shouldValueInUsd ? parseFloat(ethBalance) * prices.ethereum.usd : 0,
+        usdPrice: shouldValueInUsd ? prices.ethereum.usd : 0,
+        priceChange24h: shouldValueInUsd ? prices.ethereum.usd_24h_change : 0,
       },
       {
         chain: 'bitcoin',
         balance: btcBalance,
-        usdValue: parseFloat(btcBalance) * prices.bitcoin.usd,
-        usdPrice: prices.bitcoin.usd,
-        priceChange24h: prices.bitcoin.usd_24h_change,
+        usdValue: shouldValueInUsd ? parseFloat(btcBalance) * prices.bitcoin.usd : 0,
+        usdPrice: shouldValueInUsd ? prices.bitcoin.usd : 0,
+        priceChange24h: shouldValueInUsd ? prices.bitcoin.usd_24h_change : 0,
       },
       {
         chain: 'bsc',
         balance: bscBalance,
-        usdValue: parseFloat(bscBalance) * prices.binancecoin.usd,
-        usdPrice: prices.binancecoin.usd,
-        priceChange24h: prices.binancecoin.usd_24h_change,
+        usdValue: shouldValueInUsd ? parseFloat(bscBalance) * prices.binancecoin.usd : 0,
+        usdPrice: shouldValueInUsd ? prices.binancecoin.usd : 0,
+        priceChange24h: shouldValueInUsd ? prices.binancecoin.usd_24h_change : 0,
       },
       {
         chain: 'xrp',
         balance: xrpBalance,
-        usdValue: parseFloat(xrpBalance) * prices.ripple.usd,
-        usdPrice: prices.ripple.usd,
-        priceChange24h: prices.ripple.usd_24h_change,
+        usdValue: shouldValueInUsd ? parseFloat(xrpBalance) * prices.ripple.usd : 0,
+        usdPrice: shouldValueInUsd ? prices.ripple.usd : 0,
+        priceChange24h: shouldValueInUsd ? prices.ripple.usd_24h_change : 0,
       },
       {
         chain: 'solana',
         balance: solBalance,
-        usdValue: parseFloat(solBalance) * prices.solana.usd,
-        usdPrice: prices.solana.usd,
-        priceChange24h: prices.solana.usd_24h_change,
+        usdValue: shouldValueInUsd ? parseFloat(solBalance) * prices.solana.usd : 0,
+        usdPrice: shouldValueInUsd ? prices.solana.usd : 0,
+        priceChange24h: shouldValueInUsd ? prices.solana.usd_24h_change : 0,
       },
       {
         chain: 'qbtc',

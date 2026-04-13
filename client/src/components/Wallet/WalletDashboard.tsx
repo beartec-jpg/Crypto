@@ -23,6 +23,7 @@ import {
   removeTokenFromWallet,
   autoDetectTokens,
   addTokenToWallet,
+  refreshEvmTokenBalances,
   refreshXRPLTokenBalances,
   type Token,
   type TokenNetwork,
@@ -179,6 +180,18 @@ export default function WalletDashboard({
             );
           }
         });
+
+        const evmRefreshResult = await refreshEvmTokenBalances(
+          sovereignWallet.id,
+          sovereignWallet.addresses,
+          tokenNetwork
+        );
+        if (!evmRefreshResult.success && evmRefreshResult.error) {
+          console.error('Failed to refresh EVM token balances:', evmRefreshResult.error);
+        }
+
+        const updatedTokens = await getWalletTokens(sovereignWallet.id, tokenNetwork);
+        setTokens(updatedTokens);
         
         const block = await fetchBlockNumber(selectedChain);
         setBlockNumber(block);
@@ -215,6 +228,15 @@ export default function WalletDashboard({
           );
         }
       });
+
+      const evmRefreshResult = await refreshEvmTokenBalances(
+        sovereignWallet.id,
+        sovereignWallet.addresses,
+        tokenNetwork
+      );
+      if (!evmRefreshResult.success && evmRefreshResult.error) {
+        console.error('Failed to refresh EVM token balances:', evmRefreshResult.error);
+      }
       
       // Refresh XRPL token balances (trust lines)
       if (sovereignWallet.addresses.xrp) {
@@ -231,6 +253,9 @@ export default function WalletDashboard({
           console.error('Failed to refresh XRPL tokens:', result.error);
         }
       }
+
+      const updatedTokens = await getWalletTokens(sovereignWallet.id, tokenNetwork);
+      setTokens(updatedTokens);
       
       const block = await fetchBlockNumber(selectedChain);
       setBlockNumber(block);

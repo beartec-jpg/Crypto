@@ -35,6 +35,82 @@ function decodeBytes32Text(value: string): string {
   return decoded.trim();
 }
 
+function getEvmRpcEndpoints(chain: 'ethereum' | 'bsc', network: TokenNetwork): string[] {
+  return chain === 'ethereum'
+    ? network === 'testnet'
+      ? [
+          'https://ethereum-sepolia-rpc.publicnode.com',
+          'https://1rpc.io/sepolia',
+          'https://sepolia.gateway.tenderly.co',
+          'https://rpc.sepolia.org',
+          'https://rpc2.sepolia.org',
+        ]
+      : [
+          'https://eth.llamarpc.com',
+          'https://rpc.ankr.com/eth',
+          'https://ethereum.publicnode.com',
+        ]
+    : network === 'testnet'
+      ? [
+          'https://data-seed-prebsc-1-s1.binance.org:8545/',
+          'https://data-seed-prebsc-2-s1.binance.org:8545/',
+          'https://data-seed-prebsc-1-s2.binance.org:8545/',
+        ]
+      : [
+          'https://bsc-dataseed.binance.org/',
+          'https://bsc-dataseed1.binance.org/',
+          'https://bsc-dataseed2.binance.org/',
+          'https://bsc-dataseed3.binance.org/',
+          'https://bsc-dataseed4.binance.org/',
+          'https://rpc.ankr.com/bsc',
+          'https://bsc-rpc.publicnode.com',
+          'https://bsc.nodereal.io',
+          'https://binance.llamarpc.com',
+        ];
+}
+
+function formatTokenUnits(rawBalance: bigint, decimals: number): string {
+  if (decimals <= 0) return rawBalance.toString();
+
+  const negative = rawBalance < 0n;
+  const absolute = negative ? -rawBalance : rawBalance;
+  const divisor = 10n ** BigInt(decimals);
+  const whole = absolute / divisor;
+  const fraction = absolute % divisor;
+  const fractionText = fraction.toString().padStart(decimals, '0').replace(/0+$/, '');
+
+  const formatted = fractionText ? `${whole.toString()}.${fractionText}` : whole.toString();
+  return negative ? `-${formatted}` : formatted;
+}
+
+async function fetchEvmTokenBalance(
+  walletAddress: string,
+  contractAddress: string,
+  decimals: number,
+  chain: 'ethereum' | 'bsc',
+  network: TokenNetwork
+): Promise<string> {
+  const endpoints = getEvmRpcEndpoints(chain, network);
+  let lastError: Error | null = null;
+
+  for (const rpcUrl of endpoints) {
+    try {
+      const provider = new JsonRpcProvider(rpcUrl);
+      const contract = new Contract(contractAddress, ERC20_ABI, provider);
+      const balanceRaw = await contract.balanceOf(walletAddress);
+      const normalizedBalance = typeof balanceRaw === 'bigint'
+        ? balanceRaw
+        : BigInt(balanceRaw.toString());
+      return formatTokenUnits(normalizedBalance, decimals);
+    } catch (error: any) {
+      lastError = error;
+      console.warn(`[Token Balance] RPC ${rpcUrl} failed:`, error.message);
+    }
+  }
+
+  throw new Error(lastError?.message || 'Failed to fetch token balance');
+}
+
 export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana' | 'qbtc';
 export type TokenStandard = 'ERC-20' | 'BEP-20' | 'SPL' | 'XRPL' | 'QBTC';
 export type TokenNetwork = 'mainnet' | 'testnet';
@@ -247,36 +323,7 @@ export async function fetchERC20TokenInfo(
   decimals: number;
 }> {
   // Multiple reliable RPC endpoints - cycles through on failure
-  const RPC_ENDPOINTS = {
-    ethereum: network === 'testnet' ? [
-      'https://ethereum-sepolia-rpc.publicnode.com',
-      'https://1rpc.io/sepolia',
-      'https://sepolia.gateway.tenderly.co',
-      'https://rpc.sepolia.org',
-      'https://rpc2.sepolia.org',
-    ] : [
-      'https://eth.llamarpc.com',
-      'https://rpc.ankr.com/eth',
-      'https://ethereum.publicnode.com',
-    ],
-    bsc: network === 'testnet' ? [
-      'https://data-seed-prebsc-1-s1.binance.org:8545/',
-      'https://data-seed-prebsc-2-s1.binance.org:8545/',
-      'https://data-seed-prebsc-1-s2.binance.org:8545/',
-    ] : [
-      'https://bsc-dataseed.binance.org/',
-      'https://bsc-dataseed1.binance.org/',
-      'https://bsc-dataseed2.binance.org/',
-      'https://bsc-dataseed3.binance.org/',
-      'https://bsc-dataseed4.binance.org/',
-      'https://rpc.ankr.com/bsc',
-      'https://bsc-rpc.publicnode.com',
-      'https://bsc.nodereal.io',
-      'https://binance.llamarpc.com',
-    ],
-  };
-
-  const endpoints = RPC_ENDPOINTS[chain];
+  const endpoints = getEvmRpcEndpoints(chain, network);
   const expectedChainId = chain === 'ethereum'
     ? (network === 'testnet' ? 11155111 : 1)
     : (network === 'testnet' ? 97 : 56);
@@ -362,6 +409,52 @@ export async function fetchERC20TokenInfo(
     `Failed to fetch token information after trying ${endpoints.length} RPC endpoints. ` +
     `Please verify the contract address exists on the selected network. Last error: ${lastError?.message || 'Unknown error'}`
   );
+}
+
+export async function refreshEvmTokenBalances(
+  walletId: string,
+  addresses: Record<Chain, string>,
+  network: TokenNetwork = 'mainnet'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const activeNetwork = normalizeNetwork(network);
+    const storedTokens = await getWalletTokens(walletId, activeNetwork);
+    const evmTokens = storedTokens.filter(
+      token =>
+        !token.isNative &&
+        (token.chain === 'ethereum' || token.chain === 'bsc') &&
+        !!token.contractAddress &&
+        token.network === activeNetwork
+    );
+
+    await Promise.all(
+      evmTokens.map(async token => {
+        const walletAddress = addresses[token.chain];
+        const contractAddress = token.contractAddress;
+
+        if (!walletAddress || !contractAddress) return;
+
+        try {
+          const balance = await fetchEvmTokenBalance(
+            walletAddress,
+            contractAddress,
+            token.decimals,
+            token.chain,
+            activeNetwork
+          );
+          await updateTokenBalance(walletId, token.id, balance, undefined, activeNetwork);
+        } catch (error) {
+          console.error(`Failed to refresh ${token.symbol} balance:`, error);
+        }
+      })
+    );
+
+    return { success: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Failed to refresh EVM token balances:', error);
+    return { success: false, error: errorMessage };
+  }
 }
 
 /**
@@ -816,6 +909,13 @@ export async function fetchTokenPrice(token: Token): Promise<{
   priceChange24h?: number;
 }> {
   try {
+    if (token.network === 'testnet') {
+      return {
+        usdPrice: undefined,
+        priceChange24h: undefined,
+      };
+    }
+
     // Handle different token standards
     if (token.standard === 'ERC-20' && token.contractAddress) {
       // Ethereum tokens
