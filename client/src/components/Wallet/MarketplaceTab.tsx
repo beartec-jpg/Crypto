@@ -1,15 +1,18 @@
 // client/src/components/Wallet/MarketplaceTab.tsx
 // QBTC ↔ USDC atomic swap marketplace — integrated into the wallet tab
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Link } from 'wouter';
 import axios from 'axios';
 import {
   AlertTriangle,
   ArrowLeftRight,
+  ArrowUpDown,
   CheckCircle2,
   Clock,
+  Filter,
   Lock,
+  Search,
   Send,
   RefreshCw,
   Info,
@@ -518,6 +521,11 @@ export default function MarketplaceTab({
   // Cancel offer
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
+  // Offer filters / sort
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'newest' | 'qbtc-asc' | 'qbtc-desc' | 'usdc-asc' | 'usdc-desc'>('newest');
+  const [showMineOnly, setShowMineOnly] = useState(false);
+
   const isMainnet = isSwapMainnetActive();
   const network: QBTCNetwork = isMainnet ? 'mainnet' : 'testnet';
 
@@ -653,6 +661,38 @@ export default function MarketplaceTab({
       setCancellingId(null);
     }
   };
+
+  // ─── Filtered & sorted offers ───
+  const filteredOffers = useMemo(() => {
+    let list = [...offers];
+
+    // Mine-only filter
+    if (showMineOnly) {
+      list = list.filter(o => o.sellerQbtcAddress.toLowerCase() === walletAddress.toLowerCase());
+    }
+
+    // Search: match on QBTC amount, USDC amount, or seller address
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter(o =>
+        o.qbtcAmount.includes(q) ||
+        o.usdcAmountRequested.includes(q) ||
+        o.sellerQbtcAddress.toLowerCase().includes(q)
+      );
+    }
+
+    // Sort
+    switch (sortBy) {
+      case 'qbtc-asc':  list.sort((a, b) => Number(a.qbtcAmount) - Number(b.qbtcAmount)); break;
+      case 'qbtc-desc': list.sort((a, b) => Number(b.qbtcAmount) - Number(a.qbtcAmount)); break;
+      case 'usdc-asc':  list.sort((a, b) => Number(a.usdcAmountRequested) - Number(b.usdcAmountRequested)); break;
+      case 'usdc-desc': list.sort((a, b) => Number(b.usdcAmountRequested) - Number(a.usdcAmountRequested)); break;
+      case 'newest':
+      default: break; // server already returns by created_at ASC
+    }
+
+    return list;
+  }, [offers, showMineOnly, searchQuery, sortBy, walletAddress]);
 
   // ─── Render ───
   const activeSwaps = mySwaps.filter(s => !['COMPLETE', 'EXPIRED', 'REFUNDED'].includes(s.status));
@@ -793,20 +833,64 @@ export default function MarketplaceTab({
         <div className="flex items-center justify-between">
           <h3 className="text-base font-bold flex items-center gap-2">
             <ArrowLeftRight className="w-4 h-4 text-cyan-400" /> Open Offers
+            {offers.length > 0 && (
+              <span className="text-xs font-normal text-slate-500">
+                {filteredOffers.length === offers.length ? offers.length : `${filteredOffers.length}/${offers.length}`}
+              </span>
+            )}
           </h3>
           <button onClick={fetchOffers} disabled={loadingOffers} className="p-1.5 rounded-md hover:bg-slate-800">
             <RefreshCw className={`w-3.5 h-3.5 text-slate-400 ${loadingOffers ? 'animate-spin' : ''}`} />
           </button>
         </div>
 
-        {offers.length === 0 ? (
+        {/* Filter / Sort bar */}
+        {offers.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[140px]">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search amount or address…"
+                className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none text-xs"
+              />
+            </div>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+              className="px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-slate-300 focus:border-cyan-400 focus:outline-none cursor-pointer"
+            >
+              <option value="newest">Newest</option>
+              <option value="qbtc-asc">QBTC ↑</option>
+              <option value="qbtc-desc">QBTC ↓</option>
+              <option value="usdc-asc">USDC ↑</option>
+              <option value="usdc-desc">USDC ↓</option>
+            </select>
+            <button
+              onClick={() => setShowMineOnly(v => !v)}
+              className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                showMineOnly
+                  ? 'border-cyan-500/60 bg-cyan-500/15 text-cyan-300'
+                  : 'border-slate-700 text-slate-400 hover:bg-slate-800'
+              }`}
+            >
+              {showMineOnly ? 'My Offers' : 'All'}
+            </button>
+          </div>
+        )}
+
+        {filteredOffers.length === 0 ? (
           <div className="text-center py-8 text-slate-500 text-sm">
-            {loadingOffers ? 'Loading…' : 'No open offers yet.'}
+            {loadingOffers ? 'Loading…' : offers.length === 0 ? 'No open offers yet.' : 'No offers match your filters.'}
           </div>
         ) : (
           <div className="space-y-2">
-            {offers.map(offer => {
+            {filteredOffers.map(offer => {
               const isOwn = offer.sellerQbtcAddress.toLowerCase() === walletAddress.toLowerCase();
+              const unitPrice = Number(offer.qbtcAmount) > 0
+                ? (Number(offer.usdcAmountRequested) / Number(offer.qbtcAmount)).toFixed(2)
+                : '—';
               return (
                 <div key={offer.id} className="rounded-xl border border-slate-700 bg-slate-950/60 p-3 flex items-center justify-between gap-3">
                   <div className="flex-1 min-w-0">
@@ -814,6 +898,7 @@ export default function MarketplaceTab({
                       <span className="font-mono font-semibold">{offer.qbtcAmount} QBTC</span>
                       <span className="text-slate-500">→</span>
                       <span className="font-mono">{offer.usdcAmountRequested} USDC</span>
+                      <span className="text-[10px] text-slate-500">@ ${unitPrice}/QBTC</span>
                       {offer.status === 'LOCKED' && (
                         <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-semibold">
                           QBTC LOCKED
