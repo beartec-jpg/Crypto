@@ -59,6 +59,13 @@ const QBTC_NETWORKS: Record<QBTCNetwork, bitcoin.networks.Network> = {
   },
 };
 
+/** Convert a QBTC address to a raw() output descriptor (hex scriptPubKey).
+ *  QBTC nodes reject addr() descriptors, so we use raw() instead. */
+function addressToRawDescriptor(address: string, network: bitcoin.networks.Network): string {
+  const scriptPubKey = bitcoin.address.toOutputScript(address, network);
+  return `raw(${scriptPubKey.toString('hex')})`;
+}
+
 function hmacSha512(key: Uint8Array, data: Uint8Array): Uint8Array {
   return hmac(sha512, key, data);
 }
@@ -362,13 +369,15 @@ export class QBTCChain {
   }
 
   async getBalance(address: string): Promise<string> {
-    const result = await this.rpcCall<{ total_amount: number }>('scantxoutset', ['start', [{ desc: `addr(${address})` }]]);
+    const network = QBTC_NETWORKS[this.settings.network];
+    const result = await this.rpcCall<{ total_amount: number }>('scantxoutset', ['start', [{ desc: addressToRawDescriptor(address, network) }]]);
     return (result?.total_amount ?? 0).toFixed(8);
   }
 
   async listTransactions(address: string, count = 20): Promise<QBTCTransaction[]> {
+    const network = QBTC_NETWORKS[this.settings.network];
     const result = await this.rpcCall<{ unspents: Array<{ txid: string; vout: number; amount: number; height: number }> }>(
-      'scantxoutset', ['start', [{ desc: `addr(${address})` }]]
+      'scantxoutset', ['start', [{ desc: addressToRawDescriptor(address, network) }]]
     );
     if (!result?.unspents) return [];
 
@@ -489,7 +498,7 @@ export class QBTCChain {
   ): Promise<string> {
     const fromAddress = keyPair.getAddress(this.settings.network);
     const scanResult = await this.rpcCall<{ unspents: Array<{ txid: string; vout: number; amount: number; height: number; scriptPubKey: string }> }>(
-      'scantxoutset', ['start', [{ desc: `addr(${fromAddress})` }]]
+      'scantxoutset', ['start', [{ desc: addressToRawDescriptor(fromAddress, QBTC_NETWORKS[this.settings.network]) }]]
     );
     const utxos: QBTCUtxo[] = (scanResult?.unspents ?? []).map(u => ({
       txid: u.txid,
