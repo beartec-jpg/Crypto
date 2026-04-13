@@ -563,16 +563,20 @@ export default function MarketplaceTab({
   const handlePost = async () => {
     setPostLoading(true);
     setPostError('');
+    let offer: { id?: number; secretHash?: string; qbtcLocktime?: number } | null = null;
     try {
       // 1. Create offer on server (generates secret + hash)
       setPostStep('Creating offer…');
-      const { data: offer } = await axios.post(`${SWAP_API}/api/swap/offer`, {
+      const { data } = await axios.post(`${SWAP_API}/api/swap/offer`, {
         sellerQbtcAddress: walletAddress,
         sellerEvmAddress: walletEvmAddress,
         sellerPubKeyHex: walletPubKey,
         qbtcAmount,
         usdcAmountRequested: usdcAmount,
       });
+      offer = data;
+
+      if (!offer?.secretHash || !offer?.qbtcLocktime) throw new Error('Server did not return secret hash');
 
       // 2. Unlock wallet
       setPostStep('Unlocking wallet…');
@@ -611,6 +615,15 @@ export default function MarketplaceTab({
       fetchOffers();
       setTimeout(() => setPostSuccess(false), 6000);
     } catch (err: unknown) {
+      // Auto-cancel the offer if it was created but locking failed
+      if (offer?.id) {
+        try {
+          await axios.post(`${SWAP_API}/api/swap/cancel/${offer.id}`, {
+            sellerQbtcAddress: walletAddress,
+          });
+        } catch { /* best-effort cleanup */ }
+        fetchOffers();
+      }
       setPostError(getDisplayError(err, 'Failed to post & lock offer'));
     } finally {
       setPostLoading(false);

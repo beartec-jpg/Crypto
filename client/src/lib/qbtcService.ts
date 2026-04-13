@@ -488,7 +488,16 @@ export class QBTCChain {
     amount: string
   ): Promise<string> {
     const fromAddress = keyPair.getAddress(this.settings.network);
-    const utxos = await this.rpcCall<QBTCUtxo[]>('listunspent', [0, 9999999, [fromAddress]]);
+    const scanResult = await this.rpcCall<{ unspents: Array<{ txid: string; vout: number; amount: number; height: number; scriptPubKey: string }> }>(
+      'scantxoutset', ['start', [{ desc: `addr(${fromAddress})` }]]
+    );
+    const utxos: QBTCUtxo[] = (scanResult?.unspents ?? []).map(u => ({
+      txid: u.txid,
+      vout: u.vout,
+      amount: u.amount,
+      address: fromAddress,
+      scriptPubKey: u.scriptPubKey,
+    }));
 
     const amountSats = toSats(Number(amount));
     const feeRate = Math.max(10, Number(this.settings.feeRate || 10));
