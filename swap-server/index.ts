@@ -139,6 +139,14 @@ app.post('/api/swap/offer', async (req, res) => {
       [sellerQbtcAddress, sellerEvmAddress, sellerPubKeyHex, qbtcAmount, usdcAmountRequested, secretHex, secretHash, qbtcLocktime],
     );
     const offer = result.rows[0];
+
+    // Record ask price tick
+    const pricePerQbtc = parseFloat(usdcAmountRequested) / parseFloat(qbtcAmount);
+    await pool.query(
+      `INSERT INTO price_ticks (tick_type, price_per_qbtc, qbtc_amount, usdc_amount, offer_id, created_at) VALUES ('ASK', $1, $2, $3, $4, NOW())`,
+      [pricePerQbtc, qbtcAmount, usdcAmountRequested, offer.id],
+    );
+
     return res.json({ ...toCamelCase(offer), secretHash, qbtcLocktime });
   } catch (err: any) {
     console.error('POST /api/swap/offer:', err.message);
@@ -298,23 +306,22 @@ app.get('/api/swap/stats', async (_req, res) => {
       FROM atomic_swaps
     `);
 
-    // Price history: completed swaps ordered by time, computing USDC per QBTC
-    const priceHistory = await pool.query(`
-      SELECT
-        id,
-        qbtc_amount::numeric AS qbtc,
-        usdc_amount::numeric AS usdc,
-        updated_at AS completed_at
-      FROM atomic_swaps
-      WHERE status = 'COMPLETE' AND qbtc_amount::numeric > 0
-      ORDER BY updated_at ASC
+    // Price history: all ticks from price_ticks table (ASK + TRADE)
+    const ticksResult = await pool.query(`
+      SELECT id, tick_type, price_per_qbtc::numeric AS price, qbtc_amount::numeric AS qbtc, usdc_amount::numeric AS usdc, offer_id, swap_id, created_at
+      FROM price_ticks
+      ORDER BY created_at ASC
     `);
 
-    const pricePoints = priceHistory.rows.map((r: any) => ({
-      time: r.completed_at,
-      pricePerQbtc: parseFloat((r.usdc / r.qbtc).toFixed(6)),
+    const priceTicks = ticksResult.rows.map((r: any) => ({
+      id: r.id,
+      type: r.tick_type,
+      time: r.created_at,
+      pricePerQbtc: parseFloat(parseFloat(r.price).toFixed(6)),
       qbtcAmount: parseFloat(r.qbtc),
       usdcAmount: parseFloat(r.usdc),
+      offerId: r.offer_id,
+      swapId: r.swap_id,
     }));
 
     // Also include open/locked offers as "ask" prices for current market view
@@ -356,7 +363,8 @@ app.get('/api/swap/stats', async (_req, res) => {
         totalQbtcVolume: parseFloat(s.total_qbtc_volume) || 0,
         totalUsdcVolume: parseFloat(s.total_usdc_volume) || 0,
       },
-      priceHistory: pricePoints,
+      priceHistory: priceTicks.filter((t: any) => t.type === 'TRADE'),
+      priceTicks,
       currentAsks,
     });
   } catch (err: any) {
@@ -627,6 +635,17 @@ async function pollEvmLocked() {
           }
           await pool.query(`UPDATE atomic_swaps SET secret = $1, status = 'COMPLETE', updated_at = NOW() WHERE id = $2`, [secretHex, swap.id]);
           console.log(`[monitor] Swap ${swap.id} → COMPLETE`);
+
+          // Record trade price tick
+          const qbtcAmt = parseFloat(swap.qbtc_amount);
+          const usdcAmt = parseFloat(swap.usdc_amount);
+          if (qbtcAmt > 0) {
+            const tradePrice = usdcAmt / qbtcAmt;
+            await pool.query(
+              `INSERT INTO price_ticks (tick_type, price_per_qbtc, qbtc_amount, usdc_amount, swap_id, created_at) VALUES ('TRADE', $1, $2, $3, $4, NOW())`,
+              [tradePrice, swap.qbtc_amount, swap.usdc_amount, swap.id],
+            );
+          }
         } else {
           const now = Math.floor(Date.now() / 1000);
           const refunded: boolean = d[7];

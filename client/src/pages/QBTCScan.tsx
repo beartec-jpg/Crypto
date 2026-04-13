@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { Search, Activity, Blocks, Gauge, Clock3, AlertTriangle, ExternalLink, Wifi, GitFork, Zap, Timer, Coins, Hash, HardDrive, Database, Shield, Network, Server, BarChart2, ArrowLeftRight, TrendingUp, DollarSign, ShoppingCart, XCircle, Lock, CheckCircle } from 'lucide-react';
-import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import MetricChartModal from '../components/MetricChartModal';
 
 interface ScanStats {
@@ -132,9 +132,20 @@ interface SwapStats {
   };
   priceHistory: Array<{
     time: string;
+    type: string;
     pricePerQbtc: number;
     qbtcAmount: number;
     usdcAmount: number;
+  }>;
+  priceTicks: Array<{
+    id: number;
+    type: string;
+    time: string;
+    pricePerQbtc: number;
+    qbtcAmount: number;
+    usdcAmount: number;
+    offerId?: number;
+    swapId?: number;
   }>;
   currentAsks: Array<{
     offerId: number;
@@ -165,14 +176,17 @@ function TxDataTab() {
   }, []);
 
   const chartData = useMemo(() => {
-    if (!stats?.priceHistory?.length) return [];
-    return stats.priceHistory.map((p) => ({
-      time: new Date(p.time).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
+    if (!stats?.priceTicks?.length) return [];
+    return stats.priceTicks.map((p) => ({
+      time: new Date(p.time).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
       fullTime: new Date(p.time).toLocaleString(),
       price: p.pricePerQbtc,
       volume: p.qbtcAmount,
+      type: p.type,
     }));
-  }, [stats?.priceHistory]);
+  }, [stats?.priceTicks]);
+
+  const tradeData = useMemo(() => chartData.filter(d => d.type === 'TRADE'), [chartData]);
 
   const avgAskPrice = useMemo(() => {
     if (!stats?.currentAsks?.length) return null;
@@ -181,9 +195,10 @@ function TxDataTab() {
   }, [stats?.currentAsks]);
 
   const latestPrice = useMemo(() => {
+    if (tradeData.length > 0) return tradeData[tradeData.length - 1].price;
     if (chartData.length > 0) return chartData[chartData.length - 1].price;
     return avgAskPrice;
-  }, [chartData, avgAskPrice]);
+  }, [chartData, tradeData, avgAskPrice]);
 
   if (loading) {
     return (
@@ -210,7 +225,7 @@ function TxDataTab() {
               {latestPrice != null ? `$${latestPrice.toFixed(4)}` : '—'}
             </p>
             <p className="text-xs text-slate-500 mt-1">
-              {chartData.length > 0 ? 'Last completed swap' : avgAskPrice != null ? 'Avg ask price' : 'No trades yet'}
+              {tradeData.length > 0 ? 'Last completed trade' : chartData.length > 0 ? 'Latest ask price' : avgAskPrice != null ? 'Avg ask price' : 'No trades yet'}
             </p>
           </div>
           <div className="text-right">
@@ -227,28 +242,39 @@ function TxDataTab() {
           <h3 className="text-sm font-semibold text-cyan-300 mb-3 flex items-center gap-2">
             <TrendingUp className="w-4 h-4" /> QBTC Price History (USDC)
           </h3>
+          <div className="flex gap-4 mb-2 text-xs text-slate-400">
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-cyan-400 inline-block" /> Trades</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" /> Ask Offers</span>
+          </div>
           {chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={260}>
+            <ResponsiveContainer width="100%" height={280}>
               <AreaChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
                 <defs>
                   <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.3} />
+                    <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.15} />
                     <stop offset="95%" stopColor="#22d3ee" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="time" tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                <XAxis dataKey="time" tick={{ fill: '#94a3b8', fontSize: 10 }} angle={-20} textAnchor="end" height={50} />
                 <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} domain={['auto', 'auto']} tickFormatter={(v) => `$${v}`} />
                 <Tooltip
                   contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: '8px' }}
                   labelStyle={{ color: '#94a3b8' }}
-                  formatter={(value: number) => [`$${value.toFixed(4)}`, 'Price']}
+                  formatter={(value: number, _name: string, props: any) => {
+                    const type = props?.payload?.type === 'TRADE' ? 'Trade' : 'Ask';
+                    return [`$${value.toFixed(4)}`, type];
+                  }}
                   labelFormatter={(_, payload) => payload?.[0]?.payload?.fullTime ?? ''}
                 />
-                {avgAskPrice != null && (
-                  <ReferenceLine y={avgAskPrice} stroke="#f59e0b" strokeDasharray="5 5" label={{ value: `Ask $${avgAskPrice.toFixed(4)}`, fill: '#f59e0b', fontSize: 10, position: 'right' }} />
-                )}
-                <Area type="monotone" dataKey="price" stroke="#22d3ee" strokeWidth={2} fill="url(#priceGradient)" dot={{ fill: '#22d3ee', r: 3 }} activeDot={{ r: 5 }} />
+                <Area type="monotone" dataKey="price" stroke="#94a3b8" strokeWidth={1} fill="url(#priceGradient)"
+                  dot={(props: any) => {
+                    const { cx, cy, payload } = props;
+                    const isTrade = payload?.type === 'TRADE';
+                    return <circle cx={cx} cy={cy} r={isTrade ? 5 : 3} fill={isTrade ? '#22d3ee' : '#f59e0b'} stroke={isTrade ? '#0891b2' : '#d97706'} strokeWidth={1.5} />;
+                  }}
+                  activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2 }}
+                />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
@@ -386,6 +412,43 @@ function TxDataTab() {
                     <td className="py-2 px-3 text-right font-mono text-emerald-300">${trade.pricePerQbtc.toFixed(4)}</td>
                     <td className="py-2 px-3 text-right font-mono">{trade.qbtcAmount.toLocaleString()}</td>
                     <td className="py-2 px-3 text-right font-mono text-slate-400">${trade.usdcAmount.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* All Price Ticks */}
+      {stats.priceTicks.length > 0 && (
+        <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-4">
+          <h3 className="text-sm font-semibold text-cyan-300 mb-3 flex items-center gap-2">
+            <TrendingUp className="w-4 h-4" /> All Price Activity
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-slate-400 text-xs border-b border-slate-800">
+                  <th className="text-left py-2 px-3">Date</th>
+                  <th className="text-left py-2 px-3">Type</th>
+                  <th className="text-right py-2 px-3">Price</th>
+                  <th className="text-right py-2 px-3">QBTC</th>
+                  <th className="text-right py-2 px-3">USDC</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...stats.priceTicks].reverse().slice(0, 30).map((tick) => (
+                  <tr key={tick.id} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+                    <td className="py-2 px-3 text-slate-400 text-xs">{new Date(tick.time).toLocaleString()}</td>
+                    <td className="py-2 px-3">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${tick.type === 'TRADE' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'}`}>
+                        {tick.type}
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-emerald-300">${tick.pricePerQbtc.toFixed(4)}</td>
+                    <td className="py-2 px-3 text-right font-mono">{tick.qbtcAmount.toLocaleString()}</td>
+                    <td className="py-2 px-3 text-right font-mono text-slate-400">${tick.usdcAmount.toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
