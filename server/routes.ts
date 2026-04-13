@@ -8166,6 +8166,37 @@ CRITICAL DATA RULES:
   const SWAP_EVM_TIMELOCK_SECS  = 24 * 3600; // 24 h — buyer's refund window on EVM side (shorter by design)
   const SWAP_EVM_GRACE_SECS     = 3600;       // 1 h grace after EVM timelock before marking EXPIRED
 
+  function normalizeHex32(value: string): string {
+    const hex = value.startsWith('0x') ? value.slice(2) : value;
+    if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+      throw new Error('Expected 32-byte hex value');
+    }
+    return `0x${hex.toLowerCase()}`;
+  }
+
+  function decimalToBaseUnits(value: string, decimals: number): bigint {
+    const trimmed = value.trim();
+    if (!/^\d+(\.\d+)?$/.test(trimmed)) {
+      throw new Error(`Invalid decimal amount: ${value}`);
+    }
+
+    const [wholePart, fracPartRaw = ''] = trimmed.split('.');
+    if (fracPartRaw.length > decimals) {
+      throw new Error(`Too many decimal places (max ${decimals}): ${value}`);
+    }
+
+    const fracPart = (fracPartRaw + '0'.repeat(decimals)).slice(0, decimals);
+    return (BigInt(wholePart) * (10n ** BigInt(decimals))) + BigInt(fracPart || '0');
+  }
+
+  function qbtcToSats(value: string): bigint {
+    return decimalToBaseUnits(value, 8);
+  }
+
+  function usdcToBaseUnits(value: string): bigint {
+    return decimalToBaseUnits(value, 6);
+  }
+
   app.post('/api/swap/offer', async (req: Request, res: Response) => {
     try {
       const { db } = await import('./db');
@@ -8276,9 +8307,40 @@ CRITICAL DATA RULES:
         return res.status(409).json({ error: `Cannot lock QBTC in status: ${swap.status}` });
       }
 
-      // Verify the HTLC transaction is in the mempool / confirmed on-chain
+      // Verify the HTLC transaction exists and actually funds the expected HTLC address
+      // with at least the expected swap amount.
       try {
-        await qbtcRpcCall('getrawtransaction', [qbtcHtlcTxid, false]);
+        const tx = await qbtcRpcCall('getrawtransaction', [qbtcHtlcTxid, true]);
+        const expectedMinSats = qbtcToSats(swap.qbtcAmount);
+        const targetAddress = String(qbtcHtlcAddress).toLowerCase();
+
+        let hasMatchingOutput = false;
+        for (const vout of (tx?.vout || [])) {
+          const scriptPubKey = vout?.scriptPubKey || {};
+          const addresses: string[] = [
+            ...(scriptPubKey?.address ? [String(scriptPubKey.address)] : []),
+            ...(Array.isArray(scriptPubKey?.addresses) ? scriptPubKey.addresses.map((a: unknown) => String(a)) : []),
+          ];
+
+          const outputMatchesAddress = addresses.some((addr) => addr.toLowerCase() === targetAddress);
+          if (!outputMatchesAddress) continue;
+
+          const value = typeof vout?.value === 'number'
+            ? vout.value.toFixed(8)
+            : String(vout?.value ?? '0');
+
+          const outputSats = qbtcToSats(value);
+          if (outputSats >= expectedMinSats) {
+            hasMatchingOutput = true;
+            break;
+          }
+        }
+
+        if (!hasMatchingOutput) {
+          return res.status(422).json({
+            error: 'QBTC HTLC tx does not contain the expected funding output',
+          });
+        }
       } catch (rpcErr: any) {
         return res.status(422).json({ error: `QBTC HTLC txid not found on chain: ${rpcErr.message}` });
       }
@@ -8311,6 +8373,61 @@ CRITICAL DATA RULES:
         return res.status(409).json({ error: `Cannot record EVM lock in status: ${swap.status}` });
       }
 
+      const evmRpcUrl = process.env.VITE_EVM_RPC_URL || process.env.EVM_RPC_URL || '';
+      const htlcAddress = process.env.VITE_EVM_HTLC_CONTRACT || process.env.EVM_HTLC_CONTRACT || '';
+      const expectedUsdcAddress = process.env.VITE_USDC_CONTRACT || process.env.USDC_CONTRACT || '';
+
+      if (!evmRpcUrl || !htlcAddress) {
+        return res.status(503).json({ error: 'EVM swap verifier is not configured' });
+      }
+
+      try {
+        const { ethers } = await import('ethers');
+
+        const provider = new ethers.JsonRpcProvider(evmRpcUrl);
+        const htlcAbi = [
+          'function getContract(bytes32 contractId) view returns (address sender, address receiver, address tokenContract, uint256 amount, bytes32 hashlock, uint256 timelock, bool withdrawn, bool refunded, bytes32 preimage)',
+        ];
+        const htlcContract = new ethers.Contract(htlcAddress, htlcAbi, provider);
+
+        const normalizedId = normalizeHex32(String(evmContractId));
+        const details = await htlcContract.getContract(normalizedId);
+
+        const receiver = String(details[1] || '').toLowerCase();
+        const tokenContract = String(details[2] || '').toLowerCase();
+        const amount: bigint = BigInt(details[3] || 0n);
+        const hashlock = String(details[4] || '').toLowerCase();
+        const timelock: bigint = BigInt(details[5] || 0n);
+        const withdrawn: boolean = Boolean(details[6]);
+        const refunded: boolean = Boolean(details[7]);
+
+        const expectedHash = normalizeHex32(String(swap.secretHash));
+        const expectedReceiver = String(swap.sellerEvmAddress || '').toLowerCase();
+        const expectedTimelock = BigInt(swap.evmLocktime || 0);
+        const expectedAmount = usdcToBaseUnits(String(swap.usdcAmount));
+
+        if (withdrawn || refunded) {
+          return res.status(422).json({ error: 'EVM HTLC is already settled/refunded' });
+        }
+        if (hashlock !== expectedHash.toLowerCase()) {
+          return res.status(422).json({ error: 'EVM HTLC hashlock does not match swap secret hash' });
+        }
+        if (receiver !== expectedReceiver) {
+          return res.status(422).json({ error: 'EVM HTLC receiver does not match seller EVM address' });
+        }
+        if (timelock !== expectedTimelock) {
+          return res.status(422).json({ error: 'EVM HTLC timelock does not match expected swap timelock' });
+        }
+        if (amount !== expectedAmount) {
+          return res.status(422).json({ error: 'EVM HTLC amount does not match expected USDC amount' });
+        }
+        if (expectedUsdcAddress && tokenContract !== expectedUsdcAddress.toLowerCase()) {
+          return res.status(422).json({ error: 'EVM HTLC token contract does not match configured USDC contract' });
+        }
+      } catch (verifyErr: any) {
+        return res.status(422).json({ error: `Failed to verify EVM HTLC: ${verifyErr.message}` });
+      }
+
       const [updated] = await db.update(atomicSwaps)
         .set({ evmContractId, status: 'EVM_LOCKED', updatedAt: new Date() })
         .where(eq(atomicSwaps.id, swapId))
@@ -8331,8 +8448,8 @@ CRITICAL DATA RULES:
       const [swap] = await db.select().from(atomicSwaps).where(eq(atomicSwaps.id, req.params.swapId));
       if (!swap) return res.status(404).json({ error: 'Swap not found' });
 
-      // Only expose the secret once the EVM lock is confirmed (buyer proved they locked USDC)
-      const exposeSecret = swap.status === 'EVM_LOCKED' || swap.status === 'COMPLETE';
+      // Never expose the secret before on-chain reveal is confirmed by the monitor.
+      const exposeSecret = swap.status === 'COMPLETE';
       return res.json({
         ...swap,
         secret: exposeSecret ? swap.secret : null,
@@ -8380,6 +8497,14 @@ CRITICAL DATA RULES:
 
             if (withdrawn && preimage && preimage !== ethers.ZeroHash) {
               const secretHex = preimage.startsWith('0x') ? preimage.slice(2) : preimage;
+              const crypto = await import('crypto');
+              const revealedHash = crypto.createHash('sha256').update(Buffer.from(secretHex, 'hex')).digest('hex');
+
+              if (revealedHash !== String(swap.secretHash).toLowerCase()) {
+                console.error(`[swap-monitor] Secret hash mismatch for swap ${swap.id}`);
+                continue;
+              }
+
               await db.update(atomicSwaps)
                 .set({ secret: secretHex, status: 'COMPLETE', updatedAt: new Date() })
                 .where(eq(atomicSwaps.id, swap.id));
