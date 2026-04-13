@@ -229,10 +229,18 @@ export class QBTCKeyPair {
     return QBTCKeyPair.fromMasterSeed(seed, pathIndex);
   }
 
+  getHybridHash(): Buffer {
+    const ecdsaPub = Buffer.from(this.ecdsaPublicKeyHex, 'hex');
+    const pqcPub = Buffer.from(this.dilithiumPublicKeyHex, 'hex');
+    const combined = Buffer.concat([ecdsaPub, pqcPub]);
+    return Buffer.from(ripemd160(sha256(combined)));
+  }
+
   getAddress(network: QBTCNetwork): string {
     const net = QBTC_NETWORKS[network];
+    const hybridHash = this.getHybridHash();
     const p2wpkh = bitcoin.payments.p2wpkh({
-      pubkey: Buffer.from(this.ecdsaPublicKeyHex, 'hex'),
+      hash: hybridHash,
       network: net,
     });
     if (!p2wpkh.address) {
@@ -532,8 +540,9 @@ export class QBTCChain {
       tx.addOutput(bitcoin.address.toOutputScript(fromAddress, network), change);
     }
 
+    const hybridHash = keyPair.getHybridHash();
     const scriptCode = bitcoin.payments.p2pkh({
-      pubkey: Buffer.from(keyPair.ecdsaPublicKeyHex, 'hex'),
+      hash: hybridHash,
       network,
     }).output;
 
