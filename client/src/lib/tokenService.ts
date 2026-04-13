@@ -584,14 +584,17 @@ export async function fetchSPLTokenInfo(mintAddress: string): Promise<{
 /**
  * Fetch XRPL token/issuer info
  */
-export async function fetchXRPLIssuerInfo(issuer: string): Promise<{
+export async function fetchXRPLIssuerInfo(
+  issuer: string,
+  network: TokenNetwork = 'mainnet'
+): Promise<{
   exists: boolean;
   flags?: {
     requireAuth: boolean;
     globalFreeze: boolean;
     defaultRipple: boolean;
   };
-}>, network: TokenNetwork = 'mainnet') {
+}> {
   try {
     const client = await xrplService.getClient(network === 'mainnet');
     
