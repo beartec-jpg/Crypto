@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getPool } from '../_lib/db';
+import { getPool, toCamelCase } from '../_lib/db';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -37,7 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       [sellerQbtcAddress, sellerEvmAddress, sellerPubKeyHex, qbtcAmount, usdcAmountRequested]
     );
 
-    return res.json(result.rows[0]);
+    return res.json(toCamelCase(result.rows[0]));
   } catch (error: any) {
     console.error('POST /api/swap/offer error:', error);
     return res.status(500).json({ error: error.message || 'Failed to create swap offer' });

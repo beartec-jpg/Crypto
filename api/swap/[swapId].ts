@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getPool } from '../_lib/db';
+import { getPool, toCamelCase } from '../_lib/db';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -19,9 +19,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!swap) return res.status(404).json({ error: 'Swap not found' });
 
     // Only expose the secret when the swap is complete
+    const mapped = toCamelCase(swap);
     const exposeSecret = swap.status === 'COMPLETE';
     return res.json({
-      ...swap,
+      ...mapped,
       secret: exposeSecret ? swap.secret : null,
     });
   } catch (error: any) {

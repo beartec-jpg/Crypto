@@ -1,0 +1,425 @@
+/**
+ * QBTC Swap Server — Standalone Express API
+ *
+ * Serves all atomic-swap endpoints independently of the main CryptoSparse
+ * Vercel deployment. Can run alongside a QBTC node on any test server.
+ *
+ * Usage:
+ *   cp .env.example .env   # fill in real values
+ *   npm install
+ *   npm start
+ */
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import crypto from 'crypto';
+import pg from 'pg';
+
+const { Pool } = pg;
+
+// ─── Config ─────────────────────────────────────────────────────────────────
+
+const PORT = Number(process.env.PORT) || 3099;
+
+const SWAP_QBTC_TIMELOCK_SECS = 48 * 3600; // 48 h
+const SWAP_EVM_TIMELOCK_SECS  = 24 * 3600; // 24 h
+const SWAP_EVM_GRACE_SECS     = 3600;       // 1 h grace
+const MONITOR_POLL_MS         = 60_000;     // 60 s
+
+// ─── Database ───────────────────────────────────────────────────────────────
+
+if (!process.env.DATABASE_URL) {
+  console.error('DATABASE_URL is required');
+  process.exit(1);
+}
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL.includes('sslmode=require') || process.env.DB_SSL === '1'
+    ? { rejectUnauthorized: false }
+    : undefined,
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
+});
+
+pool.on('error', (err) => console.error('[db] Pool error:', err.message));
+
+/** Convert snake_case DB rows to camelCase for frontend compatibility. */
+function toCamelCase<T = Record<string, any>>(row: Record<string, any>): T {
+  const out: Record<string, any> = {};
+  for (const k of Object.keys(row)) {
+    out[k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())] = row[k];
+  }
+  return out as T;
+}
+
+// ─── QBTC RPC helper ───────────────────────────────────────────────────────
+
+async function qbtcRpcCall(method: string, params: any[] = []): Promise<any> {
+  const rpcUrl  = process.env.QBTC_RPC_URL || 'http://127.0.0.1:28332';
+  const rpcUser = process.env.QBTC_RPC_USER || '';
+  const rpcPass = process.env.QBTC_RPC_PASSWORD || '';
+
+  const response = await fetch(rpcUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(rpcUser || rpcPass
+        ? { Authorization: `Basic ${Buffer.from(`${rpcUser}:${rpcPass}`).toString('base64')}` }
+        : {}),
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params }),
+    signal: AbortSignal.timeout(15000),
+  });
+
+  const data = (await response.json()) as any;
+  if (data?.error) throw new Error(data.error.message || `QBTC RPC error: ${method}`);
+  return data?.result;
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function normalizeHex32(value: string): string {
+  const hex = value.startsWith('0x') ? value.slice(2) : value;
+  if (!/^[0-9a-fA-F]{64}$/.test(hex)) throw new Error('Expected 32-byte hex value');
+  return `0x${hex.toLowerCase()}`;
+}
+
+function qbtcToSats(value: string): bigint {
+  return decimalToBaseUnits(value, 8);
+}
+
+function usdcToBaseUnits(value: string): bigint {
+  return decimalToBaseUnits(value, 6);
+}
+
+function decimalToBaseUnits(value: string, decimals: number): bigint {
+  const trimmed = value.trim();
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) throw new Error(`Invalid decimal amount: ${value}`);
+  const [whole, frac = ''] = trimmed.split('.');
+  if (frac.length > decimals) throw new Error(`Too many decimal places (max ${decimals}): ${value}`);
+  const fracPadded = (frac + '0'.repeat(decimals)).slice(0, decimals);
+  return BigInt(whole) * 10n ** BigInt(decimals) + BigInt(fracPadded || '0');
+}
+
+// ─── Express app ────────────────────────────────────────────────────────────
+
+const app = express();
+
+const corsOrigins = (process.env.CORS_ORIGINS || '*').split(',').map((s) => s.trim());
+app.use(cors({ origin: corsOrigins.includes('*') ? '*' : corsOrigins }));
+app.use(express.json());
+
+// Health check
+app.get('/api/swap/health', (_req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
+
+// ─── POST /api/swap/offer ───────────────────────────────────────────────────
+
+app.post('/api/swap/offer', async (req, res) => {
+  try {
+    const { sellerQbtcAddress, sellerEvmAddress, sellerPubKeyHex, qbtcAmount, usdcAmountRequested } = req.body || {};
+
+    if (!sellerQbtcAddress || typeof sellerQbtcAddress !== 'string') return res.status(400).json({ error: 'sellerQbtcAddress is required' });
+    if (!sellerEvmAddress  || typeof sellerEvmAddress  !== 'string') return res.status(400).json({ error: 'sellerEvmAddress is required' });
+    if (!sellerPubKeyHex   || typeof sellerPubKeyHex   !== 'string' || sellerPubKeyHex.length !== 66) return res.status(400).json({ error: 'sellerPubKeyHex must be 66 hex chars' });
+    if (!qbtcAmount        || typeof qbtcAmount        !== 'string') return res.status(400).json({ error: 'qbtcAmount is required' });
+    if (!usdcAmountRequested || typeof usdcAmountRequested !== 'string') return res.status(400).json({ error: 'usdcAmountRequested is required' });
+
+    const result = await pool.query(
+      `INSERT INTO swap_offers (seller_qbtc_address, seller_evm_address, seller_pub_key_hex, qbtc_amount, usdc_amount_requested, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, 'OPEN', NOW()) RETURNING *`,
+      [sellerQbtcAddress, sellerEvmAddress, sellerPubKeyHex, qbtcAmount, usdcAmountRequested],
+    );
+    return res.json(toCamelCase(result.rows[0]));
+  } catch (err: any) {
+    console.error('POST /api/swap/offer:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to create offer' });
+  }
+});
+
+// ─── GET /api/swap/offers ───────────────────────────────────────────────────
+
+app.get('/api/swap/offers', async (_req, res) => {
+  try {
+    const result = await pool.query(`SELECT * FROM swap_offers WHERE status = 'OPEN' ORDER BY created_at ASC`);
+    return res.json(result.rows.map(toCamelCase));
+  } catch (err: any) {
+    console.error('GET /api/swap/offers:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to fetch offers' });
+  }
+});
+
+// ─── POST /api/swap/accept/:offerId ─────────────────────────────────────────
+
+app.post('/api/swap/accept/:offerId', async (req, res) => {
+  try {
+    const { offerId } = req.params;
+    const { buyerQbtcAddress, buyerEvmAddress, buyerPubKeyHex } = req.body || {};
+
+    if (!buyerQbtcAddress || typeof buyerQbtcAddress !== 'string') return res.status(400).json({ error: 'buyerQbtcAddress is required' });
+    if (!buyerEvmAddress  || typeof buyerEvmAddress  !== 'string') return res.status(400).json({ error: 'buyerEvmAddress is required' });
+    if (!buyerPubKeyHex   || typeof buyerPubKeyHex   !== 'string' || buyerPubKeyHex.length !== 66) return res.status(400).json({ error: 'buyerPubKeyHex must be 66 hex chars' });
+
+    const offerResult = await pool.query('SELECT * FROM swap_offers WHERE id = $1', [offerId]);
+    const offer = offerResult.rows[0];
+    if (!offer) return res.status(404).json({ error: 'Offer not found' });
+    if (offer.status !== 'OPEN') return res.status(409).json({ error: 'Offer is no longer open' });
+
+    const secretBytes = crypto.randomBytes(32);
+    const secretHex   = secretBytes.toString('hex');
+    const secretHash  = crypto.createHash('sha256').update(secretBytes).digest('hex');
+
+    const now          = Math.floor(Date.now() / 1000);
+    const qbtcLocktime = now + SWAP_QBTC_TIMELOCK_SECS;
+    const evmLocktime  = now + SWAP_EVM_TIMELOCK_SECS;
+
+    const swapResult = await pool.query(
+      `INSERT INTO atomic_swaps (
+        offer_id, seller_qbtc_address, seller_evm_address, seller_pub_key_hex,
+        buyer_qbtc_address, buyer_evm_address, buyer_pub_key_hex,
+        qbtc_amount, usdc_amount, secret_hash, secret,
+        qbtc_locktime, evm_locktime, status, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'PENDING_QBTC_LOCK',NOW(),NOW()) RETURNING *`,
+      [
+        offerId,
+        offer.seller_qbtc_address, offer.seller_evm_address, offer.seller_pub_key_hex,
+        buyerQbtcAddress, buyerEvmAddress, buyerPubKeyHex,
+        offer.qbtc_amount, offer.usdc_amount_requested,
+        secretHash, secretHex,
+        qbtcLocktime, evmLocktime,
+      ],
+    );
+    const swap = swapResult.rows[0];
+
+    await pool.query("UPDATE swap_offers SET status = 'MATCHED' WHERE id = $1", [offerId]);
+
+    return res.json({
+      swapId: swap.id,
+      secretHash,
+      qbtcLocktime,
+      evmLocktime,
+      sellerPubKeyHex: offer.seller_pub_key_hex,
+      buyerPubKeyHex,
+      qbtcAmount: offer.qbtc_amount,
+      usdcAmount: offer.usdc_amount_requested,
+    });
+  } catch (err: any) {
+    console.error('POST /api/swap/accept:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to accept offer' });
+  }
+});
+
+// ─── GET /api/swap/:swapId ──────────────────────────────────────────────────
+
+app.get('/api/swap/:swapId', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM atomic_swaps WHERE id = $1', [req.params.swapId]);
+    const swap = result.rows[0];
+    if (!swap) return res.status(404).json({ error: 'Swap not found' });
+
+    const mapped = toCamelCase(swap);
+    return res.json({ ...mapped, secret: swap.status === 'COMPLETE' ? swap.secret : null });
+  } catch (err: any) {
+    console.error('GET /api/swap/:swapId:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to fetch swap' });
+  }
+});
+
+// ─── POST /api/swap/lock/qbtc ───────────────────────────────────────────────
+
+app.post('/api/swap/lock/qbtc', async (req, res) => {
+  try {
+    const { swapId, qbtcHtlcTxid, qbtcHtlcAddress } = req.body || {};
+    if (!swapId || !qbtcHtlcTxid || !qbtcHtlcAddress) {
+      return res.status(400).json({ error: 'swapId, qbtcHtlcTxid, and qbtcHtlcAddress are required' });
+    }
+
+    const swapResult = await pool.query('SELECT * FROM atomic_swaps WHERE id = $1', [swapId]);
+    const swap = swapResult.rows[0];
+    if (!swap) return res.status(404).json({ error: 'Swap not found' });
+    if (swap.status !== 'PENDING_QBTC_LOCK') {
+      return res.status(409).json({ error: `Cannot lock QBTC in status: ${swap.status}` });
+    }
+
+    // Verify HTLC transaction on-chain
+    try {
+      const tx = await qbtcRpcCall('getrawtransaction', [qbtcHtlcTxid, true]);
+      const expectedMinSats = qbtcToSats(swap.qbtc_amount);
+      const target = String(qbtcHtlcAddress).toLowerCase();
+
+      let matched = false;
+      for (const vout of tx?.vout || []) {
+        const spk = vout?.scriptPubKey || {};
+        const addrs: string[] = [
+          ...(spk?.address ? [String(spk.address)] : []),
+          ...(Array.isArray(spk?.addresses) ? spk.addresses.map(String) : []),
+        ];
+        if (!addrs.some((a) => a.toLowerCase() === target)) continue;
+        const val = typeof vout?.value === 'number' ? vout.value.toFixed(8) : String(vout?.value ?? '0');
+        if (qbtcToSats(val) >= expectedMinSats) { matched = true; break; }
+      }
+      if (!matched) return res.status(422).json({ error: 'QBTC HTLC tx does not contain the expected funding output' });
+    } catch (rpcErr: any) {
+      return res.status(422).json({ error: `QBTC HTLC txid not found on chain: ${rpcErr.message}` });
+    }
+
+    await pool.query(
+      `UPDATE atomic_swaps SET qbtc_htlc_txid = $1, qbtc_htlc_address = $2, status = 'QBTC_LOCKED', updated_at = NOW() WHERE id = $3`,
+      [qbtcHtlcTxid, qbtcHtlcAddress, swapId],
+    );
+    return res.json({ status: 'QBTC_LOCKED' });
+  } catch (err: any) {
+    console.error('POST /api/swap/lock/qbtc:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to record QBTC lock' });
+  }
+});
+
+// ─── POST /api/swap/lock/evm ────────────────────────────────────────────────
+
+app.post('/api/swap/lock/evm', async (req, res) => {
+  try {
+    const { swapId, evmContractId } = req.body || {};
+    if (!swapId || !evmContractId) return res.status(400).json({ error: 'swapId and evmContractId are required' });
+
+    const swapResult = await pool.query('SELECT * FROM atomic_swaps WHERE id = $1', [swapId]);
+    const swap = swapResult.rows[0];
+    if (!swap) return res.status(404).json({ error: 'Swap not found' });
+    if (swap.status !== 'QBTC_LOCKED') return res.status(409).json({ error: `Cannot record EVM lock in status: ${swap.status}` });
+
+    const evmRpcUrl   = process.env.EVM_RPC_URL || '';
+    const htlcAddress = process.env.EVM_HTLC_CONTRACT || '';
+    const expectedUsdc = process.env.USDC_CONTRACT || '';
+    if (!evmRpcUrl || !htlcAddress) return res.status(503).json({ error: 'EVM swap verifier is not configured' });
+
+    try {
+      const { ethers } = await import('ethers');
+      const provider = new ethers.JsonRpcProvider(evmRpcUrl);
+      const htlcAbi = [
+        'function getContract(bytes32 contractId) view returns (address sender, address receiver, address tokenContract, uint256 amount, bytes32 hashlock, uint256 timelock, bool withdrawn, bool refunded, bytes32 preimage)',
+      ];
+      const htlc = new ethers.Contract(htlcAddress, htlcAbi, provider);
+      const normalizedId = normalizeHex32(String(evmContractId));
+      const d = await htlc.getContract(normalizedId);
+
+      const receiver      = String(d[1] || '').toLowerCase();
+      const tokenContract = String(d[2] || '').toLowerCase();
+      const amount: bigint  = BigInt(d[3] || 0n);
+      const hashlock      = String(d[4] || '').toLowerCase();
+      const timelock: bigint = BigInt(d[5] || 0n);
+      const withdrawn: boolean = Boolean(d[6]);
+      const refunded: boolean  = Boolean(d[7]);
+
+      const expectedHash     = normalizeHex32(String(swap.secret_hash)).toLowerCase();
+      const expectedReceiver = String(swap.seller_evm_address || '').toLowerCase();
+      const expectedTimelock = BigInt(swap.evm_locktime || 0);
+      const expectedAmount   = usdcToBaseUnits(String(swap.usdc_amount));
+
+      if (withdrawn || refunded) return res.status(422).json({ error: 'EVM HTLC is already settled/refunded' });
+      if (hashlock !== expectedHash) return res.status(422).json({ error: 'EVM HTLC hashlock mismatch' });
+      if (receiver !== expectedReceiver) return res.status(422).json({ error: 'EVM HTLC receiver mismatch' });
+      if (timelock !== expectedTimelock) return res.status(422).json({ error: 'EVM HTLC timelock mismatch' });
+      if (amount !== expectedAmount) return res.status(422).json({ error: 'EVM HTLC amount mismatch' });
+      if (expectedUsdc && tokenContract !== expectedUsdc.toLowerCase()) return res.status(422).json({ error: 'EVM HTLC token contract mismatch' });
+    } catch (verifyErr: any) {
+      return res.status(422).json({ error: `Failed to verify EVM HTLC: ${verifyErr.message}` });
+    }
+
+    await pool.query(
+      `UPDATE atomic_swaps SET evm_contract_id = $1, status = 'EVM_LOCKED', updated_at = NOW() WHERE id = $2`,
+      [evmContractId, swapId],
+    );
+    return res.json({ status: 'EVM_LOCKED' });
+  } catch (err: any) {
+    console.error('POST /api/swap/lock/evm:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to record EVM lock' });
+  }
+});
+
+// ─── POST /api/swap/secret/seller ───────────────────────────────────────────
+
+app.post('/api/swap/secret/seller', async (req, res) => {
+  try {
+    const { swapId, signature } = req.body || {};
+    if (!swapId || !signature) return res.status(400).json({ error: 'swapId and signature are required' });
+
+    const swapResult = await pool.query('SELECT * FROM atomic_swaps WHERE id = $1', [swapId]);
+    const swap = swapResult.rows[0];
+    if (!swap) return res.status(404).json({ error: 'Swap not found' });
+    if (swap.status !== 'EVM_LOCKED' && swap.status !== 'COMPLETE') return res.status(409).json({ error: `Secret unavailable in status: ${swap.status}` });
+    if (!swap.qbtc_htlc_txid || !swap.evm_contract_id) return res.status(409).json({ error: 'Swap lock legs incomplete' });
+    if (!swap.secret) return res.status(422).json({ error: 'Secret not available yet' });
+
+    const { ethers } = await import('ethers');
+    const message = `QBTC_SWAP_SECRET:${swap.id}`;
+    let recovered = '';
+    try { recovered = ethers.verifyMessage(message, String(signature)).toLowerCase(); } catch { return res.status(400).json({ error: 'Invalid seller signature' }); }
+    if (recovered !== String(swap.seller_evm_address).toLowerCase()) return res.status(403).json({ error: 'Signature mismatch' });
+
+    return res.json({ swapId: swap.id, message, secret: swap.secret });
+  } catch (err: any) {
+    console.error('POST /api/swap/secret/seller:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to retrieve secret' });
+  }
+});
+
+// ─── EVM Withdraw Monitor ───────────────────────────────────────────────────
+
+async function pollEvmLocked() {
+  const evmRpcUrl   = process.env.EVM_RPC_URL || '';
+  const htlcAddress = process.env.EVM_HTLC_CONTRACT || '';
+  if (!evmRpcUrl || !htlcAddress) return;
+
+  try {
+    const { ethers } = await import('ethers');
+    const provider = new ethers.JsonRpcProvider(evmRpcUrl);
+    const htlcAbi = [
+      'function getContract(bytes32 contractId) view returns (address sender, address receiver, address tokenContract, uint256 amount, bytes32 hashlock, uint256 timelock, bool withdrawn, bool refunded, bytes32 preimage)',
+    ];
+    const htlc = new ethers.Contract(htlcAddress, htlcAbi, provider);
+
+    const result = await pool.query(`SELECT * FROM atomic_swaps WHERE status = 'EVM_LOCKED'`);
+    for (const swap of result.rows) {
+      if (!swap.evm_contract_id) continue;
+      try {
+        const id = swap.evm_contract_id.startsWith('0x') ? swap.evm_contract_id : `0x${swap.evm_contract_id}`;
+        const d = await htlc.getContract(id);
+        const withdrawn: boolean = d[6];
+        const preimage: string   = d[8];
+
+        if (withdrawn && preimage && preimage !== ethers.ZeroHash) {
+          const secretHex = preimage.startsWith('0x') ? preimage.slice(2) : preimage;
+          const revealedHash = crypto.createHash('sha256').update(Buffer.from(secretHex, 'hex')).digest('hex');
+          if (revealedHash !== String(swap.secret_hash).toLowerCase()) {
+            console.error(`[monitor] Hash mismatch for swap ${swap.id}`);
+            continue;
+          }
+          await pool.query(`UPDATE atomic_swaps SET secret = $1, status = 'COMPLETE', updated_at = NOW() WHERE id = $2`, [secretHex, swap.id]);
+          console.log(`[monitor] Swap ${swap.id} → COMPLETE`);
+        } else {
+          const now = Math.floor(Date.now() / 1000);
+          const refunded: boolean = d[7];
+          if (refunded || (swap.evm_locktime && now > swap.evm_locktime + SWAP_EVM_GRACE_SECS)) {
+            await pool.query(`UPDATE atomic_swaps SET status = 'EXPIRED', updated_at = NOW() WHERE id = $1`, [swap.id]);
+            console.log(`[monitor] Swap ${swap.id} → EXPIRED`);
+          }
+        }
+      } catch (swapErr: any) {
+        console.error(`[monitor] Swap ${swap.id}:`, swapErr?.message);
+      }
+    }
+  } catch (err: any) {
+    console.error('[monitor] Poll error:', err?.message);
+  }
+}
+
+// ─── Start ──────────────────────────────────────────────────────────────────
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[swap-server] Listening on 0.0.0.0:${PORT}`);
+  console.log(`[swap-server] Health check: http://localhost:${PORT}/api/swap/health`);
+
+  // Start EVM withdraw monitor
+  setInterval(pollEvmLocked, MONITOR_POLL_MS);
+  console.log(`[swap-server] EVM withdraw monitor started (${MONITOR_POLL_MS / 1000}s interval)`);
+});

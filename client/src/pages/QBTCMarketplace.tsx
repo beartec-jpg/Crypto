@@ -17,6 +17,11 @@ import {
 } from 'lucide-react';
 import { isSwapMainnetActive } from '../lib/evmHTLC';
 
+// ─── Swap API base URL ───────────────────────────────────────────────────────
+// Defaults to '' (same-origin/Vercel). Set VITE_SWAP_API_URL to point at a
+// dedicated swap server, e.g. http://89.167.109.241:3099
+const SWAP_API = (import.meta.env.VITE_SWAP_API_URL || '').replace(/\/$/, '');
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type SwapStatus =
@@ -314,7 +319,7 @@ function CreateOfferForm({ onOfferCreated }: { onOfferCreated: () => void }) {
     setLoading(true);
     setError('');
     try {
-      await axios.post('/api/swap/offer', {
+      await axios.post(`${SWAP_API}/api/swap/offer`, {
         sellerQbtcAddress,
         sellerEvmAddress,
         sellerPubKeyHex,
@@ -454,7 +459,7 @@ function AcceptOfferModal({
     setLoading(true);
     setError('');
     try {
-      const { data } = await axios.post<AcceptResponse>(`/api/swap/accept/${offer.id}`, {
+      const { data } = await axios.post<AcceptResponse>(`${SWAP_API}/api/swap/accept/${offer.id}`, {
         buyerQbtcAddress,
         buyerEvmAddress,
         buyerPubKeyHex,
@@ -626,7 +631,7 @@ export default function QBTCMarketplacePage() {
   const fetchOffers = useCallback(async () => {
     setLoadingOffers(true);
     try {
-      const { data } = await axios.get<SwapOffer[]>('/api/swap/offers');
+      const { data } = await axios.get<SwapOffer[]>(`${SWAP_API}/api/swap/offers`);
       setOffers(data);
     } catch {
       // non-fatal
@@ -637,7 +642,7 @@ export default function QBTCMarketplacePage() {
 
   const fetchActiveSwap = useCallback(async (swapId: string) => {
     try {
-      const { data } = await axios.get<AtomicSwap>(`/api/swap/${swapId}`);
+      const { data } = await axios.get<AtomicSwap>(`${SWAP_API}/api/swap/${swapId}`);
       setActiveSwap(data);
     } catch {
       // non-fatal

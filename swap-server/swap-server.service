@@ -1,0 +1,17 @@
+[Unit]
+Description=QBTC Swap API Server
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/swap-server
+ExecStart=/usr/bin/node --import tsx index.ts
+Restart=on-failure
+RestartSec=5
+EnvironmentFile=/opt/swap-server/.env
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=swap-server
+
+[Install]
+WantedBy=multi-user.target
