@@ -18,8 +18,8 @@ import {
 import { isSwapMainnetActive } from '../lib/evmHTLC';
 
 // ─── Swap API base URL ───────────────────────────────────────────────────────
-// Defaults to '' (same-origin/Vercel). Set VITE_SWAP_API_URL to point at a
-// dedicated swap server, e.g. http://89.167.109.241:3099
+// Defaults to '' (same-origin, proxied by Vercel to dedicated swap server).
+// Set VITE_SWAP_API_URL only for local dev pointing at a direct server URL.
 const SWAP_API = (import.meta.env.VITE_SWAP_API_URL || '').replace(/\/$/, '');
 
 // ─── Types ───────────────────────────────────────────────────────────────────

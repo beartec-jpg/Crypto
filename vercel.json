@@ -35,10 +35,11 @@
     }
   ],
   "rewrites": [
-    { "source": "/api/swap/accept/:offerId", "destination": "/api/swap/accept/[offerId]" },
-    { "source": "/api/swap/offer", "destination": "/api/swap/offer" },
-    { "source": "/api/swap/offers", "destination": "/api/swap/offers" },
-    { "source": "/api/swap/:swapId", "destination": "/api/swap/[swapId]" },
+    { "source": "/api/swap/accept/:offerId", "destination": "http://204.168.175.194:3099/api/swap/accept/:offerId" },
+    { "source": "/api/swap/offer", "destination": "http://204.168.175.194:3099/api/swap/offer" },
+    { "source": "/api/swap/offers", "destination": "http://204.168.175.194:3099/api/swap/offers" },
+    { "source": "/api/swap/health", "destination": "http://204.168.175.194:3099/api/swap/health" },
+    { "source": "/api/swap/:swapId", "destination": "http://204.168.175.194:3099/api/swap/:swapId" },
     { "source": "/api/crypto/elliott-wave/labels/:id", "destination": "/api/crypto/elliott-wave/labels/[id]" },
     { "source": "/api/crypto/projection-lines/:id", "destination": "/api/crypto/projection-lines/[id]" },
     { "source": "/api/crypto/chart-drawings/:id", "destination": "/api/crypto/chart-drawings/[id]" },
