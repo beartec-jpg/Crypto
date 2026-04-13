@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'wouter';
+import { useUser } from '@clerk/clerk-react';
 import axios from 'axios';
 import {
   AlertTriangle,
@@ -14,8 +15,22 @@ import {
   RefreshCw,
   ExternalLink,
   Info,
+  Wallet,
+  KeyRound,
+  Loader2,
 } from 'lucide-react';
-import { isSwapMainnetActive } from '../lib/evmHTLC';
+import { isSwapMainnetActive, EvmHTLC, getSwapNetworkConfig } from '../lib/evmHTLC';
+import {
+  QBTCKeyPair,
+  QBTCChain,
+  createHTLCScript,
+  getHTLCAddress,
+  getQBTCRpcSettings,
+  type QBTCNetwork,
+  type QBTCHtlcParams,
+} from '../lib/qbtcService';
+import { getCurrentWallet, unlockWallet } from '@/lib/walletService';
+import { ethers } from 'ethers';
 
 // ─── Swap API base URL ───────────────────────────────────────────────────────
 // Defaults to '' (same-origin, proxied by Vercel to dedicated swap server).
@@ -298,15 +313,32 @@ function ActiveSwapPanel({ swap, onRefresh }: { swap: AtomicSwap; onRefresh: () 
 
 // ─── Create Offer Form ────────────────────────────────────────────────────────
 
-function CreateOfferForm({ onOfferCreated }: { onOfferCreated: () => void }) {
+function CreateOfferForm({
+  onOfferCreated,
+  defaultQbtcAddress,
+  defaultPubKeyHex,
+  defaultEvmAddress,
+}: {
+  onOfferCreated: () => void;
+  defaultQbtcAddress?: string;
+  defaultPubKeyHex?: string;
+  defaultEvmAddress?: string;
+}) {
   const [qbtcAmount, setQbtcAmount]               = useState('');
   const [usdcAmount, setUsdcAmount]               = useState('');
-  const [sellerQbtcAddress, setSellerQbtcAddress] = useState('');
-  const [sellerEvmAddress, setSellerEvmAddress]   = useState('');
-  const [sellerPubKeyHex, setSellerPubKeyHex]     = useState('');
+  const [sellerQbtcAddress, setSellerQbtcAddress] = useState(defaultQbtcAddress || '');
+  const [sellerEvmAddress, setSellerEvmAddress]   = useState(defaultEvmAddress || '');
+  const [sellerPubKeyHex, setSellerPubKeyHex]     = useState(defaultPubKeyHex || '');
   const [loading, setLoading]                     = useState(false);
   const [success, setSuccess]                     = useState(false);
   const [error, setError]                         = useState('');
+
+  // Auto-fill when wallet connects
+  useEffect(() => {
+    if (defaultQbtcAddress && !sellerQbtcAddress) setSellerQbtcAddress(defaultQbtcAddress);
+    if (defaultPubKeyHex && !sellerPubKeyHex) setSellerPubKeyHex(defaultPubKeyHex);
+    if (defaultEvmAddress && !sellerEvmAddress) setSellerEvmAddress(defaultEvmAddress);
+  }, [defaultQbtcAddress, defaultPubKeyHex, defaultEvmAddress]);
 
   const canPost =
     qbtcAmount.trim() !== '' &&
@@ -439,14 +471,20 @@ function AcceptOfferModal({
   offer,
   onClose,
   onSwapStarted,
+  defaultQbtcAddress,
+  defaultPubKeyHex,
+  defaultEvmAddress,
 }: {
   offer: SwapOffer;
   onClose: () => void;
   onSwapStarted: (swap: AcceptResponse) => void;
+  defaultQbtcAddress?: string;
+  defaultPubKeyHex?: string;
+  defaultEvmAddress?: string;
 }) {
-  const [buyerQbtcAddress, setBuyerQbtcAddress] = useState('');
-  const [buyerEvmAddress, setBuyerEvmAddress]   = useState('');
-  const [buyerPubKeyHex, setBuyerPubKeyHex]     = useState('');
+  const [buyerQbtcAddress, setBuyerQbtcAddress] = useState(defaultQbtcAddress || '');
+  const [buyerEvmAddress, setBuyerEvmAddress]   = useState(defaultEvmAddress || '');
+  const [buyerPubKeyHex, setBuyerPubKeyHex]     = useState(defaultPubKeyHex || '');
   const [loading, setLoading]                   = useState(false);
   const [error, setError]                       = useState('');
 
@@ -618,6 +656,452 @@ function SwapInstructions({ swapDetails }: { swapDetails: AcceptResponse }) {
   );
 }
 
+// ─── Wallet & Swap Workflow ───────────────────────────────────────────────────
+
+/** Persisted swap IDs in localStorage */
+const MY_SWAPS_KEY = 'qbtc_marketplace_my_swaps';
+function getStoredSwapIds(): string[] {
+  try { return JSON.parse(localStorage.getItem(MY_SWAPS_KEY) || '[]'); } catch { return []; }
+}
+function addStoredSwapId(swapId: string) {
+  const ids = getStoredSwapIds();
+  if (!ids.includes(swapId)) {
+    ids.push(swapId);
+    localStorage.setItem(MY_SWAPS_KEY, JSON.stringify(ids));
+  }
+}
+
+/** Hook: detect connected CryptoSparse wallet */
+function useConnectedWallet() {
+  const { user } = useUser();
+  const userId = user?.id || '';
+  const [walletAddress, setWalletAddress] = useState('');
+  const [walletPubKey, setWalletPubKey] = useState('');
+  const [walletEvmAddress, setWalletEvmAddress] = useState('');
+  const [walletId, setWalletId] = useState('');
+
+  useEffect(() => {
+    if (!userId) return;
+    (async () => {
+      try {
+        const wallet = await getCurrentWallet(userId);
+        if (wallet) {
+          setWalletId(wallet.id);
+          setWalletAddress(wallet.addresses?.qbtc || '');
+          setWalletPubKey(wallet.publicKeys?.qbtc || '');
+          setWalletEvmAddress(wallet.addresses?.ethereum || '');
+        }
+      } catch { /* no wallet */ }
+    })();
+  }, [userId]);
+
+  return { userId, walletId, walletAddress, walletPubKey, walletEvmAddress, hasWallet: !!walletAddress };
+}
+
+/** Hook: fetch swaps the connected wallet is involved in */
+function useMySwaps(walletAddress: string) {
+  const [mySwaps, setMySwaps] = useState<AtomicSwap[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchMySwaps = useCallback(async () => {
+    if (!walletAddress) return;
+    setLoading(true);
+    try {
+      const { data } = await axios.get<AtomicSwap[]>(
+        `${SWAP_API}/api/swap/by-address?qbtcAddress=${encodeURIComponent(walletAddress)}`
+      );
+      setMySwaps(data);
+      data.forEach(s => addStoredSwapId(s.id));
+    } catch { /* non-fatal */ }
+    finally { setLoading(false); }
+  }, [walletAddress]);
+
+  useEffect(() => {
+    fetchMySwaps();
+    const id = setInterval(fetchMySwaps, 15_000);
+    return () => clearInterval(id);
+  }, [fetchMySwaps]);
+
+  return { mySwaps, loading, refreshMySwaps: fetchMySwaps };
+}
+
+/** Wallet connection banner */
+function WalletBadge({ walletAddress, walletEvmAddress }: { walletAddress: string; walletEvmAddress: string }) {
+  if (!walletAddress) {
+    return (
+      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 flex items-center gap-3">
+        <Wallet className="w-4 h-4 text-amber-400 flex-shrink-0" />
+        <div className="text-amber-200 text-sm">
+          <p>
+            <span className="font-semibold">No wallet connected</span> — go to{' '}
+            <Link href="/wallet"><span className="text-cyan-300 underline cursor-pointer">Wallet</span></Link>{' '}
+            to create or import one. Your addresses and keys will auto-fill for swap signing.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-3 flex items-center gap-3">
+      <Wallet className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+      <div className="text-sm">
+        <p className="text-cyan-200">
+          <span className="font-semibold">Wallet Connected</span>{' '}
+          <span className="font-mono text-xs text-slate-400">{walletAddress.slice(0, 16)}…</span>
+        </p>
+        {walletEvmAddress && (
+          <p className="text-slate-400 text-xs mt-0.5">
+            EVM: <span className="font-mono">{walletEvmAddress.slice(0, 10)}…{walletEvmAddress.slice(-4)}</span>
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Seller: Lock QBTC in HTLC */
+function SellerLockPanel({
+  swap,
+  walletId,
+  onLocked,
+}: {
+  swap: AtomicSwap;
+  walletId: string;
+  onLocked: () => void;
+}) {
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [step, setStep] = useState<'idle' | 'unlocking' | 'building' | 'broadcasting' | 'reporting'>('idle');
+  const network: QBTCNetwork = isSwapMainnetActive() ? 'mainnet' : 'testnet';
+
+  const handleLock = async () => {
+    if (!password.trim()) { setError('Enter your wallet password'); return; }
+    setLoading(true);
+    setError('');
+    try {
+      // 1. Unlock wallet
+      setStep('unlocking');
+      const wallet = await unlockWallet(walletId, password);
+      const qbtcPrivateKey = wallet.privateKeys.qbtc;
+      if (!qbtcPrivateKey) throw new Error('QBTC private key not found in wallet');
+      const keyPair = QBTCKeyPair.fromECDSAPrivateKey(qbtcPrivateKey);
+
+      // 2. Build HTLC script & address
+      setStep('building');
+      const htlcParams: QBTCHtlcParams = {
+        buyerPubKeyHex: swap.buyerPubKeyHex,
+        sellerPubKeyHex: swap.sellerPubKeyHex,
+        secretHashHex: swap.secretHash,
+        locktime: swap.qbtcLocktime!,
+      };
+      const htlcScript = createHTLCScript(htlcParams);
+      const htlcAddress = getHTLCAddress(htlcScript, network);
+
+      // 3. Send QBTC to HTLC address
+      setStep('broadcasting');
+      const qbtcChain = new QBTCChain(getQBTCRpcSettings());
+      const txid = await qbtcChain.sendTransaction(keyPair, htlcAddress, swap.qbtcAmount);
+
+      // 4. Report to swap server
+      setStep('reporting');
+      await axios.post(`${SWAP_API}/api/swap/lock/qbtc`, {
+        swapId: swap.id,
+        qbtcHtlcTxid: txid,
+        qbtcHtlcAddress: htlcAddress,
+      });
+
+      setPassword('');
+      onLocked();
+    } catch (err: unknown) {
+      setError(getDisplayError(err, 'Failed to lock QBTC'));
+    } finally {
+      setLoading(false);
+      setStep('idle');
+    }
+  };
+
+  const stepLabel = {
+    idle: '',
+    unlocking: 'Unlocking wallet…',
+    building: 'Building HTLC transaction…',
+    broadcasting: 'Broadcasting to QBTC network…',
+    reporting: 'Confirming with swap server…',
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+        <p className="text-amber-200 text-sm font-semibold flex items-center gap-2">
+          <Lock className="w-4 h-4" />
+          Your turn: Lock {swap.qbtcAmount} QBTC in HTLC
+        </p>
+        <p className="text-amber-300/70 text-xs mt-1">
+          Enter your wallet password to sign and broadcast the HTLC transaction.
+          Funds are locked with a 48-hour refund window.
+        </p>
+      </div>
+
+      <div className="flex gap-2">
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && !loading && handleLock()}
+          placeholder="Wallet password"
+          className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
+        />
+        <button
+          onClick={handleLock}
+          disabled={loading || !password.trim()}
+          className="px-4 py-2 rounded-xl font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center gap-2"
+        >
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+          {loading ? 'Locking…' : 'Lock QBTC'}
+        </button>
+      </div>
+
+      {loading && step !== 'idle' && (
+        <p className="text-xs text-amber-300/60 flex items-center gap-2">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          {stepLabel[step]}
+        </p>
+      )}
+
+      {error && (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">{error}</div>
+      )}
+    </div>
+  );
+}
+
+/** Buyer: Lock USDC via MetaMask */
+function BuyerLockPanel({
+  swap,
+  onLocked,
+}: {
+  swap: AtomicSwap;
+  onLocked: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [step, setStep] = useState('');
+
+  const handleLock = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      // 1. Connect MetaMask
+      setStep('Connecting MetaMask…');
+      const windowEth = (window as any).ethereum;
+      if (!windowEth) throw new Error('MetaMask not detected. Please install it and try again.');
+      const provider = new ethers.BrowserProvider(windowEth);
+      await provider.send('eth_requestAccounts', []);
+      const signer = await provider.getSigner();
+
+      // Verify correct network (Sepolia for testnet)
+      const config = getSwapNetworkConfig();
+      const currentNetwork = await provider.getNetwork();
+      if (Number(currentNetwork.chainId) !== config.evmChainId) {
+        throw new Error(`Please switch MetaMask to ${config.network === 'mainnet' ? 'Ethereum Mainnet' : 'Sepolia testnet'} (chain ID ${config.evmChainId})`);
+      }
+
+      if (!config.htlcContractAddress) throw new Error('EVM HTLC contract not configured (set VITE_EVM_HTLC_CONTRACT)');
+      if (!config.usdcContractAddress) throw new Error('USDC contract not configured (set VITE_USDC_CONTRACT)');
+
+      // 2. Create HTLC
+      setStep('Approving USDC spend…');
+      const evmHTLC = new EvmHTLC({
+        contractAddress: config.htlcContractAddress,
+        usdcAddress: config.usdcContractAddress,
+        signerOrProvider: signer,
+      });
+
+      // Convert USDC amount to base units (6 decimals)
+      const usdcBaseUnits = BigInt(Math.round(Number(swap.usdcAmount) * 1_000_000));
+
+      setStep('Creating EVM HTLC — confirm in MetaMask…');
+      const contractId = await evmHTLC.initiate(
+        swap.sellerEvmAddress,
+        swap.secretHash,
+        swap.evmLocktime!,
+        usdcBaseUnits,
+      );
+
+      // 3. Report to swap server
+      setStep('Confirming with swap server…');
+      await axios.post(`${SWAP_API}/api/swap/lock/evm`, {
+        swapId: swap.id,
+        evmContractId: contractId,
+      });
+
+      onLocked();
+    } catch (err: unknown) {
+      setError(getDisplayError(err, 'Failed to lock USDC'));
+    } finally {
+      setLoading(false);
+      setStep('');
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 p-3">
+        <p className="text-purple-200 text-sm font-semibold flex items-center gap-2">
+          <Lock className="w-4 h-4" />
+          Your turn: Lock {swap.usdcAmount} USDC in EVM HTLC
+        </p>
+        <p className="text-purple-300/70 text-xs mt-1">
+          Connect MetaMask to approve USDC and create the hash time-lock on Sepolia.
+          Funds are locked with a 24-hour refund window.
+        </p>
+      </div>
+
+      <button
+        onClick={handleLock}
+        disabled={loading}
+        className="w-full py-2.5 rounded-xl font-semibold bg-gradient-to-r from-purple-500 to-pink-500 text-white disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2"
+      >
+        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
+        {loading ? step || 'Processing…' : 'Connect MetaMask & Lock USDC'}
+      </button>
+
+      {error && (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">{error}</div>
+      )}
+    </div>
+  );
+}
+
+/** Single swap card in "My Swaps" */
+function MySwapCard({
+  swap,
+  walletAddress,
+  walletId,
+  onRefresh,
+}: {
+  swap: AtomicSwap;
+  walletAddress: string;
+  walletId: string;
+  onRefresh: () => void;
+}) {
+  const isSeller = swap.sellerQbtcAddress?.toLowerCase() === walletAddress.toLowerCase();
+  const isBuyer = swap.buyerQbtcAddress?.toLowerCase() === walletAddress.toLowerCase();
+  const role = isSeller ? 'Seller' : isBuyer ? 'Buyer' : 'Unknown';
+
+  const qbtcCountdown = useCountdown(swap.qbtcLocktime);
+  const evmCountdown = useCountdown(swap.evmLocktime);
+
+  // Determine what action the user needs to take
+  const needsSellerLock = isSeller && swap.status === 'PENDING_QBTC_LOCK';
+  const needsBuyerLock = isBuyer && swap.status === 'QBTC_LOCKED';
+  const waitingForCounterparty =
+    (isSeller && swap.status === 'QBTC_LOCKED') ||
+    (isBuyer && swap.status === 'PENDING_QBTC_LOCK') ||
+    (isSeller && swap.status === 'EVM_LOCKED') ||
+    (isBuyer && swap.status === 'EVM_LOCKED');
+
+  return (
+    <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4 space-y-3">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className={`px-2 py-0.5 rounded-full border text-xs font-medium ${statusBadge(swap.status)}`}>
+            {statusLabel(swap.status)}
+          </span>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+            {role}
+          </span>
+        </div>
+        <span className="text-xs text-slate-500 font-mono">{swap.id.slice(0, 8)}…</span>
+      </div>
+
+      {/* Summary */}
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div>
+          <span className="text-slate-400">QBTC</span>
+          <p className="font-mono font-semibold">{swap.qbtcAmount}</p>
+        </div>
+        <div>
+          <span className="text-slate-400">USDC</span>
+          <p className="font-mono font-semibold">{swap.usdcAmount}</p>
+        </div>
+      </div>
+
+      {/* Timelocks */}
+      {(swap.qbtcLocktime || swap.evmLocktime) && (
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-2">
+            <span className="text-slate-500">QBTC Lock</span>
+            <p className="font-mono text-amber-300">{qbtcCountdown || '—'}</p>
+          </div>
+          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-2">
+            <span className="text-slate-500">USDC Lock</span>
+            <p className="font-mono text-purple-300">{evmCountdown || '—'}</p>
+          </div>
+        </div>
+      )}
+
+      {/* HTLC info */}
+      {swap.qbtcHtlcAddress && (
+        <div className="text-xs flex justify-between">
+          <span className="text-slate-400">QBTC HTLC</span>
+          <span className="font-mono text-cyan-400">{swap.qbtcHtlcAddress.slice(0, 18)}…</span>
+        </div>
+      )}
+      {swap.evmContractId && (
+        <div className="text-xs flex justify-between">
+          <span className="text-slate-400">EVM Contract</span>
+          <span className="font-mono text-purple-400">{swap.evmContractId.slice(0, 14)}…</span>
+        </div>
+      )}
+
+      {/* Secret (after completion) */}
+      {swap.secret && (
+        <div className="text-xs flex justify-between items-center">
+          <span className="text-slate-400">Secret</span>
+          <span className="font-mono text-emerald-400">{swap.secret.slice(0, 16)}…</span>
+        </div>
+      )}
+
+      {/* ─── Action Panels ─── */}
+      {needsSellerLock && (
+        <SellerLockPanel swap={swap} walletId={walletId} onLocked={onRefresh} />
+      )}
+
+      {needsBuyerLock && (
+        <BuyerLockPanel swap={swap} onLocked={onRefresh} />
+      )}
+
+      {waitingForCounterparty && (
+        <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 flex items-center gap-2">
+          <Clock className="w-4 h-4 text-blue-400" />
+          <p className="text-blue-300 text-xs">
+            {swap.status === 'PENDING_QBTC_LOCK' && isBuyer && 'Waiting for seller to lock QBTC…'}
+            {swap.status === 'QBTC_LOCKED' && isSeller && 'QBTC locked! Waiting for buyer to lock USDC…'}
+            {swap.status === 'EVM_LOCKED' && isSeller && 'Both sides locked! Server will claim USDC and reveal the secret automatically.'}
+            {swap.status === 'EVM_LOCKED' && isBuyer && 'Both sides locked! Waiting for seller to claim and reveal the secret…'}
+          </p>
+        </div>
+      )}
+
+      {swap.status === 'COMPLETE' && (
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <p className="text-emerald-300 text-xs font-medium">Swap complete! Both parties have been paid.</p>
+        </div>
+      )}
+
+      {(swap.status === 'EXPIRED' || swap.status === 'REFUNDED') && (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-400" />
+          <p className="text-red-300 text-xs">Swap expired. Funds can be reclaimed via timelocks.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function QBTCMarketplacePage() {
@@ -627,6 +1111,10 @@ export default function QBTCMarketplacePage() {
   const [swapDetails, setSwapDetails]     = useState<AcceptResponse | null>(null);
   const [activeSwap, setActiveSwap]       = useState<AtomicSwap | null>(null);
   const isMainnet = isSwapMainnetActive();
+
+  // ─── Wallet connection ───
+  const { userId, walletId, walletAddress, walletPubKey, walletEvmAddress, hasWallet } = useConnectedWallet();
+  const { mySwaps, loading: loadingMySwaps, refreshMySwaps } = useMySwaps(walletAddress);
 
   const fetchOffers = useCallback(async () => {
     setLoadingOffers(true);
@@ -664,7 +1152,9 @@ export default function QBTCMarketplacePage() {
   const handleSwapStarted = (details: AcceptResponse) => {
     setSelectedOffer(null);
     setSwapDetails(details);
+    addStoredSwapId(details.swapId);
     fetchOffers();
+    refreshMySwaps();
   };
 
   return (
@@ -724,6 +1214,55 @@ export default function QBTCMarketplacePage() {
         {/* Network banner */}
         {isMainnet ? <MainnetActiveBanner /> : <TestnetBanner />}
 
+        {/* Wallet connection */}
+        <WalletBadge walletAddress={walletAddress} walletEvmAddress={walletEvmAddress} />
+
+        {/* My Active Swaps */}
+        {mySwaps.length > 0 && (
+          <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <ArrowLeftRight className="w-5 h-5 text-cyan-400" />
+                My Swaps
+              </h2>
+              <button
+                onClick={refreshMySwaps}
+                disabled={loadingMySwaps}
+                className="p-2 rounded-lg hover:bg-slate-800 transition-colors"
+                title="Refresh"
+              >
+                <RefreshCw className={`w-4 h-4 text-slate-400 ${loadingMySwaps ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+            <div className="space-y-3">
+              {mySwaps.map(swap => (
+                <MySwapCard
+                  key={swap.id}
+                  swap={swap}
+                  walletAddress={walletAddress}
+                  walletId={walletId}
+                  onRefresh={refreshMySwaps}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Swap just accepted — instructions */}
+        {swapDetails && !mySwaps.find(s => s.id === swapDetails.swapId) && (
+          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5 space-y-3">
+            <div className="flex items-center gap-2 text-emerald-300">
+              <CheckCircle2 className="w-5 h-5" />
+              <span className="font-bold">Swap Initiated Successfully!</span>
+            </div>
+            <p className="text-sm text-emerald-200/70">
+              Swap <span className="font-mono">{swapDetails.swapId.slice(0, 8)}…</span> created.
+              The seller now needs to lock {swapDetails.qbtcAmount} QBTC in the HTLC.
+              This page will update automatically.
+            </p>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* ── Left/main column ── */}
           <div className="lg:col-span-2 space-y-6">
@@ -733,7 +1272,12 @@ export default function QBTCMarketplacePage() {
             )}
 
             {/* Create offer */}
-            <CreateOfferForm onOfferCreated={fetchOffers} />
+            <CreateOfferForm
+              onOfferCreated={fetchOffers}
+              defaultQbtcAddress={walletAddress}
+              defaultPubKeyHex={walletPubKey}
+              defaultEvmAddress={walletEvmAddress}
+            />
 
             {/* How It Works */}
             <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-6 space-y-5">
@@ -993,6 +1537,9 @@ export default function QBTCMarketplacePage() {
           offer={selectedOffer}
           onClose={() => setSelectedOffer(null)}
           onSwapStarted={handleSwapStarted}
+          defaultQbtcAddress={walletAddress}
+          defaultPubKeyHex={walletPubKey}
+          defaultEvmAddress={walletEvmAddress}
         />
       )}
     </div>

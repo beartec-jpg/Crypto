@@ -226,6 +226,32 @@ app.get('/api/swap/:swapId', async (req, res) => {
   }
 });
 
+// ─── GET /api/swap/by-address ───────────────────────────────────────────────
+
+app.get('/api/swap/by-address', async (req, res) => {
+  try {
+    const qbtcAddress = String(req.query.qbtcAddress || '').trim();
+    if (!qbtcAddress) return res.status(400).json({ error: 'qbtcAddress query param is required' });
+
+    const result = await pool.query(
+      `SELECT * FROM atomic_swaps
+       WHERE seller_qbtc_address = $1 OR buyer_qbtc_address = $1
+       ORDER BY created_at DESC
+       LIMIT 20`,
+      [qbtcAddress],
+    );
+
+    const swaps = result.rows.map((row: any) => {
+      const mapped = toCamelCase(row);
+      return { ...mapped, secret: row.status === 'COMPLETE' ? row.secret : null };
+    });
+    return res.json(swaps);
+  } catch (err: any) {
+    console.error('GET /api/swap/by-address:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to fetch swaps' });
+  }
+});
+
 // ─── POST /api/swap/lock/qbtc ───────────────────────────────────────────────
 
 app.post('/api/swap/lock/qbtc', async (req, res) => {
