@@ -49,9 +49,13 @@ type SwapStatus =
 
 interface SwapOffer {
   id: string;
+  offerType?: string;
   sellerQbtcAddress: string;
   sellerEvmAddress: string;
   sellerPubKeyHex: string;
+  buyerQbtcAddress?: string;
+  buyerEvmAddress?: string;
+  buyerPubKeyHex?: string;
   qbtcAmount: string;
   usdcAmountRequested: string;
   status: string;
@@ -591,6 +595,292 @@ function AcceptOfferModal({
   );
 }
 
+// ─── Create Buy Offer Form ────────────────────────────────────────────────────
+
+function CreateBuyOfferForm({
+  onOfferCreated,
+  defaultQbtcAddress,
+  defaultPubKeyHex,
+  defaultEvmAddress,
+}: {
+  onOfferCreated: () => void;
+  defaultQbtcAddress?: string;
+  defaultPubKeyHex?: string;
+  defaultEvmAddress?: string;
+}) {
+  const [qbtcAmount, setQbtcAmount]           = useState('');
+  const [usdcAmount, setUsdcAmount]           = useState('');
+  const [buyerQbtcAddress, setBuyerQbtcAddress] = useState(defaultQbtcAddress || '');
+  const [buyerEvmAddress, setBuyerEvmAddress]   = useState(defaultEvmAddress || '');
+  const [buyerPubKeyHex, setBuyerPubKeyHex]     = useState(defaultPubKeyHex || '');
+  const [loading, setLoading]                   = useState(false);
+  const [success, setSuccess]                   = useState(false);
+  const [error, setError]                       = useState('');
+
+  useEffect(() => {
+    if (defaultQbtcAddress && !buyerQbtcAddress) setBuyerQbtcAddress(defaultQbtcAddress);
+    if (defaultPubKeyHex && !buyerPubKeyHex) setBuyerPubKeyHex(defaultPubKeyHex);
+    if (defaultEvmAddress && !buyerEvmAddress) setBuyerEvmAddress(defaultEvmAddress);
+  }, [defaultQbtcAddress, defaultPubKeyHex, defaultEvmAddress]);
+
+  const canPost =
+    qbtcAmount.trim() !== '' &&
+    usdcAmount.trim() !== '' &&
+    buyerQbtcAddress.toLowerCase().startsWith('qbtct1') &&
+    buyerEvmAddress.startsWith('0x') && buyerEvmAddress.length === 42 &&
+    buyerPubKeyHex.length === 66;
+
+  const handlePost = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      await axios.post(`${SWAP_API}/api/swap/buy-offer`, {
+        buyerQbtcAddress,
+        buyerEvmAddress,
+        buyerPubKeyHex,
+        qbtcAmount,
+        usdcAmountOffered: usdcAmount,
+      });
+      setSuccess(true);
+      setQbtcAmount('');
+      setUsdcAmount('');
+      setBuyerQbtcAddress('');
+      setBuyerEvmAddress('');
+      setBuyerPubKeyHex('');
+      onOfferCreated();
+      setTimeout(() => setSuccess(false), 4000);
+    } catch (err: unknown) {
+      setError(getDisplayError(err, 'Failed to post buy offer'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-6 space-y-5">
+      <h2 className="text-xl font-bold flex items-center gap-2">
+        <Wallet className="w-5 h-5 text-emerald-400" />
+        Post Buy Offer
+      </h2>
+      <p className="text-sm text-slate-400">
+        Put up your USDC and wait for sellers to fulfil. You specify how much QBTC you want and how much USDC you'll pay.
+      </p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="text-sm text-slate-300 block mb-1.5">QBTC Amount Wanted</label>
+          <input
+            type="number"
+            value={qbtcAmount}
+            onChange={(e) => setQbtcAmount(e.target.value)}
+            placeholder="e.g. 1.0"
+            min="0"
+            className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-400 focus:outline-none text-sm"
+          />
+        </div>
+        <div>
+          <label className="text-sm text-slate-300 block mb-1.5">USDC Offered</label>
+          <input
+            type="number"
+            value={usdcAmount}
+            onChange={(e) => setUsdcAmount(e.target.value)}
+            placeholder="e.g. 45000"
+            min="0"
+            className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-400 focus:outline-none text-sm"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="text-sm text-slate-300 block mb-1.5">Your QBTC Address (to receive QBTC)</label>
+        <input
+          type="text"
+          value={buyerQbtcAddress}
+          onChange={(e) => setBuyerQbtcAddress(e.target.value)}
+          placeholder="qbtct1q…"
+          className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-400 focus:outline-none font-mono text-sm"
+        />
+      </div>
+
+      <div>
+        <label className="text-sm text-slate-300 block mb-1.5">
+          Your ECDSA Public Key (hex, 66 chars)
+          <span className="ml-2 text-slate-500 text-xs">— from QBTC Wallet page</span>
+        </label>
+        <input
+          type="text"
+          value={buyerPubKeyHex}
+          onChange={(e) => setBuyerPubKeyHex(e.target.value)}
+          placeholder="02… or 03…"
+          className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-400 focus:outline-none font-mono text-sm"
+        />
+      </div>
+
+      <div>
+        <label className="text-sm text-slate-300 block mb-1.5">Your EVM Address (to pay USDC from)</label>
+        <input
+          type="text"
+          value={buyerEvmAddress}
+          onChange={(e) => setBuyerEvmAddress(e.target.value)}
+          placeholder="0x…"
+          className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-400 focus:outline-none font-mono text-sm"
+        />
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">
+          {error}
+        </div>
+      )}
+
+      {success ? (
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 flex items-center gap-3">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+          <p className="text-emerald-300 text-sm font-medium">Buy offer posted! Sellers can now fulfil it.</p>
+        </div>
+      ) : (
+        <button
+          onClick={handlePost}
+          disabled={!canPost || loading}
+          className="w-full py-3 rounded-xl font-semibold bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed hover:from-emerald-400 hover:to-cyan-400 transition-all"
+        >
+          {loading ? 'Posting…' : 'Post Buy Offer'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── Fulfil Buy Offer Modal (seller accepts a buy offer) ─────────────────────
+
+function FulfillBuyOfferModal({
+  offer,
+  onClose,
+  onSwapStarted,
+  defaultQbtcAddress,
+  defaultPubKeyHex,
+  defaultEvmAddress,
+}: {
+  offer: SwapOffer;
+  onClose: () => void;
+  onSwapStarted: (swap: AcceptResponse) => void;
+  defaultQbtcAddress?: string;
+  defaultPubKeyHex?: string;
+  defaultEvmAddress?: string;
+}) {
+  const [sellerQbtcAddress, setSellerQbtcAddress] = useState(defaultQbtcAddress || '');
+  const [sellerEvmAddress, setSellerEvmAddress]   = useState(defaultEvmAddress || '');
+  const [sellerPubKeyHex, setSellerPubKeyHex]     = useState(defaultPubKeyHex || '');
+  const [loading, setLoading]                     = useState(false);
+  const [error, setError]                         = useState('');
+
+  const canAccept =
+    sellerQbtcAddress.toLowerCase().startsWith('qbtct1') &&
+    sellerEvmAddress.startsWith('0x') && sellerEvmAddress.length === 42 &&
+    sellerPubKeyHex.length === 66;
+
+  const handleFulfil = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const { data } = await axios.post<AcceptResponse>(`${SWAP_API}/api/swap/accept-buy/${offer.id}`, {
+        sellerQbtcAddress,
+        sellerEvmAddress,
+        sellerPubKeyHex,
+      });
+      onSwapStarted(data);
+    } catch (err: unknown) {
+      setError(getDisplayError(err, 'Failed to fulfil buy offer'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-lg w-full space-y-5">
+        <h3 className="text-lg font-bold">Fulfil Buy Offer</h3>
+
+        <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 text-sm space-y-2">
+          <div className="flex justify-between">
+            <span className="text-slate-400">Buyer Wants</span>
+            <span className="font-semibold">{offer.qbtcAmount} QBTC</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Buyer Pays</span>
+            <span className="font-semibold">{offer.usdcAmountRequested} USDC</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Buyer</span>
+            <span className="font-mono text-xs text-slate-400">{(offer.buyerQbtcAddress || '').slice(0, 16)}…</span>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs text-emerald-200/80">
+          <p>You will sell <strong>{offer.qbtcAmount} QBTC</strong> and receive <strong>{offer.usdcAmountRequested} USDC</strong> via atomic swap.</p>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-sm text-slate-300 block mb-1.5">Your QBTC Address (to send QBTC from)</label>
+            <input
+              type="text"
+              value={sellerQbtcAddress}
+              onChange={(e) => setSellerQbtcAddress(e.target.value)}
+              placeholder="qbtct1q…"
+              className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-400 focus:outline-none font-mono text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-sm text-slate-300 block mb-1.5">
+              Your ECDSA Public Key (hex, 66 chars)
+            </label>
+            <input
+              type="text"
+              value={sellerPubKeyHex}
+              onChange={(e) => setSellerPubKeyHex(e.target.value)}
+              placeholder="02… or 03…"
+              className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-400 focus:outline-none font-mono text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-sm text-slate-300 block mb-1.5">Your EVM Address (to receive USDC)</label>
+            <input
+              type="text"
+              value={sellerEvmAddress}
+              onChange={(e) => setSellerEvmAddress(e.target.value)}
+              placeholder="0x…"
+              className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-400 focus:outline-none font-mono text-sm"
+            />
+          </div>
+        </div>
+
+        {error && (
+          <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl border border-slate-600 text-slate-300 hover:bg-slate-800 transition-colors text-sm"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleFulfil}
+            disabled={!canAccept || loading}
+            className="flex-1 py-2.5 rounded-xl font-semibold bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed hover:from-emerald-400 hover:to-cyan-400 transition-all text-sm"
+          >
+            {loading ? 'Fulfilling…' : 'Fulfil & Initiate Swap'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Swap Instructions Panel ──────────────────────────────────────────────────
 
 function SwapInstructions({ swapDetails }: { swapDetails: AcceptResponse }) {
@@ -1106,10 +1396,13 @@ function MySwapCard({
 
 export default function QBTCMarketplacePage() {
   const [offers, setOffers]               = useState<SwapOffer[]>([]);
+  const [buyOffers, setBuyOffers]         = useState<SwapOffer[]>([]);
   const [loadingOffers, setLoadingOffers] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState<SwapOffer | null>(null);
+  const [selectedBuyOffer, setSelectedBuyOffer] = useState<SwapOffer | null>(null);
   const [swapDetails, setSwapDetails]     = useState<AcceptResponse | null>(null);
   const [activeSwap, setActiveSwap]       = useState<AtomicSwap | null>(null);
+  const [marketTab, setMarketTab]         = useState<'sell' | 'buy'>('sell');
   const isMainnet = isSwapMainnetActive();
 
   // ─── Wallet connection ───
@@ -1119,8 +1412,12 @@ export default function QBTCMarketplacePage() {
   const fetchOffers = useCallback(async () => {
     setLoadingOffers(true);
     try {
-      const { data } = await axios.get<SwapOffer[]>(`${SWAP_API}/api/swap/offers`);
-      setOffers(data);
+      const [sellRes, buyRes] = await Promise.all([
+        axios.get<SwapOffer[]>(`${SWAP_API}/api/swap/offers`),
+        axios.get<SwapOffer[]>(`${SWAP_API}/api/swap/buy-offers`),
+      ]);
+      setOffers(sellRes.data);
+      setBuyOffers(buyRes.data);
     } catch {
       // non-fatal
     } finally {
@@ -1151,6 +1448,7 @@ export default function QBTCMarketplacePage() {
 
   const handleSwapStarted = (details: AcceptResponse) => {
     setSelectedOffer(null);
+    setSelectedBuyOffer(null);
     setSwapDetails(details);
     addStoredSwapId(details.swapId);
     fetchOffers();
@@ -1271,13 +1569,38 @@ export default function QBTCMarketplacePage() {
               <SwapInstructions swapDetails={swapDetails} />
             )}
 
-            {/* Create offer */}
-            <CreateOfferForm
-              onOfferCreated={fetchOffers}
-              defaultQbtcAddress={walletAddress}
-              defaultPubKeyHex={walletPubKey}
-              defaultEvmAddress={walletEvmAddress}
-            />
+            {/* Sell / Buy tab toggle */}
+            <div className="flex rounded-xl border border-slate-700 bg-slate-900/60 overflow-hidden">
+              <button
+                onClick={() => setMarketTab('sell')}
+                className={`flex-1 py-3 text-sm font-semibold transition-colors ${marketTab === 'sell' ? 'bg-cyan-500/20 text-cyan-300 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-slate-200'}`}
+              >
+                Sell QBTC
+              </button>
+              <button
+                onClick={() => setMarketTab('buy')}
+                className={`flex-1 py-3 text-sm font-semibold transition-colors ${marketTab === 'buy' ? 'bg-emerald-500/20 text-emerald-300 border-b-2 border-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}
+              >
+                Buy QBTC
+              </button>
+            </div>
+
+            {/* Create offer — shows sell or buy form based on tab */}
+            {marketTab === 'sell' ? (
+              <CreateOfferForm
+                onOfferCreated={fetchOffers}
+                defaultQbtcAddress={walletAddress}
+                defaultPubKeyHex={walletPubKey}
+                defaultEvmAddress={walletEvmAddress}
+              />
+            ) : (
+              <CreateBuyOfferForm
+                onOfferCreated={fetchOffers}
+                defaultQbtcAddress={walletAddress}
+                defaultPubKeyHex={walletPubKey}
+                defaultEvmAddress={walletEvmAddress}
+              />
+            )}
 
             {/* How It Works */}
             <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-6 space-y-5">
@@ -1386,7 +1709,8 @@ export default function QBTCMarketplacePage() {
                 Trade Stats
               </h2>
               {[
-                { label: 'Open Offers', value: String(offers.length) },
+                { label: 'Sell Offers', value: String(offers.length) },
+                { label: 'Buy Offers', value: String(buyOffers.length) },
                 { label: 'Network', value: isMainnet ? 'Mainnet' : 'Testnet' },
                 { label: 'QBTC Chain', value: isMainnet ? 'Mainnet (:58332)' : 'Testnet (:28332)' },
                 { label: 'EVM Chain', value: isMainnet ? 'Ethereum' : 'Sepolia' },
@@ -1449,67 +1773,151 @@ export default function QBTCMarketplacePage() {
             </button>
           </div>
 
-          {offers.length === 0 ? (
-            <div className="text-center py-10 text-slate-500 text-sm">
-              {loadingOffers ? 'Loading offers…' : 'No open offers yet. Be the first to post one!'}
-            </div>
-          ) : (
-            <>
-              {/* Desktop table */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-slate-400 border-b border-slate-800">
-                      <th className="pb-3 pr-4 font-medium">QBTC</th>
-                      <th className="pb-3 pr-4 font-medium">USDC</th>
-                      <th className="pb-3 pr-4 font-medium">Rate</th>
-                      <th className="pb-3 pr-4 font-medium">Seller</th>
-                      <th className="pb-3 font-medium">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800">
-                    {offers.map((offer) => (
-                      <tr key={offer.id} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="py-3 pr-4 font-mono font-semibold">{offer.qbtcAmount}</td>
-                        <td className="py-3 pr-4 font-mono">{offer.usdcAmountRequested}</td>
-                        <td className="py-3 pr-4 font-mono text-xs text-slate-400">
-                          {Number(offer.qbtcAmount) > 0 ? (Number(offer.usdcAmountRequested) / Number(offer.qbtcAmount)).toFixed(2) : "—"} USDC/QBTC
-                        </td>
-                        <td className="py-3 pr-4 font-mono text-xs text-slate-400">
-                          {offer.sellerQbtcAddress.slice(0, 14)}…
-                        </td>
-                        <td className="py-3">
-                          <button
-                            onClick={() => setSelectedOffer(offer)}
-                            className="px-3 py-1 rounded-lg text-xs font-semibold border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors"
-                          >
-                            Accept
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          {/* Sell / Buy offer tabs */}
+          <div className="flex rounded-lg border border-slate-700 overflow-hidden text-sm">
+            <button
+              onClick={() => setMarketTab('sell')}
+              className={`flex-1 py-2 font-medium transition-colors ${marketTab === 'sell' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              Sell Offers ({offers.length})
+            </button>
+            <button
+              onClick={() => setMarketTab('buy')}
+              className={`flex-1 py-2 font-medium transition-colors ${marketTab === 'buy' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              Buy Offers ({buyOffers.length})
+            </button>
+          </div>
 
-              {/* Mobile cards */}
-              <div className="md:hidden space-y-3">
-                {offers.map((offer) => (
-                  <div key={offer.id} className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono font-semibold">{offer.qbtcAmount} QBTC</span>
-                      <span className="font-mono text-slate-300">{offer.usdcAmountRequested} USDC</span>
-                    </div>
-                    <p className="text-xs text-slate-500 font-mono">{offer.sellerQbtcAddress.slice(0, 18)}…</p>
-                    <button
-                      onClick={() => setSelectedOffer(offer)}
-                      className="w-full py-2 rounded-lg text-xs font-semibold border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors"
-                    >
-                      Accept Offer
-                    </button>
+          {/* Sell Offers (ASK) */}
+          {marketTab === 'sell' && (
+            <>
+              {offers.length === 0 ? (
+                <div className="text-center py-10 text-slate-500 text-sm">
+                  {loadingOffers ? 'Loading offers…' : 'No sell offers yet. Be the first to post one!'}
+                </div>
+              ) : (
+                <>
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-slate-400 border-b border-slate-800">
+                          <th className="pb-3 pr-4 font-medium">QBTC</th>
+                          <th className="pb-3 pr-4 font-medium">USDC</th>
+                          <th className="pb-3 pr-4 font-medium">Rate</th>
+                          <th className="pb-3 pr-4 font-medium">Seller</th>
+                          <th className="pb-3 font-medium">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800">
+                        {offers.map((offer) => (
+                          <tr key={offer.id} className="hover:bg-slate-800/40 transition-colors">
+                            <td className="py-3 pr-4 font-mono font-semibold">{offer.qbtcAmount}</td>
+                            <td className="py-3 pr-4 font-mono">{offer.usdcAmountRequested}</td>
+                            <td className="py-3 pr-4 font-mono text-xs text-slate-400">
+                              {Number(offer.qbtcAmount) > 0 ? (Number(offer.usdcAmountRequested) / Number(offer.qbtcAmount)).toFixed(2) : "—"} USDC/QBTC
+                            </td>
+                            <td className="py-3 pr-4 font-mono text-xs text-slate-400">
+                              {offer.sellerQbtcAddress.slice(0, 14)}…
+                            </td>
+                            <td className="py-3">
+                              <button
+                                onClick={() => setSelectedOffer(offer)}
+                                className="px-3 py-1 rounded-lg text-xs font-semibold border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors"
+                              >
+                                Accept
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                ))}
-              </div>
+                  <div className="md:hidden space-y-3">
+                    {offers.map((offer) => (
+                      <div key={offer.id} className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-semibold">{offer.qbtcAmount} QBTC</span>
+                          <span className="font-mono text-slate-300">{offer.usdcAmountRequested} USDC</span>
+                        </div>
+                        <p className="text-xs text-slate-500 font-mono">{offer.sellerQbtcAddress.slice(0, 18)}…</p>
+                        <button
+                          onClick={() => setSelectedOffer(offer)}
+                          className="w-full py-2 rounded-lg text-xs font-semibold border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors"
+                        >
+                          Accept Offer
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {/* Buy Offers (BID) */}
+          {marketTab === 'buy' && (
+            <>
+              {buyOffers.length === 0 ? (
+                <div className="text-center py-10 text-slate-500 text-sm">
+                  {loadingOffers ? 'Loading offers…' : 'No buy offers yet. Post one to attract sellers!'}
+                </div>
+              ) : (
+                <>
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-slate-400 border-b border-slate-800">
+                          <th className="pb-3 pr-4 font-medium">QBTC Wanted</th>
+                          <th className="pb-3 pr-4 font-medium">USDC Offered</th>
+                          <th className="pb-3 pr-4 font-medium">Rate</th>
+                          <th className="pb-3 pr-4 font-medium">Buyer</th>
+                          <th className="pb-3 font-medium">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800">
+                        {buyOffers.map((offer) => (
+                          <tr key={offer.id} className="hover:bg-slate-800/40 transition-colors">
+                            <td className="py-3 pr-4 font-mono font-semibold">{offer.qbtcAmount}</td>
+                            <td className="py-3 pr-4 font-mono">{offer.usdcAmountRequested}</td>
+                            <td className="py-3 pr-4 font-mono text-xs text-slate-400">
+                              {Number(offer.qbtcAmount) > 0 ? (Number(offer.usdcAmountRequested) / Number(offer.qbtcAmount)).toFixed(2) : "—"} USDC/QBTC
+                            </td>
+                            <td className="py-3 pr-4 font-mono text-xs text-slate-400">
+                              {(offer.buyerQbtcAddress || '').slice(0, 14)}…
+                            </td>
+                            <td className="py-3">
+                              <button
+                                onClick={() => setSelectedBuyOffer(offer)}
+                                className="px-3 py-1 rounded-lg text-xs font-semibold border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 transition-colors"
+                              >
+                                Fulfil
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="md:hidden space-y-3">
+                    {buyOffers.map((offer) => (
+                      <div key={offer.id} className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-semibold">{offer.qbtcAmount} QBTC</span>
+                          <span className="font-mono text-slate-300">{offer.usdcAmountRequested} USDC</span>
+                        </div>
+                        <p className="text-xs text-slate-500 font-mono">{(offer.buyerQbtcAddress || '').slice(0, 18)}…</p>
+                        <button
+                          onClick={() => setSelectedBuyOffer(offer)}
+                          className="w-full py-2 rounded-lg text-xs font-semibold border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 transition-colors"
+                        >
+                          Fulfil Buy Offer
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
@@ -1536,6 +1944,18 @@ export default function QBTCMarketplacePage() {
         <AcceptOfferModal
           offer={selectedOffer}
           onClose={() => setSelectedOffer(null)}
+          onSwapStarted={handleSwapStarted}
+          defaultQbtcAddress={walletAddress}
+          defaultPubKeyHex={walletPubKey}
+          defaultEvmAddress={walletEvmAddress}
+        />
+      )}
+
+      {/* Fulfil buy offer modal */}
+      {selectedBuyOffer && (
+        <FulfillBuyOfferModal
+          offer={selectedBuyOffer}
+          onClose={() => setSelectedBuyOffer(null)}
           onSwapStarted={handleSwapStarted}
           defaultQbtcAddress={walletAddress}
           defaultPubKeyHex={walletPubKey}
