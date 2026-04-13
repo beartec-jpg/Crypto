@@ -94,20 +94,22 @@ const handleVerify = async () => {
 
   try {
     if (chain === 'ethereum' || chain === 'bsc') {
+      const normalizedTokenAddress = tokenAddress.trim();
+
       // Validate Ethereum/BSC address
-      if (!/^0x[a-fA-F0-9]{40}$/.test(tokenAddress)) {
+      if (!/^0x[a-fA-F0-9]{40}$/.test(normalizedTokenAddress)) {
         throw new Error('Invalid contract address format');
       }
 
       // Fetch ERC-20/BEP-20 token info with network support
-      const tokenInfo = await fetchERC20TokenInfo(tokenAddress, chain, network);
+      const tokenInfo = await fetchERC20TokenInfo(normalizedTokenAddress, chain, network);
       
       const token: Partial<Token> = {
-        id: `${chain === 'ethereum' ? 'erc20' : 'bep20'}-${tokenAddress}-${network}`,
+        id: `${chain === 'ethereum' ? 'erc20' : 'bep20'}-${normalizedTokenAddress}-${network}`,
         chain,
         network,
         standard: chain === 'ethereum' ? 'ERC-20' : 'BEP-20',
-        contractAddress: tokenAddress,
+        contractAddress: normalizedTokenAddress,
         symbol: tokenInfo.symbol || 'UNKNOWN',
         name: tokenInfo.name || 'Unknown Token',
         decimals: tokenInfo.decimals || 18,

@@ -6,13 +6,34 @@ import { Contract, JsonRpcProvider } from 'ethers';
 import { xrplService } from './xrpService';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 
-// ERC-20 ABI (minimal - only what we need)
+// ERC-20 ABI (string-returning metadata)
 const ERC20_ABI = [
   'function name() view returns (string)',
   'function symbol() view returns (string)',
   'function decimals() view returns (uint8)',
   'function balanceOf(address) view returns (uint256)',
 ];
+
+// Some legacy tokens expose name/symbol as bytes32 instead of string.
+const ERC20_BYTES32_ABI = [
+  'function name() view returns (bytes32)',
+  'function symbol() view returns (bytes32)',
+  'function decimals() view returns (uint8)',
+];
+
+function decodeBytes32Text(value: string): string {
+  const hex = value.startsWith('0x') ? value.slice(2) : value;
+  if (!hex || hex.length % 2 !== 0) return '';
+
+  let decoded = '';
+  for (let i = 0; i < hex.length; i += 2) {
+    const byte = parseInt(hex.slice(i, i + 2), 16);
+    if (!Number.isFinite(byte) || byte === 0) break;
+    decoded += String.fromCharCode(byte);
+  }
+
+  return decoded.trim();
+}
 
 export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana' | 'qbtc';
 export type TokenStandard = 'ERC-20' | 'BEP-20' | 'SPL' | 'XRPL' | 'QBTC';
@@ -255,6 +276,9 @@ export async function fetchERC20TokenInfo(
   };
 
   const endpoints = RPC_ENDPOINTS[chain];
+  const expectedChainId = chain === 'ethereum'
+    ? (network === 'testnet' ? 11155111 : 1)
+    : (network === 'testnet' ? 97 : 56);
   let lastError: Error | null = null;
 
   // Try each RPC endpoint in sequence
@@ -265,14 +289,48 @@ export async function fetchERC20TokenInfo(
       console.log(`[Token Verify] Attempt ${i + 1}/${endpoints.length} using ${rpcUrl}`);
       
       const provider = new JsonRpcProvider(rpcUrl);
+      const networkInfo = await provider.getNetwork();
+      if (Number(networkInfo.chainId) !== expectedChainId) {
+        throw new Error(`RPC network mismatch: expected chainId ${expectedChainId}, got ${networkInfo.chainId.toString()}`);
+      }
+
+      const code = await provider.getCode(contractAddress);
+      if (code === '0x') {
+        throw new Error('No contract code at this address on the selected network');
+      }
+
       const contract = new Contract(contractAddress, ERC20_ABI, provider);
 
-      // Fetch token info in parallel with timeout
-      const [name, symbol, decimals] = await Promise.all([
-        contract.name(),
-        contract.symbol(),
-        contract.decimals(),
-      ]);
+      let name: string;
+      let symbol: string;
+      let decimals: number;
+
+      try {
+        // Primary path for standard ERC-20 contracts.
+        const [nameRaw, symbolRaw, decimalsRaw] = await Promise.all([
+          contract.name(),
+          contract.symbol(),
+          contract.decimals(),
+        ]);
+        name = String(nameRaw);
+        symbol = String(symbolRaw);
+        decimals = Number(decimalsRaw);
+      } catch (primaryError: any) {
+        // Fallback for tokens that return bytes32 metadata.
+        const contractBytes32 = new Contract(contractAddress, ERC20_BYTES32_ABI, provider);
+        const [nameRaw, symbolRaw, decimalsRaw] = await Promise.all([
+          contractBytes32.name(),
+          contractBytes32.symbol(),
+          contractBytes32.decimals(),
+        ]);
+        name = decodeBytes32Text(String(nameRaw));
+        symbol = decodeBytes32Text(String(symbolRaw));
+        decimals = Number(decimalsRaw);
+
+        if (!name || !symbol) {
+          throw primaryError;
+        }
+      }
 
       // Validate we got actual values (not empty/null)
       if (!symbol || symbol === '' || symbol === null) {
@@ -282,9 +340,9 @@ export async function fetchERC20TokenInfo(
       console.log(`[Token Verify] Success: ${symbol} (${name})`);
 
       return {
-        name: String(name),
-        symbol: String(symbol),
-        decimals: Number(decimals),
+        name,
+        symbol,
+        decimals,
       };
     } catch (error: any) {
       console.warn(`[Token Verify] RPC ${rpcUrl} failed:`, error.message);
@@ -301,7 +359,7 @@ export async function fetchERC20TokenInfo(
   console.error('[Token Verify] All RPC endpoints failed for contract:', contractAddress);
   throw new Error(
     `Failed to fetch token information after trying ${endpoints.length} RPC endpoints. ` +
-    `Please verify the contract address is valid. Last error: ${lastError?.message || 'Unknown error'}`
+    `Please verify the contract address exists on the selected network. Last error: ${lastError?.message || 'Unknown error'}`
   );
 }
 
