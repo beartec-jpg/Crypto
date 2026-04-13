@@ -544,33 +544,53 @@ export class QBTCChain {
 // ─── HTLC support ───────────────────────────────────────────────────────────
 
 export interface QBTCHtlcParams {
-  buyerPubKeyHex: string;
+  buyerPubKeyHex?: string; // optional — omit for hash-only (seller-lock-first) variant
   sellerPubKeyHex: string;
   secretHashHex: string; // SHA-256 hash of the secret, hex-encoded
   locktime: number;      // absolute block height or unix timestamp (use timestamp for CLTV)
 }
 
 /**
- * Builds a P2WSH HTLC redeem script:
+ * Builds a P2WSH HTLC redeem script.
  *
+ * If buyerPubKeyHex is provided (standard mode):
  *   OP_IF
  *     OP_SHA256 <secretHash> OP_EQUALVERIFY <buyerPubKey> OP_CHECKSIG
  *   OP_ELSE
  *     <locktime> OP_CHECKLOCKTIMEVERIFY OP_DROP <sellerPubKey> OP_CHECKSIG
  *   OP_ENDIF
  *
- * The buyer can spend by presenting the secret + hybrid PQC sig.
- * The seller can refund after locktime with their hybrid PQC sig.
+ * If buyerPubKeyHex is omitted (hash-only / seller-lock-first mode):
+ *   OP_IF
+ *     OP_SHA256 <secretHash> OP_EQUAL
+ *   OP_ELSE
+ *     <locktime> OP_CHECKLOCKTIMEVERIFY OP_DROP <sellerPubKey> OP_CHECKSIG
+ *   OP_ENDIF
+ *
+ * In hash-only mode anyone with the secret can claim. This is safe for atomic
+ * swaps because the secret is only revealed when the seller claims EVM USDC,
+ * at which point the buyer immediately uses it to claim QBTC.
  */
 export function createHTLCScript(params: QBTCHtlcParams): Buffer {
   const { buyerPubKeyHex, sellerPubKeyHex, secretHashHex, locktime } = params;
+
+  const claimBranch = buyerPubKeyHex
+    ? [
+        bitcoin.opcodes.OP_SHA256,
+        Buffer.from(secretHashHex, 'hex'),
+        bitcoin.opcodes.OP_EQUALVERIFY,
+        Buffer.from(buyerPubKeyHex, 'hex'),
+        bitcoin.opcodes.OP_CHECKSIG,
+      ]
+    : [
+        bitcoin.opcodes.OP_SHA256,
+        Buffer.from(secretHashHex, 'hex'),
+        bitcoin.opcodes.OP_EQUAL,
+      ];
+
   return bitcoin.script.compile([
     bitcoin.opcodes.OP_IF,
-      bitcoin.opcodes.OP_SHA256,
-      Buffer.from(secretHashHex, 'hex'),
-      bitcoin.opcodes.OP_EQUALVERIFY,
-      Buffer.from(buyerPubKeyHex, 'hex'),
-      bitcoin.opcodes.OP_CHECKSIG,
+      ...claimBranch,
     bitcoin.opcodes.OP_ELSE,
       bitcoin.script.number.encode(locktime),
       bitcoin.opcodes.OP_CHECKLOCKTIMEVERIFY,
@@ -596,24 +616,16 @@ export function getHTLCAddress(htlcScript: Buffer, network: QBTCNetwork): string
 /**
  * Builds and signs a P2WSH HTLC claim transaction (buyer path).
  *
- * Witness structure per input:
- *   [OP_0 (empty), secret, ecdsa_sig, ecdsa_pubkey, dilithium_sig, dilithium_pubkey, htlcScript]
- *
- * OP_0 for the claim path means nSequence = 0; CLTV is not used on this
- * branch. The actual witness layout is:
- *   [<empty>, secret, ecdsaSig, ecdsaPubkey, dilithiumSig, dilithiumPubkey, htlcScript]
- *
- * The script evaluates: OP_IF pops the top stack item (empty = truthy due to
- * OP_IF semantics for a non-zero-length byte array pushed by the secret being
- * present). Actually the OP_IF branch is taken when the item is non-empty/truthy.
- * The empty buffer left after the secret is consumed by OP_SHA256/OP_EQUALVERIFY
- * satisfies the initial stack. The secret itself triggers OP_IF (truthy → claim branch).
+ * Supports two modes:
+ * 1. Standard (claimerKeyPair provided): witness = [secret, ecdsaSig, ecdsaPub, dilSig, dilPub, htlcScript]
+ * 2. Hash-only (claimerKeyPair omitted): witness = [secret, OP_1, htlcScript]
+ *    Used for seller-lock-first HTLCs where anyone with the secret can claim.
  */
 export function createHTLCClaimTransaction(
   htlcScript: Buffer,
   utxos: QBTCUtxo[],
   secretHex: string,
-  claimerKeyPair: QBTCKeyPair,
+  claimerKeyPair: QBTCKeyPair | null,
   outputAddress: string,
   network: QBTCNetwork,
   feeRate = 10,
@@ -621,10 +633,10 @@ export function createHTLCClaimTransaction(
   const net = QBTC_NETWORKS[network];
   const totalInput = utxos.reduce((s, u) => s + toSats(u.amount), 0);
 
-  // Estimate vsize: P2WSH inputs have a larger witness than P2WPKH
-  // Base: ~10 + 41*n inputs + 31*n outputs; witness per input: secret + PQC sig elements + script
   const secretLen = Buffer.from(secretHex, 'hex').length;
-  const witnessOverhead = 1 + (secretLen + 3) + 73 + 34 + 2423 + 1315 + htlcScript.length + 10;
+  const witnessOverhead = claimerKeyPair
+    ? 1 + (secretLen + 3) + 73 + 34 + 2423 + 1315 + htlcScript.length + 10
+    : 1 + (secretLen + 3) + 2 + htlcScript.length + 10;
   const weight = (10 + utxos.length * 41 + 31) * 4 + utxos.length * witnessOverhead;
   const vSize = Math.ceil(weight / 4);
   const fee = Math.max(1, Math.ceil(vSize * feeRate));
@@ -638,23 +650,32 @@ export function createHTLCClaimTransaction(
   tx.version = 2;
 
   for (const utxo of utxos) {
-    tx.addInput(Buffer.from(utxo.txid, 'hex').reverse(), utxo.vout, 0); // sequence 0 required for CLTV disabled path
+    tx.addInput(Buffer.from(utxo.txid, 'hex').reverse(), utxo.vout, 0);
   }
   tx.addOutput(bitcoin.address.toOutputScript(outputAddress, net), outputSats);
 
   utxos.forEach((utxo, idx) => {
-    // For P2WSH the scriptCode IS the redeem script
-    const digest = tx.hashForWitnessV0(idx, htlcScript, toSats(utxo.amount), bitcoin.Transaction.SIGHASH_ALL);
-    const witness = claimerKeyPair.signDigestForWitness(digest);
-    tx.setWitness(idx, [
-      Buffer.alloc(0),              // OP_0 placeholder (script expects stack top = secret for OP_IF)
-      Buffer.from(secretHex, 'hex'),
-      witness.ecdsaSignature,
-      witness.ecdsaPublicKey,
-      witness.dilithiumSignature,
-      witness.dilithiumPublicKey,
-      htlcScript,
-    ]);
+    if (claimerKeyPair) {
+      // Standard mode: signature required
+      const digest = tx.hashForWitnessV0(idx, htlcScript, toSats(utxo.amount), bitcoin.Transaction.SIGHASH_ALL);
+      const witness = claimerKeyPair.signDigestForWitness(digest);
+      tx.setWitness(idx, [
+        Buffer.alloc(0),
+        Buffer.from(secretHex, 'hex'),
+        witness.ecdsaSignature,
+        witness.ecdsaPublicKey,
+        witness.dilithiumSignature,
+        witness.dilithiumPublicKey,
+        htlcScript,
+      ]);
+    } else {
+      // Hash-only mode: secret is enough to claim
+      tx.setWitness(idx, [
+        Buffer.from(secretHex, 'hex'),  // secret → OP_IF (truthy) → OP_SHA256 → OP_EQUAL
+        Buffer.from([0x01]),            // OP_TRUE to trigger OP_IF branch
+        htlcScript,
+      ]);
+    }
   });
 
   return tx.toHex();

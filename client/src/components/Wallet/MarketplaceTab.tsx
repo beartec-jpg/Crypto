@@ -48,6 +48,10 @@ interface SwapOffer {
   sellerPubKeyHex: string;
   qbtcAmount: string;
   usdcAmountRequested: string;
+  secretHash: string | null;
+  qbtcLocktime: number | null;
+  qbtcHtlcTxid: string | null;
+  qbtcHtlcAddress: string | null;
   status: string;
   createdAt: string;
 }
@@ -83,6 +87,9 @@ interface AcceptResponse {
   buyerPubKeyHex: string;
   qbtcAmount: string;
   usdcAmount: string;
+  status: string;
+  qbtcHtlcTxid: string | null;
+  qbtcHtlcAddress: string | null;
 }
 
 interface MarketplaceTabProps {
@@ -181,7 +188,7 @@ function SellerLockPanel({
 
       setStep('building');
       const htlcParams: QBTCHtlcParams = {
-        buyerPubKeyHex: swap.buyerPubKeyHex,
+        // Hash-only HTLC: no buyerPubKeyHex — anyone with secret can claim
         sellerPubKeyHex: swap.sellerPubKeyHex,
         secretHashHex: swap.secretHash,
         locktime: swap.qbtcLocktime!,
@@ -497,9 +504,11 @@ export default function MarketplaceTab({
   // Create offer form
   const [qbtcAmount, setQbtcAmount] = useState('');
   const [usdcAmount, setUsdcAmount] = useState('');
+  const [postPassword, setPostPassword] = useState('');
   const [postLoading, setPostLoading] = useState(false);
   const [postSuccess, setPostSuccess] = useState(false);
   const [postError, setPostError] = useState('');
+  const [postStep, setPostStep] = useState('');
 
   // Accept modal
   const [acceptLoading, setAcceptLoading] = useState(false);
@@ -507,6 +516,7 @@ export default function MarketplaceTab({
   const [acceptSuccess, setAcceptSuccess] = useState<AcceptResponse | null>(null);
 
   const isMainnet = isSwapMainnetActive();
+  const network: QBTCNetwork = isMainnet ? 'mainnet' : 'testnet';
 
   const fetchOffers = useCallback(async () => {
     setLoadingOffers(true);
@@ -536,29 +546,64 @@ export default function MarketplaceTab({
     return () => clearInterval(id);
   }, [fetchMySwaps]);
 
-  // ─── Post offer (addresses come from wallet — zero manual input) ───
-  const canPost = qbtcAmount.trim() !== '' && usdcAmount.trim() !== '' && walletAddress && walletPubKey && walletEvmAddress;
+  // ─── Post offer + lock QBTC in one step ───
+  const canPost = qbtcAmount.trim() !== '' && usdcAmount.trim() !== '' && postPassword.trim() !== '' && walletAddress && walletPubKey && walletEvmAddress;
 
   const handlePost = async () => {
     setPostLoading(true);
     setPostError('');
     try {
-      await axios.post(`${SWAP_API}/api/swap/offer`, {
+      // 1. Create offer on server (generates secret + hash)
+      setPostStep('Creating offer…');
+      const { data: offer } = await axios.post(`${SWAP_API}/api/swap/offer`, {
         sellerQbtcAddress: walletAddress,
         sellerEvmAddress: walletEvmAddress,
         sellerPubKeyHex: walletPubKey,
         qbtcAmount,
         usdcAmountRequested: usdcAmount,
       });
+
+      // 2. Unlock wallet
+      setPostStep('Unlocking wallet…');
+      const wallet = await unlockWallet(walletId, postPassword);
+      const qbtcPrivateKey = wallet.privateKeys.qbtc;
+      if (!qbtcPrivateKey) throw new Error('QBTC private key not found');
+      const keyPair = QBTCKeyPair.fromECDSAPrivateKey(qbtcPrivateKey);
+
+      // 3. Build hash-only HTLC (no buyer needed)
+      setPostStep('Building HTLC…');
+      const htlcParams: QBTCHtlcParams = {
+        sellerPubKeyHex: walletPubKey,
+        secretHashHex: offer.secretHash,
+        locktime: offer.qbtcLocktime,
+      };
+      const htlcScript = createHTLCScript(htlcParams);
+      const htlcAddress = getHTLCAddress(htlcScript, network);
+
+      // 4. Broadcast QBTC to HTLC address
+      setPostStep('Broadcasting QBTC…');
+      const qbtcChain = new QBTCChain(getQBTCRpcSettings());
+      const txid = await qbtcChain.sendTransaction(keyPair, htlcAddress, qbtcAmount);
+
+      // 5. Report lock to server
+      setPostStep('Confirming lock…');
+      await axios.post(`${SWAP_API}/api/swap/lock/offer`, {
+        offerId: offer.id,
+        qbtcHtlcTxid: txid,
+        qbtcHtlcAddress: htlcAddress,
+      });
+
       setPostSuccess(true);
       setQbtcAmount('');
       setUsdcAmount('');
+      setPostPassword('');
       fetchOffers();
-      setTimeout(() => setPostSuccess(false), 4000);
+      setTimeout(() => setPostSuccess(false), 6000);
     } catch (err: unknown) {
-      setPostError(getDisplayError(err, 'Failed to post offer'));
+      setPostError(getDisplayError(err, 'Failed to post & lock offer'));
     } finally {
       setPostLoading(false);
+      setPostStep('');
     }
   };
 
@@ -573,10 +618,11 @@ export default function MarketplaceTab({
         buyerEvmAddress: walletEvmAddress,
         buyerPubKeyHex: walletPubKey,
       });
-      setSelectedOffer(null);
       setAcceptSuccess(data);
+      setSelectedOffer(null);
       fetchOffers();
       fetchMySwaps();
+      // If QBTC is already locked, buyer should see the USDC lock prompt immediately
       // Auto-dismiss after 30s
       setTimeout(() => setAcceptSuccess(null), 30_000);
     } catch (err: unknown) {
@@ -627,9 +673,10 @@ export default function MarketplaceTab({
           </div>
           <p className="text-emerald-200/80 text-xs">
             Swap <span className="font-mono">{acceptSuccess.swapId.slice(0, 8)}…</span> created.
-            The seller now needs to lock <span className="font-semibold">{acceptSuccess.qbtcAmount} QBTC</span> in the HTLC.
-            Once confirmed, you'll be prompted to lock your USDC via MetaMask.
-            This page auto-refreshes every 15 seconds.
+            {acceptSuccess.status === 'QBTC_LOCKED'
+              ? <>The seller's QBTC is already locked! You can now lock your <span className="font-semibold">{acceptSuccess.usdcAmount} USDC</span> below in Active Swaps.</>
+              : <>The seller needs to lock <span className="font-semibold">{acceptSuccess.qbtcAmount} QBTC</span> in the HTLC. Once confirmed, you'll be prompted to lock your USDC. This page auto-refreshes every 15 seconds.</>
+            }
           </p>
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="rounded-lg border border-slate-700 bg-slate-950/40 p-2">
@@ -661,13 +708,13 @@ export default function MarketplaceTab({
         </div>
       )}
 
-      {/* ─── Post Sell Offer ─── */}
+      {/* ─── Post & Lock Offer ─── */}
       <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-5 space-y-4">
         <h3 className="text-base font-bold flex items-center gap-2">
           <Send className="w-4 h-4 text-cyan-400" /> Sell QBTC
         </h3>
         <p className="text-xs text-slate-400">
-          Set the amount of QBTC you want to sell and the USDC price. Your wallet addresses are used automatically.
+          Set the amount and price. Your QBTC will be locked in an HTLC immediately — ready for any buyer to accept.
         </p>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -687,20 +734,34 @@ export default function MarketplaceTab({
             />
           </div>
         </div>
+        <div>
+          <label className="text-xs text-slate-300 block mb-1">Wallet Password</label>
+          <input
+            type="password" value={postPassword} onChange={(e) => setPostPassword(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && canPost && !postLoading && handlePost()}
+            placeholder="Required to sign the HTLC transaction"
+            className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
+          />
+        </div>
         {postError && (
           <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">{postError}</div>
+        )}
+        {postLoading && postStep && (
+          <p className="text-xs text-cyan-300/60 flex items-center gap-2">
+            <Loader2 className="w-3 h-3 animate-spin" /> {postStep}
+          </p>
         )}
         {postSuccess ? (
           <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <p className="text-emerald-300 text-sm font-medium">Offer posted!</p>
+            <p className="text-emerald-300 text-sm font-medium">Offer posted & QBTC locked in HTLC!</p>
           </div>
         ) : (
           <button
             onClick={handlePost} disabled={!canPost || postLoading}
             className="w-full py-2.5 rounded-xl font-semibold bg-gradient-to-r from-blue-500 to-cyan-500 text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
           >
-            {postLoading ? 'Posting…' : 'Post Sell Offer'}
+            {postLoading ? 'Posting & Locking…' : 'Post & Lock QBTC'}
           </button>
         )}
       </div>
@@ -731,6 +792,11 @@ export default function MarketplaceTab({
                       <span className="font-mono font-semibold">{offer.qbtcAmount} QBTC</span>
                       <span className="text-slate-500">→</span>
                       <span className="font-mono">{offer.usdcAmountRequested} USDC</span>
+                      {offer.status === 'LOCKED' && (
+                        <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-semibold">
+                          QBTC LOCKED
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-slate-500 font-mono mt-0.5">
                       {isOwn ? '(Your offer)' : `${offer.sellerQbtcAddress.slice(0, 16)}…`}

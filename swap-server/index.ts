@@ -126,12 +126,20 @@ app.post('/api/swap/offer', async (req, res) => {
     if (!qbtcAmount        || typeof qbtcAmount        !== 'string') return res.status(400).json({ error: 'qbtcAmount is required' });
     if (!usdcAmountRequested || typeof usdcAmountRequested !== 'string') return res.status(400).json({ error: 'usdcAmountRequested is required' });
 
+    // Generate secret + hash at offer creation time so seller can lock immediately
+    const secretBytes = crypto.randomBytes(32);
+    const secretHex   = secretBytes.toString('hex');
+    const secretHash  = crypto.createHash('sha256').update(secretBytes).digest('hex');
+    const now          = Math.floor(Date.now() / 1000);
+    const qbtcLocktime = now + SWAP_QBTC_TIMELOCK_SECS;
+
     const result = await pool.query(
-      `INSERT INTO swap_offers (seller_qbtc_address, seller_evm_address, seller_pub_key_hex, qbtc_amount, usdc_amount_requested, status, created_at)
-       VALUES ($1, $2, $3, $4, $5, 'OPEN', NOW()) RETURNING *`,
-      [sellerQbtcAddress, sellerEvmAddress, sellerPubKeyHex, qbtcAmount, usdcAmountRequested],
+      `INSERT INTO swap_offers (seller_qbtc_address, seller_evm_address, seller_pub_key_hex, qbtc_amount, usdc_amount_requested, secret, secret_hash, qbtc_locktime, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'OPEN', NOW()) RETURNING *`,
+      [sellerQbtcAddress, sellerEvmAddress, sellerPubKeyHex, qbtcAmount, usdcAmountRequested, secretHex, secretHash, qbtcLocktime],
     );
-    return res.json(toCamelCase(result.rows[0]));
+    const offer = result.rows[0];
+    return res.json({ ...toCamelCase(offer), secretHash, qbtcLocktime });
   } catch (err: any) {
     console.error('POST /api/swap/offer:', err.message);
     return res.status(500).json({ error: err.message || 'Failed to create offer' });
@@ -142,8 +150,14 @@ app.post('/api/swap/offer', async (req, res) => {
 
 app.get('/api/swap/offers', async (_req, res) => {
   try {
-    const result = await pool.query(`SELECT * FROM swap_offers WHERE status = 'OPEN' ORDER BY created_at ASC`);
-    return res.json(result.rows.map(toCamelCase));
+    const result = await pool.query(`SELECT * FROM swap_offers WHERE status IN ('OPEN', 'LOCKED') ORDER BY created_at ASC`);
+    // Never expose secret in offer listing — only secretHash
+    const mapped = result.rows.map((row: any) => {
+      const c = toCamelCase(row);
+      delete (c as any).secret;
+      return c;
+    });
+    return res.json(mapped);
   } catch (err: any) {
     console.error('GET /api/swap/offers:', err.message);
     return res.status(500).json({ error: err.message || 'Failed to fetch offers' });
@@ -166,28 +180,34 @@ app.post('/api/swap/accept/:offerId', async (req, res) => {
     if (!offer) return res.status(404).json({ error: 'Offer not found' });
     if (offer.status !== 'OPEN') return res.status(409).json({ error: 'Offer is no longer open' });
 
-    const secretBytes = crypto.randomBytes(32);
-    const secretHex   = secretBytes.toString('hex');
-    const secretHash  = crypto.createHash('sha256').update(secretBytes).digest('hex');
+    // Copy secret/hash from the offer (generated at offer creation time)
+    const secretHex   = offer.secret;
+    const secretHash  = offer.secret_hash;
+    if (!secretHex || !secretHash) return res.status(422).json({ error: 'Offer is missing secret/hash (legacy offer)' });
 
     const now          = Math.floor(Date.now() / 1000);
-    const qbtcLocktime = now + SWAP_QBTC_TIMELOCK_SECS;
+    const qbtcLocktime = offer.qbtc_locktime || (now + SWAP_QBTC_TIMELOCK_SECS);
     const evmLocktime  = now + SWAP_EVM_TIMELOCK_SECS;
+
+    // Determine initial status based on whether seller already locked QBTC
+    const initialStatus = offer.qbtc_htlc_txid ? 'QBTC_LOCKED' : 'PENDING_QBTC_LOCK';
 
     const swapResult = await pool.query(
       `INSERT INTO atomic_swaps (
         offer_id, seller_qbtc_address, seller_evm_address, seller_pub_key_hex,
         buyer_qbtc_address, buyer_evm_address, buyer_pub_key_hex,
         qbtc_amount, usdc_amount, secret_hash, secret,
+        qbtc_htlc_txid, qbtc_htlc_address,
         qbtc_locktime, evm_locktime, status, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'PENDING_QBTC_LOCK',NOW(),NOW()) RETURNING *`,
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),NOW()) RETURNING *`,
       [
         offerId,
         offer.seller_qbtc_address, offer.seller_evm_address, offer.seller_pub_key_hex,
         buyerQbtcAddress, buyerEvmAddress, buyerPubKeyHex,
         offer.qbtc_amount, offer.usdc_amount_requested,
         secretHash, secretHex,
-        qbtcLocktime, evmLocktime,
+        offer.qbtc_htlc_txid || null, offer.qbtc_htlc_address || null,
+        qbtcLocktime, evmLocktime, initialStatus,
       ],
     );
     const swap = swapResult.rows[0];
@@ -203,6 +223,9 @@ app.post('/api/swap/accept/:offerId', async (req, res) => {
       buyerPubKeyHex,
       qbtcAmount: offer.qbtc_amount,
       usdcAmount: offer.usdc_amount_requested,
+      status: initialStatus,
+      qbtcHtlcTxid: offer.qbtc_htlc_txid || null,
+      qbtcHtlcAddress: offer.qbtc_htlc_address || null,
     });
   } catch (err: any) {
     console.error('POST /api/swap/accept:', err.message);
@@ -249,6 +272,56 @@ app.get('/api/swap/by-address', async (req, res) => {
   } catch (err: any) {
     console.error('GET /api/swap/by-address:', err.message);
     return res.status(500).json({ error: err.message || 'Failed to fetch swaps' });
+  }
+});
+
+// ─── POST /api/swap/lock/qbtc ───────────────────────────────────────────────
+
+// ─── POST /api/swap/lock/offer ──────────────────────────────────────────────
+// Lock QBTC against an offer (seller locks BEFORE any buyer accepts)
+
+app.post('/api/swap/lock/offer', async (req, res) => {
+  try {
+    const { offerId, qbtcHtlcTxid, qbtcHtlcAddress } = req.body || {};
+    if (!offerId || !qbtcHtlcTxid || !qbtcHtlcAddress) {
+      return res.status(400).json({ error: 'offerId, qbtcHtlcTxid, and qbtcHtlcAddress are required' });
+    }
+
+    const offerResult = await pool.query('SELECT * FROM swap_offers WHERE id = $1', [offerId]);
+    const offer = offerResult.rows[0];
+    if (!offer) return res.status(404).json({ error: 'Offer not found' });
+    if (offer.status !== 'OPEN') return res.status(409).json({ error: `Cannot lock QBTC for offer in status: ${offer.status}` });
+
+    // Verify HTLC transaction on-chain
+    try {
+      const tx = await qbtcRpcCall('getrawtransaction', [qbtcHtlcTxid, true]);
+      const expectedMinSats = qbtcToSats(offer.qbtc_amount);
+      const target = String(qbtcHtlcAddress).toLowerCase();
+
+      let matched = false;
+      for (const vout of tx?.vout || []) {
+        const spk = vout?.scriptPubKey || {};
+        const addrs: string[] = [
+          ...(spk?.address ? [String(spk.address)] : []),
+          ...(Array.isArray(spk?.addresses) ? spk.addresses.map(String) : []),
+        ];
+        if (!addrs.some((a) => a.toLowerCase() === target)) continue;
+        const val = typeof vout?.value === 'number' ? vout.value.toFixed(8) : String(vout?.value ?? '0');
+        if (qbtcToSats(val) >= expectedMinSats) { matched = true; break; }
+      }
+      if (!matched) return res.status(422).json({ error: 'QBTC HTLC tx does not contain the expected funding output' });
+    } catch (rpcErr: any) {
+      return res.status(422).json({ error: `QBTC HTLC txid not found on chain: ${rpcErr.message}` });
+    }
+
+    await pool.query(
+      `UPDATE swap_offers SET qbtc_htlc_txid = $1, qbtc_htlc_address = $2, status = 'LOCKED' WHERE id = $3`,
+      [qbtcHtlcTxid, qbtcHtlcAddress, offerId],
+    );
+    return res.json({ status: 'LOCKED', offerId });
+  } catch (err: any) {
+    console.error('POST /api/swap/lock/offer:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to record offer QBTC lock' });
   }
 });
 
