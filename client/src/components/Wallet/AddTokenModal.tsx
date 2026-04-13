@@ -99,8 +99,8 @@ const handleVerify = async () => {
         throw new Error('Invalid contract address format');
       }
 
-      // Fetch ERC-20/BEP-20 token info - ✅ NOW PASSES CHAIN PARAMETER
-      const tokenInfo = await fetchERC20TokenInfo(tokenAddress, chain);
+      // Fetch ERC-20/BEP-20 token info with network support
+      const tokenInfo = await fetchERC20TokenInfo(tokenAddress, chain, network);
       
       const token: Partial<Token> = {
         id: `${chain === 'ethereum' ? 'erc20' : 'bep20'}-${tokenAddress}-${network}`,

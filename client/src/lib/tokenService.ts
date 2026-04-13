@@ -214,20 +214,34 @@ export async function clearWalletTokens(walletId: string): Promise<void> {
 
 /**
  * Fetch ERC-20 token info with RPC fallback and retry logic
+ * Supports both mainnet and testnet chains
  */
-export async function fetchERC20TokenInfo(contractAddress: string, chain: 'ethereum' | 'bsc' = 'ethereum'): Promise<{
+export async function fetchERC20TokenInfo(
+  contractAddress: string,
+  chain: 'ethereum' | 'bsc' = 'ethereum',
+  network: TokenNetwork = 'mainnet'
+): Promise<{
   name: string;
   symbol: string;
   decimals: number;
 }> {
   // Multiple reliable RPC endpoints - cycles through on failure
   const RPC_ENDPOINTS = {
-    ethereum: [
+    ethereum: network === 'testnet' ? [
+      'https://sepolia.infura.io/v3/84842078b09946638c03eedb7d5225e4',
+      'https://sepolia.lodestar.io',
+      'https://eth-sepolia-public.unifra.io',
+      'https://endpoints.omnirpc.io/sepolia',
+    ] : [
       'https://eth.llamarpc.com',
       'https://rpc.ankr.com/eth',
       'https://ethereum.publicnode.com',
     ],
-    bsc: [
+    bsc: network === 'testnet' ? [
+      'https://data-seed-prebsc-1-s1.binance.org:8545/',
+      'https://data-seed-prebsc-2-s1.binance.org:8545/',
+      'https://data-seed-prebsc-1-s2.binance.org:8545/',
+    ] : [
       'https://bsc-dataseed.binance.org/',
       'https://bsc-dataseed1.binance.org/',
       'https://bsc-dataseed2.binance.org/',
