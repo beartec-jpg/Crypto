@@ -12,7 +12,6 @@ import {
   Lock,
   Send,
   RefreshCw,
-  ExternalLink,
   Info,
   KeyRound,
   Loader2,
@@ -263,34 +262,39 @@ function SellerLockPanel({
 
 function BuyerLockPanel({
   swap,
+  walletId,
   onLocked,
 }: {
   swap: AtomicSwap;
+  walletId: string;
   onLocked: () => void;
 }) {
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [step, setStep] = useState('');
 
   const handleLock = async () => {
+    if (!password.trim()) { setError('Enter your wallet password'); return; }
     setLoading(true);
     setError('');
     try {
-      setStep('Connecting MetaMask…');
-      const windowEth = (window as any).ethereum;
-      if (!windowEth) throw new Error('MetaMask not detected. Please install it and try again.');
-      const provider = new ethers.BrowserProvider(windowEth);
-      await provider.send('eth_requestAccounts', []);
-      const signer = await provider.getSigner();
+      // 1. Unlock wallet to get Ethereum private key
+      setStep('Unlocking wallet…');
+      const wallet = await unlockWallet(walletId, password);
+      const ethPrivateKey = wallet.privateKeys.ethereum;
+      if (!ethPrivateKey) throw new Error('Ethereum private key not found in wallet');
 
+      // 2. Create ethers.Wallet signer from the wallet's key
+      setStep('Connecting to EVM network…');
       const config = getSwapNetworkConfig();
-      const currentNetwork = await provider.getNetwork();
-      if (Number(currentNetwork.chainId) !== config.evmChainId) {
-        throw new Error(`Switch MetaMask to ${config.network === 'mainnet' ? 'Ethereum Mainnet' : 'Sepolia'} (chain ID ${config.evmChainId})`);
-      }
       if (!config.htlcContractAddress) throw new Error('EVM HTLC contract not configured (VITE_EVM_HTLC_CONTRACT)');
       if (!config.usdcContractAddress) throw new Error('USDC contract not configured (VITE_USDC_CONTRACT)');
 
+      const provider = new ethers.JsonRpcProvider(config.evmRpcUrl);
+      const signer = new ethers.Wallet('0x' + ethPrivateKey, provider);
+
+      // 3. Approve USDC + create HTLC
       setStep('Approving USDC spend…');
       const evmHTLC = new EvmHTLC({
         contractAddress: config.htlcContractAddress,
@@ -300,7 +304,7 @@ function BuyerLockPanel({
 
       const usdcBaseUnits = BigInt(Math.round(Number(swap.usdcAmount) * 1_000_000));
 
-      setStep('Creating EVM HTLC — confirm in MetaMask…');
+      setStep('Creating EVM HTLC…');
       const contractId = await evmHTLC.initiate(
         swap.sellerEvmAddress,
         swap.secretHash,
@@ -308,12 +312,14 @@ function BuyerLockPanel({
         usdcBaseUnits,
       );
 
+      // 4. Report to swap server
       setStep('Confirming with swap server…');
       await axios.post(`${SWAP_API}/api/swap/lock/evm`, {
         swapId: swap.id,
         evmContractId: contractId,
       });
 
+      setPassword('');
       onLocked();
     } catch (err: unknown) {
       setError(getDisplayError(err, 'Failed to lock USDC'));
@@ -331,17 +337,32 @@ function BuyerLockPanel({
           Your turn: Lock {swap.usdcAmount} USDC in EVM HTLC
         </p>
         <p className="text-purple-300/70 text-xs mt-1">
-          Connect MetaMask to approve USDC and create the hash time-lock on Sepolia. 24-hour refund window.
+          Enter your wallet password to approve USDC and create the hash time-lock on {isSwapMainnetActive() ? 'Ethereum' : 'Sepolia'}. 24-hour refund window.
         </p>
       </div>
-      <button
-        onClick={handleLock}
-        disabled={loading}
-        className="w-full py-2.5 rounded-xl font-semibold bg-gradient-to-r from-purple-500 to-pink-500 text-white disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2"
-      >
-        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
-        {loading ? step || 'Processing…' : 'Connect MetaMask & Lock USDC'}
-      </button>
+      <div className="flex gap-2">
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && !loading && handleLock()}
+          placeholder="Wallet password"
+          className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-purple-400 focus:outline-none text-sm"
+        />
+        <button
+          onClick={handleLock}
+          disabled={loading || !password.trim()}
+          className="px-4 py-2 rounded-xl font-semibold bg-gradient-to-r from-purple-500 to-pink-500 text-white disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center gap-2"
+        >
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+          {loading ? 'Locking…' : 'Lock USDC'}
+        </button>
+      </div>
+      {loading && step && (
+        <p className="text-xs text-purple-300/60 flex items-center gap-2">
+          <Loader2 className="w-3 h-3 animate-spin" /> {step}
+        </p>
+      )}
       {error && (
         <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">{error}</div>
       )}
@@ -428,7 +449,7 @@ function SwapCard({
       )}
 
       {needsSellerLock && <SellerLockPanel swap={swap} walletId={walletId} onLocked={onRefresh} />}
-      {needsBuyerLock && <BuyerLockPanel swap={swap} onLocked={onRefresh} />}
+      {needsBuyerLock && <BuyerLockPanel swap={swap} walletId={walletId} onLocked={onRefresh} />}
 
       {waitingForOther && (
         <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 flex items-center gap-2">
