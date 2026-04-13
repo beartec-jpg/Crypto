@@ -1,12 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'wouter';
-import { useUser } from '@clerk/clerk-react';
 import axios from 'axios';
 import {
   AlertTriangle,
   ArrowLeftRight,
   CheckCircle2,
-  Clock,
   Lock,
   Send,
   ShieldCheck,
@@ -14,177 +12,26 @@ import {
   Users,
   RefreshCw,
   ExternalLink,
-  Info,
   Wallet,
-  KeyRound,
-  Loader2,
 } from 'lucide-react';
-import { isSwapMainnetActive, EvmHTLC, getSwapNetworkConfig } from '../lib/evmHTLC';
-import {
-  QBTCKeyPair,
-  QBTCChain,
-  createHTLCScript,
-  getHTLCAddress,
-  getQBTCRpcSettings,
-  type QBTCNetwork,
-  type QBTCHtlcParams,
-} from '../lib/qbtcService';
-import { getCurrentWallet, unlockWallet } from '@/lib/walletService';
-import { ethers } from 'ethers';
+import { isSwapMainnetActive } from '../lib/evmHTLC';
 
-// ─── Swap API base URL ───────────────────────────────────────────────────────
-// Defaults to '' (same-origin, proxied by Vercel to dedicated swap server).
-// Set VITE_SWAP_API_URL only for local dev pointing at a direct server URL.
 const SWAP_API = (import.meta.env.VITE_SWAP_API_URL || '').replace(/\/$/, '');
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
-type SwapStatus =
-  | 'PENDING_QBTC_LOCK'
-  | 'QBTC_LOCKED'
-  | 'EVM_LOCKED'
-  | 'COMPLETE'
-  | 'REFUNDED'
-  | 'EXPIRED';
 
 interface SwapOffer {
   id: string;
   offerType?: string;
   sellerQbtcAddress: string;
-  sellerEvmAddress: string;
-  sellerPubKeyHex: string;
   buyerQbtcAddress?: string;
-  buyerEvmAddress?: string;
-  buyerPubKeyHex?: string;
   qbtcAmount: string;
   usdcAmountRequested: string;
   status: string;
   createdAt: string;
 }
 
-interface AtomicSwap {
-  id: string;
-  offerId: string;
-  sellerQbtcAddress: string;
-  sellerEvmAddress: string;
-  sellerPubKeyHex: string;
-  buyerQbtcAddress: string;
-  buyerEvmAddress: string;
-  buyerPubKeyHex: string;
-  qbtcAmount: string;
-  usdcAmount: string;
-  secretHash: string;
-  secret: string | null;
-  qbtcHtlcTxid: string | null;
-  qbtcHtlcAddress: string | null;
-  evmContractId: string | null;
-  qbtcLocktime: number | null;
-  evmLocktime: number | null;
-  status: SwapStatus;
-  createdAt: string;
-}
-
-interface AcceptResponse {
-  swapId: string;
-  secretHash: string;
-  qbtcLocktime: number;
-  evmLocktime: number;
-  sellerPubKeyHex: string;
-  buyerPubKeyHex: string;
-  qbtcAmount: string;
-  usdcAmount: string;
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function useCountdown(unixTs: number | null): string {
-  const [label, setLabel] = useState('');
-
-  useEffect(() => {
-    if (!unixTs) return;
-    const tick = () => {
-      const diff = unixTs - Math.floor(Date.now() / 1000);
-      if (diff <= 0) { setLabel('Expired'); return; }
-      const h = Math.floor(diff / 3600);
-      const m = Math.floor((diff % 3600) / 60);
-      const s = diff % 60;
-      setLabel(`${h}h ${m}m ${s}s`);
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [unixTs]);
-
-  return label;
-}
-
-function statusBadge(status: SwapStatus | string) {
-  switch (status) {
-    case 'OPEN':             return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
-    case 'PENDING_QBTC_LOCK': return 'bg-amber-500/20 text-amber-300 border-amber-500/40';
-    case 'QBTC_LOCKED':     return 'bg-blue-500/20 text-blue-300 border-blue-500/40';
-    case 'EVM_LOCKED':      return 'bg-purple-500/20 text-purple-300 border-purple-500/40';
-    case 'COMPLETE':        return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
-    case 'EXPIRED':
-    case 'REFUNDED':        return 'bg-red-500/20 text-red-300 border-red-500/40';
-    default:                return 'bg-slate-700 text-slate-400 border-slate-600';
-  }
-}
-
-function statusLabel(status: SwapStatus | string) {
-  switch (status) {
-    case 'PENDING_QBTC_LOCK': return 'Awaiting QBTC Lock';
-    case 'QBTC_LOCKED':     return 'QBTC Locked';
-    case 'EVM_LOCKED':      return 'USDC Locked';
-    case 'COMPLETE':        return 'Complete';
-    case 'EXPIRED':         return 'Expired';
-    case 'REFUNDED':        return 'Refunded';
-    default:                return status;
-  }
-}
-
-function getDisplayError(error: unknown, fallback: string): string {
-  if (typeof error === 'string' && error.trim() !== '') {
-    return error;
-  }
-
-  if (error && typeof error === 'object') {
-    const typedError = error as {
-      message?: unknown;
-      response?: {
-        data?: {
-          error?: unknown;
-          message?: unknown;
-        };
-      };
-    };
-
-    const responseError = typedError.response?.data?.error;
-    if (typeof responseError === 'string' && responseError.trim() !== '') {
-      return responseError;
-    }
-
-    if (responseError && typeof responseError === 'object') {
-      const nestedMessage = (responseError as { message?: unknown }).message;
-      if (typeof nestedMessage === 'string' && nestedMessage.trim() !== '') {
-        return nestedMessage;
-      }
-    }
-
-    const responseMessage = typedError.response?.data?.message;
-    if (typeof responseMessage === 'string' && responseMessage.trim() !== '') {
-      return responseMessage;
-    }
-
-    if (typeof typedError.message === 'string' && typedError.message.trim() !== '') {
-      return typedError.message;
-    }
-  }
-
-  return fallback;
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Sub-components ──────────────────────────────────────────────────────────
 
 function TestnetBanner() {
   return (
@@ -197,7 +44,7 @@ function TestnetBanner() {
           All cryptographic guarantees are identical to mainnet.
         </p>
         <p className="text-xs text-amber-300/70">
-          Get free testnet QBTC from the faucet before posting or accepting offers.
+          Get free testnet QBTC from the faucet before trading.
         </p>
       </div>
     </div>
@@ -223,1191 +70,14 @@ function MainnetActiveBanner() {
   );
 }
 
-function SwapTimelockInfo({ swap }: { swap: AtomicSwap }) {
-  const qbtcCountdown = useCountdown(swap.qbtcLocktime);
-  const evmCountdown  = useCountdown(swap.evmLocktime);
-
-  return (
-    <div className="grid grid-cols-2 gap-3 text-xs">
-      <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-3">
-        <p className="text-slate-400 mb-1">QBTC Refund Window</p>
-        <p className="font-mono text-amber-300">{qbtcCountdown || '—'}</p>
-      </div>
-      <div className="rounded-lg border border-slate-700 bg-slate-950/60 p-3">
-        <p className="text-slate-400 mb-1">USDC Refund Window</p>
-        <p className="font-mono text-purple-300">{evmCountdown || '—'}</p>
-      </div>
-    </div>
-  );
-}
-
-// ─── Active Swap Detail Panel ─────────────────────────────────────────────────
-
-function ActiveSwapPanel({ swap, onRefresh }: { swap: AtomicSwap; onRefresh: () => void }) {
-  return (
-    <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-5 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-bold text-sm flex items-center gap-2">
-          <Lock className="w-4 h-4 text-purple-400" />
-          Active Swap
-        </h3>
-        <button
-          onClick={onRefresh}
-          className="p-1.5 rounded-md hover:bg-slate-800 transition-colors"
-          title="Refresh status"
-        >
-          <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
-        </button>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <span className={`px-2 py-0.5 rounded-full border text-xs font-medium ${statusBadge(swap.status)}`}>
-          {statusLabel(swap.status)}
-        </span>
-        <span className="text-xs text-slate-500 font-mono">{swap.id.slice(0, 8)}…</span>
-      </div>
-
-      <div className="space-y-2 text-xs">
-        <div className="flex justify-between">
-          <span className="text-slate-400">Amount</span>
-          <span className="font-mono">{swap.qbtcAmount} QBTC → {swap.usdcAmount} USDC</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-slate-400">Secret Hash</span>
-          <span className="font-mono text-slate-500">{swap.secretHash.slice(0, 12)}…</span>
-        </div>
-        {swap.qbtcHtlcAddress && (
-          <div className="flex justify-between">
-            <span className="text-slate-400">HTLC Address</span>
-            <span className="font-mono text-cyan-400 text-xs">{swap.qbtcHtlcAddress.slice(0, 14)}…</span>
-          </div>
-        )}
-        {swap.evmContractId && (
-          <div className="flex justify-between">
-            <span className="text-slate-400">EVM Contract</span>
-            <span className="font-mono text-purple-400 text-xs">{swap.evmContractId.slice(0, 12)}…</span>
-          </div>
-        )}
-        {swap.secret && (
-          <div className="flex justify-between items-center">
-            <span className="text-slate-400">Secret (claim QBTC)</span>
-            <span className="font-mono text-emerald-400 text-xs">{swap.secret.slice(0, 12)}…</span>
-          </div>
-        )}
-      </div>
-
-      <SwapTimelockInfo swap={swap} />
-
-      {swap.status === 'COMPLETE' && (
-        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          <p className="text-emerald-300 text-xs font-medium">Swap complete! Both parties have been paid.</p>
-        </div>
-      )}
-
-      {(swap.status === 'EXPIRED' || swap.status === 'REFUNDED') && (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-red-400" />
-          <p className="text-red-300 text-xs">Swap expired. Both parties can claim refunds via their respective timelocks.</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Create Offer Form ────────────────────────────────────────────────────────
-
-function CreateOfferForm({
-  onOfferCreated,
-  defaultQbtcAddress,
-  defaultPubKeyHex,
-  defaultEvmAddress,
-}: {
-  onOfferCreated: () => void;
-  defaultQbtcAddress?: string;
-  defaultPubKeyHex?: string;
-  defaultEvmAddress?: string;
-}) {
-  const [qbtcAmount, setQbtcAmount]               = useState('');
-  const [usdcAmount, setUsdcAmount]               = useState('');
-  const [sellerQbtcAddress, setSellerQbtcAddress] = useState(defaultQbtcAddress || '');
-  const [sellerEvmAddress, setSellerEvmAddress]   = useState(defaultEvmAddress || '');
-  const [sellerPubKeyHex, setSellerPubKeyHex]     = useState(defaultPubKeyHex || '');
-  const [loading, setLoading]                     = useState(false);
-  const [success, setSuccess]                     = useState(false);
-  const [error, setError]                         = useState('');
-
-  // Auto-fill when wallet connects
-  useEffect(() => {
-    if (defaultQbtcAddress && !sellerQbtcAddress) setSellerQbtcAddress(defaultQbtcAddress);
-    if (defaultPubKeyHex && !sellerPubKeyHex) setSellerPubKeyHex(defaultPubKeyHex);
-    if (defaultEvmAddress && !sellerEvmAddress) setSellerEvmAddress(defaultEvmAddress);
-  }, [defaultQbtcAddress, defaultPubKeyHex, defaultEvmAddress]);
-
-  const canPost =
-    qbtcAmount.trim() !== '' &&
-    usdcAmount.trim() !== '' &&
-    sellerQbtcAddress.toLowerCase().startsWith('qbtct1') &&
-    sellerEvmAddress.startsWith('0x') && sellerEvmAddress.length === 42 &&
-    sellerPubKeyHex.length === 66;
-
-  const handlePost = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      await axios.post(`${SWAP_API}/api/swap/offer`, {
-        sellerQbtcAddress,
-        sellerEvmAddress,
-        sellerPubKeyHex,
-        qbtcAmount,
-        usdcAmountRequested: usdcAmount,
-      });
-      setSuccess(true);
-      setQbtcAmount('');
-      setUsdcAmount('');
-      setSellerQbtcAddress('');
-      setSellerEvmAddress('');
-      setSellerPubKeyHex('');
-      onOfferCreated();
-      setTimeout(() => setSuccess(false), 4000);
-    } catch (err: unknown) {
-      setError(getDisplayError(err, 'Failed to post offer'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-6 space-y-5">
-      <h2 className="text-xl font-bold flex items-center gap-2">
-        <Send className="w-5 h-5 text-cyan-400" />
-        Post Sell Offer
-      </h2>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="text-sm text-slate-300 block mb-1.5">QBTC Amount</label>
-          <input
-            type="number"
-            value={qbtcAmount}
-            onChange={(e) => setQbtcAmount(e.target.value)}
-            placeholder="e.g. 1.0"
-            min="0"
-            className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
-          />
-        </div>
-        <div>
-          <label className="text-sm text-slate-300 block mb-1.5">USDC Requested</label>
-          <input
-            type="number"
-            value={usdcAmount}
-            onChange={(e) => setUsdcAmount(e.target.value)}
-            placeholder="e.g. 45000"
-            min="0"
-            className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
-          />
-        </div>
-      </div>
-
-      <div>
-        <label className="text-sm text-slate-300 block mb-1.5">Your QBTC Address</label>
-        <input
-          type="text"
-          value={sellerQbtcAddress}
-          onChange={(e) => setSellerQbtcAddress(e.target.value)}
-          placeholder="qbtct1q…"
-          className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none font-mono text-sm"
-        />
-      </div>
-
-      <div>
-        <label className="text-sm text-slate-300 block mb-1.5">
-          Your ECDSA Public Key (hex, 66 chars)
-          <span className="ml-2 text-slate-500 text-xs">— from QBTC Wallet page</span>
-        </label>
-        <input
-          type="text"
-          value={sellerPubKeyHex}
-          onChange={(e) => setSellerPubKeyHex(e.target.value)}
-          placeholder="02… or 03…"
-          className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none font-mono text-sm"
-        />
-      </div>
-
-      <div>
-        <label className="text-sm text-slate-300 block mb-1.5">Your EVM Address (to receive USDC)</label>
-        <input
-          type="text"
-          value={sellerEvmAddress}
-          onChange={(e) => setSellerEvmAddress(e.target.value)}
-          placeholder="0x…"
-          className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none font-mono text-sm"
-        />
-      </div>
-
-      {error && (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">
-          {error}
-        </div>
-      )}
-
-      {success ? (
-        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 flex items-center gap-3">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
-          <p className="text-emerald-300 text-sm font-medium">Offer posted! Buyers can now accept it.</p>
-        </div>
-      ) : (
-        <button
-          onClick={handlePost}
-          disabled={!canPost || loading}
-          className="w-full py-3 rounded-xl font-semibold bg-gradient-to-r from-blue-500 to-cyan-500 text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed hover:from-blue-400 hover:to-cyan-400 transition-all"
-        >
-          {loading ? 'Posting…' : 'Post Offer'}
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ─── Accept Offer Flow ────────────────────────────────────────────────────────
-
-function AcceptOfferModal({
-  offer,
-  onClose,
-  onSwapStarted,
-  defaultQbtcAddress,
-  defaultPubKeyHex,
-  defaultEvmAddress,
-}: {
-  offer: SwapOffer;
-  onClose: () => void;
-  onSwapStarted: (swap: AcceptResponse) => void;
-  defaultQbtcAddress?: string;
-  defaultPubKeyHex?: string;
-  defaultEvmAddress?: string;
-}) {
-  const [buyerQbtcAddress, setBuyerQbtcAddress] = useState(defaultQbtcAddress || '');
-  const [buyerEvmAddress, setBuyerEvmAddress]   = useState(defaultEvmAddress || '');
-  const [buyerPubKeyHex, setBuyerPubKeyHex]     = useState(defaultPubKeyHex || '');
-  const [loading, setLoading]                   = useState(false);
-  const [error, setError]                       = useState('');
-
-  const canAccept =
-    buyerQbtcAddress.toLowerCase().startsWith('qbtct1') &&
-    buyerEvmAddress.startsWith('0x') && buyerEvmAddress.length === 42 &&
-    buyerPubKeyHex.length === 66;
-
-  const handleAccept = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const { data } = await axios.post<AcceptResponse>(`${SWAP_API}/api/swap/accept/${offer.id}`, {
-        buyerQbtcAddress,
-        buyerEvmAddress,
-        buyerPubKeyHex,
-      });
-      onSwapStarted(data);
-    } catch (err: unknown) {
-      setError(getDisplayError(err, 'Failed to accept offer'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-lg w-full space-y-5">
-        <h3 className="text-lg font-bold">Accept Offer</h3>
-
-        <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 text-sm space-y-2">
-          <div className="flex justify-between">
-            <span className="text-slate-400">Buying</span>
-            <span className="font-semibold">{offer.qbtcAmount} QBTC</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">You Pay</span>
-            <span className="font-semibold">{offer.usdcAmountRequested} USDC</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">Seller</span>
-            <span className="font-mono text-xs text-slate-400">{offer.sellerQbtcAddress.slice(0, 16)}…</span>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <div>
-            <label className="text-sm text-slate-300 block mb-1.5">Your QBTC Address (to receive QBTC)</label>
-            <input
-              type="text"
-              value={buyerQbtcAddress}
-              onChange={(e) => setBuyerQbtcAddress(e.target.value)}
-              placeholder="qbtct1q…"
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none font-mono text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-sm text-slate-300 block mb-1.5">
-              Your ECDSA Public Key (hex, 66 chars)
-            </label>
-            <input
-              type="text"
-              value={buyerPubKeyHex}
-              onChange={(e) => setBuyerPubKeyHex(e.target.value)}
-              placeholder="02… or 03…"
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none font-mono text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-sm text-slate-300 block mb-1.5">Your EVM Address (to pay USDC from)</label>
-            <input
-              type="text"
-              value={buyerEvmAddress}
-              onChange={(e) => setBuyerEvmAddress(e.target.value)}
-              placeholder="0x…"
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none font-mono text-sm"
-            />
-          </div>
-        </div>
-
-        {error && (
-          <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">
-            {error}
-          </div>
-        )}
-
-        <div className="flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl border border-slate-600 text-slate-300 hover:bg-slate-800 transition-colors text-sm"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleAccept}
-            disabled={!canAccept || loading}
-            className="flex-1 py-2.5 rounded-xl font-semibold bg-gradient-to-r from-blue-500 to-cyan-500 text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed hover:from-blue-400 hover:to-cyan-400 transition-all text-sm"
-          >
-            {loading ? 'Accepting…' : 'Accept & Initiate Swap'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Create Buy Offer Form ────────────────────────────────────────────────────
-
-function CreateBuyOfferForm({
-  onOfferCreated,
-  defaultQbtcAddress,
-  defaultPubKeyHex,
-  defaultEvmAddress,
-}: {
-  onOfferCreated: () => void;
-  defaultQbtcAddress?: string;
-  defaultPubKeyHex?: string;
-  defaultEvmAddress?: string;
-}) {
-  const [qbtcAmount, setQbtcAmount]           = useState('');
-  const [usdcAmount, setUsdcAmount]           = useState('');
-  const [buyerQbtcAddress, setBuyerQbtcAddress] = useState(defaultQbtcAddress || '');
-  const [buyerEvmAddress, setBuyerEvmAddress]   = useState(defaultEvmAddress || '');
-  const [buyerPubKeyHex, setBuyerPubKeyHex]     = useState(defaultPubKeyHex || '');
-  const [loading, setLoading]                   = useState(false);
-  const [success, setSuccess]                   = useState(false);
-  const [error, setError]                       = useState('');
-
-  useEffect(() => {
-    if (defaultQbtcAddress && !buyerQbtcAddress) setBuyerQbtcAddress(defaultQbtcAddress);
-    if (defaultPubKeyHex && !buyerPubKeyHex) setBuyerPubKeyHex(defaultPubKeyHex);
-    if (defaultEvmAddress && !buyerEvmAddress) setBuyerEvmAddress(defaultEvmAddress);
-  }, [defaultQbtcAddress, defaultPubKeyHex, defaultEvmAddress]);
-
-  const canPost =
-    qbtcAmount.trim() !== '' &&
-    usdcAmount.trim() !== '' &&
-    buyerQbtcAddress.toLowerCase().startsWith('qbtct1') &&
-    buyerEvmAddress.startsWith('0x') && buyerEvmAddress.length === 42 &&
-    buyerPubKeyHex.length === 66;
-
-  const handlePost = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      await axios.post(`${SWAP_API}/api/swap/buy-offer`, {
-        buyerQbtcAddress,
-        buyerEvmAddress,
-        buyerPubKeyHex,
-        qbtcAmount,
-        usdcAmountOffered: usdcAmount,
-      });
-      setSuccess(true);
-      setQbtcAmount('');
-      setUsdcAmount('');
-      setBuyerQbtcAddress('');
-      setBuyerEvmAddress('');
-      setBuyerPubKeyHex('');
-      onOfferCreated();
-      setTimeout(() => setSuccess(false), 4000);
-    } catch (err: unknown) {
-      setError(getDisplayError(err, 'Failed to post buy offer'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-6 space-y-5">
-      <h2 className="text-xl font-bold flex items-center gap-2">
-        <Wallet className="w-5 h-5 text-emerald-400" />
-        Post Buy Offer
-      </h2>
-      <p className="text-sm text-slate-400">
-        Put up your USDC and wait for sellers to fulfil. You specify how much QBTC you want and how much USDC you'll pay.
-      </p>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="text-sm text-slate-300 block mb-1.5">QBTC Amount Wanted</label>
-          <input
-            type="number"
-            value={qbtcAmount}
-            onChange={(e) => setQbtcAmount(e.target.value)}
-            placeholder="e.g. 1.0"
-            min="0"
-            className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-400 focus:outline-none text-sm"
-          />
-        </div>
-        <div>
-          <label className="text-sm text-slate-300 block mb-1.5">USDC Offered</label>
-          <input
-            type="number"
-            value={usdcAmount}
-            onChange={(e) => setUsdcAmount(e.target.value)}
-            placeholder="e.g. 45000"
-            min="0"
-            className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-400 focus:outline-none text-sm"
-          />
-        </div>
-      </div>
-
-      <div>
-        <label className="text-sm text-slate-300 block mb-1.5">Your QBTC Address (to receive QBTC)</label>
-        <input
-          type="text"
-          value={buyerQbtcAddress}
-          onChange={(e) => setBuyerQbtcAddress(e.target.value)}
-          placeholder="qbtct1q…"
-          className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-400 focus:outline-none font-mono text-sm"
-        />
-      </div>
-
-      <div>
-        <label className="text-sm text-slate-300 block mb-1.5">
-          Your ECDSA Public Key (hex, 66 chars)
-          <span className="ml-2 text-slate-500 text-xs">— from QBTC Wallet page</span>
-        </label>
-        <input
-          type="text"
-          value={buyerPubKeyHex}
-          onChange={(e) => setBuyerPubKeyHex(e.target.value)}
-          placeholder="02… or 03…"
-          className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-400 focus:outline-none font-mono text-sm"
-        />
-      </div>
-
-      <div>
-        <label className="text-sm text-slate-300 block mb-1.5">Your EVM Address (to pay USDC from)</label>
-        <input
-          type="text"
-          value={buyerEvmAddress}
-          onChange={(e) => setBuyerEvmAddress(e.target.value)}
-          placeholder="0x…"
-          className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-400 focus:outline-none font-mono text-sm"
-        />
-      </div>
-
-      {error && (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">
-          {error}
-        </div>
-      )}
-
-      {success ? (
-        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 flex items-center gap-3">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
-          <p className="text-emerald-300 text-sm font-medium">Buy offer posted! Sellers can now fulfil it.</p>
-        </div>
-      ) : (
-        <button
-          onClick={handlePost}
-          disabled={!canPost || loading}
-          className="w-full py-3 rounded-xl font-semibold bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed hover:from-emerald-400 hover:to-cyan-400 transition-all"
-        >
-          {loading ? 'Posting…' : 'Post Buy Offer'}
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ─── Fulfil Buy Offer Modal (seller accepts a buy offer) ─────────────────────
-
-function FulfillBuyOfferModal({
-  offer,
-  onClose,
-  onSwapStarted,
-  defaultQbtcAddress,
-  defaultPubKeyHex,
-  defaultEvmAddress,
-}: {
-  offer: SwapOffer;
-  onClose: () => void;
-  onSwapStarted: (swap: AcceptResponse) => void;
-  defaultQbtcAddress?: string;
-  defaultPubKeyHex?: string;
-  defaultEvmAddress?: string;
-}) {
-  const [sellerQbtcAddress, setSellerQbtcAddress] = useState(defaultQbtcAddress || '');
-  const [sellerEvmAddress, setSellerEvmAddress]   = useState(defaultEvmAddress || '');
-  const [sellerPubKeyHex, setSellerPubKeyHex]     = useState(defaultPubKeyHex || '');
-  const [loading, setLoading]                     = useState(false);
-  const [error, setError]                         = useState('');
-
-  const canAccept =
-    sellerQbtcAddress.toLowerCase().startsWith('qbtct1') &&
-    sellerEvmAddress.startsWith('0x') && sellerEvmAddress.length === 42 &&
-    sellerPubKeyHex.length === 66;
-
-  const handleFulfil = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const { data } = await axios.post<AcceptResponse>(`${SWAP_API}/api/swap/accept-buy/${offer.id}`, {
-        sellerQbtcAddress,
-        sellerEvmAddress,
-        sellerPubKeyHex,
-      });
-      onSwapStarted(data);
-    } catch (err: unknown) {
-      setError(getDisplayError(err, 'Failed to fulfil buy offer'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-lg w-full space-y-5">
-        <h3 className="text-lg font-bold">Fulfil Buy Offer</h3>
-
-        <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 text-sm space-y-2">
-          <div className="flex justify-between">
-            <span className="text-slate-400">Buyer Wants</span>
-            <span className="font-semibold">{offer.qbtcAmount} QBTC</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">Buyer Pays</span>
-            <span className="font-semibold">{offer.usdcAmountRequested} USDC</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">Buyer</span>
-            <span className="font-mono text-xs text-slate-400">{(offer.buyerQbtcAddress || '').slice(0, 16)}…</span>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs text-emerald-200/80">
-          <p>You will sell <strong>{offer.qbtcAmount} QBTC</strong> and receive <strong>{offer.usdcAmountRequested} USDC</strong> via atomic swap.</p>
-        </div>
-
-        <div className="space-y-3">
-          <div>
-            <label className="text-sm text-slate-300 block mb-1.5">Your QBTC Address (to send QBTC from)</label>
-            <input
-              type="text"
-              value={sellerQbtcAddress}
-              onChange={(e) => setSellerQbtcAddress(e.target.value)}
-              placeholder="qbtct1q…"
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-400 focus:outline-none font-mono text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-sm text-slate-300 block mb-1.5">
-              Your ECDSA Public Key (hex, 66 chars)
-            </label>
-            <input
-              type="text"
-              value={sellerPubKeyHex}
-              onChange={(e) => setSellerPubKeyHex(e.target.value)}
-              placeholder="02… or 03…"
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-400 focus:outline-none font-mono text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-sm text-slate-300 block mb-1.5">Your EVM Address (to receive USDC)</label>
-            <input
-              type="text"
-              value={sellerEvmAddress}
-              onChange={(e) => setSellerEvmAddress(e.target.value)}
-              placeholder="0x…"
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-400 focus:outline-none font-mono text-sm"
-            />
-          </div>
-        </div>
-
-        {error && (
-          <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">
-            {error}
-          </div>
-        )}
-
-        <div className="flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl border border-slate-600 text-slate-300 hover:bg-slate-800 transition-colors text-sm"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleFulfil}
-            disabled={!canAccept || loading}
-            className="flex-1 py-2.5 rounded-xl font-semibold bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed hover:from-emerald-400 hover:to-cyan-400 transition-all text-sm"
-          >
-            {loading ? 'Fulfilling…' : 'Fulfil & Initiate Swap'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Swap Instructions Panel ──────────────────────────────────────────────────
-
-function SwapInstructions({ swapDetails }: { swapDetails: AcceptResponse }) {
-  return (
-    <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-5 space-y-4">
-      <h3 className="text-base font-bold flex items-center gap-2 text-blue-300">
-        <Info className="w-4 h-4" />
-        Swap Initiated — Next Steps
-      </h3>
-      <div className="space-y-3 text-sm">
-        <div className="flex items-start gap-3">
-          <div className="w-6 h-6 rounded-full bg-blue-500/20 border border-blue-500/40 flex items-center justify-center flex-shrink-0 text-xs font-bold text-blue-300">1</div>
-          <div>
-            <p className="font-semibold text-slate-200">Seller: Lock QBTC in HTLC</p>
-            <p className="text-slate-400 text-xs mt-0.5">
-              Use your QBTC Wallet to create a P2WSH HTLC transaction to address derived from
-              secret hash <code className="bg-slate-800 px-1 rounded font-mono">{swapDetails.secretHash.slice(0, 16)}…</code>.
-              Then post the txid via the API or wallet interface.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-start gap-3">
-          <div className="w-6 h-6 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center flex-shrink-0 text-xs font-bold text-cyan-300">2</div>
-          <div>
-            <p className="font-semibold text-slate-200">Buyer: Lock USDC in EVM HTLC</p>
-            <p className="text-slate-400 text-xs mt-0.5">
-              After the QBTC lock is confirmed, use MetaMask to call <code className="bg-slate-800 px-1 rounded">newContract()</code> on
-              the HashedTimelockERC20 contract with the same secret hash.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-start gap-3">
-          <div className="w-6 h-6 rounded-full bg-purple-500/20 border border-purple-500/40 flex items-center justify-center flex-shrink-0 text-xs font-bold text-purple-300">3</div>
-          <div>
-            <p className="font-semibold text-slate-200">Seller: Claim USDC (reveals secret)</p>
-            <p className="text-slate-400 text-xs mt-0.5">
-              Seller calls <code className="bg-slate-800 px-1 rounded">withdraw(contractId, secret)</code> on EVM.
-              This reveals the secret on-chain.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-start gap-3">
-          <div className="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center flex-shrink-0 text-xs font-bold text-emerald-300">4</div>
-          <div>
-            <p className="font-semibold text-slate-200">Buyer: Claim QBTC using revealed secret</p>
-            <p className="text-slate-400 text-xs mt-0.5">
-              Poll <code className="bg-slate-800 px-1 rounded">GET /api/swap/{swapDetails.swapId}</code> until
-              <code className="bg-slate-800 px-1 rounded ml-1">status = COMPLETE</code> and use
-              the returned <code className="bg-slate-800 px-1 rounded ml-1">secret</code> to broadcast
-              the HTLC claim transaction.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-slate-700 bg-slate-950/40 p-3 text-xs space-y-1">
-        <p className="text-slate-400">Swap ID: <span className="font-mono text-cyan-300">{swapDetails.swapId}</span></p>
-        <p className="text-slate-400">Secret Hash: <span className="font-mono text-slate-300">{swapDetails.secretHash}</span></p>
-        <p className="text-slate-400">QBTC refund after: <span className="font-mono text-amber-300">{new Date(swapDetails.qbtcLocktime * 1000).toLocaleString()}</span></p>
-        <p className="text-slate-400">EVM refund after: <span className="font-mono text-purple-300">{new Date(swapDetails.evmLocktime * 1000).toLocaleString()}</span></p>
-      </div>
-    </div>
-  );
-}
-
-// ─── Wallet & Swap Workflow ───────────────────────────────────────────────────
-
-/** Persisted swap IDs in localStorage */
-const MY_SWAPS_KEY = 'qbtc_marketplace_my_swaps';
-function getStoredSwapIds(): string[] {
-  try { return JSON.parse(localStorage.getItem(MY_SWAPS_KEY) || '[]'); } catch { return []; }
-}
-function addStoredSwapId(swapId: string) {
-  const ids = getStoredSwapIds();
-  if (!ids.includes(swapId)) {
-    ids.push(swapId);
-    localStorage.setItem(MY_SWAPS_KEY, JSON.stringify(ids));
-  }
-}
-
-/** Hook: detect connected CryptoSparse wallet */
-function useConnectedWallet() {
-  const { user } = useUser();
-  const userId = user?.id || '';
-  const [walletAddress, setWalletAddress] = useState('');
-  const [walletPubKey, setWalletPubKey] = useState('');
-  const [walletEvmAddress, setWalletEvmAddress] = useState('');
-  const [walletId, setWalletId] = useState('');
-
-  useEffect(() => {
-    if (!userId) return;
-    (async () => {
-      try {
-        const wallet = await getCurrentWallet(userId);
-        if (wallet) {
-          setWalletId(wallet.id);
-          setWalletAddress(wallet.addresses?.qbtc || '');
-          setWalletPubKey(wallet.publicKeys?.qbtc || '');
-          setWalletEvmAddress(wallet.addresses?.ethereum || '');
-        }
-      } catch { /* no wallet */ }
-    })();
-  }, [userId]);
-
-  return { userId, walletId, walletAddress, walletPubKey, walletEvmAddress, hasWallet: !!walletAddress };
-}
-
-/** Hook: fetch swaps the connected wallet is involved in */
-function useMySwaps(walletAddress: string) {
-  const [mySwaps, setMySwaps] = useState<AtomicSwap[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const fetchMySwaps = useCallback(async () => {
-    if (!walletAddress) return;
-    setLoading(true);
-    try {
-      const { data } = await axios.get<AtomicSwap[]>(
-        `${SWAP_API}/api/swap/by-address?qbtcAddress=${encodeURIComponent(walletAddress)}`
-      );
-      setMySwaps(data);
-      data.forEach(s => addStoredSwapId(s.id));
-    } catch { /* non-fatal */ }
-    finally { setLoading(false); }
-  }, [walletAddress]);
-
-  useEffect(() => {
-    fetchMySwaps();
-    const id = setInterval(fetchMySwaps, 15_000);
-    return () => clearInterval(id);
-  }, [fetchMySwaps]);
-
-  return { mySwaps, loading, refreshMySwaps: fetchMySwaps };
-}
-
-/** Wallet connection banner */
-function WalletBadge({ walletAddress, walletEvmAddress }: { walletAddress: string; walletEvmAddress: string }) {
-  if (!walletAddress) {
-    return (
-      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 flex items-center gap-3">
-        <Wallet className="w-4 h-4 text-amber-400 flex-shrink-0" />
-        <div className="text-amber-200 text-sm">
-          <p>
-            <span className="font-semibold">No wallet connected</span> — go to{' '}
-            <Link href="/wallet"><span className="text-cyan-300 underline cursor-pointer">Wallet</span></Link>{' '}
-            to create or import one. Your addresses and keys will auto-fill for swap signing.
-          </p>
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-3 flex items-center gap-3">
-      <Wallet className="w-4 h-4 text-cyan-400 flex-shrink-0" />
-      <div className="text-sm">
-        <p className="text-cyan-200">
-          <span className="font-semibold">Wallet Connected</span>{' '}
-          <span className="font-mono text-xs text-slate-400">{walletAddress.slice(0, 16)}…</span>
-        </p>
-        {walletEvmAddress && (
-          <p className="text-slate-400 text-xs mt-0.5">
-            EVM: <span className="font-mono">{walletEvmAddress.slice(0, 10)}…{walletEvmAddress.slice(-4)}</span>
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** Seller: Lock QBTC in HTLC */
-function SellerLockPanel({
-  swap,
-  walletId,
-  onLocked,
-}: {
-  swap: AtomicSwap;
-  walletId: string;
-  onLocked: () => void;
-}) {
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [step, setStep] = useState<'idle' | 'unlocking' | 'building' | 'broadcasting' | 'reporting'>('idle');
-  const network: QBTCNetwork = isSwapMainnetActive() ? 'mainnet' : 'testnet';
-
-  const handleLock = async () => {
-    if (!password.trim()) { setError('Enter your wallet password'); return; }
-    setLoading(true);
-    setError('');
-    try {
-      // 1. Unlock wallet
-      setStep('unlocking');
-      const wallet = await unlockWallet(walletId, password);
-      const qbtcPrivateKey = wallet.privateKeys.qbtc;
-      if (!qbtcPrivateKey) throw new Error('QBTC private key not found in wallet');
-      const keyPair = QBTCKeyPair.fromECDSAPrivateKey(qbtcPrivateKey);
-
-      // 2. Build HTLC script & address
-      setStep('building');
-      const htlcParams: QBTCHtlcParams = {
-        buyerPubKeyHex: swap.buyerPubKeyHex,
-        sellerPubKeyHex: swap.sellerPubKeyHex,
-        secretHashHex: swap.secretHash,
-        locktime: swap.qbtcLocktime!,
-      };
-      const htlcScript = createHTLCScript(htlcParams);
-      const htlcAddress = getHTLCAddress(htlcScript, network);
-
-      // 3. Send QBTC to HTLC address
-      setStep('broadcasting');
-      const qbtcChain = new QBTCChain(getQBTCRpcSettings());
-      const txid = await qbtcChain.sendTransaction(keyPair, htlcAddress, swap.qbtcAmount);
-
-      // 4. Report to swap server
-      setStep('reporting');
-      await axios.post(`${SWAP_API}/api/swap/lock/qbtc`, {
-        swapId: swap.id,
-        qbtcHtlcTxid: txid,
-        qbtcHtlcAddress: htlcAddress,
-      });
-
-      setPassword('');
-      onLocked();
-    } catch (err: unknown) {
-      setError(getDisplayError(err, 'Failed to lock QBTC'));
-    } finally {
-      setLoading(false);
-      setStep('idle');
-    }
-  };
-
-  const stepLabel = {
-    idle: '',
-    unlocking: 'Unlocking wallet…',
-    building: 'Building HTLC transaction…',
-    broadcasting: 'Broadcasting to QBTC network…',
-    reporting: 'Confirming with swap server…',
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
-        <p className="text-amber-200 text-sm font-semibold flex items-center gap-2">
-          <Lock className="w-4 h-4" />
-          Your turn: Lock {swap.qbtcAmount} QBTC in HTLC
-        </p>
-        <p className="text-amber-300/70 text-xs mt-1">
-          Enter your wallet password to sign and broadcast the HTLC transaction.
-          Funds are locked with a 48-hour refund window.
-        </p>
-      </div>
-
-      <div className="flex gap-2">
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !loading && handleLock()}
-          placeholder="Wallet password"
-          className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
-        />
-        <button
-          onClick={handleLock}
-          disabled={loading || !password.trim()}
-          className="px-4 py-2 rounded-xl font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center gap-2"
-        >
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
-          {loading ? 'Locking…' : 'Lock QBTC'}
-        </button>
-      </div>
-
-      {loading && step !== 'idle' && (
-        <p className="text-xs text-amber-300/60 flex items-center gap-2">
-          <Loader2 className="w-3 h-3 animate-spin" />
-          {stepLabel[step]}
-        </p>
-      )}
-
-      {error && (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">{error}</div>
-      )}
-    </div>
-  );
-}
-
-/** Buyer: Lock USDC via MetaMask */
-function BuyerLockPanel({
-  swap,
-  onLocked,
-}: {
-  swap: AtomicSwap;
-  onLocked: () => void;
-}) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [step, setStep] = useState('');
-
-  const handleLock = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      // 1. Connect MetaMask
-      setStep('Connecting MetaMask…');
-      const windowEth = (window as any).ethereum;
-      if (!windowEth) throw new Error('MetaMask not detected. Please install it and try again.');
-      const provider = new ethers.BrowserProvider(windowEth);
-      await provider.send('eth_requestAccounts', []);
-      const signer = await provider.getSigner();
-
-      // Verify correct network (Sepolia for testnet)
-      const config = getSwapNetworkConfig();
-      const currentNetwork = await provider.getNetwork();
-      if (Number(currentNetwork.chainId) !== config.evmChainId) {
-        throw new Error(`Please switch MetaMask to ${config.network === 'mainnet' ? 'Ethereum Mainnet' : 'Sepolia testnet'} (chain ID ${config.evmChainId})`);
-      }
-
-      if (!config.htlcContractAddress) throw new Error('EVM HTLC contract not configured (set VITE_EVM_HTLC_CONTRACT)');
-      if (!config.usdcContractAddress) throw new Error('USDC contract not configured (set VITE_USDC_CONTRACT)');
-
-      // 2. Create HTLC
-      setStep('Approving USDC spend…');
-      const evmHTLC = new EvmHTLC({
-        contractAddress: config.htlcContractAddress,
-        usdcAddress: config.usdcContractAddress,
-        signerOrProvider: signer,
-      });
-
-      // Convert USDC amount to base units (6 decimals)
-      const usdcBaseUnits = BigInt(Math.round(Number(swap.usdcAmount) * 1_000_000));
-
-      setStep('Creating EVM HTLC — confirm in MetaMask…');
-      const contractId = await evmHTLC.initiate(
-        swap.sellerEvmAddress,
-        swap.secretHash,
-        swap.evmLocktime!,
-        usdcBaseUnits,
-      );
-
-      // 3. Report to swap server
-      setStep('Confirming with swap server…');
-      await axios.post(`${SWAP_API}/api/swap/lock/evm`, {
-        swapId: swap.id,
-        evmContractId: contractId,
-      });
-
-      onLocked();
-    } catch (err: unknown) {
-      setError(getDisplayError(err, 'Failed to lock USDC'));
-    } finally {
-      setLoading(false);
-      setStep('');
-    }
-  };
-
-  return (
-    <div className="space-y-3">
-      <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 p-3">
-        <p className="text-purple-200 text-sm font-semibold flex items-center gap-2">
-          <Lock className="w-4 h-4" />
-          Your turn: Lock {swap.usdcAmount} USDC in EVM HTLC
-        </p>
-        <p className="text-purple-300/70 text-xs mt-1">
-          Connect MetaMask to approve USDC and create the hash time-lock on Sepolia.
-          Funds are locked with a 24-hour refund window.
-        </p>
-      </div>
-
-      <button
-        onClick={handleLock}
-        disabled={loading}
-        className="w-full py-2.5 rounded-xl font-semibold bg-gradient-to-r from-purple-500 to-pink-500 text-white disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2"
-      >
-        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
-        {loading ? step || 'Processing…' : 'Connect MetaMask & Lock USDC'}
-      </button>
-
-      {error && (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">{error}</div>
-      )}
-    </div>
-  );
-}
-
-/** Single swap card in "My Swaps" */
-function MySwapCard({
-  swap,
-  walletAddress,
-  walletId,
-  onRefresh,
-}: {
-  swap: AtomicSwap;
-  walletAddress: string;
-  walletId: string;
-  onRefresh: () => void;
-}) {
-  const isSeller = swap.sellerQbtcAddress?.toLowerCase() === walletAddress.toLowerCase();
-  const isBuyer = swap.buyerQbtcAddress?.toLowerCase() === walletAddress.toLowerCase();
-  const role = isSeller ? 'Seller' : isBuyer ? 'Buyer' : 'Unknown';
-
-  const qbtcCountdown = useCountdown(swap.qbtcLocktime);
-  const evmCountdown = useCountdown(swap.evmLocktime);
-
-  // Determine what action the user needs to take
-  const needsSellerLock = isSeller && swap.status === 'PENDING_QBTC_LOCK';
-  const needsBuyerLock = isBuyer && swap.status === 'QBTC_LOCKED';
-  const waitingForCounterparty =
-    (isSeller && swap.status === 'QBTC_LOCKED') ||
-    (isBuyer && swap.status === 'PENDING_QBTC_LOCK') ||
-    (isSeller && swap.status === 'EVM_LOCKED') ||
-    (isBuyer && swap.status === 'EVM_LOCKED');
-
-  return (
-    <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4 space-y-3">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className={`px-2 py-0.5 rounded-full border text-xs font-medium ${statusBadge(swap.status)}`}>
-            {statusLabel(swap.status)}
-          </span>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-            {role}
-          </span>
-        </div>
-        <span className="text-xs text-slate-500 font-mono">{swap.id.slice(0, 8)}…</span>
-      </div>
-
-      {/* Summary */}
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <div>
-          <span className="text-slate-400">QBTC</span>
-          <p className="font-mono font-semibold">{swap.qbtcAmount}</p>
-        </div>
-        <div>
-          <span className="text-slate-400">USDC</span>
-          <p className="font-mono font-semibold">{swap.usdcAmount}</p>
-        </div>
-      </div>
-
-      {/* Timelocks */}
-      {(swap.qbtcLocktime || swap.evmLocktime) && (
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-2">
-            <span className="text-slate-500">QBTC Lock</span>
-            <p className="font-mono text-amber-300">{qbtcCountdown || '—'}</p>
-          </div>
-          <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-2">
-            <span className="text-slate-500">USDC Lock</span>
-            <p className="font-mono text-purple-300">{evmCountdown || '—'}</p>
-          </div>
-        </div>
-      )}
-
-      {/* HTLC info */}
-      {swap.qbtcHtlcAddress && (
-        <div className="text-xs flex justify-between">
-          <span className="text-slate-400">QBTC HTLC</span>
-          <span className="font-mono text-cyan-400">{swap.qbtcHtlcAddress.slice(0, 18)}…</span>
-        </div>
-      )}
-      {swap.evmContractId && (
-        <div className="text-xs flex justify-between">
-          <span className="text-slate-400">EVM Contract</span>
-          <span className="font-mono text-purple-400">{swap.evmContractId.slice(0, 14)}…</span>
-        </div>
-      )}
-
-      {/* Secret (after completion) */}
-      {swap.secret && (
-        <div className="text-xs flex justify-between items-center">
-          <span className="text-slate-400">Secret</span>
-          <span className="font-mono text-emerald-400">{swap.secret.slice(0, 16)}…</span>
-        </div>
-      )}
-
-      {/* ─── Action Panels ─── */}
-      {needsSellerLock && (
-        <SellerLockPanel swap={swap} walletId={walletId} onLocked={onRefresh} />
-      )}
-
-      {needsBuyerLock && (
-        <BuyerLockPanel swap={swap} onLocked={onRefresh} />
-      )}
-
-      {waitingForCounterparty && (
-        <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 flex items-center gap-2">
-          <Clock className="w-4 h-4 text-blue-400" />
-          <p className="text-blue-300 text-xs">
-            {swap.status === 'PENDING_QBTC_LOCK' && isBuyer && 'Waiting for seller to lock QBTC…'}
-            {swap.status === 'QBTC_LOCKED' && isSeller && 'QBTC locked! Waiting for buyer to lock USDC…'}
-            {swap.status === 'EVM_LOCKED' && isSeller && 'Both sides locked! Server will claim USDC and reveal the secret automatically.'}
-            {swap.status === 'EVM_LOCKED' && isBuyer && 'Both sides locked! Waiting for seller to claim and reveal the secret…'}
-          </p>
-        </div>
-      )}
-
-      {swap.status === 'COMPLETE' && (
-        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          <p className="text-emerald-300 text-xs font-medium">Swap complete! Both parties have been paid.</p>
-        </div>
-      )}
-
-      {(swap.status === 'EXPIRED' || swap.status === 'REFUNDED') && (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-red-400" />
-          <p className="text-red-300 text-xs">Swap expired. Funds can be reclaimed via timelocks.</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── Main Page (Informational) ────────────────────────────────────────────────
 
 export default function QBTCMarketplacePage() {
   const [offers, setOffers]               = useState<SwapOffer[]>([]);
   const [buyOffers, setBuyOffers]         = useState<SwapOffer[]>([]);
   const [loadingOffers, setLoadingOffers] = useState(false);
-  const [selectedOffer, setSelectedOffer] = useState<SwapOffer | null>(null);
-  const [selectedBuyOffer, setSelectedBuyOffer] = useState<SwapOffer | null>(null);
-  const [swapDetails, setSwapDetails]     = useState<AcceptResponse | null>(null);
-  const [activeSwap, setActiveSwap]       = useState<AtomicSwap | null>(null);
-  const [marketTab, setMarketTab]         = useState<'sell' | 'buy'>('sell');
+  const [offerTab, setOfferTab]           = useState<'sell' | 'buy'>('sell');
   const isMainnet = isSwapMainnetActive();
-
-  // ─── Wallet connection ───
-  const { userId, walletId, walletAddress, walletPubKey, walletEvmAddress, hasWallet } = useConnectedWallet();
-  const { mySwaps, loading: loadingMySwaps, refreshMySwaps } = useMySwaps(walletAddress);
 
   const fetchOffers = useCallback(async () => {
     setLoadingOffers(true);
@@ -1418,42 +88,11 @@ export default function QBTCMarketplacePage() {
       ]);
       setOffers(sellRes.data);
       setBuyOffers(buyRes.data);
-    } catch {
-      // non-fatal
-    } finally {
-      setLoadingOffers(false);
-    }
+    } catch { /* non-fatal */ }
+    finally { setLoadingOffers(false); }
   }, []);
 
-  const fetchActiveSwap = useCallback(async (swapId: string) => {
-    try {
-      const { data } = await axios.get<AtomicSwap>(`${SWAP_API}/api/swap/${swapId}`);
-      setActiveSwap(data);
-    } catch {
-      // non-fatal
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchOffers();
-  }, [fetchOffers]);
-
-  // Poll active swap every 15 s
-  useEffect(() => {
-    if (!swapDetails?.swapId) return;
-    fetchActiveSwap(swapDetails.swapId);
-    const id = setInterval(() => fetchActiveSwap(swapDetails.swapId), 15_000);
-    return () => clearInterval(id);
-  }, [swapDetails?.swapId, fetchActiveSwap]);
-
-  const handleSwapStarted = (details: AcceptResponse) => {
-    setSelectedOffer(null);
-    setSelectedBuyOffer(null);
-    setSwapDetails(details);
-    addStoredSwapId(details.swapId);
-    fetchOffers();
-    refreshMySwaps();
-  };
+  useEffect(() => { fetchOffers(); }, [fetchOffers]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 relative overflow-hidden">
@@ -1512,96 +151,26 @@ export default function QBTCMarketplacePage() {
         {/* Network banner */}
         {isMainnet ? <MainnetActiveBanner /> : <TestnetBanner />}
 
-        {/* Wallet connection */}
-        <WalletBadge walletAddress={walletAddress} walletEvmAddress={walletEvmAddress} />
-
-        {/* My Active Swaps */}
-        {mySwaps.length > 0 && (
-          <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold flex items-center gap-2">
-                <ArrowLeftRight className="w-5 h-5 text-cyan-400" />
-                My Swaps
-              </h2>
-              <button
-                onClick={refreshMySwaps}
-                disabled={loadingMySwaps}
-                className="p-2 rounded-lg hover:bg-slate-800 transition-colors"
-                title="Refresh"
-              >
-                <RefreshCw className={`w-4 h-4 text-slate-400 ${loadingMySwaps ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-            <div className="space-y-3">
-              {mySwaps.map(swap => (
-                <MySwapCard
-                  key={swap.id}
-                  swap={swap}
-                  walletAddress={walletAddress}
-                  walletId={walletId}
-                  onRefresh={refreshMySwaps}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Swap just accepted — instructions */}
-        {swapDetails && !mySwaps.find(s => s.id === swapDetails.swapId) && (
-          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5 space-y-3">
-            <div className="flex items-center gap-2 text-emerald-300">
-              <CheckCircle2 className="w-5 h-5" />
-              <span className="font-bold">Swap Initiated Successfully!</span>
-            </div>
-            <p className="text-sm text-emerald-200/70">
-              Swap <span className="font-mono">{swapDetails.swapId.slice(0, 8)}…</span> created.
-              The seller now needs to lock {swapDetails.qbtcAmount} QBTC in the HTLC.
-              This page will update automatically.
+        {/* CTA: Go to Wallet to Trade */}
+        <div className="rounded-2xl border border-cyan-500/40 bg-cyan-500/10 p-6 flex flex-col sm:flex-row items-center gap-4">
+          <Wallet className="w-8 h-8 text-cyan-400 flex-shrink-0" />
+          <div className="flex-1 text-center sm:text-left">
+            <p className="font-bold text-lg text-cyan-200">Trade in Wallet</p>
+            <p className="text-sm text-cyan-300/70">
+              All buying, selling, and swap management is done from your wallet.
+              Create sell offers, post buy offers, and fulfil trades — all with one-click signing.
             </p>
           </div>
-        )}
+          <Link href="/wallet">
+            <button className="px-6 py-3 rounded-xl font-semibold bg-gradient-to-r from-blue-500 to-cyan-500 text-slate-950 hover:from-blue-400 hover:to-cyan-400 transition-all whitespace-nowrap">
+              Open Wallet →
+            </button>
+          </Link>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* ── Left/main column ── */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Active swap instructions */}
-            {swapDetails && !activeSwap && (
-              <SwapInstructions swapDetails={swapDetails} />
-            )}
-
-            {/* Sell / Buy tab toggle */}
-            <div className="flex rounded-xl border border-slate-700 bg-slate-900/60 overflow-hidden">
-              <button
-                onClick={() => setMarketTab('sell')}
-                className={`flex-1 py-3 text-sm font-semibold transition-colors ${marketTab === 'sell' ? 'bg-cyan-500/20 text-cyan-300 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-slate-200'}`}
-              >
-                Sell QBTC
-              </button>
-              <button
-                onClick={() => setMarketTab('buy')}
-                className={`flex-1 py-3 text-sm font-semibold transition-colors ${marketTab === 'buy' ? 'bg-emerald-500/20 text-emerald-300 border-b-2 border-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}
-              >
-                Buy QBTC
-              </button>
-            </div>
-
-            {/* Create offer — shows sell or buy form based on tab */}
-            {marketTab === 'sell' ? (
-              <CreateOfferForm
-                onOfferCreated={fetchOffers}
-                defaultQbtcAddress={walletAddress}
-                defaultPubKeyHex={walletPubKey}
-                defaultEvmAddress={walletEvmAddress}
-              />
-            ) : (
-              <CreateBuyOfferForm
-                onOfferCreated={fetchOffers}
-                defaultQbtcAddress={walletAddress}
-                defaultPubKeyHex={walletPubKey}
-                defaultEvmAddress={walletEvmAddress}
-              />
-            )}
-
             {/* How It Works */}
             <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-6 space-y-5">
               <h2 className="text-xl font-bold flex items-center gap-2">
@@ -1694,19 +263,11 @@ export default function QBTCMarketplacePage() {
 
           {/* ── Right column ── */}
           <div className="space-y-6">
-            {/* Active swap panel */}
-            {activeSwap && (
-              <ActiveSwapPanel
-                swap={activeSwap}
-                onRefresh={() => fetchActiveSwap(activeSwap.id)}
-              />
-            )}
-
             {/* Stats */}
             <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-6 space-y-4">
               <h2 className="text-lg font-bold flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-cyan-400" />
-                Trade Stats
+                Market Overview
               </h2>
               {[
                 { label: 'Sell Offers', value: String(offers.length) },
@@ -1735,11 +296,28 @@ export default function QBTCMarketplacePage() {
               </p>
             </div>
 
+            {/* Trade CTA */}
+            <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/5 p-5 space-y-3">
+              <div className="flex items-center gap-2 text-cyan-400 font-semibold text-sm">
+                <Wallet className="w-4 h-4" />
+                Ready to Trade?
+              </div>
+              <p className="text-xs text-slate-400">
+                Go to your wallet to post sell offers, buy offers, or accept existing offers.
+                Your addresses and keys auto-fill for one-click signing.
+              </p>
+              <Link href="/wallet">
+                <button className="w-full py-2 rounded-lg text-xs font-semibold border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors">
+                  Open Wallet →
+                </button>
+              </Link>
+            </div>
+
             {/* Testnet reminder */}
             {!isMainnet && (
               <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-5 space-y-3">
                 <div className="flex items-center gap-2 text-amber-400 font-semibold text-sm">
-                  <Clock className="w-4 h-4" />
+                  <AlertTriangle className="w-4 h-4" />
                   Testnet — No Real Value
                 </div>
                 <p className="text-xs text-slate-400">
@@ -1756,12 +334,12 @@ export default function QBTCMarketplacePage() {
           </div>
         </div>
 
-        {/* ── Open Offers Table ── */}
+        {/* ── Open Offers Table (read-only) ── */}
         <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold flex items-center gap-2">
               <ArrowLeftRight className="w-5 h-5 text-cyan-400" />
-              Open Offers
+              Open Orders
             </h2>
             <button
               onClick={fetchOffers}
@@ -1773,28 +351,28 @@ export default function QBTCMarketplacePage() {
             </button>
           </div>
 
-          {/* Sell / Buy offer tabs */}
-          <div className="flex rounded-lg border border-slate-700 overflow-hidden text-sm">
+          {/* Sell / Buy tabs */}
+          <div className="flex rounded-xl border border-slate-700 bg-slate-950/40 overflow-hidden">
             <button
-              onClick={() => setMarketTab('sell')}
-              className={`flex-1 py-2 font-medium transition-colors ${marketTab === 'sell' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:text-slate-200'}`}
+              onClick={() => setOfferTab('sell')}
+              className={`flex-1 py-2 text-sm font-semibold transition-colors ${offerTab === 'sell' ? 'bg-cyan-500/20 text-cyan-300 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-slate-200'}`}
             >
               Sell Offers ({offers.length})
             </button>
             <button
-              onClick={() => setMarketTab('buy')}
-              className={`flex-1 py-2 font-medium transition-colors ${marketTab === 'buy' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200'}`}
+              onClick={() => setOfferTab('buy')}
+              className={`flex-1 py-2 text-sm font-semibold transition-colors ${offerTab === 'buy' ? 'bg-emerald-500/20 text-emerald-300 border-b-2 border-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}
             >
               Buy Offers ({buyOffers.length})
             </button>
           </div>
 
-          {/* Sell Offers (ASK) */}
-          {marketTab === 'sell' && (
+          {/* Sell offers table */}
+          {offerTab === 'sell' && (
             <>
               {offers.length === 0 ? (
                 <div className="text-center py-10 text-slate-500 text-sm">
-                  {loadingOffers ? 'Loading offers…' : 'No sell offers yet. Be the first to post one!'}
+                  {loadingOffers ? 'Loading offers…' : 'No sell offers yet.'}
                 </div>
               ) : (
                 <>
@@ -1806,7 +384,7 @@ export default function QBTCMarketplacePage() {
                           <th className="pb-3 pr-4 font-medium">USDC</th>
                           <th className="pb-3 pr-4 font-medium">Rate</th>
                           <th className="pb-3 pr-4 font-medium">Seller</th>
-                          <th className="pb-3 font-medium">Action</th>
+                          <th className="pb-3 font-medium">Status</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800">
@@ -1815,18 +393,19 @@ export default function QBTCMarketplacePage() {
                             <td className="py-3 pr-4 font-mono font-semibold">{offer.qbtcAmount}</td>
                             <td className="py-3 pr-4 font-mono">{offer.usdcAmountRequested}</td>
                             <td className="py-3 pr-4 font-mono text-xs text-slate-400">
-                              {Number(offer.qbtcAmount) > 0 ? (Number(offer.usdcAmountRequested) / Number(offer.qbtcAmount)).toFixed(2) : "—"} USDC/QBTC
+                              {Number(offer.qbtcAmount) > 0 ? (Number(offer.usdcAmountRequested) / Number(offer.qbtcAmount)).toFixed(2) : '—'} USDC/QBTC
                             </td>
                             <td className="py-3 pr-4 font-mono text-xs text-slate-400">
                               {offer.sellerQbtcAddress.slice(0, 14)}…
                             </td>
                             <td className="py-3">
-                              <button
-                                onClick={() => setSelectedOffer(offer)}
-                                className="px-3 py-1 rounded-lg text-xs font-semibold border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors"
-                              >
-                                Accept
-                              </button>
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                offer.status === 'LOCKED'
+                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                  : 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+                              }`}>
+                                {offer.status === 'LOCKED' ? 'QBTC Locked' : 'Open'}
+                              </span>
                             </td>
                           </tr>
                         ))}
@@ -1835,18 +414,12 @@ export default function QBTCMarketplacePage() {
                   </div>
                   <div className="md:hidden space-y-3">
                     {offers.map((offer) => (
-                      <div key={offer.id} className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 space-y-3">
+                      <div key={offer.id} className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="font-mono font-semibold">{offer.qbtcAmount} QBTC</span>
                           <span className="font-mono text-slate-300">{offer.usdcAmountRequested} USDC</span>
                         </div>
                         <p className="text-xs text-slate-500 font-mono">{offer.sellerQbtcAddress.slice(0, 18)}…</p>
-                        <button
-                          onClick={() => setSelectedOffer(offer)}
-                          className="w-full py-2 rounded-lg text-xs font-semibold border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors"
-                        >
-                          Accept Offer
-                        </button>
                       </div>
                     ))}
                   </div>
@@ -1855,12 +428,12 @@ export default function QBTCMarketplacePage() {
             </>
           )}
 
-          {/* Buy Offers (BID) */}
-          {marketTab === 'buy' && (
+          {/* Buy offers table */}
+          {offerTab === 'buy' && (
             <>
               {buyOffers.length === 0 ? (
                 <div className="text-center py-10 text-slate-500 text-sm">
-                  {loadingOffers ? 'Loading offers…' : 'No buy offers yet. Post one to attract sellers!'}
+                  {loadingOffers ? 'Loading offers…' : 'No buy offers yet.'}
                 </div>
               ) : (
                 <>
@@ -1872,27 +445,24 @@ export default function QBTCMarketplacePage() {
                           <th className="pb-3 pr-4 font-medium">USDC Offered</th>
                           <th className="pb-3 pr-4 font-medium">Rate</th>
                           <th className="pb-3 pr-4 font-medium">Buyer</th>
-                          <th className="pb-3 font-medium">Action</th>
+                          <th className="pb-3 font-medium">Status</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800">
                         {buyOffers.map((offer) => (
                           <tr key={offer.id} className="hover:bg-slate-800/40 transition-colors">
-                            <td className="py-3 pr-4 font-mono font-semibold">{offer.qbtcAmount}</td>
+                            <td className="py-3 pr-4 font-mono font-semibold text-emerald-300">{offer.qbtcAmount}</td>
                             <td className="py-3 pr-4 font-mono">{offer.usdcAmountRequested}</td>
                             <td className="py-3 pr-4 font-mono text-xs text-slate-400">
-                              {Number(offer.qbtcAmount) > 0 ? (Number(offer.usdcAmountRequested) / Number(offer.qbtcAmount)).toFixed(2) : "—"} USDC/QBTC
+                              {Number(offer.qbtcAmount) > 0 ? (Number(offer.usdcAmountRequested) / Number(offer.qbtcAmount)).toFixed(2) : '—'} USDC/QBTC
                             </td>
                             <td className="py-3 pr-4 font-mono text-xs text-slate-400">
                               {(offer.buyerQbtcAddress || '').slice(0, 14)}…
                             </td>
                             <td className="py-3">
-                              <button
-                                onClick={() => setSelectedBuyOffer(offer)}
-                                className="px-3 py-1 rounded-lg text-xs font-semibold border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 transition-colors"
-                              >
-                                Fulfil
-                              </button>
+                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-300 border border-blue-500/40">
+                                Open
+                              </span>
                             </td>
                           </tr>
                         ))}
@@ -1901,18 +471,12 @@ export default function QBTCMarketplacePage() {
                   </div>
                   <div className="md:hidden space-y-3">
                     {buyOffers.map((offer) => (
-                      <div key={offer.id} className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 space-y-3">
+                      <div key={offer.id} className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="font-mono font-semibold">{offer.qbtcAmount} QBTC</span>
+                          <span className="font-mono font-semibold text-emerald-300">{offer.qbtcAmount} QBTC</span>
                           <span className="font-mono text-slate-300">{offer.usdcAmountRequested} USDC</span>
                         </div>
                         <p className="text-xs text-slate-500 font-mono">{(offer.buyerQbtcAddress || '').slice(0, 18)}…</p>
-                        <button
-                          onClick={() => setSelectedBuyOffer(offer)}
-                          className="w-full py-2 rounded-lg text-xs font-semibold border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 transition-colors"
-                        >
-                          Fulfil Buy Offer
-                        </button>
                       </div>
                     ))}
                   </div>
@@ -1920,6 +484,15 @@ export default function QBTCMarketplacePage() {
               )}
             </>
           )}
+
+          {/* Go to wallet prompt */}
+          <div className="text-center pt-2">
+            <Link href="/wallet">
+              <button className="px-5 py-2 rounded-xl text-sm font-semibold border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors">
+                Go to Wallet to Trade →
+              </button>
+            </Link>
+          </div>
         </div>
 
         {/* Docs link */}
@@ -1938,30 +511,6 @@ export default function QBTCMarketplacePage() {
           <p>QBTC P2WSH HTLC verified against QuantBTC node (CheckPQCSignature + CLTV). Secret size: 32 bytes (256-bit entropy).</p>
         </div>
       </div>
-
-      {/* Accept offer modal */}
-      {selectedOffer && (
-        <AcceptOfferModal
-          offer={selectedOffer}
-          onClose={() => setSelectedOffer(null)}
-          onSwapStarted={handleSwapStarted}
-          defaultQbtcAddress={walletAddress}
-          defaultPubKeyHex={walletPubKey}
-          defaultEvmAddress={walletEvmAddress}
-        />
-      )}
-
-      {/* Fulfil buy offer modal */}
-      {selectedBuyOffer && (
-        <FulfillBuyOfferModal
-          offer={selectedBuyOffer}
-          onClose={() => setSelectedBuyOffer(null)}
-          onSwapStarted={handleSwapStarted}
-          defaultQbtcAddress={walletAddress}
-          defaultPubKeyHex={walletPubKey}
-          defaultEvmAddress={walletEvmAddress}
-        />
-      )}
     </div>
   );
 }

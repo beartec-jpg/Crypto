@@ -46,9 +46,13 @@ type SwapStatus =
 
 interface SwapOffer {
   id: string;
+  offerType?: string;
   sellerQbtcAddress: string;
   sellerEvmAddress: string;
   sellerPubKeyHex: string;
+  buyerQbtcAddress?: string;
+  buyerEvmAddress?: string;
+  buyerPubKeyHex?: string;
   qbtcAmount: string;
   usdcAmountRequested: string;
   secretHash: string | null;
@@ -499,10 +503,15 @@ export default function MarketplaceTab({
   walletEvmAddress,
 }: MarketplaceTabProps) {
   const [offers, setOffers] = useState<SwapOffer[]>([]);
+  const [buyOffers, setBuyOffers] = useState<SwapOffer[]>([]);
   const [mySwaps, setMySwaps] = useState<AtomicSwap[]>([]);
   const [loadingOffers, setLoadingOffers] = useState(false);
   const [loadingSwaps, setLoadingSwaps] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState<SwapOffer | null>(null);
+  const [selectedBuyOffer, setSelectedBuyOffer] = useState<SwapOffer | null>(null);
+
+  // Market mode: sell QBTC or buy QBTC
+  const [marketMode, setMarketMode] = useState<'sell' | 'buy'>('sell');
 
   // Create offer form
   const [qbtcAmount, setQbtcAmount] = useState('');
@@ -513,10 +522,21 @@ export default function MarketplaceTab({
   const [postError, setPostError] = useState('');
   const [postStep, setPostStep] = useState('');
 
+  // Buy offer form
+  const [buyQbtcAmount, setBuyQbtcAmount] = useState('');
+  const [buyUsdcAmount, setBuyUsdcAmount] = useState('');
+  const [buyLoading, setBuyLoading] = useState(false);
+  const [buySuccess, setBuySuccess] = useState(false);
+  const [buyError, setBuyError] = useState('');
+
   // Accept modal
   const [acceptLoading, setAcceptLoading] = useState(false);
   const [acceptError, setAcceptError] = useState('');
   const [acceptSuccess, setAcceptSuccess] = useState<AcceptResponse | null>(null);
+
+  // Fulfil buy offer modal
+  const [fulfilLoading, setFulfilLoading] = useState(false);
+  const [fulfilError, setFulfilError] = useState('');
 
   // Cancel offer
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -532,8 +552,12 @@ export default function MarketplaceTab({
   const fetchOffers = useCallback(async () => {
     setLoadingOffers(true);
     try {
-      const { data } = await axios.get<SwapOffer[]>(`${SWAP_API}/api/swap/offers`);
-      setOffers(data);
+      const [sellRes, buyRes] = await Promise.all([
+        axios.get<SwapOffer[]>(`${SWAP_API}/api/swap/offers`),
+        axios.get<SwapOffer[]>(`${SWAP_API}/api/swap/buy-offers`),
+      ]);
+      setOffers(sellRes.data);
+      setBuyOffers(buyRes.data);
     } catch { /* non-fatal */ }
     finally { setLoadingOffers(false); }
   }, []);
@@ -675,6 +699,55 @@ export default function MarketplaceTab({
     }
   };
 
+  // ─── Post buy offer ───
+  const canPostBuy = buyQbtcAmount.trim() !== '' && buyUsdcAmount.trim() !== '' && walletAddress && walletPubKey && walletEvmAddress;
+
+  const handlePostBuy = async () => {
+    setBuyLoading(true);
+    setBuyError('');
+    try {
+      await axios.post(`${SWAP_API}/api/swap/buy-offer`, {
+        buyerQbtcAddress: walletAddress,
+        buyerEvmAddress: walletEvmAddress,
+        buyerPubKeyHex: walletPubKey,
+        qbtcAmount: buyQbtcAmount,
+        usdcAmountOffered: buyUsdcAmount,
+      });
+      setBuySuccess(true);
+      setBuyQbtcAmount('');
+      setBuyUsdcAmount('');
+      fetchOffers();
+      setTimeout(() => setBuySuccess(false), 6000);
+    } catch (err: unknown) {
+      setBuyError(getDisplayError(err, 'Failed to post buy offer'));
+    } finally {
+      setBuyLoading(false);
+    }
+  };
+
+  // ─── Fulfil buy offer (seller accepts a buy offer) ───
+  const handleFulfilBuy = async () => {
+    if (!selectedBuyOffer) return;
+    setFulfilLoading(true);
+    setFulfilError('');
+    try {
+      const { data } = await axios.post<AcceptResponse>(`${SWAP_API}/api/swap/accept-buy/${selectedBuyOffer.id}`, {
+        sellerQbtcAddress: walletAddress,
+        sellerEvmAddress: walletEvmAddress,
+        sellerPubKeyHex: walletPubKey,
+      });
+      setAcceptSuccess(data);
+      setSelectedBuyOffer(null);
+      fetchOffers();
+      fetchMySwaps();
+      setTimeout(() => setAcceptSuccess(null), 30_000);
+    } catch (err: unknown) {
+      setFulfilError(getDisplayError(err, 'Failed to fulfil buy offer'));
+    } finally {
+      setFulfilLoading(false);
+    }
+  };
+
   // ─── Filtered & sorted offers ───
   const filteredOffers = useMemo(() => {
     let list = [...offers];
@@ -783,7 +856,24 @@ export default function MarketplaceTab({
         </div>
       )}
 
-      {/* ─── Post & Lock Offer ─── */}
+      {/* ─── Sell / Buy Toggle ─── */}
+      <div className="flex rounded-xl border border-slate-700 bg-slate-900/40 overflow-hidden">
+        <button
+          onClick={() => setMarketMode('sell')}
+          className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${marketMode === 'sell' ? 'bg-cyan-500/20 text-cyan-300 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-slate-200'}`}
+        >
+          Sell QBTC
+        </button>
+        <button
+          onClick={() => setMarketMode('buy')}
+          className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${marketMode === 'buy' ? 'bg-emerald-500/20 text-emerald-300 border-b-2 border-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}
+        >
+          Buy QBTC
+        </button>
+      </div>
+
+      {/* ─── Post & Lock Offer (Sell) ─── */}
+      {marketMode === 'sell' && (
       <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-5 space-y-4">
         <h3 className="text-base font-bold flex items-center gap-2">
           <Send className="w-4 h-4 text-cyan-400" /> Sell QBTC
@@ -840,16 +930,67 @@ export default function MarketplaceTab({
           </button>
         )}
       </div>
+      )}
+
+      {/* ─── Post Buy Offer ─── */}
+      {marketMode === 'buy' && (
+      <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-5 space-y-4">
+        <h3 className="text-base font-bold flex items-center gap-2">
+          <ArrowUpDown className="w-4 h-4 text-emerald-400" /> Buy QBTC
+        </h3>
+        <p className="text-xs text-slate-400">
+          Post how much QBTC you want and the USDC you'll pay. Sellers can fulfil your offer.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-slate-300 block mb-1">QBTC Amount Wanted</label>
+            <input
+              type="number" value={buyQbtcAmount} onChange={(e) => setBuyQbtcAmount(e.target.value)}
+              placeholder="e.g. 1.0" min="0"
+              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-400 focus:outline-none text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-slate-300 block mb-1">USDC Offered</label>
+            <input
+              type="number" value={buyUsdcAmount} onChange={(e) => setBuyUsdcAmount(e.target.value)}
+              placeholder="e.g. 45000" min="0"
+              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-emerald-400 focus:outline-none text-sm"
+            />
+          </div>
+        </div>
+        {buyError && (
+          <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">{buyError}</div>
+        )}
+        {buySuccess ? (
+          <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <p className="text-emerald-300 text-sm font-medium">Buy offer posted! Sellers can now fulfil it.</p>
+          </div>
+        ) : (
+          <button
+            onClick={handlePostBuy} disabled={!canPostBuy || buyLoading}
+            className="w-full py-2.5 rounded-xl font-semibold bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+          >
+            {buyLoading ? 'Posting…' : 'Post Buy Offer'}
+          </button>
+        )}
+      </div>
+      )}
 
       {/* ─── Open Offers ─── */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-bold flex items-center gap-2">
-            <ArrowLeftRight className="w-4 h-4 text-cyan-400" /> Open Offers
-            {offers.length > 0 && (
+            <ArrowLeftRight className="w-4 h-4 text-cyan-400" />
+            {marketMode === 'sell' ? 'Sell Offers' : 'Buy Offers'}
+            {marketMode === 'sell' && offers.length > 0 && (
               <span className="text-xs font-normal text-slate-500">
                 {filteredOffers.length === offers.length ? offers.length : `${filteredOffers.length}/${offers.length}`}
               </span>
+            )}
+            {marketMode === 'buy' && buyOffers.length > 0 && (
+              <span className="text-xs font-normal text-slate-500">{buyOffers.length}</span>
             )}
           </h3>
           <button onClick={fetchOffers} disabled={loadingOffers} className="p-1.5 rounded-md hover:bg-slate-800">
@@ -857,6 +998,9 @@ export default function MarketplaceTab({
           </button>
         </div>
 
+        {/* ─ Sell Offers listing ─ */}
+        {marketMode === 'sell' && (
+          <>
         {/* Filter / Sort bar */}
         {offers.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
@@ -895,7 +1039,7 @@ export default function MarketplaceTab({
 
         {filteredOffers.length === 0 ? (
           <div className="text-center py-8 text-slate-500 text-sm">
-            {loadingOffers ? 'Loading…' : offers.length === 0 ? 'No open offers yet.' : 'No offers match your filters.'}
+            {loadingOffers ? 'Loading…' : offers.length === 0 ? 'No sell offers yet.' : 'No offers match your filters.'}
           </div>
         ) : (
           <div className="space-y-2">
@@ -942,6 +1086,59 @@ export default function MarketplaceTab({
               );
             })}
           </div>
+        )}
+          </>
+        )}
+
+        {/* ─ Buy Offers listing ─ */}
+        {marketMode === 'buy' && (
+          <>
+        {buyOffers.length === 0 ? (
+          <div className="text-center py-8 text-slate-500 text-sm">
+            {loadingOffers ? 'Loading…' : 'No buy offers yet. Post one above!'}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {buyOffers.map(offer => {
+              const isOwn = (offer.buyerQbtcAddress || '').toLowerCase() === walletAddress.toLowerCase();
+              const unitPrice = Number(offer.qbtcAmount) > 0
+                ? (Number(offer.usdcAmountRequested) / Number(offer.qbtcAmount)).toFixed(2)
+                : '—';
+              return (
+                <div key={offer.id} className="rounded-xl border border-slate-700 bg-slate-950/60 p-3 flex items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 text-sm">
+                      <span className="font-mono font-semibold text-emerald-300">{offer.qbtcAmount} QBTC</span>
+                      <span className="text-slate-500">←</span>
+                      <span className="font-mono">{offer.usdcAmountRequested} USDC</span>
+                      <span className="text-[10px] text-slate-500">@ ${unitPrice}/QBTC</span>
+                    </div>
+                    <p className="text-xs text-slate-500 font-mono mt-0.5">
+                      {isOwn ? '(Your buy offer)' : `Buyer: ${(offer.buyerQbtcAddress || '').slice(0, 16)}…`}
+                    </p>
+                  </div>
+                  {isOwn ? (
+                    <button
+                      onClick={() => handleCancel(offer.id)}
+                      disabled={cancellingId === offer.id}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-red-500/40 text-red-300 hover:bg-red-500/10 transition-colors flex-shrink-0 disabled:opacity-50"
+                    >
+                      {cancellingId === offer.id ? 'Cancelling…' : 'Cancel'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => { setSelectedBuyOffer(offer); setFulfilError(''); }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 transition-colors flex-shrink-0"
+                    >
+                      Fulfil
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+          </>
         )}
       </div>
 
@@ -999,6 +1196,60 @@ export default function MarketplaceTab({
                 className="flex-1 py-2.5 rounded-xl font-semibold bg-gradient-to-r from-blue-500 to-cyan-500 text-slate-950 disabled:opacity-50 text-sm flex items-center justify-center gap-2"
               >
                 {acceptLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Accepting…</> : 'Accept & Start Swap'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Fulfil Buy Offer Modal ─── */}
+      {selectedBuyOffer && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-md w-full space-y-4">
+            <h3 className="text-lg font-bold">Fulfil Buy Offer</h3>
+            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 text-sm space-y-2">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Buyer Wants</span>
+                <span className="font-semibold">{selectedBuyOffer.qbtcAmount} QBTC</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Buyer Pays</span>
+                <span className="font-semibold">{selectedBuyOffer.usdcAmountRequested} USDC</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Buyer</span>
+                <span className="font-mono text-xs text-slate-400">{(selectedBuyOffer.buyerQbtcAddress || '').slice(0, 16)}…</span>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-xs text-emerald-200/80">
+              <p>You will sell <strong>{selectedBuyOffer.qbtcAmount} QBTC</strong> and receive <strong>{selectedBuyOffer.usdcAmountRequested} USDC</strong> via atomic swap.</p>
+            </div>
+
+            <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-3 text-xs text-cyan-200">
+              <p className="font-semibold flex items-center gap-2 mb-1"><Info className="w-3.5 h-3.5" /> Your wallet details are used automatically</p>
+              <p className="text-cyan-300/70">
+                QBTC: {walletAddress.slice(0, 18)}… | EVM: {walletEvmAddress.slice(0, 10)}…{walletEvmAddress.slice(-4)}
+              </p>
+            </div>
+
+            {fulfilError && (
+              <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">{fulfilError}</div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setSelectedBuyOffer(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-600 text-slate-300 hover:bg-slate-800 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleFulfilBuy}
+                disabled={fulfilLoading}
+                className="flex-1 py-2.5 rounded-xl font-semibold bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 disabled:opacity-50 text-sm flex items-center justify-center gap-2"
+              >
+                {fulfilLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Fulfilling…</> : 'Fulfil & Start Swap'}
               </button>
             </div>
           </div>
