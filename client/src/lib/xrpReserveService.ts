@@ -102,7 +102,6 @@ export async function setXRPLTrustline(
 /**
  * Get XRPL trustlines for an address
  */
-export async function getXRPLTrustlines(address: string): Promise<Array<{
 export async function getXRPLTrustlines(address: string, network: TokenNetwork = 'mainnet'): Promise<Array<{
   currency: string;
   issuer: string;
