@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
-import { Search, Activity, Blocks, Gauge, Clock3, AlertTriangle, ExternalLink, Wifi, GitFork, Zap, Timer, Coins, Hash, HardDrive, Database, Shield, Network, Server, BarChart2 } from 'lucide-react';
+import { Search, Activity, Blocks, Gauge, Clock3, AlertTriangle, ExternalLink, Wifi, GitFork, Zap, Timer, Coins, Hash, HardDrive, Database, Shield, Network, Server, BarChart2, ArrowLeftRight, TrendingUp, DollarSign, ShoppingCart, XCircle, Lock, CheckCircle } from 'lucide-react';
+import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import MetricChartModal from '../components/MetricChartModal';
 
 interface ScanStats {
@@ -110,6 +111,292 @@ function formatFee(satPerVb?: number | null): string {
   return `${satPerVb} sat/vB`;
 }
 
+// ─── Swap / Marketplace stats types ─────────────────────────────────────────
+
+interface SwapStats {
+  offers: {
+    total: number;
+    open: number;
+    locked: number;
+    matched: number;
+    cancelled: number;
+    totalQbtcListed: number;
+  };
+  swaps: {
+    total: number;
+    completed: number;
+    expired: number;
+    active: number;
+    totalQbtcVolume: number;
+    totalUsdcVolume: number;
+  };
+  priceHistory: Array<{
+    time: string;
+    pricePerQbtc: number;
+    qbtcAmount: number;
+    usdcAmount: number;
+  }>;
+  currentAsks: Array<{
+    offerId: number;
+    pricePerQbtc: number;
+    qbtcAmount: number;
+    usdcAmount: number;
+  }>;
+}
+
+const SWAP_API = import.meta.env.VITE_SWAP_API_URL || '';
+
+function TxDataTab() {
+  const [stats, setStats] = useState<SwapStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const res = await fetch(`${SWAP_API}/api/swap/stats`);
+        if (!res.ok) return;
+        setStats(await res.json());
+      } catch { /* silently fail */ }
+      setLoading(false);
+    };
+    fetchStats();
+    const id = setInterval(fetchStats, 15000);
+    return () => clearInterval(id);
+  }, []);
+
+  const chartData = useMemo(() => {
+    if (!stats?.priceHistory?.length) return [];
+    return stats.priceHistory.map((p) => ({
+      time: new Date(p.time).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }),
+      fullTime: new Date(p.time).toLocaleString(),
+      price: p.pricePerQbtc,
+      volume: p.qbtcAmount,
+    }));
+  }, [stats?.priceHistory]);
+
+  const avgAskPrice = useMemo(() => {
+    if (!stats?.currentAsks?.length) return null;
+    const sum = stats.currentAsks.reduce((a, b) => a + b.pricePerQbtc, 0);
+    return sum / stats.currentAsks.length;
+  }, [stats?.currentAsks]);
+
+  const latestPrice = useMemo(() => {
+    if (chartData.length > 0) return chartData[chartData.length - 1].price;
+    return avgAskPrice;
+  }, [chartData, avgAskPrice]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-400" />
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return <p className="text-slate-400 text-center py-10">Unable to load marketplace statistics.</p>;
+  }
+
+  const { offers, swaps } = stats;
+
+  return (
+    <div className="space-y-6">
+      {/* Price Banner */}
+      <div className="rounded-xl border border-cyan-500/30 bg-gradient-to-r from-cyan-950/40 to-blue-950/40 p-5">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">QBTC / USDC Price</p>
+            <p className="text-3xl font-bold text-cyan-300">
+              {latestPrice != null ? `$${latestPrice.toFixed(4)}` : '—'}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">
+              {chartData.length > 0 ? 'Last completed swap' : avgAskPrice != null ? 'Avg ask price' : 'No trades yet'}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-slate-400">24h Volume</p>
+            <p className="text-lg font-semibold text-slate-200">{swaps.totalQbtcVolume.toLocaleString()} QBTC</p>
+            <p className="text-sm text-slate-400">${swaps.totalUsdcVolume.toLocaleString()} USDC</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Price Chart */}
+      {(chartData.length > 0 || (stats.currentAsks?.length ?? 0) > 0) && (
+        <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-4">
+          <h3 className="text-sm font-semibold text-cyan-300 mb-3 flex items-center gap-2">
+            <TrendingUp className="w-4 h-4" /> QBTC Price History (USDC)
+          </h3>
+          {chartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={260}>
+              <AreaChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+                <defs>
+                  <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#22d3ee" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis dataKey="time" tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} domain={['auto', 'auto']} tickFormatter={(v) => `$${v}`} />
+                <Tooltip
+                  contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: '8px' }}
+                  labelStyle={{ color: '#94a3b8' }}
+                  formatter={(value: number) => [`$${value.toFixed(4)}`, 'Price']}
+                  labelFormatter={(_, payload) => payload?.[0]?.payload?.fullTime ?? ''}
+                />
+                {avgAskPrice != null && (
+                  <ReferenceLine y={avgAskPrice} stroke="#f59e0b" strokeDasharray="5 5" label={{ value: `Ask $${avgAskPrice.toFixed(4)}`, fill: '#f59e0b', fontSize: 10, position: 'right' }} />
+                )}
+                <Area type="monotone" dataKey="price" stroke="#22d3ee" strokeWidth={2} fill="url(#priceGradient)" dot={{ fill: '#22d3ee', r: 3 }} activeDot={{ r: 5 }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="text-center py-10 text-slate-500 text-sm">
+              <p>No completed trades yet. Current ask prices:</p>
+              <div className="flex justify-center gap-3 mt-3 flex-wrap">
+                {stats.currentAsks.map((a) => (
+                  <span key={a.offerId} className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs text-amber-300">
+                    ${a.pricePerQbtc.toFixed(4)}/QBTC ({a.qbtcAmount} QBTC)
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Offer Stats */}
+      <div>
+        <h3 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
+          <ShoppingCart className="w-4 h-4 text-cyan-400" /> Marketplace Offers
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
+          <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+            <p className="text-slate-400 text-xs">Total Offers</p>
+            <p className="text-xl font-bold">{offers.total}</p>
+          </div>
+          <div className="rounded-lg border border-emerald-500/30 p-3 bg-emerald-950/20">
+            <p className="text-emerald-400 text-xs flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Open</p>
+            <p className="text-xl font-bold text-emerald-300">{offers.open}</p>
+          </div>
+          <div className="rounded-lg border border-cyan-500/30 p-3 bg-cyan-950/20">
+            <p className="text-cyan-400 text-xs flex items-center gap-1"><Lock className="w-3 h-3" /> Locked</p>
+            <p className="text-xl font-bold text-cyan-300">{offers.locked}</p>
+          </div>
+          <div className="rounded-lg border border-blue-500/30 p-3 bg-blue-950/20">
+            <p className="text-blue-400 text-xs flex items-center gap-1"><ArrowLeftRight className="w-3 h-3" /> Matched</p>
+            <p className="text-xl font-bold text-blue-300">{offers.matched}</p>
+          </div>
+          <div className="rounded-lg border border-rose-500/30 p-3 bg-rose-950/20">
+            <p className="text-rose-400 text-xs flex items-center gap-1"><XCircle className="w-3 h-3" /> Cancelled</p>
+            <p className="text-xl font-bold text-rose-300">{offers.cancelled}</p>
+          </div>
+          <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+            <p className="text-slate-400 text-xs">QBTC Listed</p>
+            <p className="text-xl font-bold">{offers.totalQbtcListed.toLocaleString()}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Swap Stats */}
+      <div>
+        <h3 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
+          <ArrowLeftRight className="w-4 h-4 text-cyan-400" /> Atomic Swaps
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
+          <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+            <p className="text-slate-400 text-xs">Total Swaps</p>
+            <p className="text-xl font-bold">{swaps.total}</p>
+          </div>
+          <div className="rounded-lg border border-emerald-500/30 p-3 bg-emerald-950/20">
+            <p className="text-emerald-400 text-xs flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Completed</p>
+            <p className="text-xl font-bold text-emerald-300">{swaps.completed}</p>
+          </div>
+          <div className="rounded-lg border border-amber-500/30 p-3 bg-amber-950/20">
+            <p className="text-amber-400 text-xs flex items-center gap-1"><Clock3 className="w-3 h-3" /> Active</p>
+            <p className="text-xl font-bold text-amber-300">{swaps.active}</p>
+          </div>
+          <div className="rounded-lg border border-rose-500/30 p-3 bg-rose-950/20">
+            <p className="text-rose-400 text-xs flex items-center gap-1"><XCircle className="w-3 h-3" /> Expired</p>
+            <p className="text-xl font-bold text-rose-300">{swaps.expired}</p>
+          </div>
+          <div className="rounded-lg border border-cyan-500/30 p-3 bg-cyan-950/20">
+            <p className="text-cyan-400 text-xs flex items-center gap-1"><Coins className="w-3 h-3" /> QBTC Vol</p>
+            <p className="text-xl font-bold text-cyan-300">{swaps.totalQbtcVolume.toLocaleString()}</p>
+          </div>
+          <div className="rounded-lg border border-green-500/30 p-3 bg-green-950/20">
+            <p className="text-green-400 text-xs flex items-center gap-1"><DollarSign className="w-3 h-3" /> USDC Vol</p>
+            <p className="text-xl font-bold text-green-300">${swaps.totalUsdcVolume.toLocaleString()}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Order Book / Current Asks */}
+      {stats.currentAsks.length > 0 && (
+        <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-4">
+          <h3 className="text-sm font-semibold text-cyan-300 mb-3 flex items-center gap-2">
+            <DollarSign className="w-4 h-4" /> Current Ask Prices
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-slate-400 text-xs border-b border-slate-800">
+                  <th className="text-left py-2 px-3">Price (USDC/QBTC)</th>
+                  <th className="text-right py-2 px-3">QBTC Amount</th>
+                  <th className="text-right py-2 px-3">USDC Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.currentAsks
+                  .sort((a, b) => a.pricePerQbtc - b.pricePerQbtc)
+                  .map((ask) => (
+                    <tr key={ask.offerId} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+                      <td className="py-2 px-3 text-amber-300 font-mono">${ask.pricePerQbtc.toFixed(4)}</td>
+                      <td className="py-2 px-3 text-right font-mono">{ask.qbtcAmount.toLocaleString()}</td>
+                      <td className="py-2 px-3 text-right font-mono text-slate-400">${ask.usdcAmount.toLocaleString()}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Recent Completed Trades */}
+      {stats.priceHistory.length > 0 && (
+        <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-4">
+          <h3 className="text-sm font-semibold text-cyan-300 mb-3 flex items-center gap-2">
+            <CheckCircle className="w-4 h-4" /> Recent Completed Trades
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-slate-400 text-xs border-b border-slate-800">
+                  <th className="text-left py-2 px-3">Date</th>
+                  <th className="text-right py-2 px-3">Price</th>
+                  <th className="text-right py-2 px-3">QBTC</th>
+                  <th className="text-right py-2 px-3">USDC</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...stats.priceHistory].reverse().slice(0, 20).map((trade, i) => (
+                  <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+                    <td className="py-2 px-3 text-slate-400 text-xs">{new Date(trade.time).toLocaleString()}</td>
+                    <td className="py-2 px-3 text-right font-mono text-emerald-300">${trade.pricePerQbtc.toFixed(4)}</td>
+                    <td className="py-2 px-3 text-right font-mono">{trade.qbtcAmount.toLocaleString()}</td>
+                    <td className="py-2 px-3 text-right font-mono text-slate-400">${trade.usdcAmount.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 type MetricKey =
   | 'difficulty'
   | 'hashRate'
@@ -166,6 +453,7 @@ const METRIC_CONFIGS: Record<MetricKey, MetricConfig> = {
 };
 
 export default function QBTCScanPage() {
+  const [activeTab, setActiveTab] = useState<'chain' | 'tx'>('chain');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -297,7 +585,28 @@ export default function QBTCScanPage() {
 
         <div className="rounded-2xl border border-slate-700 bg-slate-900/70 backdrop-blur p-6 md:p-8">
           <h1 className="text-3xl font-bold tracking-tight mb-2">QBTC Scan</h1>
-          <p className="text-slate-300 mb-6">Search transactions, addresses, blocks, and monitor live QBTC performance stats.</p>
+          <p className="text-slate-300 mb-4">Search transactions, addresses, blocks, and monitor live QBTC performance stats.</p>
+
+          {/* Tabs */}
+          <div className="flex gap-1 mb-6 border-b border-slate-700 pb-0">
+            <button
+              onClick={() => setActiveTab('chain')}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${activeTab === 'chain' ? 'bg-slate-800 text-cyan-300 border border-slate-700 border-b-transparent -mb-px' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              <span className="flex items-center gap-1.5"><Blocks className="w-3.5 h-3.5" /> Chain Data</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('tx')}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${activeTab === 'tx' ? 'bg-slate-800 text-cyan-300 border border-slate-700 border-b-transparent -mb-px' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              <span className="flex items-center gap-1.5"><ArrowLeftRight className="w-3.5 h-3.5" /> TX Data</span>
+            </button>
+          </div>
+
+          {activeTab === 'tx' ? (
+            <TxDataTab />
+          ) : (
+          <>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6 text-sm">
             <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
@@ -540,6 +849,8 @@ export default function QBTCScanPage() {
                 {JSON.stringify(result.result, null, 2)}
               </pre>
             </div>
+          )}
+          </>
           )}
         </div>
       </div>
