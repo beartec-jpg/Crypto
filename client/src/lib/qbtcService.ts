@@ -353,13 +353,20 @@ export class QBTCChain {
       this.settings = getQBTCRpcSettings();
     }
 
-    const response = await axios.post('/api/qbtc/rpc', {
-      method,
-      params,
-      network: this.settings.network,
-    }, {
-      timeout: 30000,
-    });
+    let response;
+    try {
+      response = await axios.post('/api/qbtc/rpc', {
+        method,
+        params,
+        network: this.settings.network,
+      }, {
+        timeout: 30000,
+      });
+    } catch (axiosErr: any) {
+      // Extract the RPC error message from the response body if available
+      const rpcMsg = axiosErr?.response?.data?.error?.message;
+      throw new Error(rpcMsg || axiosErr?.message || `QBTC RPC error on ${method}`);
+    }
 
     if (response.data?.error) {
       throw new Error(response.data.error.message || `QBTC RPC error on ${method}`);
