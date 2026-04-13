@@ -164,6 +164,43 @@ app.get('/api/swap/offers', async (_req, res) => {
   }
 });
 
+// ─── POST /api/swap/cancel/:offerId ─────────────────────────────────────────
+
+app.post('/api/swap/cancel/:offerId', async (req, res) => {
+  try {
+    const { offerId } = req.params;
+    const { sellerQbtcAddress } = req.body || {};
+    if (!sellerQbtcAddress || typeof sellerQbtcAddress !== 'string') {
+      return res.status(400).json({ error: 'sellerQbtcAddress is required' });
+    }
+
+    const offerResult = await pool.query('SELECT * FROM swap_offers WHERE id = $1', [offerId]);
+    const offer = offerResult.rows[0];
+    if (!offer) return res.status(404).json({ error: 'Offer not found' });
+    if (offer.status !== 'OPEN' && offer.status !== 'LOCKED') {
+      return res.status(409).json({ error: `Cannot cancel offer in status: ${offer.status}` });
+    }
+    if (offer.seller_qbtc_address.toLowerCase() !== sellerQbtcAddress.toLowerCase()) {
+      return res.status(403).json({ error: 'Only the seller can cancel this offer' });
+    }
+
+    await pool.query("UPDATE swap_offers SET status = 'CANCELLED' WHERE id = $1", [offerId]);
+
+    // If QBTC was locked, warn the seller they need to wait for the timelock to refund
+    const wasLocked = offer.status === 'LOCKED' && offer.qbtc_htlc_txid;
+    return res.json({
+      status: 'CANCELLED',
+      wasLocked: !!wasLocked,
+      message: wasLocked
+        ? 'Offer cancelled. Your QBTC is still locked in the HTLC — you can reclaim it after the timelock expires.'
+        : 'Offer cancelled.',
+    });
+  } catch (err: any) {
+    console.error('POST /api/swap/cancel:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to cancel offer' });
+  }
+});
+
 // ─── POST /api/swap/accept/:offerId ─────────────────────────────────────────
 
 app.post('/api/swap/accept/:offerId', async (req, res) => {

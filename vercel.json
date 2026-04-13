@@ -35,6 +35,7 @@
     }
   ],
   "rewrites": [
+    { "source": "/api/swap/cancel/:offerId", "destination": "http://204.168.175.194:3099/api/swap/cancel/:offerId" },
     { "source": "/api/swap/accept/:offerId", "destination": "http://204.168.175.194:3099/api/swap/accept/:offerId" },
     { "source": "/api/swap/lock/qbtc", "destination": "http://204.168.175.194:3099/api/swap/lock/qbtc" },
     { "source": "/api/swap/lock/offer", "destination": "http://204.168.175.194:3099/api/swap/lock/offer" },

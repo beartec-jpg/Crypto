@@ -515,6 +515,9 @@ export default function MarketplaceTab({
   const [acceptError, setAcceptError] = useState('');
   const [acceptSuccess, setAcceptSuccess] = useState<AcceptResponse | null>(null);
 
+  // Cancel offer
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+
   const isMainnet = isSwapMainnetActive();
   const network: QBTCNetwork = isMainnet ? 'mainnet' : 'testnet';
 
@@ -629,6 +632,25 @@ export default function MarketplaceTab({
       setAcceptError(getDisplayError(err, 'Failed to accept offer'));
     } finally {
       setAcceptLoading(false);
+    }
+  };
+
+  // ─── Cancel offer ───
+  const handleCancel = async (offerId: string) => {
+    if (!confirm('Cancel this offer? If QBTC is already locked, you\'ll need to wait for the timelock to refund.')) return;
+    setCancellingId(offerId);
+    try {
+      const { data } = await axios.post(`${SWAP_API}/api/swap/cancel/${offerId}`, {
+        sellerQbtcAddress: walletAddress,
+      });
+      if (data.wasLocked) {
+        alert(data.message);
+      }
+      fetchOffers();
+    } catch (err: unknown) {
+      alert(getDisplayError(err, 'Failed to cancel offer'));
+    } finally {
+      setCancellingId(null);
     }
   };
 
@@ -802,7 +824,15 @@ export default function MarketplaceTab({
                       {isOwn ? '(Your offer)' : `${offer.sellerQbtcAddress.slice(0, 16)}…`}
                     </p>
                   </div>
-                  {!isOwn && (
+                  {isOwn ? (
+                    <button
+                      onClick={() => handleCancel(offer.id)}
+                      disabled={cancellingId === offer.id}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-red-500/40 text-red-300 hover:bg-red-500/10 transition-colors flex-shrink-0 disabled:opacity-50"
+                    >
+                      {cancellingId === offer.id ? 'Cancelling…' : 'Cancel'}
+                    </button>
+                  ) : (
                     <button
                       onClick={() => { setSelectedOffer(offer); setAcceptError(''); }}
                       className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors flex-shrink-0"
