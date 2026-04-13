@@ -3,6 +3,7 @@
 
 import * as xrpl from 'xrpl';
 import { xrplService } from './xrpService';
+import type { TokenNetwork } from './tokenService';
 
 const BASE_RESERVE = 10; // 10 XRP
 const OWNER_RESERVE = 2; // 2 XRP per object
@@ -28,9 +29,9 @@ export interface XRPTransactionBroadcastResult {
 /**
  * Get XRP account info with reserves calculation
  */
-export async function getXrpAccountInfo(address: string): Promise<XRPAccountInfo> {
+export async function getXrpAccountInfo(address: string, network: TokenNetwork = 'mainnet'): Promise<XRPAccountInfo> {
   try {
-    const client = await xrplService.getClient(true);
+    const client = await xrplService.getClient(network === 'mainnet');
     
     const response = await client.request({
       command: 'account_info',

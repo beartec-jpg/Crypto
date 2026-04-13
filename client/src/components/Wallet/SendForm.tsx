@@ -216,7 +216,8 @@ export default function SendForm({
           if (selectedChain === 'xrp') {
             try {
               const accountInfo = await getXrpAccountInfo(
-                sovereignWallet.addresses[selectedChain]
+                sovereignWallet.addresses[selectedChain],
+                tokenNetwork
               );
               setXrpReserved(accountInfo.reserves.total.toString());
               setXrpAvailable(accountInfo.available);

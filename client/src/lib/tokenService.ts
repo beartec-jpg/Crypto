@@ -591,9 +591,9 @@ export async function fetchXRPLIssuerInfo(issuer: string): Promise<{
     globalFreeze: boolean;
     defaultRipple: boolean;
   };
-}> {
+}>, network: TokenNetwork = 'mainnet') {
   try {
-    const client = await xrplService.getClient(true);
+    const client = await xrplService.getClient(network === 'mainnet');
     
     const response = await client.request({
       command: 'account_info',
@@ -726,7 +726,7 @@ async function detectXRPLTrustlines(
   network: TokenNetwork = 'mainnet'
 ): Promise<{ tokens: Token[]; error?: string }> {
   try {
-    const client = await xrplService.getClient(true);
+    const client = await xrplService.getClient(network === 'mainnet');
     
     const response = await client.request({
       command: 'account_lines',
@@ -742,7 +742,7 @@ async function detectXRPLTrustlines(
     
     await Promise.all(uniqueIssuers.map(async (issuer) => {
       try {
-        const issuerInfo = await fetchXRPLIssuerInfo(issuer);
+        const issuerInfo = await fetchXRPLIssuerInfo(issuer, network);
         issuerFlagsMap.set(issuer, issuerInfo.flags);
       } catch (e) {
         // Log error but continue with other issuers

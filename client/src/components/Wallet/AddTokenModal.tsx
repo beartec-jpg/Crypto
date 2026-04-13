@@ -139,7 +139,7 @@ const handleVerify = async () => {
       }
 
       // Fetch issuer info
-      const issuerInfo = await fetchXRPLIssuerInfo(issuerAddress);
+      const issuerInfo = await fetchXRPLIssuerInfo(issuerAddress, network);
       if (!issuerInfo.exists) {
         throw new Error('Issuer address does not exist on XRPL');
       }
@@ -149,7 +149,7 @@ const handleVerify = async () => {
       }
 
       // Calculate reserve requirements
-      const reserve = await calculateXRPReserve(walletAddress);
+      const reserve = await calculateXRPReserve(walletAddress, network);
       
       const token: Partial<Token> = {
         id: `xrpl-${currencyCode.toUpperCase()}-${issuerAddress}-${network}`,
@@ -234,7 +234,7 @@ const handleVerify = async () => {
       const { getXRPLTrustlines } = await import('@/lib/xrpReserveService');
       
       // Check if trustline already exists
-      const existingTrustlines = await getXRPLTrustlines(walletAddress);
+      const existingTrustlines = await getXRPLTrustlines(walletAddress, network);
       const alreadyExists = existingTrustlines.some(
         tl => tl.currency.toUpperCase() === verifiedToken.currencyCode!.toUpperCase() && 
               tl.issuer === verifiedToken.issuer

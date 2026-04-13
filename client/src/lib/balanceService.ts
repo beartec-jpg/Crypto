@@ -160,14 +160,15 @@ export async function fetchBSCBalance(address: string, network: TokenNetwork = '
 /**
  * Fetch XRP balance using official xrpl.js library
  */
-export async function fetchXRPBalance(address: string): Promise<string> {
+export async function fetchXRPBalance(address: string, network: TokenNetwork = 'mainnet'): Promise<string> {
   try {
     if (!xrplService.isValidAddress(address)) {
       console.error('❌ Invalid XRP address format:', address);
       return '0';
     }
-    
-    const result = await xrplService.getBalance(address, true); // Always mainnet
+
+    const useMainnet = network === 'mainnet';
+    const result = await xrplService.getBalance(address, useMainnet);
     
     if (result) {
       return parseFloat(result.balance).toFixed(6);
@@ -312,7 +313,7 @@ export async function fetchChainBalance(chain: Chain, address: string, network: 
       balance = await fetchBSCBalance(address, network);
       break;
     case 'xrp':
-      balance = await fetchXRPBalance(address);
+    balance = await fetchXRPBalance(address, network);
       break;
     case 'solana':
       balance = await fetchSolanaBalance(address);
@@ -347,7 +348,7 @@ export async function fetchAllBalances(addresses: {
       fetchEthereumBalance(addresses.ethereum, network),
       fetchBitcoinBalance(addresses.bitcoin),
       fetchBSCBalance(addresses.bsc, network),
-      fetchXRPBalance(addresses.xrp),
+      fetchXRPBalance(addresses.xrp, network),
       fetchSolanaBalance(addresses.solana),
       fetchQBTCBalance(addresses.qbtc),
     ]);

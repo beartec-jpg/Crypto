@@ -3,6 +3,7 @@
 
 import { Client, Wallet, TrustSet, xrpToDrops } from 'xrpl';
 import { xrplService } from './xrpService';
+import type { TokenNetwork } from './tokenService';
 
 /**
  * XRP Reserve Information Interface
@@ -28,7 +29,8 @@ export async function setXRPLTrustline(
   password: string,
   currency: string,
   issuer: string,
-  limit: string = '999999999'
+  limit: string = '999999999',
+  network: TokenNetwork = 'mainnet'
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
   try {
     console.log('🔧 Setting XRPL trustline...');
@@ -46,7 +48,7 @@ export async function setXRPLTrustline(
     console.log('  Using address:', wallet.address);
 
     // Connect to XRPL
-    const client = await xrplService.getClient(true);
+    const client = await xrplService.getClient(network === 'mainnet');
 
     // Build TrustSet transaction
     const trustSet: TrustSet = {
@@ -101,13 +103,14 @@ export async function setXRPLTrustline(
  * Get XRPL trustlines for an address
  */
 export async function getXRPLTrustlines(address: string): Promise<Array<{
+export async function getXRPLTrustlines(address: string, network: TokenNetwork = 'mainnet'): Promise<Array<{
   currency: string;
   issuer: string;
   balance: string;
   limit: string;
 }>> {
   try {
-    const client = await xrplService.getClient(true);
+    const client = await xrplService.getClient(network === 'mainnet');
     
     const response = await client.request({
       command: 'account_lines',
@@ -138,20 +141,21 @@ export async function removeXRPLTrustline(
   walletId: string,
   password: string,
   currency: string,
-  issuer: string
+  issuer: string,
+  network: TokenNetwork = 'mainnet'
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
-  return setXRPLTrustline(walletId, password, currency, issuer, '0');
+  return setXRPLTrustline(walletId, password, currency, issuer, '0', network);
 }
 
 /**
  * Calculate XRP reserve requirements for an address
  */
-export async function calculateXRPReserve(address: string): Promise<XRPReserveInfo> {
+export async function calculateXRPReserve(address: string, network: TokenNetwork = 'mainnet'): Promise<XRPReserveInfo> {
   try {
     // Import from xrpSendService to avoid circular dependency
     const { getXrpAccountInfo } = await import('./xrpSendService');
-    
-    const accountInfo = await getXrpAccountInfo(address);
+
+    const accountInfo = await getXrpAccountInfo(address, network);
     
     const totalBalance = parseFloat(accountInfo.balance);
     const available = parseFloat(accountInfo.available);

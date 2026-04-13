@@ -5,6 +5,7 @@ import axios from 'axios';
 import { xrplService } from './xrpService';
 import { dropsToXrp } from 'xrpl';
 import { QBTCChain } from './qbtcService';
+import type { TokenNetwork } from './tokenService';
 
 export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana' | 'qbtc';
 
@@ -179,9 +180,9 @@ export async function fetchBSCTransactions(address: string): Promise<Transaction
 /**
  * Fetch XRP transactions using official xrpl.js library
  */
-export async function fetchXRPTransactions(address: string): Promise<Transaction[]> {
+export async function fetchXRPTransactions(address: string, network: TokenNetwork = 'mainnet'): Promise<Transaction[]> {
   try {
-    const txs = await xrplService.getTransactions(address, true, 20); // Always mainnet
+    const txs = await xrplService.getTransactions(address, network === 'mainnet', 20);
     
     const transactions: Transaction[] = txs.map((item: any) => {
       const tx = item.tx;
@@ -280,9 +281,10 @@ export async function fetchQBTCTransactions(address: string): Promise<Transactio
  */
 export async function fetchChainTransactions(
   chain: Chain,
-  address: string
+  address: string,
+  network: TokenNetwork = 'mainnet'
 ): Promise<Transaction[]> {
-  console.log(`📡 Fetching ${chain} transactions for ${address} (mainnet)`);
+  console.log(`📡 Fetching ${chain} transactions for ${address} (${network})`);
   
   try {
     switch (chain) {
@@ -293,7 +295,7 @@ export async function fetchChainTransactions(
       case 'bsc':
         return await fetchBSCTransactions(address);
       case 'xrp':
-        return await fetchXRPTransactions(address);
+        return await fetchXRPTransactions(address, network);
       case 'solana':
         return await fetchSolanaTransactions(address);
       case 'qbtc':

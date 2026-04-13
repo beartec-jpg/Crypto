@@ -282,7 +282,7 @@ export default function WalletDashboard({
         if (!address) return [];
         
         try {
-          return await fetchChainTransactions(chain, address);
+          return await fetchChainTransactions(chain, address, tokenNetwork);
         } catch (error) {
           console.error(`Failed to fetch ${chain} transactions:`, error);
           return [];
@@ -301,7 +301,7 @@ export default function WalletDashboard({
       console.error('Transaction fetch failed:', error);
       setAllTransactions([]);
     }
-  }, [sovereignWallet]);
+  }, [sovereignWallet, tokenNetwork]);
 
   // Initial load + auto-refresh transactions every 30 seconds
   useEffect(() => {
@@ -380,7 +380,9 @@ export default function WalletDashboard({
         sovereignWallet.id,
         password,
         pendingTrustline.currency,
-        pendingTrustline.issuer
+        pendingTrustline.issuer,
+        '999999999',
+        tokenNetwork
       );
 
       if (!result.success) {
