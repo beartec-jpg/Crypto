@@ -196,7 +196,6 @@ function SellerLockPanel({
   const requirements = getSecurityRequirements(userId, 'send');
   const needsPin = requirements.includes('pin');
   const needsPasskey = requirements.includes('passkey');
-  const needsPassword = requirements.includes('password');
 
   const startSecurityGate = async () => {
     setError('');
@@ -207,14 +206,14 @@ function SellerLockPanel({
     if (needsPasskey && !isPasskeyAuthenticated() && !passkeyDone) {
       try { await authenticateWithPasskey(); setPasskeyDone(true); } catch { setError('Passkey authentication failed'); return; }
     }
-    // If password required by tier, we need it. Otherwise go straight to execute.
-    if (needsPassword) return; // user fills password field, then clicks Lock
+    // Password is always needed (wallet decryption) — wait for user to fill it and click Lock
+    if (!password.trim()) return;
     await executeLock();
   };
   const handlePinSuccess = async () => { setShowPinModal(false); await afterPin(); };
 
   const handleLock = async () => {
-    if (needsPassword && !password.trim()) { setError('Enter your wallet password'); return; }
+    if (!password.trim()) { setError('Enter your wallet password'); return; }
     // If we haven't done passkey/pin yet, start the gate
     if (needsPin || (needsPasskey && !isPasskeyAuthenticated() && !passkeyDone)) {
       await startSecurityGate();
@@ -282,21 +281,19 @@ function SellerLockPanel({
           Authenticate to sign and broadcast. Funds locked with a 48-hour refund window.
         </p>
       </div>
-      {needsPassword && (
-        <div className="flex gap-2">
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !loading && handleLock()}
-            placeholder="Wallet password"
-            className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
-          />
-        </div>
-      )}
+      <div className="flex gap-2">
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && !loading && handleLock()}
+          placeholder="Wallet password"
+          className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
+        />
+      </div>
       <button
         onClick={handleLock}
-        disabled={loading || (needsPassword && !password.trim())}
+        disabled={loading || !password.trim()}
         className="w-full py-2 rounded-xl font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2"
       >
         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
@@ -446,7 +443,6 @@ function BuyerLockPanel({
   const requirements = getSecurityRequirements(userId, 'send');
   const needsPin = requirements.includes('pin');
   const needsPasskey = requirements.includes('passkey');
-  const needsPassword = requirements.includes('password');
 
   const startSecurityGate = async () => {
     setError('');
@@ -457,13 +453,13 @@ function BuyerLockPanel({
     if (needsPasskey && !isPasskeyAuthenticated() && !passkeyDone) {
       try { await authenticateWithPasskey(); setPasskeyDone(true); } catch { setError('Passkey authentication failed'); return; }
     }
-    if (needsPassword) return;
+    if (!password.trim()) return;
     await executeLock();
   };
   const handlePinSuccess = async () => { setShowPinModal(false); await afterPin(); };
 
   const handleLock = async () => {
-    if (needsPassword && !password.trim()) { setError('Enter your wallet password'); return; }
+    if (!password.trim()) { setError('Enter your wallet password'); return; }
     if (needsPin || (needsPasskey && !isPasskeyAuthenticated() && !passkeyDone)) {
       await startSecurityGate();
       return;
@@ -545,19 +541,17 @@ function BuyerLockPanel({
           Authenticate to approve USDC and create the hash time-lock on {isSwapMainnetActive() ? 'Ethereum' : 'Sepolia'}. 24-hour refund window.
         </p>
       </div>
-      {needsPassword && (
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !loading && handleLock()}
-          placeholder="Wallet password"
-          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-purple-400 focus:outline-none text-sm"
-        />
-      )}
+      <input
+        type="password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && !loading && handleLock()}
+        placeholder="Wallet password"
+        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-purple-400 focus:outline-none text-sm"
+      />
       <button
         onClick={handleLock}
-        disabled={loading || (needsPassword && !password.trim())}
+        disabled={loading || !password.trim()}
         className="w-full px-4 py-2 rounded-xl font-semibold bg-gradient-to-r from-purple-500 to-pink-500 text-white disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2"
       >
         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
@@ -600,7 +594,6 @@ function SellerClaimPanel({
   const requirements = getSecurityRequirements(userId, 'send');
   const needsPin = requirements.includes('pin');
   const needsPasskey = requirements.includes('passkey');
-  const needsPassword = requirements.includes('password');
 
   const startSecurityGate = async () => {
     setError('');
@@ -611,13 +604,13 @@ function SellerClaimPanel({
     if (needsPasskey && !isPasskeyAuthenticated() && !passkeyDone) {
       try { await authenticateWithPasskey(); setPasskeyDone(true); } catch { setError('Passkey authentication failed'); return; }
     }
-    if (needsPassword) return;
+    if (!password.trim()) return;
     await executeClaim();
   };
   const handlePinSuccess = async () => { setShowPinModal(false); await afterPin(); };
 
   const handleClaim = async () => {
-    if (needsPassword && !password) return setError('Enter your wallet password');
+    if (!password.trim()) return setError('Enter your wallet password');
     if (needsPin || (needsPasskey && !isPasskeyAuthenticated() && !passkeyDone)) {
       await startSecurityGate();
       return;
@@ -689,18 +682,16 @@ function SellerClaimPanel({
         <Lock className="w-4 h-4" /> Claim {swap.usdcAmount} USDC
       </div>
       <p className="text-xs text-purple-200/60">Both sides locked. Authenticate to claim the buyer's USDC.</p>
-      {needsPassword && (
-        <input
-          type="password"
-          placeholder="Wallet password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-sm"
-        />
-      )}
+      <input
+        type="password"
+        placeholder="Wallet password"
+        value={password}
+        onChange={e => setPassword(e.target.value)}
+        className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-sm"
+      />
       <button
         onClick={handleClaim}
-        disabled={loading || (needsPassword && !password)}
+        disabled={loading || !password.trim()}
         className="w-full px-3 py-1.5 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-500 disabled:opacity-50 flex items-center justify-center gap-1.5"
       >
         {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
