@@ -233,7 +233,7 @@ export function getSwapNetworkConfig(): SwapNetworkConfig {
   // Sepolia testnet defaults
   return {
     network: 'testnet',
-    evmRpcUrl: import.meta.env.VITE_EVM_RPC_URL || 'https://rpc.sepolia.org',
+    evmRpcUrl: import.meta.env.VITE_EVM_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com',
     htlcContractAddress: import.meta.env.VITE_EVM_HTLC_CONTRACT || '',
     usdcContractAddress: import.meta.env.VITE_USDC_CONTRACT || '',
     evmChainId: Number(import.meta.env.VITE_EVM_CHAIN_ID || 11155111),
