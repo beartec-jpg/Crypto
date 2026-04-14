@@ -1113,9 +1113,15 @@ function SettingsSection({
                   <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.solana}</span>
                 </div>
                 <div>
-                  <span className="text-gray-400">QBTC:</span>
+                  <span className="text-gray-400">QBTC Hot:</span>
                   <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.qbtc}</span>
                 </div>
+                {sovereignWallet.addresses.qbtcVault && (
+                  <div>
+                    <span className="text-cyan-400">QBTC Vault:</span>
+                    <span className="ml-2 text-cyan-300 break-all">{sovereignWallet.addresses.qbtcVault}</span>
+                  </div>
+                )}
               </div>
             </div>
           )}
