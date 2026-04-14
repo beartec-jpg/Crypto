@@ -83,6 +83,7 @@ interface AtomicSwap {
   qbtcLocktime: number | null;
   evmLocktime: number | null;
   status: SwapStatus;
+  buyerQbtcClaimTxid: string | null;
   createdAt: string;
 }
 
@@ -664,21 +665,8 @@ function BuyerClaimQBTCPanel({
       // 2. Scan for UTXOs at the HTLC address
       setStep('Scanning HTLC address for funds…');
       const qbtcChain = new QBTCChain(getQBTCRpcSettings());
-      const balance = await qbtcChain.getBalance(htlcAddress);
-      if (Number(balance) <= 0) throw new Error(`No funds found at HTLC address ${htlcAddress}. Already claimed?`);
-
-      // Get UTXOs via listTransactions (scantxoutset internally)
-      const txList = await qbtcChain.listTransactions(htlcAddress);
-      // Build UTXOs from unconfirmed + confirmed — use the raw scan
-      const scanResult = await (qbtcChain as any).rpcCall('scantxoutset', ['start', [`addr(${htlcAddress})`]]);
-      const utxos = (scanResult?.unspents ?? []).map((u: any) => ({
-        txid: u.txid,
-        vout: u.vout,
-        amount: u.amount,
-        address: htlcAddress,
-        scriptPubKey: u.scriptPubKey,
-      }));
-      if (utxos.length === 0) throw new Error('No UTXOs found at HTLC address');
+      const utxos = await qbtcChain.scanUTXOs(htlcAddress);
+      if (utxos.length === 0) throw new Error(`No funds found at HTLC address ${htlcAddress}. Already claimed?`);
 
       // 3. Build claim tx (hash-only mode — no key needed, just secret)
       setStep('Signing claim transaction…');
@@ -694,6 +682,15 @@ function BuyerClaimQBTCPanel({
       // 4. Broadcast
       setStep('Broadcasting to QBTC network…');
       const claimTxid = await qbtcChain.broadcastRawTransaction(rawTx);
+
+      // 5. Record claim txid on server so it persists across refreshes
+      setStep('Recording claim…');
+      try {
+        await axios.post(`${SWAP_API}/api/swap/claim/qbtc`, { swapId: swap.id, claimTxid });
+      } catch (e) {
+        console.warn('Failed to record QBTC claim txid on server:', e);
+      }
+
       setTxid(claimTxid);
       setSuccess(true);
       onClaimed();
@@ -845,10 +842,19 @@ function SwapCard({
         </div>
       )}
 
-      {swap.status === 'COMPLETE' && isBuyer && swap.secret && swap.qbtcHtlcAddress && (
+      {swap.status === 'COMPLETE' && isBuyer && swap.secret && swap.qbtcHtlcAddress && !swap.buyerQbtcClaimTxid && (
         <BuyerClaimQBTCPanel swap={swap} walletId={walletId} walletAddress={walletAddress} onClaimed={onRefresh} />
       )}
-      {swap.status === 'COMPLETE' && (!isBuyer || !swap.secret) && (
+      {swap.status === 'COMPLETE' && isBuyer && swap.buyerQbtcClaimTxid && (
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 space-y-1">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <p className="text-emerald-300 text-xs font-medium">QBTC claimed!</p>
+          </div>
+          <p className="text-[10px] font-mono text-emerald-400/70">txid: {swap.buyerQbtcClaimTxid.slice(0, 16)}…</p>
+        </div>
+      )}
+      {swap.status === 'COMPLETE' && (!isBuyer || !swap.secret) && !swap.buyerQbtcClaimTxid && (
         <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           <p className="text-emerald-300 text-xs font-medium">Swap complete!</p>
@@ -1157,7 +1163,7 @@ export default function MarketplaceTab({
            (!isSeller && (s.status === 'QBTC_LOCKED' || s.status === 'PENDING_QBTC_LOCK'));
   }).length + pastSwaps.filter(s => {
     const isBuyer = s.buyerQbtcAddress?.toLowerCase() === walletAddress.toLowerCase();
-    return isBuyer && s.status === 'COMPLETE' && s.secret;
+    return isBuyer && s.status === 'COMPLETE' && s.secret && !s.buyerQbtcClaimTxid;
   }).length;
 
   return (

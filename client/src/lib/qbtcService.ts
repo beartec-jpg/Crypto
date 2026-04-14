@@ -389,6 +389,20 @@ export class QBTCChain {
     return (result?.total_amount ?? 0).toFixed(8);
   }
 
+  async scanUTXOs(address: string): Promise<QBTCUtxo[]> {
+    const network = QBTC_NETWORKS[this.settings.network];
+    const result = await this.rpcCall<{ unspents: Array<{ txid: string; vout: number; amount: number; height: number; scriptPubKey: string }> }>(
+      'scantxoutset', ['start', [{ desc: addressToRawDescriptor(address, network) }]]
+    );
+    return (result?.unspents ?? []).map(u => ({
+      txid: u.txid,
+      vout: u.vout,
+      amount: u.amount,
+      address,
+      scriptPubKey: u.scriptPubKey,
+    }));
+  }
+
   async listTransactions(address: string, count = 20): Promise<QBTCTransaction[]> {
     const network = QBTC_NETWORKS[this.settings.network];
     const result = await this.rpcCall<{ unspents: Array<{ txid: string; vout: number; amount: number; height: number }> }>(

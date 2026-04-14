@@ -764,6 +764,30 @@ app.post('/api/swap/secret/seller', async (req, res) => {
   }
 });
 
+// ─── POST /api/swap/claim/qbtc — Record buyer's QBTC claim txid ────────────
+
+app.post('/api/swap/claim/qbtc', async (req, res) => {
+  try {
+    const { swapId, claimTxid } = req.body || {};
+    if (!swapId || !claimTxid) return res.status(400).json({ error: 'swapId and claimTxid required' });
+
+    const result = await pool.query('SELECT * FROM atomic_swaps WHERE id = $1', [swapId]);
+    const swap = result.rows[0];
+    if (!swap) return res.status(404).json({ error: 'Swap not found' });
+    if (swap.status !== 'COMPLETE') return res.status(409).json({ error: 'Swap is not COMPLETE' });
+
+    await pool.query(
+      `UPDATE atomic_swaps SET buyer_qbtc_claim_txid = $1, updated_at = NOW() WHERE id = $2`,
+      [claimTxid, swapId],
+    );
+
+    return res.json({ ok: true, claimTxid });
+  } catch (err: any) {
+    console.error('POST /api/swap/claim/qbtc:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to record claim' });
+  }
+});
+
 // ─── EVM Withdraw Monitor ───────────────────────────────────────────────────
 
 async function pollEvmLocked() {
@@ -827,9 +851,17 @@ async function pollEvmLocked() {
 
 // ─── Start ──────────────────────────────────────────────────────────────────
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', async () => {
   console.log(`[swap-server] Listening on 0.0.0.0:${PORT}`);
   console.log(`[swap-server] Health check: http://localhost:${PORT}/api/swap/health`);
+
+  // Ensure buyer_qbtc_claim_txid column exists
+  try {
+    await pool.query(`ALTER TABLE atomic_swaps ADD COLUMN IF NOT EXISTS buyer_qbtc_claim_txid TEXT`);
+    console.log(`[swap-server] DB migration: buyer_qbtc_claim_txid column ensured`);
+  } catch (err: any) {
+    console.error('[swap-server] DB migration error:', err.message);
+  }
 
   // Start EVM withdraw monitor
   setInterval(pollEvmLocked, MONITOR_POLL_MS);

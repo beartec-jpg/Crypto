@@ -41,6 +41,7 @@
     { "source": "/api/swap/lock/offer", "destination": "http://204.168.175.194:3099/api/swap/lock/offer" },
     { "source": "/api/swap/lock/evm", "destination": "http://204.168.175.194:3099/api/swap/lock/evm" },
     { "source": "/api/swap/secret/seller", "destination": "http://204.168.175.194:3099/api/swap/secret/seller" },
+    { "source": "/api/swap/claim/qbtc", "destination": "http://204.168.175.194:3099/api/swap/claim/qbtc" },
     { "source": "/api/swap/by-address", "destination": "http://204.168.175.194:3099/api/swap/by-address" },
     { "source": "/api/swap/offer", "destination": "http://204.168.175.194:3099/api/swap/offer" },
     { "source": "/api/swap/stats", "destination": "http://204.168.175.194:3099/api/swap/stats" },
