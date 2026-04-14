@@ -129,7 +129,7 @@ export async function signQBTCTransaction(
     // ECDSA signature
     const rawSig = ecc.sign(digest, keys.ecdsaPriv);
     const ecdsaSignature = bitcoin.script.signature.encode(
-      Buffer.from(rawSig),
+      Buffer.from(rawSig.toCompactRawBytes()),
       bitcoin.Transaction.SIGHASH_ALL
     );
 

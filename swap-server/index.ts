@@ -14,6 +14,8 @@ import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
 import pg from 'pg';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const { Pool } = pg;
 
@@ -117,6 +119,12 @@ const app = express();
 const corsOrigins = (process.env.CORS_ORIGINS || '*').split(',').map((s) => s.trim());
 app.use(cors({ origin: corsOrigins.includes('*') ? '*' : corsOrigins }));
 app.use(express.json());
+
+// Serve cold-signer PWA
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const coldSignerDir = path.join(__dirname, 'cold-signer-dist');
+app.use('/cold-signer', express.static(coldSignerDir));
+app.get('/cold-signer/*', (_req, res) => res.sendFile(path.join(coldSignerDir, 'index.html')));
 
 // Health check
 app.get('/api/swap/health', (_req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
