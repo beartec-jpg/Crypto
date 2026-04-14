@@ -120,6 +120,8 @@ function App() {
     try {
       const exists = await hasStoredShare();
       setHasShare(exists);
+    } catch {
+      setHasShare(false);
     } finally {
       setIsCheckingShare(false);
     }
