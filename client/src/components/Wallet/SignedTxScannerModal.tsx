@@ -264,15 +264,30 @@ export default function SignedTxScannerModal({
 
               <textarea
                 value={pastedHex}
-                onChange={(e) => setPastedHex(e.target.value.trim())}
+                onChange={(e) => setPastedHex(e.target.value.replace(/\s/g, ''))}
                 placeholder="Paste raw signed transaction hex here..."
                 className="w-full h-32 bg-gray-900 border border-gray-600 rounded-lg p-3 text-sm font-mono text-gray-300 placeholder-gray-500 focus:border-emerald-500 focus:outline-none resize-none mb-4"
               />
+
+              {pastedHex && (
+                <p className="text-gray-500 text-xs mb-2">
+                  {pastedHex.length.toLocaleString()} hex chars ({Math.ceil(pastedHex.length / 2).toLocaleString()} bytes)
+                  {pastedHex.length % 2 !== 0 && <span className="text-amber-400 ml-2">⚠ Odd length — hex may be truncated</span>}
+                </p>
+              )}
 
               <button
                 onClick={() => {
                   if (!pastedHex) {
                     setError('Please paste a signed transaction hex');
+                    return;
+                  }
+                  if (!/^[0-9a-fA-F]+$/.test(pastedHex)) {
+                    setError('Invalid hex — contains non-hex characters');
+                    return;
+                  }
+                  if (pastedHex.length % 2 !== 0) {
+                    setError('Invalid hex — odd number of characters (possibly truncated)');
                     return;
                   }
                   setScannedHex(pastedHex);

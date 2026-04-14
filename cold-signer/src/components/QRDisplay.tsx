@@ -37,9 +37,21 @@ export default function QRDisplay({ data, onComplete }: QRDisplayProps) {
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(data);
+      // Try clipboard API first, fall back to textarea method
+      try {
+        await navigator.clipboard.writeText(data);
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = data;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 3000);
     } catch (err) {
       console.error('Failed to copy:', err);
     }
@@ -54,7 +66,10 @@ export default function QRDisplay({ data, onComplete }: QRDisplayProps) {
           </div>
           <h2 className="text-2xl font-bold mb-2">Transaction Signed!</h2>
           <p className="text-gray-400">
-            Scan this QR code with your hot wallet to broadcast
+            Copy the signed transaction and paste it into your hot wallet
+          </p>
+          <p className="text-gray-500 text-xs mt-1">
+            {data.length} hex chars ({Math.ceil(data.length / 2).toLocaleString()} bytes)
           </p>
         </div>
 
@@ -91,12 +106,12 @@ export default function QRDisplay({ data, onComplete }: QRDisplayProps) {
             {copied ? (
               <>
                 <CheckCircle className="w-4 h-4" />
-                Copied!
+                Copied {data.length.toLocaleString()} chars!
               </>
             ) : (
               <>
                 <Copy className="w-4 h-4" />
-                Copy Raw Transaction
+                Copy Raw Transaction ({data.length.toLocaleString()} chars)
               </>
             )}
           </button>
