@@ -270,8 +270,8 @@ export default function QBTCMarketplacePage() {
                 Market Overview
               </h2>
               {[
-                { label: 'Sell Offers', value: String(offers.length) },
-                { label: 'Buy Offers', value: String(buyOffers.length) },
+                { label: 'Sell Orders (ASK)', value: String(offers.length) },
+                { label: 'Buy Orders (BID)', value: String(buyOffers.length) },
                 { label: 'Network', value: isMainnet ? 'Mainnet' : 'Testnet' },
                 { label: 'QBTC Chain', value: isMainnet ? 'Mainnet (:58332)' : 'Testnet (:28332)' },
                 { label: 'EVM Chain', value: isMainnet ? 'Ethereum' : 'Sepolia' },
@@ -357,13 +357,13 @@ export default function QBTCMarketplacePage() {
               onClick={() => setOfferTab('sell')}
               className={`flex-1 py-2 text-sm font-semibold transition-colors ${offerTab === 'sell' ? 'bg-cyan-500/20 text-cyan-300 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-slate-200'}`}
             >
-              Sell Offers ({offers.length})
+              Sell Orders ({offers.length})
             </button>
             <button
               onClick={() => setOfferTab('buy')}
               className={`flex-1 py-2 text-sm font-semibold transition-colors ${offerTab === 'buy' ? 'bg-emerald-500/20 text-emerald-300 border-b-2 border-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}
             >
-              Buy Offers ({buyOffers.length})
+              Buy Orders ({buyOffers.length})
             </button>
           </div>
 

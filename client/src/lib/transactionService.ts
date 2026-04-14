@@ -26,48 +26,67 @@ export interface Transaction {
 }
 
 /**
- * Fetch Ethereum transactions via Etherscan API v2
+ * Fetch Ethereum transactions via Etherscan API v2 (native ETH + ERC20 tokens)
  */
-export async function fetchEthereumTransactions(address: string): Promise<Transaction[]> {
+export async function fetchEthereumTransactions(address: string, network: TokenNetwork = 'mainnet'): Promise<Transaction[]> {
   try {
-    console.log('🔍 Fetching ETH transactions from MAINNET for:', address);
+    const chainId = network === 'testnet' ? 11155111 : 1;
+    const label = network === 'testnet' ? 'Sepolia' : 'MAINNET';
+    console.log(`🔍 Fetching ETH transactions from ${label} for:`, address);
     
-    const response = await axios.get('https://api.etherscan.io/v2/api', {
-      params: {
-        chainid: 1,
-        module: 'account',
-        action: 'txlist',
-        address,
-        startblock: 0,
-        endblock: 99999999,
-        page: 1,
-        offset: 20,
-        sort: 'desc',
-        apikey: import.meta.env.VITE_ETHERSCAN_API_KEY || '',
-      },
-    });
+    const baseParams = {
+      chainid: chainId,
+      module: 'account',
+      address,
+      startblock: 0,
+      endblock: 99999999,
+      page: 1,
+      offset: 20,
+      sort: 'desc',
+      apikey: import.meta.env.VITE_ETHERSCAN_API_KEY || '',
+    };
 
-    if (response.data.status !== '1') {
-      console.warn('⚠️ Etherscan API error:', response.data.message);
-      return [];
-    }
+    // Fetch native ETH transfers and ERC20 token transfers in parallel
+    const [nativeResp, tokenResp] = await Promise.all([
+      axios.get('https://api.etherscan.io/v2/api', { params: { ...baseParams, action: 'txlist' } }),
+      axios.get('https://api.etherscan.io/v2/api', { params: { ...baseParams, action: 'tokentx' } }),
+    ]);
 
-    const txs = response.data.result.map((tx: any) => ({
-      hash: tx.hash,
-      type: tx.to.toLowerCase() === address.toLowerCase() ? 'receive' : 'send',
-      amount: (parseInt(tx.value) / 1e18).toFixed(6),
-      token: 'ETH',
-      to: tx.to,
-      from: tx.from,
-      timestamp: new Date(parseInt(tx.timeStamp) * 1000),
-      status: tx.txreceipt_status === '1' ? 'confirmed' : 'failed',
-      chain: 'ethereum' as const,
-      blockNumber: parseInt(tx.blockNumber),
-      fee: (parseInt(tx.gasUsed) * parseInt(tx.gasPrice) / 1e18).toFixed(6),
-    }));
+    const nativeTxs: Transaction[] = nativeResp.data.status === '1'
+      ? nativeResp.data.result.map((tx: any) => ({
+          hash: tx.hash,
+          type: tx.to.toLowerCase() === address.toLowerCase() ? 'receive' : 'send',
+          amount: (parseInt(tx.value) / 1e18).toFixed(6),
+          token: 'ETH',
+          to: tx.to,
+          from: tx.from,
+          timestamp: new Date(parseInt(tx.timeStamp) * 1000),
+          status: tx.txreceipt_status === '1' ? 'confirmed' : 'failed',
+          chain: 'ethereum' as const,
+          blockNumber: parseInt(tx.blockNumber),
+          fee: (parseInt(tx.gasUsed) * parseInt(tx.gasPrice) / 1e18).toFixed(6),
+        }))
+      : [];
 
-    console.log(`✅ Found ${txs.length} ETH transactions`);
-    return txs;
+    const tokenTxs: Transaction[] = tokenResp.data.status === '1'
+      ? tokenResp.data.result.map((tx: any) => ({
+          hash: tx.hash,
+          type: tx.to.toLowerCase() === address.toLowerCase() ? 'receive' : 'send',
+          amount: (parseInt(tx.value) / Math.pow(10, parseInt(tx.tokenDecimal) || 18)).toFixed(6),
+          token: tx.tokenSymbol || 'ERC20',
+          to: tx.to,
+          from: tx.from,
+          timestamp: new Date(parseInt(tx.timeStamp) * 1000),
+          status: 'confirmed' as const,
+          chain: 'ethereum' as const,
+          blockNumber: parseInt(tx.blockNumber),
+          fee: (parseInt(tx.gasUsed) * parseInt(tx.gasPrice) / 1e18).toFixed(6),
+        }))
+      : [];
+
+    const allTxs = [...nativeTxs, ...tokenTxs].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    console.log(`✅ Found ${nativeTxs.length} ETH + ${tokenTxs.length} token transactions on ${label}`);
+    return allTxs;
   } catch (error: any) {
     console.error('❌ Failed to fetch Ethereum transactions:', error.message);
     return [];
@@ -130,47 +149,65 @@ export async function fetchBitcoinTransactions(address: string): Promise<Transac
 }
 
 /**
- * Fetch BSC transactions via BscScan API
+ * Fetch BSC transactions via BscScan API (native BNB + BEP20 tokens)
  */
-export async function fetchBSCTransactions(address: string): Promise<Transaction[]> {
+export async function fetchBSCTransactions(address: string, network: TokenNetwork = 'mainnet'): Promise<Transaction[]> {
   try {
-    console.log('🔍 Fetching BNB transactions from MAINNET for:', address);
+    const baseUrl = network === 'testnet' ? 'https://api-testnet.bscscan.com/api' : 'https://api.bscscan.com/api';
+    const label = network === 'testnet' ? 'BSC Testnet' : 'MAINNET';
+    console.log(`🔍 Fetching BNB transactions from ${label} for:`, address);
     
-    const response = await axios.get('https://api.bscscan.com/api', {
-      params: {
-        module: 'account',
-        action: 'txlist',
-        address,
-        startblock: 0,
-        endblock: 99999999,
-        page: 1,
-        offset: 20,
-        sort: 'desc',
-        apikey: import.meta.env.VITE_BSCSCAN_API_KEY || '',
-      },
-    });
+    const baseParams = {
+      module: 'account',
+      address,
+      startblock: 0,
+      endblock: 99999999,
+      page: 1,
+      offset: 20,
+      sort: 'desc',
+      apikey: import.meta.env.VITE_BSCSCAN_API_KEY || '',
+    };
 
-    if (response.data.status !== '1') {
-      console.warn('⚠️ BscScan API error:', response.data.message);
-      return [];
-    }
+    const [nativeResp, tokenResp] = await Promise.all([
+      axios.get(baseUrl, { params: { ...baseParams, action: 'txlist' } }),
+      axios.get(baseUrl, { params: { ...baseParams, action: 'tokentx' } }),
+    ]);
 
-    const txs = response.data.result.map((tx: any) => ({
-      hash: tx.hash,
-      type: tx.to.toLowerCase() === address.toLowerCase() ? 'receive' : 'send',
-      amount: (parseInt(tx.value) / 1e18).toFixed(6),
-      token: 'BNB',
-      to: tx.to,
-      from: tx.from,
-      timestamp: new Date(parseInt(tx.timeStamp) * 1000),
-      status: tx.txreceipt_status === '1' ? 'confirmed' : 'failed',
-      chain: 'bsc' as const,
-      blockNumber: parseInt(tx.blockNumber),
-      fee: (parseInt(tx.gasUsed) * parseInt(tx.gasPrice) / 1e18).toFixed(6),
-    }));
+    const nativeTxs: Transaction[] = nativeResp.data.status === '1'
+      ? nativeResp.data.result.map((tx: any) => ({
+          hash: tx.hash,
+          type: tx.to.toLowerCase() === address.toLowerCase() ? 'receive' : 'send',
+          amount: (parseInt(tx.value) / 1e18).toFixed(6),
+          token: 'BNB',
+          to: tx.to,
+          from: tx.from,
+          timestamp: new Date(parseInt(tx.timeStamp) * 1000),
+          status: tx.txreceipt_status === '1' ? 'confirmed' : 'failed',
+          chain: 'bsc' as const,
+          blockNumber: parseInt(tx.blockNumber),
+          fee: (parseInt(tx.gasUsed) * parseInt(tx.gasPrice) / 1e18).toFixed(6),
+        }))
+      : [];
 
-    console.log(`✅ Found ${txs.length} BNB transactions`);
-    return txs;
+    const tokenTxs: Transaction[] = tokenResp.data.status === '1'
+      ? tokenResp.data.result.map((tx: any) => ({
+          hash: tx.hash,
+          type: tx.to.toLowerCase() === address.toLowerCase() ? 'receive' : 'send',
+          amount: (parseInt(tx.value) / Math.pow(10, parseInt(tx.tokenDecimal) || 18)).toFixed(6),
+          token: tx.tokenSymbol || 'BEP20',
+          to: tx.to,
+          from: tx.from,
+          timestamp: new Date(parseInt(tx.timeStamp) * 1000),
+          status: 'confirmed' as const,
+          chain: 'bsc' as const,
+          blockNumber: parseInt(tx.blockNumber),
+          fee: (parseInt(tx.gasUsed) * parseInt(tx.gasPrice) / 1e18).toFixed(6),
+        }))
+      : [];
+
+    const allTxs = [...nativeTxs, ...tokenTxs].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    console.log(`✅ Found ${nativeTxs.length} BNB + ${tokenTxs.length} token transactions on ${label}`);
+    return allTxs;
   } catch (error: any) {
     console.error('❌ Failed to fetch BSC transactions:', error.message);
     return [];
@@ -289,11 +326,11 @@ export async function fetchChainTransactions(
   try {
     switch (chain) {
       case 'ethereum':
-        return await fetchEthereumTransactions(address);
+        return await fetchEthereumTransactions(address, network);
       case 'bitcoin':
         return await fetchBitcoinTransactions(address);
       case 'bsc':
-        return await fetchBSCTransactions(address);
+        return await fetchBSCTransactions(address, network);
       case 'xrp':
         return await fetchXRPTransactions(address, network);
       case 'solana':

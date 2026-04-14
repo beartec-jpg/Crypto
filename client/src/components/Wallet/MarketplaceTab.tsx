@@ -31,6 +31,9 @@ import {
   type QBTCHtlcParams,
 } from '@/lib/qbtcService';
 import { unlockWallet } from '@/lib/walletService';
+import { getSecurityRequirements, type AuthMethod } from '@/lib/securityService';
+import { authenticateWithPasskey, isPasskeyAuthenticated } from '@/lib/passkeyService';
+import PinEntryModal from './PinEntryModal';
 import { ethers } from 'ethers';
 
 const SWAP_API = (import.meta.env.VITE_SWAP_API_URL || '').replace(/\/$/, '');
@@ -174,20 +177,53 @@ function statusLabel(status: SwapStatus | string) {
 function SellerLockPanel({
   swap,
   walletId,
+  userId,
   onLocked,
 }: {
   swap: AtomicSwap;
   walletId: string;
+  userId: string;
   onLocked: () => void;
 }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [step, setStep] = useState<'idle' | 'unlocking' | 'building' | 'broadcasting' | 'reporting'>('idle');
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [passkeyDone, setPasskeyDone] = useState(false);
   const network: QBTCNetwork = isSwapMainnetActive() ? 'mainnet' : 'testnet';
 
+  const requirements = getSecurityRequirements(userId, 'send');
+  const needsPin = requirements.includes('pin');
+  const needsPasskey = requirements.includes('passkey');
+  const needsPassword = requirements.includes('password');
+
+  const startSecurityGate = async () => {
+    setError('');
+    if (needsPin) { setShowPinModal(true); return; }
+    await afterPin();
+  };
+  const afterPin = async () => {
+    if (needsPasskey && !isPasskeyAuthenticated() && !passkeyDone) {
+      try { await authenticateWithPasskey(); setPasskeyDone(true); } catch { setError('Passkey authentication failed'); return; }
+    }
+    // If password required by tier, we need it. Otherwise go straight to execute.
+    if (needsPassword) return; // user fills password field, then clicks Lock
+    await executeLock();
+  };
+  const handlePinSuccess = async () => { setShowPinModal(false); await afterPin(); };
+
   const handleLock = async () => {
-    if (!password.trim()) { setError('Enter your wallet password'); return; }
+    if (needsPassword && !password.trim()) { setError('Enter your wallet password'); return; }
+    // If we haven't done passkey/pin yet, start the gate
+    if (needsPin || (needsPasskey && !isPasskeyAuthenticated() && !passkeyDone)) {
+      await startSecurityGate();
+      return;
+    }
+    await executeLock();
+  };
+
+  const executeLock = async () => {
     setLoading(true);
     setError('');
     try {
@@ -243,27 +279,30 @@ function SellerLockPanel({
           Your turn: Lock {swap.qbtcAmount} QBTC in HTLC
         </p>
         <p className="text-amber-300/70 text-xs mt-1">
-          Enter your wallet password to sign and broadcast. Funds locked with a 48-hour refund window.
+          Authenticate to sign and broadcast. Funds locked with a 48-hour refund window.
         </p>
       </div>
-      <div className="flex gap-2">
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !loading && handleLock()}
-          placeholder="Wallet password"
-          className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
-        />
-        <button
-          onClick={handleLock}
-          disabled={loading || !password.trim()}
-          className="px-4 py-2 rounded-xl font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center gap-2"
-        >
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
-          {loading ? 'Locking…' : 'Lock QBTC'}
-        </button>
-      </div>
+      {needsPassword && (
+        <div className="flex gap-2">
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && !loading && handleLock()}
+            placeholder="Wallet password"
+            className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
+          />
+        </div>
+      )}
+      <button
+        onClick={handleLock}
+        disabled={loading || (needsPassword && !password.trim())}
+        className="w-full py-2 rounded-xl font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2"
+      >
+        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+        {loading ? 'Locking…' : 'Lock QBTC'}
+      </button>
+      {showPinModal && <PinEntryModal userId={userId} onSuccess={handlePinSuccess} onCancel={() => setShowPinModal(false)} />}
       {loading && step !== 'idle' && (
         <p className="text-xs text-amber-300/60 flex items-center gap-2">
           <Loader2 className="w-3 h-3 animate-spin" /> {stepLabels[step] || ''}
@@ -389,23 +428,53 @@ function DeployHTLCPanel({ walletId }: { walletId: string }) {
 function BuyerLockPanel({
   swap,
   walletId,
+  userId,
   onLocked,
 }: {
   swap: AtomicSwap;
   walletId: string;
+  userId: string;
   onLocked: () => void;
 }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [step, setStep] = useState('');
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [passkeyDone, setPasskeyDone] = useState(false);
+
+  const requirements = getSecurityRequirements(userId, 'send');
+  const needsPin = requirements.includes('pin');
+  const needsPasskey = requirements.includes('passkey');
+  const needsPassword = requirements.includes('password');
+
+  const startSecurityGate = async () => {
+    setError('');
+    if (needsPin) { setShowPinModal(true); return; }
+    await afterPin();
+  };
+  const afterPin = async () => {
+    if (needsPasskey && !isPasskeyAuthenticated() && !passkeyDone) {
+      try { await authenticateWithPasskey(); setPasskeyDone(true); } catch { setError('Passkey authentication failed'); return; }
+    }
+    if (needsPassword) return;
+    await executeLock();
+  };
+  const handlePinSuccess = async () => { setShowPinModal(false); await afterPin(); };
 
   const handleLock = async () => {
-    if (!password.trim()) { setError('Enter your wallet password'); return; }
+    if (needsPassword && !password.trim()) { setError('Enter your wallet password'); return; }
+    if (needsPin || (needsPasskey && !isPasskeyAuthenticated() && !passkeyDone)) {
+      await startSecurityGate();
+      return;
+    }
+    await executeLock();
+  };
+
+  const executeLock = async () => {
     setLoading(true);
     setError('');
     try {
-      // 1. Unlock wallet to get Ethereum private key
       setStep('Unlocking wallet…');
       const wallet = await unlockWallet(walletId, password);
       const ethPrivateKey = wallet.privateKeys.ethereum;
@@ -473,27 +542,27 @@ function BuyerLockPanel({
           Your turn: Lock {swap.usdcAmount} USDC in EVM HTLC
         </p>
         <p className="text-purple-300/70 text-xs mt-1">
-          Enter your wallet password to approve USDC and create the hash time-lock on {isSwapMainnetActive() ? 'Ethereum' : 'Sepolia'}. 24-hour refund window.
+          Authenticate to approve USDC and create the hash time-lock on {isSwapMainnetActive() ? 'Ethereum' : 'Sepolia'}. 24-hour refund window.
         </p>
       </div>
-      <div className="flex gap-2">
+      {needsPassword && (
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && !loading && handleLock()}
           placeholder="Wallet password"
-          className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-purple-400 focus:outline-none text-sm"
+          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-purple-400 focus:outline-none text-sm"
         />
-        <button
-          onClick={handleLock}
-          disabled={loading || !password.trim()}
-          className="px-4 py-2 rounded-xl font-semibold bg-gradient-to-r from-purple-500 to-pink-500 text-white disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center gap-2"
-        >
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
-          {loading ? 'Locking…' : 'Lock USDC'}
-        </button>
-      </div>
+      )}
+      <button
+        onClick={handleLock}
+        disabled={loading || (needsPassword && !password.trim())}
+        className="w-full px-4 py-2 rounded-xl font-semibold bg-gradient-to-r from-purple-500 to-pink-500 text-white disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2"
+      >
+        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+        {loading ? 'Locking…' : 'Lock USDC'}
+      </button>
       {loading && step && (
         <p className="text-xs text-purple-300/60 flex items-center gap-2">
           <Loader2 className="w-3 h-3 animate-spin" /> {step}
@@ -502,6 +571,7 @@ function BuyerLockPanel({
       {error && (
         <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">{error}</div>
       )}
+      {showPinModal && <PinEntryModal userId={userId} onSuccess={handlePinSuccess} onCancel={() => setShowPinModal(false)} />}
     </div>
   );
 }
@@ -511,10 +581,12 @@ function BuyerLockPanel({
 function SellerClaimPanel({
   swap,
   walletId,
+  userId,
   onClaimed,
 }: {
   swap: AtomicSwap;
   walletId: string;
+  userId: string;
   onClaimed: () => void;
 }) {
   const [password, setPassword] = useState('');
@@ -522,9 +594,38 @@ function SellerClaimPanel({
   const [step, setStep] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [passkeyDone, setPasskeyDone] = useState(false);
+
+  const requirements = getSecurityRequirements(userId, 'send');
+  const needsPin = requirements.includes('pin');
+  const needsPasskey = requirements.includes('passkey');
+  const needsPassword = requirements.includes('password');
+
+  const startSecurityGate = async () => {
+    setError('');
+    if (needsPin) { setShowPinModal(true); return; }
+    await afterPin();
+  };
+  const afterPin = async () => {
+    if (needsPasskey && !isPasskeyAuthenticated() && !passkeyDone) {
+      try { await authenticateWithPasskey(); setPasskeyDone(true); } catch { setError('Passkey authentication failed'); return; }
+    }
+    if (needsPassword) return;
+    await executeClaim();
+  };
+  const handlePinSuccess = async () => { setShowPinModal(false); await afterPin(); };
 
   const handleClaim = async () => {
-    if (!password) return setError('Enter your wallet password');
+    if (needsPassword && !password) return setError('Enter your wallet password');
+    if (needsPin || (needsPasskey && !isPasskeyAuthenticated() && !passkeyDone)) {
+      await startSecurityGate();
+      return;
+    }
+    await executeClaim();
+  };
+
+  const executeClaim = async () => {
     setLoading(true);
     setError('');
     setStep('Unlocking wallet…');
@@ -587,24 +688,24 @@ function SellerClaimPanel({
       <div className="flex items-center gap-2 text-sm font-bold text-purple-300">
         <Lock className="w-4 h-4" /> Claim {swap.usdcAmount} USDC
       </div>
-      <p className="text-xs text-purple-200/60">Both sides locked. Enter your password to claim the buyer's USDC.</p>
-      <div className="flex gap-2">
+      <p className="text-xs text-purple-200/60">Both sides locked. Authenticate to claim the buyer's USDC.</p>
+      {needsPassword && (
         <input
           type="password"
           placeholder="Wallet password"
           value={password}
           onChange={e => setPassword(e.target.value)}
-          className="flex-1 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-sm"
+          className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-sm"
         />
-        <button
-          onClick={handleClaim}
-          disabled={loading}
-          className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-500 disabled:opacity-50 flex items-center gap-1.5"
-        >
-          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-          Claim USDC
-        </button>
-      </div>
+      )}
+      <button
+        onClick={handleClaim}
+        disabled={loading || (needsPassword && !password)}
+        className="w-full px-3 py-1.5 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-500 disabled:opacity-50 flex items-center justify-center gap-1.5"
+      >
+        {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+        Claim USDC
+      </button>
       {loading && step && (
         <p className="text-xs text-purple-300/60 flex items-center gap-2">
           <Loader2 className="w-3 h-3 animate-spin" /> {step}
@@ -613,6 +714,7 @@ function SellerClaimPanel({
       {error && (
         <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">{error}</div>
       )}
+      {showPinModal && <PinEntryModal userId={userId} onSuccess={handlePinSuccess} onCancel={() => setShowPinModal(false)} />}
     </div>
   );
 }
@@ -621,16 +723,13 @@ function SellerClaimPanel({
 
 function BuyerClaimQBTCPanel({
   swap,
-  walletId,
   walletAddress,
   onClaimed,
 }: {
   swap: AtomicSwap;
-  walletId: string;
   walletAddress: string;
   onClaimed: () => void;
 }) {
-  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState('');
   const [error, setError] = useState('');
@@ -638,17 +737,8 @@ function BuyerClaimQBTCPanel({
   const [txid, setTxid] = useState('');
 
   const handleClaim = async () => {
-    if (!password) return setError('Enter your wallet password');
     setLoading(true);
     setError('');
-    try {
-      setStep('Verifying wallet password…');
-      await unlockWallet(walletId, password);
-    } catch (err: any) {
-      setLoading(false);
-      setStep('');
-      return setError('Wrong password');
-    }
     try {
       const network: QBTCNetwork = isSwapMainnetActive() ? 'mainnet' : 'testnet';
 
@@ -720,14 +810,7 @@ function BuyerClaimQBTCPanel({
       <div className="flex items-center gap-2 text-sm font-bold text-emerald-300">
         <KeyRound className="w-4 h-4" /> Claim {swap.qbtcAmount} QBTC
       </div>
-      <p className="text-xs text-emerald-200/60">The secret has been revealed. Enter your password to claim your QBTC from the HTLC.</p>
-      <input
-        type="password"
-        placeholder="Wallet password"
-        value={password}
-        onChange={e => setPassword(e.target.value)}
-        className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
-      />
+      <p className="text-xs text-emerald-200/60">The secret has been revealed. Claim your QBTC from the HTLC — no password needed.</p>
       <button
         onClick={handleClaim}
         disabled={loading}
@@ -754,11 +837,13 @@ function SwapCard({
   swap,
   walletAddress,
   walletId,
+  userId,
   onRefresh,
 }: {
   swap: AtomicSwap;
   walletAddress: string;
   walletId: string;
+  userId: string;
   onRefresh: () => void;
 }) {
   const isSeller = swap.sellerQbtcAddress?.toLowerCase() === walletAddress.toLowerCase();
@@ -827,9 +912,9 @@ function SwapCard({
         </div>
       )}
 
-      {needsSellerLock && <SellerLockPanel swap={swap} walletId={walletId} onLocked={onRefresh} />}
-      {needsBuyerLock && <BuyerLockPanel swap={swap} walletId={walletId} onLocked={onRefresh} />}
-      {needsSellerClaim && <SellerClaimPanel swap={swap} walletId={walletId} onClaimed={onRefresh} />}
+      {needsSellerLock && <SellerLockPanel swap={swap} walletId={walletId} userId={userId} onLocked={onRefresh} />}
+      {needsBuyerLock && <BuyerLockPanel swap={swap} walletId={walletId} userId={userId} onLocked={onRefresh} />}
+      {needsSellerClaim && <SellerClaimPanel swap={swap} walletId={walletId} userId={userId} onClaimed={onRefresh} />}
 
       {waitingForOther && (
         <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 flex items-center gap-2">
@@ -843,7 +928,7 @@ function SwapCard({
       )}
 
       {swap.status === 'COMPLETE' && isBuyer && swap.secret && swap.qbtcHtlcAddress && !swap.buyerQbtcClaimTxid && (
-        <BuyerClaimQBTCPanel swap={swap} walletId={walletId} walletAddress={walletAddress} onClaimed={onRefresh} />
+        <BuyerClaimQBTCPanel swap={swap} walletAddress={walletAddress} onClaimed={onRefresh} />
       )}
       {swap.status === 'COMPLETE' && isBuyer && swap.buyerQbtcClaimTxid && (
         <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 space-y-1">
@@ -1250,6 +1335,7 @@ export default function MarketplaceTab({
                 createdAt: new Date().toISOString(),
               } satisfies AtomicSwap}
               walletId={walletId}
+              userId={userId}
               onLocked={() => {
                 setAcceptSuccess(prev => prev ? { ...prev, evmLocked: true } : null);
                 fetchMySwaps();
@@ -1404,14 +1490,14 @@ export default function MarketplaceTab({
         <div className="flex items-center justify-between">
           <h3 className="text-base font-bold flex items-center gap-2">
             <ArrowLeftRight className="w-4 h-4 text-cyan-400" />
-            {marketMode === 'sell' ? 'Sell Offers' : 'Buy Offers'}
-            {marketMode === 'sell' && offers.length > 0 && (
+            {marketMode === 'sell' ? 'Buy Orders (Want QBTC)' : 'Sell Orders (Have QBTC)'}
+            {marketMode === 'sell' && buyOffers.length > 0 && (
+              <span className="text-xs font-normal text-slate-500">{buyOffers.length}</span>
+            )}
+            {marketMode === 'buy' && offers.length > 0 && (
               <span className="text-xs font-normal text-slate-500">
                 {filteredOffers.length === offers.length ? offers.length : `${filteredOffers.length}/${offers.length}`}
               </span>
-            )}
-            {marketMode === 'buy' && buyOffers.length > 0 && (
-              <span className="text-xs font-normal text-slate-500">{buyOffers.length}</span>
             )}
           </h3>
           <button onClick={fetchOffers} disabled={loadingOffers} className="p-1.5 rounded-md hover:bg-slate-800">
@@ -1419,8 +1505,8 @@ export default function MarketplaceTab({
           </button>
         </div>
 
-        {/* ─ Sell Offers listing ─ */}
-        {marketMode === 'sell' && (
+        {/* ─ Sell Orders (ASK) — shown in Buy tab so buyers can accept ─ */}
+        {marketMode === 'buy' && (
           <>
         {/* Filter / Sort bar */}
         {offers.length > 0 && (
@@ -1460,7 +1546,7 @@ export default function MarketplaceTab({
 
         {filteredOffers.length === 0 ? (
           <div className="text-center py-8 text-slate-500 text-sm">
-            {loadingOffers ? 'Loading…' : offers.length === 0 ? 'No sell offers yet.' : 'No offers match your filters.'}
+            {loadingOffers ? 'Loading…' : offers.length === 0 ? 'No sell orders yet.' : 'No orders match your filters.'}
           </div>
         ) : (
           <div className="space-y-2">
@@ -1511,12 +1597,12 @@ export default function MarketplaceTab({
           </>
         )}
 
-        {/* ─ Buy Offers listing ─ */}
-        {marketMode === 'buy' && (
+        {/* ─ Buy Orders (BID) — shown in Sell tab so sellers can fulfil ─ */}
+        {marketMode === 'sell' && (
           <>
         {buyOffers.length === 0 ? (
           <div className="text-center py-8 text-slate-500 text-sm">
-            {loadingOffers ? 'Loading…' : 'No buy offers yet. Post one above!'}
+            {loadingOffers ? 'Loading…' : 'No buy orders yet. Waiting for buyers to post offers.'}
           </div>
         ) : (
           <div className="space-y-2">
@@ -1583,7 +1669,7 @@ export default function MarketplaceTab({
           <div className="text-center py-10 text-slate-500 text-sm">No active swaps.</div>
         ) : (
           activeSwaps.map(swap => (
-            <SwapCard key={swap.id} swap={swap} walletAddress={walletAddress} walletId={walletId} onRefresh={fetchMySwaps} />
+            <SwapCard key={swap.id} swap={swap} walletAddress={walletAddress} walletId={walletId} userId={userId} onRefresh={fetchMySwaps} />
           ))
         )}
 
@@ -1592,7 +1678,7 @@ export default function MarketplaceTab({
           <div className="space-y-3 pt-4 border-t border-slate-800">
             <h3 className="text-sm font-semibold text-slate-400">Completed / Expired</h3>
             {pastSwaps.map(swap => (
-              <SwapCard key={swap.id} swap={swap} walletAddress={walletAddress} walletId={walletId} onRefresh={fetchMySwaps} />
+              <SwapCard key={swap.id} swap={swap} walletAddress={walletAddress} walletId={walletId} userId={userId} onRefresh={fetchMySwaps} />
             ))}
           </div>
         )}
