@@ -1,7 +1,8 @@
 // client/src/components/Wallet/TokenActionModal.tsx
 // Action modal shown when clicking a token in the wallet
 
-import { Send, ArrowRightLeft, X } from 'lucide-react';
+import { useState } from 'react';
+import { Send, ArrowRightLeft, X, Trash2 } from 'lucide-react';
 import type { Token } from '@/lib/tokenService';
 
 interface TokenActionModalProps {
@@ -10,6 +11,7 @@ interface TokenActionModalProps {
   token: Token;
   onSend: (token: Token) => void;
   onSwap: (token: Token) => void;
+  onRemove?: (tokenId: string) => void;
 }
 
 export default function TokenActionModal({
@@ -18,7 +20,9 @@ export default function TokenActionModal({
   token,
   onSend,
   onSwap,
+  onRemove,
 }: TokenActionModalProps) {
+  const [confirmRemove, setConfirmRemove] = useState(false);
   if (!isOpen) return null;
 
   const handleSend = () => {
@@ -103,6 +107,37 @@ export default function TokenActionModal({
               Coming Soon
             </span>
           </button>
+
+          {/* Remove Token */}
+          {onRemove && !token.isNative && (
+            !confirmRemove ? (
+              <button
+                onClick={() => setConfirmRemove(true)}
+                className="w-full px-4 py-3 rounded-xl bg-gray-700/30 hover:bg-red-500/10 transition-colors text-sm text-gray-400 hover:text-red-400 flex items-center justify-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Remove Token
+              </button>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    onRemove(token.id);
+                    onClose();
+                  }}
+                  className="flex-1 px-4 py-3 rounded-xl bg-red-600 hover:bg-red-500 transition-colors text-sm font-medium"
+                >
+                  Confirm Remove
+                </button>
+                <button
+                  onClick={() => setConfirmRemove(false)}
+                  className="flex-1 px-4 py-3 rounded-xl bg-gray-700 hover:bg-gray-600 transition-colors text-sm font-medium"
+                >
+                  Cancel
+                </button>
+              </div>
+            )
+          )}
         </div>
       </div>
     </div>

@@ -382,6 +382,11 @@ export default function ChainSection({
           token={selectedModalToken}
           onSend={handleSendToken}
           onSwap={handleSwapToken}
+          onRemove={(tokenId) => {
+            setShowTokenModal(false);
+            setSelectedModalToken(null);
+            onRemoveToken(tokenId);
+          }}
         />
       )}
     </div>
