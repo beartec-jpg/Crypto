@@ -535,22 +535,6 @@ app.get('/api/swap/stats', async (_req, res) => {
   }
 });
 
-// ─── GET /api/swap/:swapId ──────────────────────────────────────────────────
-
-app.get('/api/swap/:swapId', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT * FROM atomic_swaps WHERE id = $1', [req.params.swapId]);
-    const swap = result.rows[0];
-    if (!swap) return res.status(404).json({ error: 'Swap not found' });
-
-    const mapped = toCamelCase(swap);
-    return res.json({ ...mapped, secret: swap.status === 'COMPLETE' ? swap.secret : null });
-  } catch (err: any) {
-    console.error('GET /api/swap/:swapId:', err.message);
-    return res.status(500).json({ error: err.message || 'Failed to fetch swap' });
-  }
-});
-
 // ─── GET /api/swap/by-address ───────────────────────────────────────────────
 
 app.get('/api/swap/by-address', async (req, res) => {
@@ -574,6 +558,22 @@ app.get('/api/swap/by-address', async (req, res) => {
   } catch (err: any) {
     console.error('GET /api/swap/by-address:', err.message);
     return res.status(500).json({ error: err.message || 'Failed to fetch swaps' });
+  }
+});
+
+// ─── GET /api/swap/:swapId ──────────────────────────────────────────────────
+
+app.get('/api/swap/:swapId', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM atomic_swaps WHERE id = $1', [req.params.swapId]);
+    const swap = result.rows[0];
+    if (!swap) return res.status(404).json({ error: 'Swap not found' });
+
+    const mapped = toCamelCase(swap);
+    return res.json({ ...mapped, secret: swap.status === 'COMPLETE' ? swap.secret : null });
+  } catch (err: any) {
+    console.error('GET /api/swap/:swapId:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to fetch swap' });
   }
 });
 

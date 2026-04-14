@@ -742,7 +742,7 @@ export default function MarketplaceTab({
   const [selectedBuyOffer, setSelectedBuyOffer] = useState<SwapOffer | null>(null);
 
   // Market mode: sell QBTC or buy QBTC
-  const [marketMode, setMarketMode] = useState<'sell' | 'buy'>('sell');
+  const [marketMode, setMarketMode] = useState<'sell' | 'buy' | 'active'>('sell');
 
   // Create offer form
   const [qbtcAmount, setQbtcAmount] = useState('');
@@ -1011,6 +1011,11 @@ export default function MarketplaceTab({
   // ─── Render ───
   const activeSwaps = mySwaps.filter(s => !['COMPLETE', 'EXPIRED', 'REFUNDED'].includes(s.status));
   const pastSwaps = mySwaps.filter(s => ['COMPLETE', 'EXPIRED', 'REFUNDED'].includes(s.status));
+  const claimableCount = activeSwaps.filter(s => {
+    const isSeller = s.sellerQbtcAddress?.toLowerCase() === walletAddress.toLowerCase();
+    return (isSeller && s.status === 'EVM_LOCKED') ||
+           (!isSeller && (s.status === 'QBTC_LOCKED' || s.status === 'PENDING_QBTC_LOCK'));
+  }).length;
 
   return (
     <div className="space-y-6">
@@ -1106,24 +1111,7 @@ export default function MarketplaceTab({
         </div>
       )}
 
-      {/* ─── Active Swaps ─── */}
-      {activeSwaps.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold flex items-center gap-2">
-              <Lock className="w-4 h-4 text-cyan-400" /> Active Swaps
-            </h3>
-            <button onClick={fetchMySwaps} disabled={loadingSwaps} className="p-1.5 rounded-md hover:bg-slate-800">
-              <RefreshCw className={`w-3.5 h-3.5 text-slate-400 ${loadingSwaps ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
-          {activeSwaps.map(swap => (
-            <SwapCard key={swap.id} swap={swap} walletAddress={walletAddress} walletId={walletId} onRefresh={fetchMySwaps} />
-          ))}
-        </div>
-      )}
-
-      {/* ─── Sell / Buy Toggle ─── */}
+      {/* ─── Sell / Buy / Active Toggle ─── */}
       <div className="flex rounded-xl border border-slate-700 bg-slate-900/40 overflow-hidden">
         <button
           onClick={() => setMarketMode('sell')}
@@ -1136,6 +1124,22 @@ export default function MarketplaceTab({
           className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${marketMode === 'buy' ? 'bg-emerald-500/20 text-emerald-300 border-b-2 border-emerald-400' : 'text-slate-400 hover:text-slate-200'}`}
         >
           Buy QBTC
+        </button>
+        <button
+          onClick={() => setMarketMode('active')}
+          className={`flex-1 py-2.5 text-sm font-semibold transition-colors relative ${marketMode === 'active' ? 'bg-purple-500/20 text-purple-300 border-b-2 border-purple-400' : 'text-slate-400 hover:text-slate-200'}`}
+        >
+          Active
+          {claimableCount > 0 && (
+            <span className="ml-1.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold animate-pulse">
+              {claimableCount}
+            </span>
+          )}
+          {claimableCount === 0 && activeSwaps.length > 0 && (
+            <span className="ml-1.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-600 text-slate-300 text-[10px] font-bold">
+              {activeSwaps.length}
+            </span>
+          )}
         </button>
       </div>
 
@@ -1245,7 +1249,8 @@ export default function MarketplaceTab({
       </div>
       )}
 
-      {/* ─── Open Offers ─── */}
+      {/* ─── Open Offers (sell/buy modes) ─── */}
+      {(marketMode === 'sell' || marketMode === 'buy') && (
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-bold flex items-center gap-2">
@@ -1408,15 +1413,41 @@ export default function MarketplaceTab({
           </>
         )}
       </div>
+      )}
 
-      {/* ─── Past Swaps ─── */}
-      {pastSwaps.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-slate-400">Completed / Expired</h3>
-          {pastSwaps.map(swap => (
-            <SwapCard key={swap.id} swap={swap} walletAddress={walletAddress} walletId={walletId} onRefresh={fetchMySwaps} />
-          ))}
+      {/* ─── Active Tab ─── */}
+      {marketMode === 'active' && (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-bold flex items-center gap-2">
+            <Lock className="w-4 h-4 text-purple-400" /> Active Swaps
+            {activeSwaps.length > 0 && (
+              <span className="text-xs font-normal text-slate-500">{activeSwaps.length}</span>
+            )}
+          </h3>
+          <button onClick={fetchMySwaps} disabled={loadingSwaps} className="p-1.5 rounded-md hover:bg-slate-800">
+            <RefreshCw className={`w-3.5 h-3.5 text-slate-400 ${loadingSwaps ? 'animate-spin' : ''}`} />
+          </button>
         </div>
+
+        {activeSwaps.length === 0 ? (
+          <div className="text-center py-10 text-slate-500 text-sm">No active swaps.</div>
+        ) : (
+          activeSwaps.map(swap => (
+            <SwapCard key={swap.id} swap={swap} walletAddress={walletAddress} walletId={walletId} onRefresh={fetchMySwaps} />
+          ))
+        )}
+
+        {/* Past Swaps */}
+        {pastSwaps.length > 0 && (
+          <div className="space-y-3 pt-4 border-t border-slate-800">
+            <h3 className="text-sm font-semibold text-slate-400">Completed / Expired</h3>
+            {pastSwaps.map(swap => (
+              <SwapCard key={swap.id} swap={swap} walletAddress={walletAddress} walletId={walletId} onRefresh={fetchMySwaps} />
+            ))}
+          </div>
+        )}
+      </div>
       )}
 
       {/* ─── Accept Offer Modal ─── */}
