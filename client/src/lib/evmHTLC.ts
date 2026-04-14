@@ -234,8 +234,8 @@ export function getSwapNetworkConfig(): SwapNetworkConfig {
   return {
     network: 'testnet',
     evmRpcUrl: import.meta.env.VITE_EVM_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com',
-    htlcContractAddress: import.meta.env.VITE_EVM_HTLC_CONTRACT || '',
-    usdcContractAddress: import.meta.env.VITE_USDC_CONTRACT || '',
+    htlcContractAddress: import.meta.env.VITE_EVM_HTLC_CONTRACT || '0xaF898a5F565c0cAE1746122ad475c0B7F160A3eb',
+    usdcContractAddress: import.meta.env.VITE_USDC_CONTRACT || '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
     evmChainId: Number(import.meta.env.VITE_EVM_CHAIN_ID || 11155111),
   };
 }
