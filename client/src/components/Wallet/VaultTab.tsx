@@ -127,7 +127,7 @@ export default function VaultTab({ userId, sovereignWallet }: VaultTabProps) {
     return (
       <div className="text-center py-12">
         <Lock className="w-12 h-12 mx-auto text-gray-500 mb-4" />
-        <p className="text-gray-400">Quantum Vault not available. Please re-create or re-import your wallet to enable the vault.</p>
+        <p className="text-gray-400">Quantum Vault address not found. Try locking and unlocking your wallet to generate it.</p>
       </div>
     );
   }

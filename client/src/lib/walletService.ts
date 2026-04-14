@@ -1025,6 +1025,8 @@ export async function getCurrentWallet(userId: string): Promise<Wallet | null> {
       solana: wallet.addresses.solana,
       qbtc: qbtcAddress,
       qbtcMainnet: qbtcMainnetAddress,
+      qbtcVault: (wallet.addresses as any).qbtcVault || '',
+      qbtcVaultMainnet: (wallet.addresses as any).qbtcVaultMainnet || '',
     };
 
     return {
