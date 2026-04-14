@@ -473,10 +473,17 @@ function App() {
                 >
                   Not now
                 </button>
-                {!isIOS && deferredPrompt && (
+                {!isIOS && (
                   <button
                     type="button"
-                    onClick={() => void handleInstallClick()}
+                    onClick={() => {
+                      if (deferredPrompt) {
+                        void handleInstallClick();
+                      } else {
+                        // Trigger Chrome's install via the menu
+                        alert('Tap the browser menu (⋮) at the top-right, then choose "Install app" or use the "Open in app" button in the address bar.');
+                      }
+                    }}
                     className="rounded-xl bg-cyan-400 px-4 py-2.5 font-semibold text-gray-950 transition-colors hover:bg-cyan-300"
                   >
                     Install to device
