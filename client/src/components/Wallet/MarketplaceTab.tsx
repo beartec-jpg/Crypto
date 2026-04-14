@@ -531,14 +531,15 @@ function SellerClaimPanel({
       const { ethers } = await import('ethers');
 
       // 1. Unlock wallet to get seller's EVM private key
-      const keyData = await unlockWalletForSwap(walletId, password);
-      if (!keyData?.evmPrivateKey) throw new Error('No EVM key in wallet');
+      const wallet = await unlockWallet(walletId, password);
+      const ethPrivateKey = wallet.privateKeys.ethereum;
+      if (!ethPrivateKey) throw new Error('No Ethereum key in wallet');
 
       // 2. Sign message to prove we're the seller → get secret from server
       setStep('Requesting secret from server…');
-      const wallet = new ethers.Wallet(keyData.evmPrivateKey);
+      const evmWallet = new ethers.Wallet('0x' + ethPrivateKey);
       const message = `QBTC_SWAP_SECRET:${swap.id}`;
-      const signature = await wallet.signMessage(message);
+      const signature = await evmWallet.signMessage(message);
 
       const resp = await axios.post(`${SWAP_API}/api/swap/secret/seller`, {
         swapId: swap.id,
@@ -550,7 +551,7 @@ function SellerClaimPanel({
       // 3. Call withdraw on the EVM HTLC contract
       setStep('Claiming USDC from HTLC…');
       const provider = new ethers.JsonRpcProvider(config.evmRpcUrl);
-      const signer = new ethers.Wallet(keyData.evmPrivateKey, provider);
+      const signer = new ethers.Wallet('0x' + ethPrivateKey, provider);
       const evmHTLC = new EvmHTLC({
         contractAddress: config.htlcContractAddress,
         usdcAddress: config.usdcContractAddress,
