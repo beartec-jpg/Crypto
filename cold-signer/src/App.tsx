@@ -312,8 +312,9 @@ function App() {
     );
   }
 
-  // Network warning
-  if (isOnline && hasShare && !isReinstallBrowserFlow) {
+  // Network warning — only block in the installed standalone PWA with a share loaded.
+  // In a browser window the user must be online to reach the page, so don't block.
+  if (isOnline && hasShare && isStandalone && !isReinstallBrowserFlow) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-red-900 text-white p-4">
         <div className="w-full max-w-md text-center">
