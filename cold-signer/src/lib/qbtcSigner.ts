@@ -12,11 +12,19 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import * as ecc from '@noble/secp256k1';
 import { hmac } from '@noble/hashes/hmac';
+import { sha256 as sha256Hash } from '@noble/hashes/sha256';
 import { sha512 } from '@noble/hashes/sha512';
 import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
 import { ml_dsa44 } from '@noble/post-quantum/ml-dsa.js';
 import * as bip39 from 'bip39';
+
+// Required: set HMAC for @noble/secp256k1 v2 deterministic signing (RFC 6979)
+ecc.etc.hmacSha256Sync = (k: Uint8Array, ...m: Uint8Array[]) => {
+  const h = hmac.create(sha256Hash, k);
+  m.forEach((b) => h.update(b));
+  return h.digest();
+};
 
 const QBTC_TESTNET: bitcoin.networks.Network = {
   ...bitcoin.networks.testnet,

@@ -132,6 +132,17 @@ async function signBitcoinTransaction(
     const btcLib = await import('bitcoinjs-lib');
     const bitcoin = btcLib.default || btcLib;
     const ecc = await import('@noble/secp256k1');
+    const { hmac } = await import('@noble/hashes/hmac');
+    const { sha256: sha256Hash } = await import('@noble/hashes/sha256');
+
+    // Set HMAC for deterministic signing (RFC 6979)
+    if (!ecc.etc.hmacSha256Sync) {
+      ecc.etc.hmacSha256Sync = (k: Uint8Array, ...m: Uint8Array[]) => {
+        const h = hmac.create(sha256Hash, k);
+        m.forEach((b) => h.update(b));
+        return h.digest();
+      };
+    }
 
     const keyPair = {
       publicKey: Buffer.from(ecc.getPublicKey(privateKey, true)),
