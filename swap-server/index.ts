@@ -329,8 +329,13 @@ app.post('/api/swap/cancel/:offerId', async (req, res) => {
     if (offer.status !== 'OPEN' && offer.status !== 'LOCKED') {
       return res.status(409).json({ error: `Cannot cancel offer in status: ${offer.status}` });
     }
-    if (offer.seller_qbtc_address.toLowerCase() !== sellerQbtcAddress.toLowerCase()) {
-      return res.status(403).json({ error: 'Only the seller can cancel this offer' });
+
+    // For ASK offers the seller cancels; for BID offers the buyer cancels
+    const ownerAddress = offer.offer_type === 'BID'
+      ? (offer.buyer_qbtc_address || '').toLowerCase()
+      : (offer.seller_qbtc_address || '').toLowerCase();
+    if (ownerAddress !== sellerQbtcAddress.toLowerCase()) {
+      return res.status(403).json({ error: 'Only the offer creator can cancel this offer' });
     }
 
     await pool.query("UPDATE swap_offers SET status = 'CANCELLED' WHERE id = $1", [offerId]);
