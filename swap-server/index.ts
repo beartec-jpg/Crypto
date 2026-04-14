@@ -364,7 +364,7 @@ app.post('/api/swap/accept/:offerId', async (req, res) => {
     const offerResult = await pool.query('SELECT * FROM swap_offers WHERE id = $1', [offerId]);
     const offer = offerResult.rows[0];
     if (!offer) return res.status(404).json({ error: 'Offer not found' });
-    if (offer.status !== 'OPEN') return res.status(409).json({ error: 'Offer is no longer open' });
+    if (offer.status !== 'OPEN' && offer.status !== 'LOCKED') return res.status(409).json({ error: 'Offer is no longer open' });
 
     // Copy secret/hash from the offer (generated at offer creation time)
     const secretHex   = offer.secret;
