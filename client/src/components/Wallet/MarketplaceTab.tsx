@@ -620,13 +620,16 @@ function SellerClaimPanel({
 
 function BuyerClaimQBTCPanel({
   swap,
+  walletId,
   walletAddress,
   onClaimed,
 }: {
   swap: AtomicSwap;
+  walletId: string;
   walletAddress: string;
   onClaimed: () => void;
 }) {
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState('');
   const [error, setError] = useState('');
@@ -634,8 +637,17 @@ function BuyerClaimQBTCPanel({
   const [txid, setTxid] = useState('');
 
   const handleClaim = async () => {
+    if (!password) return setError('Enter your wallet password');
     setLoading(true);
     setError('');
+    try {
+      setStep('Verifying wallet password…');
+      await unlockWallet(walletId, password);
+    } catch (err: any) {
+      setLoading(false);
+      setStep('');
+      return setError('Wrong password');
+    }
     try {
       const network: QBTCNetwork = isSwapMainnetActive() ? 'mainnet' : 'testnet';
 
@@ -711,7 +723,14 @@ function BuyerClaimQBTCPanel({
       <div className="flex items-center gap-2 text-sm font-bold text-emerald-300">
         <KeyRound className="w-4 h-4" /> Claim {swap.qbtcAmount} QBTC
       </div>
-      <p className="text-xs text-emerald-200/60">The secret has been revealed. Click below to claim your QBTC from the HTLC.</p>
+      <p className="text-xs text-emerald-200/60">The secret has been revealed. Enter your password to claim your QBTC from the HTLC.</p>
+      <input
+        type="password"
+        placeholder="Wallet password"
+        value={password}
+        onChange={e => setPassword(e.target.value)}
+        className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+      />
       <button
         onClick={handleClaim}
         disabled={loading}
@@ -827,7 +846,7 @@ function SwapCard({
       )}
 
       {swap.status === 'COMPLETE' && isBuyer && swap.secret && swap.qbtcHtlcAddress && (
-        <BuyerClaimQBTCPanel swap={swap} walletAddress={walletAddress} onClaimed={onRefresh} />
+        <BuyerClaimQBTCPanel swap={swap} walletId={walletId} walletAddress={walletAddress} onClaimed={onRefresh} />
       )}
       {swap.status === 'COMPLETE' && (!isBuyer || !swap.secret) && (
         <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 flex items-center gap-2">
