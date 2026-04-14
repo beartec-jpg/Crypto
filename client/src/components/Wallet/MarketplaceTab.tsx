@@ -504,6 +504,116 @@ function BuyerLockPanel({
   );
 }
 
+// ─── Seller Claim USDC Panel (EVM_LOCKED → COMPLETE) ─────────────────────────
+
+function SellerClaimPanel({
+  swap,
+  walletId,
+  onClaimed,
+}: {
+  swap: AtomicSwap;
+  walletId: string;
+  onClaimed: () => void;
+}) {
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  const handleClaim = async () => {
+    if (!password) return setError('Enter your wallet password');
+    setLoading(true);
+    setError('');
+    setStep('Unlocking wallet…');
+    try {
+      const config = getSwapNetworkConfig();
+      const { ethers } = await import('ethers');
+
+      // 1. Unlock wallet to get seller's EVM private key
+      const keyData = await unlockWalletForSwap(walletId, password);
+      if (!keyData?.evmPrivateKey) throw new Error('No EVM key in wallet');
+
+      // 2. Sign message to prove we're the seller → get secret from server
+      setStep('Requesting secret from server…');
+      const wallet = new ethers.Wallet(keyData.evmPrivateKey);
+      const message = `QBTC_SWAP_SECRET:${swap.id}`;
+      const signature = await wallet.signMessage(message);
+
+      const resp = await axios.post(`${SWAP_API}/api/swap/secret/seller`, {
+        swapId: swap.id,
+        signature,
+      });
+      const secret: string = resp.data.secret;
+      if (!secret) throw new Error('Server did not return secret');
+
+      // 3. Call withdraw on the EVM HTLC contract
+      setStep('Claiming USDC from HTLC…');
+      const provider = new ethers.JsonRpcProvider(config.evmRpcUrl);
+      const signer = new ethers.Wallet(keyData.evmPrivateKey, provider);
+      const evmHTLC = new EvmHTLC({
+        contractAddress: config.htlcContractAddress,
+        usdcAddress: config.usdcContractAddress,
+        signerOrProvider: signer,
+      });
+
+      await evmHTLC.withdraw(swap.evmContractId!, secret);
+      setStep('');
+      setSuccess(true);
+      onClaimed();
+    } catch (err: any) {
+      console.error('Seller claim error:', err);
+      setError(err?.response?.data?.error || err?.message || 'Claim failed');
+    } finally {
+      setLoading(false);
+      setStep('');
+    }
+  };
+
+  if (success) {
+    return (
+      <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 flex items-center gap-2">
+        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+        <p className="text-emerald-300 text-xs font-medium">USDC claimed! The server will mark the swap complete shortly.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-xl border border-purple-500/30 bg-purple-500/10 p-3">
+      <div className="flex items-center gap-2 text-sm font-bold text-purple-300">
+        <Lock className="w-4 h-4" /> Claim {swap.usdcAmount} USDC
+      </div>
+      <p className="text-xs text-purple-200/60">Both sides locked. Enter your password to claim the buyer's USDC.</p>
+      <div className="flex gap-2">
+        <input
+          type="password"
+          placeholder="Wallet password"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          className="flex-1 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-sm"
+        />
+        <button
+          onClick={handleClaim}
+          disabled={loading}
+          className="px-3 py-1.5 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-500 disabled:opacity-50 flex items-center gap-1.5"
+        >
+          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+          Claim USDC
+        </button>
+      </div>
+      {loading && step && (
+        <p className="text-xs text-purple-300/60 flex items-center gap-2">
+          <Loader2 className="w-3 h-3 animate-spin" /> {step}
+        </p>
+      )}
+      {error && (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">{error}</div>
+      )}
+    </div>
+  );
+}
+
 // ─── Single Swap Card ────────────────────────────────────────────────────────
 
 function SwapCard({
@@ -526,10 +636,11 @@ function SwapCard({
 
   const needsSellerLock = isSeller && swap.status === 'PENDING_QBTC_LOCK';
   const needsBuyerLock = isBuyer && swap.status === 'QBTC_LOCKED';
+  const needsSellerClaim = isSeller && swap.status === 'EVM_LOCKED';
   const waitingForOther =
     (isSeller && swap.status === 'QBTC_LOCKED') ||
     (isBuyer && swap.status === 'PENDING_QBTC_LOCK') ||
-    swap.status === 'EVM_LOCKED';
+    (isBuyer && swap.status === 'EVM_LOCKED');
 
   return (
     <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4 space-y-3">
@@ -584,6 +695,7 @@ function SwapCard({
 
       {needsSellerLock && <SellerLockPanel swap={swap} walletId={walletId} onLocked={onRefresh} />}
       {needsBuyerLock && <BuyerLockPanel swap={swap} walletId={walletId} onLocked={onRefresh} />}
+      {needsSellerClaim && <SellerClaimPanel swap={swap} walletId={walletId} onClaimed={onRefresh} />}
 
       {waitingForOther && (
         <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 flex items-center gap-2">
@@ -591,8 +703,7 @@ function SwapCard({
           <p className="text-blue-300 text-xs">
             {swap.status === 'PENDING_QBTC_LOCK' && isBuyer && 'Waiting for seller to lock QBTC…'}
             {swap.status === 'QBTC_LOCKED' && isSeller && 'QBTC locked. Waiting for buyer to lock USDC…'}
-            {swap.status === 'EVM_LOCKED' && isSeller && 'Both locked! Server will claim USDC and reveal secret automatically.'}
-            {swap.status === 'EVM_LOCKED' && isBuyer && 'Both locked. Waiting for seller to claim and reveal secret…'}
+            {swap.status === 'EVM_LOCKED' && isBuyer && 'Both locked. Waiting for seller to claim USDC and reveal secret…'}
           </p>
         </div>
       )}
