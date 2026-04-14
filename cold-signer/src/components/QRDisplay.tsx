@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
-import { CheckCircle, Copy } from 'lucide-react';
+import { CheckCircle, Copy, AlertTriangle } from 'lucide-react';
 
 interface QRDisplayProps {
   data: string;
@@ -10,6 +10,7 @@ interface QRDisplayProps {
 export default function QRDisplay({ data, onComplete }: QRDisplayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [copied, setCopied] = useState(false);
+  const [qrError, setQrError] = useState(false);
 
   useEffect(() => {
     if (canvasRef.current && data) {
@@ -27,6 +28,7 @@ export default function QRDisplay({ data, onComplete }: QRDisplayProps) {
         (error) => {
           if (error) {
             console.error('QR Code generation error:', error);
+            setQrError(true);
           }
         }
       );
@@ -57,19 +59,34 @@ export default function QRDisplay({ data, onComplete }: QRDisplayProps) {
         </div>
 
         <div className="bg-gray-800 rounded-lg p-6 mb-6">
-          <div className="flex justify-center mb-4">
-            <canvas ref={canvasRef} className="rounded-lg" />
-          </div>
+          {qrError ? (
+            <div className="bg-amber-500/10 border border-amber-500 rounded-lg p-4 mb-4">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-amber-400 text-sm font-semibold">Transaction too large for QR code</p>
+                  <p className="text-amber-400/70 text-xs mt-1">
+                    PQC hybrid signatures make the transaction too large for a single QR.
+                    Copy the raw transaction below and paste it into your hot wallet.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex justify-center mb-4">
+              <canvas ref={canvasRef} className="rounded-lg" />
+            </div>
+          )}
 
-          <div className="bg-gray-900 rounded p-3 mb-4">
-            <p className="text-xs text-gray-400 break-all font-mono">
-              {data.substring(0, 100)}...
+          <div className="bg-gray-900 rounded p-3 mb-4 max-h-32 overflow-y-auto">
+            <p className="text-xs text-gray-400 break-all font-mono select-all">
+              {data}
             </p>
           </div>
 
           <button
             onClick={handleCopy}
-            className="w-full px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
+            className="w-full px-4 py-3 bg-emerald-600 hover:bg-emerald-700 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
           >
             {copied ? (
               <>
