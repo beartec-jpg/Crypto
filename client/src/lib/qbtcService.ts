@@ -9,6 +9,8 @@ import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
 import { ml_dsa44 } from '@noble/post-quantum/ml-dsa.js';
 
+bitcoin.initEccLib(ecc);
+
 export type QBTCNetwork = 'testnet' | 'mainnet';
 
 export interface QBTCRpcSettings {
