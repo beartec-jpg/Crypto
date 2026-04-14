@@ -98,6 +98,7 @@ interface AcceptResponse {
   status: string;
   qbtcHtlcTxid: string | null;
   qbtcHtlcAddress: string | null;
+  evmLocked?: boolean;
 }
 
 interface MarketplaceTabProps {
@@ -857,7 +858,6 @@ export default function MarketplaceTab({
       setSelectedBuyOffer(null);
       fetchOffers();
       fetchMySwaps();
-      setTimeout(() => setAcceptSuccess(null), 30_000);
     } catch (err: unknown) {
       setFulfilError(getDisplayError(err, 'Failed to fulfil buy offer'));
     } finally {
@@ -943,9 +943,11 @@ export default function MarketplaceTab({
           </div>
           <p className="text-emerald-200/80 text-xs">
             Swap <span className="font-mono">{acceptSuccess.swapId.slice(0, 8)}…</span> created.
-            {acceptSuccess.status === 'QBTC_LOCKED'
-              ? <>The seller's QBTC is already locked! Lock your <span className="font-semibold">{acceptSuccess.usdcAmount} USDC</span> below to complete the swap.</>
-              : <>The seller needs to lock <span className="font-semibold">{acceptSuccess.qbtcAmount} QBTC</span> in the HTLC. Once confirmed, you'll be prompted to lock your USDC. This page auto-refreshes every 15 seconds.</>
+            {acceptSuccess.evmLocked
+              ? <>Your <span className="font-semibold">{acceptSuccess.usdcAmount} USDC</span> is now locked in the EVM HTLC! The seller can now claim your USDC by revealing the secret, which will allow you to claim the QBTC. Check your Active Swaps below.</>
+              : acceptSuccess.status === 'QBTC_LOCKED'
+                ? <>The seller's QBTC is already locked! Lock your <span className="font-semibold">{acceptSuccess.usdcAmount} USDC</span> below to complete the swap.</>
+                : <>The seller needs to lock <span className="font-semibold">{acceptSuccess.qbtcAmount} QBTC</span> in the HTLC. Once confirmed, you'll be prompted to lock your USDC. This page auto-refreshes every 15 seconds.</>
             }
           </p>
           <div className="grid grid-cols-2 gap-2 text-xs">
@@ -959,7 +961,7 @@ export default function MarketplaceTab({
             </div>
           </div>
           {/* Inline USDC lock when QBTC is already locked */}
-          {acceptSuccess.status === 'QBTC_LOCKED' && acceptSuccess.sellerEvmAddress && (
+          {acceptSuccess.status === 'QBTC_LOCKED' && acceptSuccess.sellerEvmAddress && !acceptSuccess.evmLocked && (
             <BuyerLockPanel
               swap={{
                 id: acceptSuccess.swapId,
@@ -984,7 +986,7 @@ export default function MarketplaceTab({
               } satisfies AtomicSwap}
               walletId={walletId}
               onLocked={() => {
-                setAcceptSuccess(null);
+                setAcceptSuccess(prev => prev ? { ...prev, evmLocked: true } : null);
                 fetchMySwaps();
                 fetchOffers();
               }}
