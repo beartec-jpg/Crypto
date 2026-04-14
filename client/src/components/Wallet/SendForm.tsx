@@ -366,6 +366,18 @@ export default function SendForm({
 
   const handleColdSignerPasswordSubmit = async () => {
     try {
+      // For QBTC, fetch UTXOs from the node so the cold signer can build the transaction
+      let utxos: { txid: string; vout: number; value: number; scriptPubKey?: string }[] | undefined;
+      let changeAddress: string | undefined;
+      if (selectedChain === 'qbtc') {
+        const fromAddress = sovereignWallet?.addresses?.qbtc;
+        if (!fromAddress) throw new Error('QBTC address not found in wallet');
+        const qbtcChain = new QBTCChain(qbtcSettings);
+        const rawUtxos = await qbtcChain.scanUTXOs(fromAddress);
+        if (rawUtxos.length === 0) throw new Error('No UTXOs found for this address. Cannot build transaction.');
+        utxos = rawUtxos.map(u => ({ txid: u.txid, vout: u.vout, value: Math.round(u.amount * 1e8), scriptPubKey: u.scriptPubKey }));
+        changeAddress = fromAddress;
+      }
       const payload = await buildUnsignedTxPayload(selectedChain, {
         to: recipient,
         amount,
@@ -374,6 +386,8 @@ export default function SendForm({
         chainId: selectedChain === 'ethereum' ? 1 : selectedChain === 'bsc' ? 56 : undefined,
         destination: selectedChain === 'xrp' ? recipient : undefined,
         destinationTag: selectedChain === 'xrp' && destinationTag ? parseInt(destinationTag) : undefined,
+        utxos,
+        changeAddress,
       }, coldSignerPassword, sovereignWallet?.id);
       setShowColdSignerPassword(false);
       setColdSignerPassword('');
