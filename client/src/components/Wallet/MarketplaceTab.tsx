@@ -418,7 +418,7 @@ function BuyerLockPanel({
       const signer = new ethers.Wallet('0x' + ethPrivateKey, provider);
 
       // 3. Approve USDC + create HTLC
-      setStep('Approving USDC spend…');
+      setStep('Checking USDC balance…');
       const evmHTLC = new EvmHTLC({
         contractAddress: config.htlcContractAddress,
         usdcAddress: config.usdcContractAddress,
@@ -426,6 +426,16 @@ function BuyerLockPanel({
       });
 
       const usdcBaseUnits = BigInt(Math.round(Number(swap.usdcAmount) * 1_000_000));
+
+      // Check USDC balance first
+      const usdcAbi = ['function balanceOf(address) view returns (uint256)'];
+      const usdcToken = new ethers.Contract(config.usdcContractAddress, usdcAbi, provider);
+      const usdcBalance: bigint = await usdcToken.balanceOf(signer.address);
+      if (usdcBalance < usdcBaseUnits) {
+        throw new Error(`Insufficient USDC balance. You have ${Number(usdcBalance) / 1_000_000} USDC but need ${swap.usdcAmount}. Get testnet USDC from the Sepolia USDC faucet.`);
+      }
+
+      setStep('Approving USDC spend…');
 
       setStep('Creating EVM HTLC…');
       const contractId = await evmHTLC.initiate(
@@ -779,9 +789,7 @@ export default function MarketplaceTab({
       setSelectedOffer(null);
       fetchOffers();
       fetchMySwaps();
-      // If QBTC is already locked, buyer should see the USDC lock prompt immediately
-      // Auto-dismiss after 30s
-      setTimeout(() => setAcceptSuccess(null), 30_000);
+      // Don't auto-dismiss — let the user interact with the USDC lock panel
     } catch (err: unknown) {
       setAcceptError(getDisplayError(err, 'Failed to accept offer'));
     } finally {
