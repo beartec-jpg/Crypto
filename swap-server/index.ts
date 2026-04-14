@@ -73,7 +73,14 @@ async function qbtcRpcCall(method: string, params: any[] = []): Promise<any> {
     signal: AbortSignal.timeout(15000),
   });
 
-  const data = (await response.json()) as any;
+  const text = await response.text();
+  if (!response.ok && !text) {
+    throw new Error(`QBTC RPC returned HTTP ${response.status} (${response.statusText || 'no body'}) — check RPC credentials and node status`);
+  }
+  let data: any;
+  try { data = JSON.parse(text); } catch {
+    throw new Error(`QBTC RPC returned non-JSON (HTTP ${response.status}): ${text.slice(0, 200)}`);
+  }
   if (data?.error) throw new Error(data.error.message || `QBTC RPC error: ${method}`);
   return data?.result;
 }
