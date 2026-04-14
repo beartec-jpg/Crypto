@@ -53,7 +53,7 @@ export const SECURITY_REQUIREMENTS: Record<SecurityTier, Record<SecurityAction, 
     openWallet: ['pin', 'passkey'],
     viewBalance: [],
     receive: [],
-    send: ['passkey'],
+    send: ['pin', 'password', 'passkey'], // PIN + Password + Passkey, then cold signer QR flow
     viewSeed: ['pin', 'password', 'passkey'],
     exportKeys: ['pin', 'password', 'passkey'],
   },
