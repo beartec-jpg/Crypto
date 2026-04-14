@@ -76,7 +76,7 @@ export function getQBTCRpcSettings(): QBTCRpcSettings {
   const defaults: QBTCRpcSettings = {
     network: 'testnet',
     rpcUrl: '/api/qbtc/rpc',
-    feeRate: 10,
+    feeRate: 5,
   };
 
   if (typeof window === 'undefined') {
@@ -308,6 +308,24 @@ export class QBTCKeyPair {
       dilithiumPublicKey,
     };
   }
+
+  /**
+   * ECDSA-only witness — smaller, cheaper, used by hot wallet.
+   * Produces a 2-element witness stack: [ecdsaSignature, ecdsaPublicKey]
+   */
+  signDigestECDSAOnly(digest: Buffer): {
+    ecdsaSignature: Buffer;
+    ecdsaPublicKey: Buffer;
+  } {
+    const rawSig = ecc.sign(digest, Buffer.from(this.ecdsaPrivateKeyHex, 'hex'));
+    if (!rawSig) {
+      throw new Error('Failed to produce ECDSA signature for QBTC witness');
+    }
+    return {
+      ecdsaSignature: bitcoin.script.signature.encode(Buffer.from(rawSig), bitcoin.Transaction.SIGHASH_ALL),
+      ecdsaPublicKey: Buffer.from(this.ecdsaPublicKeyHex, 'hex'),
+    };
+  }
 }
 
 function gf256Mul(a: number, b: number): number {
@@ -525,7 +543,8 @@ export class QBTCChain {
   async createAndSignTransaction(
     keyPair: QBTCKeyPair,
     toAddress: string,
-    amount: string
+    amount: string,
+    signMode: 'hybrid' | 'ecdsa' = 'hybrid'
   ): Promise<string> {
     const fromAddress = keyPair.getAddress(this.settings.network);
     const scanResult = await this.rpcCall<{ unspents: Array<{ txid: string; vout: number; amount: number; height: number; scriptPubKey: string }> }>(
@@ -540,7 +559,7 @@ export class QBTCChain {
     }));
 
     const amountSats = toSats(Number(amount));
-    const feeRate = Math.max(10, Number(this.settings.feeRate || 10));
+    const feeRate = Math.max(5, Number(this.settings.feeRate || 5));
     const { selected, change } = selectUtxos(utxos, amountSats, feeRate);
 
     const tx = new bitcoin.Transaction();
@@ -568,14 +587,24 @@ export class QBTCChain {
 
     selected.forEach((utxo, idx) => {
       const digest = tx.hashForWitnessV0(idx, scriptCode, toSats(utxo.amount), bitcoin.Transaction.SIGHASH_ALL);
-      const witness = keyPair.signDigestForWitness(digest);
 
-      tx.setWitness(idx, [
-        witness.ecdsaSignature,
-        witness.ecdsaPublicKey,
-        witness.dilithiumSignature,
-        witness.dilithiumPublicKey,
-      ]);
+      if (signMode === 'ecdsa') {
+        // ECDSA-only — smaller witness for hot wallet sends
+        const witness = keyPair.signDigestECDSAOnly(digest);
+        tx.setWitness(idx, [
+          witness.ecdsaSignature,
+          witness.ecdsaPublicKey,
+        ]);
+      } else {
+        // PQC hybrid — ECDSA + ML-DSA-44 for vault sends
+        const witness = keyPair.signDigestForWitness(digest);
+        tx.setWitness(idx, [
+          witness.ecdsaSignature,
+          witness.ecdsaPublicKey,
+          witness.dilithiumSignature,
+          witness.dilithiumPublicKey,
+        ]);
+      }
     });
 
     return tx.toHex();
@@ -585,8 +614,8 @@ export class QBTCChain {
     return this.rpcCall<string>('sendrawtransaction', [rawHex]);
   }
 
-  async sendTransaction(keyPair: QBTCKeyPair, toAddress: string, amount: string): Promise<string> {
-    const raw = await this.createAndSignTransaction(keyPair, toAddress, amount);
+  async sendTransaction(keyPair: QBTCKeyPair, toAddress: string, amount: string, signMode: 'hybrid' | 'ecdsa' = 'hybrid'): Promise<string> {
+    const raw = await this.createAndSignTransaction(keyPair, toAddress, amount, signMode);
     return this.broadcastRawTransaction(raw);
   }
 }
@@ -678,7 +707,7 @@ export function createHTLCClaimTransaction(
   claimerKeyPair: QBTCKeyPair | null,
   outputAddress: string,
   network: QBTCNetwork,
-  feeRate = 10,
+  feeRate = 5,
 ): string {
   const net = QBTC_NETWORKS[network];
   const totalInput = utxos.reduce((s, u) => s + toSats(u.amount), 0);
@@ -746,7 +775,7 @@ export function createHTLCRefundTransaction(
   outputAddress: string,
   locktime: number,
   network: QBTCNetwork,
-  feeRate = 10,
+  feeRate = 5,
 ): string {
   const net = QBTC_NETWORKS[network];
   const totalInput = utxos.reduce((s, u) => s + toSats(u.amount), 0);

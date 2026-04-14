@@ -2,7 +2,7 @@
 // Secure send form with native + token support, transaction preview and passkey confirmation
 
 import { useState, useEffect } from 'react';
-import { Send, AlertCircle, ChevronDown } from 'lucide-react';
+import { Send, AlertCircle, ChevronDown, Shield, Lock } from 'lucide-react';
 import { 
   securityManager, 
   getSecurityRequirements,
@@ -113,6 +113,7 @@ export default function SendForm({
   const [isProcessing, setIsProcessing] = useState(false);
   const [transactionStep, setTransactionStep] = useState<'estimating' | 'signing' | 'broadcasting' | 'verifying' | null>(null);
   const [balance, setBalance] = useState<string>('0');
+  const [qbtcSource, setQbtcSource] = useState<'hot' | 'vault'>('hot');
   const [balanceUsd, setBalanceUsd] = useState<number>(0);
   const [xrpReserved, setXrpReserved] = useState<string>('0');
   const [xrpAvailable, setXrpAvailable] = useState<string>('0');
@@ -194,17 +195,24 @@ export default function SendForm({
     setQbtcSettings(getQBTCRpcSettings());
   }, [selectedChain]);
 
-  // Fetch balance when token changes
+  // Fetch balance when token or QBTC source changes
   useEffect(() => {
     async function fetchBalance() {
       if (!selectedToken || !sovereignWallet?.addresses?.[selectedChain]) return;
       
       try {
         if (selectedToken.isNative) {
+          // For QBTC, use the correct source address (hot or vault)
+          const address = selectedChain === 'qbtc' && qbtcSource === 'vault'
+            ? (sovereignWallet.addresses.qbtcVault || sovereignWallet.addresses.qbtcVaultMainnet)
+            : sovereignWallet.addresses[selectedChain];
+
+          if (!address) return;
+
           // Fetch native balance from chain
           const chainBalance = await fetchChainBalance(
             selectedChain,
-            sovereignWallet.addresses[selectedChain],
+            address,
             tokenNetwork
           );
           setBalance(chainBalance.balance);
@@ -239,7 +247,7 @@ export default function SendForm({
     }
     
     fetchBalance();
-  }, [selectedChain, selectedToken, sovereignWallet]);
+  }, [selectedChain, selectedToken, sovereignWallet, qbtcSource]);
 
   const handleTokenSelect = (token: Token) => {
     setSelectedToken(token);
@@ -366,12 +374,15 @@ export default function SendForm({
 
   const handleColdSignerPasswordSubmit = async () => {
     try {
-      // For QBTC, fetch UTXOs from the node so the cold signer can build the transaction
+      // For QBTC, fetch UTXOs from the correct source (hot or vault)
       let utxos: { txid: string; vout: number; value: number; scriptPubKey?: string }[] | undefined;
       let changeAddress: string | undefined;
       if (selectedChain === 'qbtc') {
-        const fromAddress = sovereignWallet?.addresses?.qbtc;
-        if (!fromAddress) throw new Error('QBTC address not found in wallet');
+        const isVault = qbtcSource === 'vault';
+        const fromAddress = isVault
+          ? (sovereignWallet?.addresses?.qbtcVault || sovereignWallet?.addresses?.qbtcVaultMainnet)
+          : sovereignWallet?.addresses?.qbtc;
+        if (!fromAddress) throw new Error(`QBTC ${isVault ? 'vault' : 'hot wallet'} address not found`);
         const qbtcChain = new QBTCChain(qbtcSettings);
         const rawUtxos = await qbtcChain.scanUTXOs(fromAddress);
         if (rawUtxos.length === 0) throw new Error('No UTXOs found for this address. Cannot build transaction.');
@@ -479,12 +490,14 @@ export default function SendForm({
         throw new Error('No token selected');
       }
 
-      const fromAddress = sovereignWallet?.addresses?.[selectedChain];
+      const fromAddress = selectedChain === 'qbtc' && qbtcSource === 'vault'
+        ? (sovereignWallet?.addresses?.qbtcVault || sovereignWallet?.addresses?.qbtcVaultMainnet)
+        : sovereignWallet?.addresses?.[selectedChain];
       if (!fromAddress) {
         throw new Error('Wallet address not found. Please try again.');
       }
       
-      // Handle QBTC (hybrid PQC signing)
+      // Handle QBTC (dual-mode: hot = ECDSA-only, vault = PQC hybrid)
       if (selectedChain === 'qbtc' && selectedToken.isNative) {
         const walletId = localStorage.getItem(`wallet_id_${userId}`);
         if (!walletId) {
@@ -494,17 +507,20 @@ export default function SendForm({
         setTransactionStep('signing');
         const { unlockWallet } = await import('@/lib/walletService');
         const wallet = await unlockWallet(walletId, password);
-        const qbtcPrivateKey = wallet.privateKeys.qbtc;
 
-        if (!qbtcPrivateKey) {
-          throw new Error('QBTC private key not found in wallet');
+        const isVault = qbtcSource === 'vault';
+        const privateKey = isVault ? wallet.privateKeys.qbtcVault : wallet.privateKeys.qbtc;
+
+        if (!privateKey) {
+          throw new Error(`QBTC ${isVault ? 'vault' : 'hot wallet'} private key not found`);
         }
 
         const qbtcChain = new QBTCChain(qbtcSettings);
-        const keyPair = QBTCKeyPair.fromECDSAPrivateKey(qbtcPrivateKey);
+        const keyPair = QBTCKeyPair.fromECDSAPrivateKey(privateKey);
+        const signMode = isVault ? 'hybrid' : 'ecdsa';
 
         setTransactionStep('broadcasting');
-        const txid = await qbtcChain.sendTransaction(keyPair, recipient, amount);
+        const txid = await qbtcChain.sendTransaction(keyPair, recipient, amount, signMode);
 
         if (onAddPendingTransaction) {
           onAddPendingTransaction({
@@ -731,8 +747,12 @@ export default function SendForm({
           </h2>
 
           {selectedChain === 'qbtc' && (
-            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-cyan-500/15 text-cyan-300 border border-cyan-500/40">
-              PQC Protected
+            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${
+              qbtcSource === 'vault'
+                ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40'
+                : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+            }`}>
+              {qbtcSource === 'vault' ? 'PQC Hybrid' : 'ECDSA'}
             </span>
           )}
           
@@ -856,13 +876,13 @@ export default function SendForm({
               </div>
 
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Fee Rate (sat/vB, min 10)</label>
+                <label className="block text-xs text-gray-400 mb-1">Fee Rate (sat/vB, min 5)</label>
                 <input
                   type="number"
-                  min={10}
-                  value={qbtcSettings.feeRate || 10}
+                  min={5}
+                  value={qbtcSettings.feeRate || 5}
                   onChange={(e) => {
-                    const next = setQBTCRpcSettings({ feeRate: Math.max(10, Number(e.target.value || 10)) });
+                    const next = setQBTCRpcSettings({ feeRate: Math.max(5, Number(e.target.value || 5)) });
                     setQbtcSettings(next);
                   }}
                   autoComplete="off"
@@ -870,6 +890,55 @@ export default function SendForm({
                 />
               </div>
             </div>
+          </div>
+        )}
+
+        {/* QBTC Source Selector — Hot Wallet (ECDSA) vs Vault (PQC Hybrid) */}
+        {selectedChain === 'qbtc' && (
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Send From
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setQbtcSource('hot')}
+                className={`flex items-center gap-2 px-4 py-3 rounded-xl border font-medium text-sm transition-colors ${
+                  qbtcSource === 'hot'
+                    ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300'
+                    : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600'
+                }`}
+              >
+                <Send className="w-4 h-4" />
+                <div className="text-left">
+                  <p className="font-semibold">Hot Wallet</p>
+                  <p className="text-xs opacity-70">ECDSA · Fast &amp; cheap</p>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setQbtcSource('vault')}
+                className={`flex items-center gap-2 px-4 py-3 rounded-xl border font-medium text-sm transition-colors ${
+                  qbtcSource === 'vault'
+                    ? 'bg-cyan-600/20 border-cyan-500/50 text-cyan-300'
+                    : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600'
+                }`}
+              >
+                <Lock className="w-4 h-4" />
+                <div className="text-left">
+                  <p className="font-semibold">Quantum Vault</p>
+                  <p className="text-xs opacity-70">PQC Hybrid · Quantum-safe</p>
+                </div>
+              </button>
+            </div>
+            {qbtcSource === 'vault' && (
+              <div className="mt-2 px-3 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-start gap-2">
+                <Shield className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-cyan-400">
+                  Vault sends use <strong>ECDSA + ML-DSA-44</strong> dual signatures. Larger transaction size but quantum-resistant.
+                </p>
+              </div>
+            )}
           </div>
         )}
 

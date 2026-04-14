@@ -16,6 +16,7 @@ import PinEntryModal from '@/components/Wallet/PinEntryModal';
 import SecuritySettings from '@/components/Wallet/SecuritySettings';
 import SecurityEducationCenter from '@/components/Security/SecurityEducationCenter';
 import MarketplaceTab from '@/components/Wallet/MarketplaceTab';
+import VaultTab from '@/components/Wallet/VaultTab';
 import { getCurrentWallet, migrateWalletToUser, deleteWallet } from '@/lib/walletService';
 import { securityManager, getSecurityRequirements, hasPinSetup, setupPin } from '@/lib/securityService';
 import { getWalletTokens, clearWalletTokens, ensureNativeTokens, type Token } from '@/lib/tokenService';
@@ -29,7 +30,7 @@ import { useToast } from '@/hooks/use-toast';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import type { Chain } from '@/lib/balanceService';
 
-type WalletMode = 'dashboard' | 'send' | 'receive' | 'settings' | 'security' | 'marketplace';
+type WalletMode = 'dashboard' | 'vault' | 'send' | 'receive' | 'settings' | 'security' | 'marketplace';
 
 export default function WalletPage() {
   const { user } = useUser();
@@ -578,10 +579,22 @@ export default function WalletPage() {
                       ? 'bg-emerald-600 text-white'
                       : 'text-gray-400 hover:text-white'
                   }`}
-                  title="Dashboard"
+                  title="Wallet"
                 >
                   <WalletIcon className="w-4 h-4 flex-shrink-0" />
-                  <span className="hidden sm:inline">Dashboard</span>
+                  <span className="hidden sm:inline">Wallet</span>
+                </button>
+                <button
+                  onClick={() => setMode('vault')}
+                  className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 ${
+                    mode === 'vault'
+                      ? 'bg-cyan-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                  title="Quantum Vault"
+                >
+                  <Lock className="w-4 h-4 flex-shrink-0" />
+                  <span className="hidden sm:inline">qVault</span>
                 </button>
                 <button
                   onClick={() => setMode('send')}
@@ -658,6 +671,13 @@ export default function WalletPage() {
                   pendingTransactions={pendingTransactions}
                   onSelectToken={handleTokenSelect}
                   onRemovePendingTransaction={removeTransaction}
+                />
+              )}
+
+              {mode === 'vault' && sovereignWallet && (
+                <VaultTab
+                  userId={userId}
+                  sovereignWallet={sovereignWallet}
                 />
               )}
 

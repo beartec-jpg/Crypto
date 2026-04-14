@@ -34,6 +34,8 @@ interface WalletDB extends DBSchema {
         solana: string;
         qbtc: string;
         qbtcMainnet: string;
+        qbtcVault?: string;
+        qbtcVaultMainnet?: string;
       };
       publicKeys: {
         ethereum: string;
@@ -61,6 +63,8 @@ interface Wallet {
     solana: string;
     qbtc: string;
     qbtcMainnet: string;
+    qbtcVault?: string;
+    qbtcVaultMainnet?: string;
   };
   publicKeys?: {
     ethereum: string;
@@ -83,6 +87,7 @@ interface UnlockedWallet extends Wallet {
     xrp: string;
     solana: string;
     qbtc: string;
+    qbtcVault: string;
   };
 }
 
@@ -420,6 +425,8 @@ export async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
     solana: '',
     qbtc: '',
     qbtcMainnet: '',
+    qbtcVault: '',
+    qbtcVaultMainnet: '',
   };
   
   const publicKeys: Record<Chain, string> = {
@@ -459,11 +466,16 @@ export async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
   addresses.solana = deriveSolanaAddress(solNode.privateKey);
   publicKeys.solana = Buffer.from(solNode.privateKey).toString('hex');
 
-  // QBTC (default to testnet address format)
+  // QBTC Hot Wallet (pathIndex 0)
   const qbtcKeyPair = QBTCKeyPair.fromMasterSeed(seed, 0);
   addresses.qbtc = qbtcKeyPair.getAddress('testnet');
   addresses.qbtcMainnet = qbtcKeyPair.getAddress('mainnet');
   publicKeys.qbtc = qbtcKeyPair.ecdsaPublicKeyHex;
+
+  // QBTC Quantum Vault (pathIndex 1 — PQC-enforced cold storage)
+  const vaultKeyPair = QBTCKeyPair.fromMasterSeed(seed, 1);
+  addresses.qbtcVault = vaultKeyPair.getAddress('testnet');
+  addresses.qbtcVaultMainnet = vaultKeyPair.getAddress('mainnet');
 
   if (!addresses.qbtc || !addresses.qbtc.startsWith('qbtct1')) {
     throw new Error('Failed to derive QBTC testnet address for new wallet');
@@ -884,6 +896,7 @@ export async function unlockWallet(walletId: string, password: string): Promise<
       xrp: '',
       solana: '',
       qbtc: '',
+      qbtcVault: '',
     };
     
     const ethNode = derivePath(root, DERIVATION_PATHS.ethereum);
@@ -903,6 +916,10 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     const qbtcKeyPair = QBTCKeyPair.fromMasterSeed(seed, 0);
     privateKeys.qbtc = qbtcKeyPair.ecdsaPrivateKeyHex;
 
+    // Vault key (pathIndex 1)
+    const vaultKeyPair = QBTCKeyPair.fromMasterSeed(seed, 1);
+    privateKeys.qbtcVault = vaultKeyPair.ecdsaPrivateKeyHex;
+
     // No auto-repair - wallets must be created fresh with correct derivation
 
     const mergedAddresses = {
@@ -913,10 +930,12 @@ export async function unlockWallet(walletId: string, password: string): Promise<
       solana: wallet.addresses.solana,
       qbtc: wallet.addresses.qbtc || qbtcKeyPair.getAddress('testnet'),
       qbtcMainnet: wallet.addresses.qbtcMainnet || qbtcKeyPair.getAddress('mainnet'),
+      qbtcVault: wallet.addresses.qbtcVault || vaultKeyPair.getAddress('testnet'),
+      qbtcVaultMainnet: wallet.addresses.qbtcVaultMainnet || vaultKeyPair.getAddress('mainnet'),
     };
 
-    // Auto-upgrade older wallet records that were created before QBTC support.
-    if (!wallet.addresses.qbtc) {
+    // Auto-upgrade older wallet records that were created before QBTC/vault support.
+    if (!wallet.addresses.qbtc || !wallet.addresses.qbtcVault) {
       wallet.addresses = mergedAddresses;
       wallet.publicKeys = {
         ...wallet.publicKeys,
