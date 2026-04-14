@@ -406,6 +406,7 @@ app.post('/api/swap/accept/:offerId', async (req, res) => {
       qbtcLocktime,
       evmLocktime,
       sellerPubKeyHex: offer.seller_pub_key_hex,
+      sellerEvmAddress: offer.seller_evm_address,
       buyerPubKeyHex,
       qbtcAmount: offer.qbtc_amount,
       usdcAmount: offer.usdc_amount_requested,

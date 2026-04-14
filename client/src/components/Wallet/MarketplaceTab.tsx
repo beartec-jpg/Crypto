@@ -91,6 +91,7 @@ interface AcceptResponse {
   qbtcLocktime: number;
   evmLocktime: number;
   sellerPubKeyHex: string;
+  sellerEvmAddress: string;
   buyerPubKeyHex: string;
   qbtcAmount: string;
   usdcAmount: string;
@@ -811,9 +812,9 @@ export default function MarketplaceTab({
         </div>
       </div>
 
-      {/* ─── Accept Success Banner ─── */}
+      {/* ─── Accept Success Banner + Inline USDC Lock ─── */}
       {acceptSuccess && (
-        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 space-y-2">
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 space-y-3">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-emerald-400" />
             <span className="text-emerald-300 font-bold text-sm">Swap Accepted!</span>
@@ -822,7 +823,7 @@ export default function MarketplaceTab({
           <p className="text-emerald-200/80 text-xs">
             Swap <span className="font-mono">{acceptSuccess.swapId.slice(0, 8)}…</span> created.
             {acceptSuccess.status === 'QBTC_LOCKED'
-              ? <>The seller's QBTC is already locked! You can now lock your <span className="font-semibold">{acceptSuccess.usdcAmount} USDC</span> below in Active Swaps.</>
+              ? <>The seller's QBTC is already locked! Lock your <span className="font-semibold">{acceptSuccess.usdcAmount} USDC</span> below to complete the swap.</>
               : <>The seller needs to lock <span className="font-semibold">{acceptSuccess.qbtcAmount} QBTC</span> in the HTLC. Once confirmed, you'll be prompted to lock your USDC. This page auto-refreshes every 15 seconds.</>
             }
           </p>
@@ -836,6 +837,38 @@ export default function MarketplaceTab({
               <p className="font-mono text-purple-300">{new Date(acceptSuccess.evmLocktime * 1000).toLocaleString()}</p>
             </div>
           </div>
+          {/* Inline USDC lock when QBTC is already locked */}
+          {acceptSuccess.status === 'QBTC_LOCKED' && acceptSuccess.sellerEvmAddress && (
+            <BuyerLockPanel
+              swap={{
+                id: acceptSuccess.swapId,
+                offerId: '',
+                sellerQbtcAddress: '',
+                sellerEvmAddress: acceptSuccess.sellerEvmAddress,
+                sellerPubKeyHex: acceptSuccess.sellerPubKeyHex,
+                buyerQbtcAddress: walletAddress,
+                buyerEvmAddress: walletEvmAddress,
+                buyerPubKeyHex: acceptSuccess.buyerPubKeyHex,
+                qbtcAmount: acceptSuccess.qbtcAmount,
+                usdcAmount: acceptSuccess.usdcAmount,
+                secretHash: acceptSuccess.secretHash,
+                secret: null,
+                qbtcHtlcTxid: acceptSuccess.qbtcHtlcTxid,
+                qbtcHtlcAddress: acceptSuccess.qbtcHtlcAddress,
+                evmContractId: null,
+                qbtcLocktime: acceptSuccess.qbtcLocktime,
+                evmLocktime: acceptSuccess.evmLocktime,
+                status: 'QBTC_LOCKED',
+                createdAt: new Date().toISOString(),
+              } satisfies AtomicSwap}
+              walletId={walletId}
+              onLocked={() => {
+                setAcceptSuccess(null);
+                fetchMySwaps();
+                fetchOffers();
+              }}
+            />
+          )}
         </div>
       )}
 
