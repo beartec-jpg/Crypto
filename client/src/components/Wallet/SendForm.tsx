@@ -528,6 +528,7 @@ export default function SendForm({
         const feeQbtc = (feeSats / 1e8).toFixed(8);
 
         if (onAddPendingTransaction) {
+          const requiredConfs = Math.floor((confirmationMinutes * 60) / 10); // 10s blocks
           onAddPendingTransaction({
             hash: txid,
             chain: 'qbtc',
@@ -537,7 +538,7 @@ export default function SendForm({
             token: 'QBTC',
             status: 'pending',
             confirmations: 0,
-            requiredConfirmations: 6,
+            requiredConfirmations: requiredConfs,
             timestamp: Date.now(),
             explorerUrl: `${qbtcSettings.rpcUrl.replace(/\/$/, '')}/tx/${txid}`,
           });

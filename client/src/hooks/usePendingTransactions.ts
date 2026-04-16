@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { getTransactionStatus } from '@/lib/sendService';
+import { QBTCChain, getQBTCRpcSettings } from '@/lib/qbtcService';
 
 export type TransactionStatus = 
   | 'authenticating'
@@ -156,6 +157,14 @@ export function usePendingTransactions() {
       // Poll all active transactions in parallel
       const statusUpdates = await Promise.allSettled(
         activeTransactions.map(tx => {
+          if (tx.chain === 'qbtc') {
+            const qbtcChain = new QBTCChain(getQBTCRpcSettings());
+            return qbtcChain.getTransactionConfirmations(tx.hash).then(confirmations => ({
+              status: confirmations >= tx.requiredConfirmations ? 'confirmed' as const : 'confirming' as const,
+              confirmations,
+              requiredConfirmations: tx.requiredConfirmations,
+            }));
+          }
           if (tx.chain !== 'ethereum' && tx.chain !== 'bsc' && tx.chain !== 'xrp') {
             return Promise.resolve({
               status: 'pending' as const,
