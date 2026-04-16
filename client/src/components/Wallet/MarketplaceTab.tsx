@@ -230,7 +230,7 @@ function SellerLockPanel({
       const wallet = await unlockWallet(walletId, password);
       const qbtcPrivateKey = wallet.privateKeys.qbtc;
       if (!qbtcPrivateKey) throw new Error('QBTC private key not found');
-      const keyPair = QBTCKeyPair.fromECDSAPrivateKey(qbtcPrivateKey);
+      const keyPair = await QBTCKeyPair.fromECDSAPrivateKey(qbtcPrivateKey);
 
       setStep('building');
       const htlcParams: QBTCHtlcParams = {
@@ -1060,7 +1060,7 @@ export default function MarketplaceTab({
       const wallet = await unlockWallet(walletId, postPassword);
       const qbtcPrivateKey = wallet.privateKeys.qbtc;
       if (!qbtcPrivateKey) throw new Error('QBTC private key not found');
-      const keyPair = QBTCKeyPair.fromECDSAPrivateKey(qbtcPrivateKey);
+      const keyPair = await QBTCKeyPair.fromECDSAPrivateKey(qbtcPrivateKey);
 
       // 3. Build hash-only HTLC (no buyer needed)
       setPostStep('Building HTLC…');

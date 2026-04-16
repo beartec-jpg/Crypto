@@ -7,7 +7,7 @@ import { hmac } from '@noble/hashes/hmac';
 import { sha512 } from '@noble/hashes/sha512';
 import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
-import { ml_dsa44 } from '@noble/post-quantum/ml-dsa.js';
+import { initDilithium, dilithium, PK_SIZE, SK_SIZE, SIG_SIZE, SEED_SIZE } from './dilithium-wasm/dilithiumWasm';
 
 bitcoin.initEccLib(ecc);
 
@@ -43,10 +43,10 @@ export interface QBTCTransaction {
 }
 
 const QBTC_SETTINGS_KEY = 'qbtc_rpc_settings';
-const DILITHIUM_PK_SIZE = ml_dsa44.lengths.publicKey ?? 1312;
-const DILITHIUM_SK_SIZE = ml_dsa44.lengths.secretKey ?? 2560;
-const DILITHIUM_SIG_SIZE = ml_dsa44.lengths.signature ?? 2420;
-const DILITHIUM_SEED_SIZE = ml_dsa44.lengths.seed ?? 32;
+const DILITHIUM_PK_SIZE = PK_SIZE;
+const DILITHIUM_SK_SIZE = SK_SIZE;
+const DILITHIUM_SIG_SIZE = SIG_SIZE;
+const DILITHIUM_SEED_SIZE = SEED_SIZE;
 const QBTC_DERIVATION_PATH = "m/44'/0'/0'/0/0";
 const DUST_THRESHOLD = 546;
 
@@ -167,14 +167,15 @@ export class DilithiumKey {
     this.privateKey = privateKey;
   }
 
-  static fromECDSAPrivKey(ecdsaPriv: Uint8Array): DilithiumKey {
+  static async fromECDSAPrivKey(ecdsaPriv: Uint8Array): Promise<DilithiumKey> {
+    await initDilithium();
     const seed = hmacSha512(ecdsaPriv, new TextEncoder().encode('QuantBTC-Dilithium')).slice(0, DILITHIUM_SEED_SIZE);
-    const { secretKey, publicKey } = ml_dsa44.keygen(seed);
+    const { publicKey, secretKey } = dilithium.seedKeygen(seed);
     return new DilithiumKey(seed, publicKey, secretKey);
   }
 
   sign(message: Uint8Array): Uint8Array {
-    return ml_dsa44.sign(message, this.privateKey);
+    return dilithium.sign(message, this.privateKey);
   }
 }
 
@@ -183,26 +184,26 @@ export class QBTCKeyPair {
   readonly ecdsaPublicKeyHex: string;
   readonly dilithiumPublicKeyHex: string;
   readonly dilithiumPrivateKeyHex: string;
-  private readonly dilithium: DilithiumKey;
+  private readonly dilKey: DilithiumKey;
 
   private constructor(
     ecdsaPrivateKeyHex: string,
     ecdsaPublicKeyHex: string,
     dilithiumPublicKeyHex: string,
     dilithiumPrivateKeyHex: string,
-    dilithium: DilithiumKey
+    dilKey: DilithiumKey
   ) {
     this.ecdsaPrivateKeyHex = ecdsaPrivateKeyHex;
     this.ecdsaPublicKeyHex = ecdsaPublicKeyHex;
     this.dilithiumPublicKeyHex = dilithiumPublicKeyHex;
     this.dilithiumPrivateKeyHex = dilithiumPrivateKeyHex;
-    this.dilithium = dilithium;
+    this.dilKey = dilKey;
   }
 
-  static fromECDSAPrivateKey(ecdsaPrivateKeyHex: string): QBTCKeyPair {
+  static async fromECDSAPrivateKey(ecdsaPrivateKeyHex: string): Promise<QBTCKeyPair> {
     const privateKeyBytes = Buffer.from(ecdsaPrivateKeyHex, 'hex');
     const publicKey = secp256k1.getPublicKey(privateKeyBytes, true);
-    const dil = DilithiumKey.fromECDSAPrivKey(privateKeyBytes);
+    const dil = await DilithiumKey.fromECDSAPrivKey(privateKeyBytes);
 
     return new QBTCKeyPair(
       ecdsaPrivateKeyHex,
@@ -213,7 +214,7 @@ export class QBTCKeyPair {
     );
   }
 
-  static fromMasterSeed(masterSeed: Uint8Array, pathIndex = 0): QBTCKeyPair {
+  static async fromMasterSeed(masterSeed: Uint8Array, pathIndex = 0): Promise<QBTCKeyPair> {
     const idxBytes = new Uint8Array(4);
     const dv = new DataView(idxBytes.buffer);
     dv.setUint32(0, pathIndex, false);
@@ -269,7 +270,7 @@ export class QBTCKeyPair {
     return out.map((s) => Buffer.from(s).toString('hex'));
   }
 
-  static reconstructFromShares(shareAHex: string, idxA: 1 | 2 | 3, shareBHex: string, idxB: 1 | 2 | 3): QBTCKeyPair {
+  static async reconstructFromShares(shareAHex: string, idxA: 1 | 2 | 3, shareBHex: string, idxB: 1 | 2 | 3): Promise<QBTCKeyPair> {
     const shareA = Buffer.from(shareAHex, 'hex');
     const shareB = Buffer.from(shareBHex, 'hex');
     if (shareA.length !== shareB.length) {
@@ -298,7 +299,7 @@ export class QBTCKeyPair {
 
     const ecdsaSignature = bitcoin.script.signature.encode(Buffer.from(rawSig), bitcoin.Transaction.SIGHASH_ALL);
     const ecdsaPublicKey = Buffer.from(this.ecdsaPublicKeyHex, 'hex');
-    const dilithiumSignature = Buffer.from(this.dilithium.sign(digest));
+    const dilithiumSignature = Buffer.from(this.dilKey.sign(digest));
     const dilithiumPublicKey = Buffer.from(this.dilithiumPublicKeyHex, 'hex');
 
     return {
@@ -310,12 +311,15 @@ export class QBTCKeyPair {
   }
 
   /**
-   * ECDSA-only witness — smaller, cheaper, used by hot wallet.
-   * Produces a 2-element witness stack: [ecdsaSignature, ecdsaPublicKey]
+   * ECDSA-only witness for hybrid addresses — 3-element witness stack.
+   * [ecdsaSignature, ecdsaPublicKey, dilithiumPublicKey]
+   * PQC pubkey included for address matching (Hash160(ecdsa_pk || pqc_pk))
+   * but NO PQC signature — ECDSA verification only.
    */
   signDigestECDSAOnly(digest: Buffer): {
     ecdsaSignature: Buffer;
     ecdsaPublicKey: Buffer;
+    dilithiumPublicKey: Buffer;
   } {
     const rawSig = ecc.sign(digest, Buffer.from(this.ecdsaPrivateKeyHex, 'hex'));
     if (!rawSig) {
@@ -324,6 +328,7 @@ export class QBTCKeyPair {
     return {
       ecdsaSignature: bitcoin.script.signature.encode(Buffer.from(rawSig), bitcoin.Transaction.SIGHASH_ALL),
       ecdsaPublicKey: Buffer.from(this.ecdsaPublicKeyHex, 'hex'),
+      dilithiumPublicKey: Buffer.from(this.dilithiumPublicKeyHex, 'hex'),
     };
   }
 }
@@ -589,11 +594,12 @@ export class QBTCChain {
       const digest = tx.hashForWitnessV0(idx, scriptCode, toSats(utxo.amount), bitcoin.Transaction.SIGHASH_ALL);
 
       if (signMode === 'ecdsa') {
-        // ECDSA-only — smaller witness for hot wallet sends
+        // 3-element witness: ECDSA sig + pubkey + PQC pubkey (for address matching)
         const witness = keyPair.signDigestECDSAOnly(digest);
         tx.setWitness(idx, [
           witness.ecdsaSignature,
           witness.ecdsaPublicKey,
+          witness.dilithiumPublicKey,
         ]);
       } else {
         // PQC hybrid — ECDSA + ML-DSA-44 for vault sends

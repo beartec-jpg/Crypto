@@ -467,13 +467,13 @@ export async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
   publicKeys.solana = Buffer.from(solNode.privateKey).toString('hex');
 
   // QBTC Hot Wallet (pathIndex 0)
-  const qbtcKeyPair = QBTCKeyPair.fromMasterSeed(seed, 0);
+  const qbtcKeyPair = await QBTCKeyPair.fromMasterSeed(seed, 0);
   addresses.qbtc = qbtcKeyPair.getAddress('testnet');
   addresses.qbtcMainnet = qbtcKeyPair.getAddress('mainnet');
   publicKeys.qbtc = qbtcKeyPair.ecdsaPublicKeyHex;
 
   // QBTC Quantum Vault (pathIndex 1 — PQC-enforced cold storage)
-  const vaultKeyPair = QBTCKeyPair.fromMasterSeed(seed, 1);
+  const vaultKeyPair = await QBTCKeyPair.fromMasterSeed(seed, 1);
   addresses.qbtcVault = vaultKeyPair.getAddress('testnet');
   addresses.qbtcVaultMainnet = vaultKeyPair.getAddress('mainnet');
 
@@ -913,11 +913,11 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     const solNode = derivePath(root, DERIVATION_PATHS.solana);
     privateKeys.solana = solNode.privateKey ? Buffer.from(solNode.privateKey).toString('hex') : '';
 
-    const qbtcKeyPair = QBTCKeyPair.fromMasterSeed(seed, 0);
+    const qbtcKeyPair = await QBTCKeyPair.fromMasterSeed(seed, 0);
     privateKeys.qbtc = qbtcKeyPair.ecdsaPrivateKeyHex;
 
     // Vault key (pathIndex 1)
-    const vaultKeyPair = QBTCKeyPair.fromMasterSeed(seed, 1);
+    const vaultKeyPair = await QBTCKeyPair.fromMasterSeed(seed, 1);
     privateKeys.qbtcVault = vaultKeyPair.ecdsaPrivateKeyHex;
 
     // No auto-repair - wallets must be created fresh with correct derivation

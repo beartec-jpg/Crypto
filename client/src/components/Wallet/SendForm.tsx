@@ -516,7 +516,7 @@ export default function SendForm({
         }
 
         const qbtcChain = new QBTCChain(qbtcSettings);
-        const keyPair = QBTCKeyPair.fromECDSAPrivateKey(privateKey);
+        const keyPair = await QBTCKeyPair.fromECDSAPrivateKey(privateKey);
         const signMode = isVault ? 'hybrid' : 'ecdsa';
 
         setTransactionStep('broadcasting');

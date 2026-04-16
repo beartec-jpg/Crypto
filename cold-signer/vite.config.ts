@@ -2,10 +2,12 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import wasm from 'vite-plugin-wasm';
 
 export default defineConfig({
   base: '/cold-signer/',
   plugins: [
+    wasm(),
     nodePolyfills({ include: ['buffer'], globals: { Buffer: true } }),
     react(),
     VitePWA({
