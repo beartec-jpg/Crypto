@@ -44,21 +44,11 @@ export async function generateHybridKeys(): Promise<HybridKeyPair> {
     // Generate cryptographically secure random seed
     const seed = crypto.getRandomValues(new Uint8Array(32));
     
-    // Generate ML-DSA-65 (Dilithium) key pair with error handling
-    let mlDsaKeys: { publicKey: Uint8Array; secretKey: Uint8Array };
-    try {
-      mlDsaKeys = ml_dsa65.keygen(seed);
-    } catch (mlError) {
-      console.warn('ML-DSA keygen failed, using ECDSA-only mode:', mlError);
-      // Fallback: Create placeholder for ML-DSA (ECDSA still provides security)
-      // This allows the wallet to function even if post-quantum crypto fails
-      const fallbackPublicKey = crypto.getRandomValues(new Uint8Array(1952)); // ML-DSA-65 public key size
-      const fallbackSecretKey = crypto.getRandomValues(new Uint8Array(4032)); // ML-DSA-65 secret key size
-      mlDsaKeys = {
-        publicKey: fallbackPublicKey,
-        secretKey: fallbackSecretKey,
-      };
-    }
+    // Generate ML-DSA-65 (Dilithium) key pair.
+    // Any failure here is fatal — random bytes are NOT a valid substitute for
+    // a real ML-DSA key pair, so we let the exception propagate to the outer
+    // catch which surfaces a user-visible error.
+    const mlDsaKeys = ml_dsa65.keygen(seed);
     
     // Generate ECDSA secp256k1 key pair (for EVM compatibility)
     const ecdsaPrivateKey = crypto.getRandomValues(new Uint8Array(32));
@@ -98,15 +88,10 @@ export async function hybridSign(
   // Hash the message for consistent signing
   const messageHash = sha256(message);
   
-  // Sign with ML-DSA (post-quantum) with error handling
-  let mlDsaSignature: Uint8Array;
-  try {
-    mlDsaSignature = ml_dsa65.sign(keyPair.mlDsaSecretKey, messageHash);
-  } catch (mlError) {
-    console.warn('ML-DSA signing failed, using placeholder:', mlError);
-    // Fallback: Create empty signature (ECDSA still provides security)
-    mlDsaSignature = new Uint8Array(3309); // ML-DSA-65 signature size
-  }
+  // Sign with ML-DSA (post-quantum).
+  // Any failure here is fatal — a zero-filled placeholder is NOT a valid
+  // ML-DSA signature and will not verify, so we let the exception propagate.
+  const mlDsaSignature = ml_dsa65.sign(keyPair.mlDsaSecretKey, messageHash);
   
   // Sign with ECDSA (classical, EVM-compatible)
   const ecdsaSignature = secp256k1.sign(messageHash, keyPair.ecdsaPrivateKey);
@@ -145,20 +130,13 @@ export function verifyHybridSignature(
       return false;
     }
     
-    // Try ML-DSA verification (optional if fallback was used during signing)
-    let mlDsaValid = true;
-    try {
-      mlDsaValid = ml_dsa65.verify(
-        hexToBytes(mlDsaPublicKey),
-        messageHash,
-        hexToBytes(signature.mlDsaSignature)
-      );
-    } catch (mlError) {
-      console.warn('ML-DSA verification skipped (fallback mode):', mlError);
-      // If ML-DSA verification fails, we still accept the signature
-      // as long as ECDSA is valid (graceful degradation)
-      mlDsaValid = true;
-    }
+    // Verify ML-DSA signature. If it throws or returns false the whole
+    // verification fails — we never silently accept an invalid PQC signature.
+    const mlDsaValid = ml_dsa65.verify(
+      hexToBytes(mlDsaPublicKey),
+      messageHash,
+      hexToBytes(signature.mlDsaSignature)
+    );
     
     // Both must be valid for hybrid verification to pass
     return ecdsaValid && mlDsaValid;
