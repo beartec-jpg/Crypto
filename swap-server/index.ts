@@ -24,12 +24,14 @@ const { Pool } = pg;
 
 const PORT = Number(process.env.PORT) || 3099;
 
-const SWAP_QBTC_TIMELOCK_SECS = 48 * 3600; // 48 h
-const SWAP_EVM_TIMELOCK_SECS  = 24 * 3600; // 24 h
-const SWAP_EVM_GRACE_SECS     = 3600;       // 1 h grace
-const MONITOR_POLL_MS         = 60_000;     // 60 s
+const SWAP_QBTC_TIMELOCK_SECS     = 48 * 3600; // 48 h
+const SWAP_EVM_TIMELOCK_SECS      = 24 * 3600; // 24 h
+const SWAP_EVM_GRACE_SECS         = 3600;       // 1 h grace
+const MONITOR_POLL_MS             = 60_000;     // 60 s
 // Maximum age of a signed challenge (prevents replay attacks)
-const SIGNATURE_MAX_AGE_SECS  = 300;        // 5 min
+const SIGNATURE_MAX_AGE_SECS      = 300;        // 5 min
+// How far in the future a client timestamp may be (clock skew tolerance)
+const SIGNATURE_FUTURE_TOLERANCE_SECS = 60;     // 1 min
 
 // ─── Auth helpers ────────────────────────────────────────────────────────────
 
@@ -41,7 +43,7 @@ function checkTimestamp(timestamp: number | string): string | null {
   const ts = Number(timestamp);
   if (!Number.isFinite(ts) || ts <= 0) return 'timestamp must be a positive Unix timestamp (seconds)';
   const now = Math.floor(Date.now() / 1000);
-  if (ts > now + 60) return 'timestamp is too far in the future';
+  if (ts > now + SIGNATURE_FUTURE_TOLERANCE_SECS) return 'timestamp is too far in the future';
   if (now - ts > SIGNATURE_MAX_AGE_SECS) return `timestamp is too old (max ${SIGNATURE_MAX_AGE_SECS}s)`;
   return null;
 }
@@ -71,6 +73,16 @@ function assertEvmSignature(message: string, signature: string, expectedAddress:
       { statusCode: 403 },
     );
   }
+}
+
+/** Build the canonical signed message for each swap action. */
+function buildCanonicalMessage(action: 'CREATE_OFFER', evmAddress: string, qbtcAmount: string, usdcAmount: string, secretHash: string, timestamp: number): string;
+function buildCanonicalMessage(action: 'CREATE_BID', evmAddress: string, qbtcAmount: string, usdcAmount: string, secretHash: string, timestamp: number): string;
+function buildCanonicalMessage(action: 'ACCEPT', offerId: string, evmAddress: string, timestamp: number): string;
+function buildCanonicalMessage(action: 'ACCEPT_BID', offerId: string, evmAddress: string, timestamp: number): string;
+function buildCanonicalMessage(action: 'CANCEL', offerId: string, timestamp: number): string;
+function buildCanonicalMessage(action: string, ...args: (string | number)[]): string {
+  return `QBTC_SWAP:${action}:${args.join(':')}`;
 }
 
 // ─── Database ───────────────────────────────────────────────────────────────
@@ -194,7 +206,7 @@ app.post('/api/swap/offer', async (req, res) => {
     const tsErr = checkTimestamp(timestamp);
     if (tsErr) return res.status(400).json({ error: tsErr });
 
-    const canonicalMsg = `QBTC_SWAP:CREATE_OFFER:${sellerEvmAddress.toLowerCase()}:${qbtcAmount}:${usdcAmountRequested}:${secretHash.toLowerCase()}:${Number(timestamp)}`;
+    const canonicalMsg = buildCanonicalMessage('CREATE_OFFER', sellerEvmAddress.toLowerCase(), qbtcAmount, usdcAmountRequested, secretHash.toLowerCase(), Number(timestamp));
     try {
       assertEvmSignature(canonicalMsg, signature, sellerEvmAddress);
     } catch (authErr: any) {
@@ -263,7 +275,7 @@ app.post('/api/swap/buy-offer', async (req, res) => {
     const tsErr = checkTimestamp(timestamp);
     if (tsErr) return res.status(400).json({ error: tsErr });
 
-    const canonicalMsg = `QBTC_SWAP:CREATE_BID:${buyerEvmAddress.toLowerCase()}:${qbtcAmount}:${usdcAmountOffered}:${secretHash.toLowerCase()}:${Number(timestamp)}`;
+    const canonicalMsg = buildCanonicalMessage('CREATE_BID', buyerEvmAddress.toLowerCase(), qbtcAmount, usdcAmountOffered, secretHash.toLowerCase(), Number(timestamp));
     try {
       assertEvmSignature(canonicalMsg, signature, buyerEvmAddress);
     } catch (authErr: any) {
@@ -327,7 +339,7 @@ app.post('/api/swap/accept-buy/:offerId', async (req, res) => {
     const tsErr = checkTimestamp(timestamp);
     if (tsErr) return res.status(400).json({ error: tsErr });
 
-    const canonicalMsg = `QBTC_SWAP:ACCEPT_BID:${offerId}:${sellerEvmAddress.toLowerCase()}:${Number(timestamp)}`;
+    const canonicalMsg = buildCanonicalMessage('ACCEPT_BID', offerId, sellerEvmAddress.toLowerCase(), Number(timestamp));
     try {
       assertEvmSignature(canonicalMsg, signature, sellerEvmAddress);
     } catch (authErr: any) {
@@ -415,7 +427,7 @@ app.post('/api/swap/cancel/:offerId', async (req, res) => {
       : (offer.seller_evm_address || '');
     if (!ownerEvmAddress) return res.status(422).json({ error: 'Offer is missing owner EVM address' });
 
-    const canonicalMsg = `QBTC_SWAP:CANCEL:${offerId}:${Number(timestamp)}`;
+    const canonicalMsg = buildCanonicalMessage('CANCEL', offerId, Number(timestamp));
     try {
       assertEvmSignature(canonicalMsg, signature, ownerEvmAddress);
     } catch (authErr: any) {
@@ -455,7 +467,7 @@ app.post('/api/swap/accept/:offerId', async (req, res) => {
     const tsErr = checkTimestamp(timestamp);
     if (tsErr) return res.status(400).json({ error: tsErr });
 
-    const canonicalMsg = `QBTC_SWAP:ACCEPT:${offerId}:${buyerEvmAddress.toLowerCase()}:${Number(timestamp)}`;
+    const canonicalMsg = buildCanonicalMessage('ACCEPT', offerId, buyerEvmAddress.toLowerCase(), Number(timestamp));
     try {
       assertEvmSignature(canonicalMsg, signature, buyerEvmAddress);
     } catch (authErr: any) {
