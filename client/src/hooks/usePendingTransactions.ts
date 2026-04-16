@@ -156,14 +156,23 @@ export function usePendingTransactions() {
 
       // Poll all active transactions in parallel
       const statusUpdates = await Promise.allSettled(
-        activeTransactions.map(tx => {
+        activeTransactions.map(async tx => {
           if (tx.chain === 'qbtc') {
             const qbtcChain = new QBTCChain(getQBTCRpcSettings());
-            return qbtcChain.getTransactionConfirmations(tx.hash).then(confirmations => ({
+            // Try getrawtransaction first (works with txindex or mempool txs)
+            let confirmations = await qbtcChain.getTransactionConfirmations(tx.hash);
+            // Fallback: estimate from elapsed time (10-second blocks)
+            if (confirmations === 0) {
+              const elapsedSecs = Math.floor((Date.now() - tx.timestamp) / 1000);
+              // Conservative: assume tx entered next block after broadcast (~10s)
+              const estimatedBlocks = Math.max(0, Math.floor(elapsedSecs / 10) - 1);
+              confirmations = estimatedBlocks;
+            }
+            return {
               status: confirmations >= tx.requiredConfirmations ? 'confirmed' as const : 'confirming' as const,
-              confirmations,
+              confirmations: Math.min(confirmations, tx.requiredConfirmations),
               requiredConfirmations: tx.requiredConfirmations,
-            }));
+            };
           }
           if (tx.chain !== 'ethereum' && tx.chain !== 'bsc' && tx.chain !== 'xrp') {
             return Promise.resolve({

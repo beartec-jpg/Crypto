@@ -531,6 +531,32 @@ export default function QBTCScanPage() {
   const openChart = useCallback((metric: MetricKey) => setSelectedMetric(metric), []);
   const closeChart = useCallback(() => setSelectedMetric(null), []);
 
+  // Read ?q= from URL and auto-search on mount
+  const initialSearchDone = useRef(false);
+  useEffect(() => {
+    if (initialSearchDone.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get('q')?.trim();
+    if (q) {
+      initialSearchDone.current = true;
+      setQuery(q);
+      setActiveTab('tx');
+      // Trigger search after state settles
+      setTimeout(async () => {
+        setLoading(true);
+        setError(null);
+        setResult(null);
+        try {
+          const res = await fetch(`/api/qbtc-scan/search?q=${encodeURIComponent(q)}`);
+          const data = await res.json();
+          if (!res.ok) { setError(data.error || 'Search failed'); return; }
+          setResult(data);
+        } catch { setError('Unable to reach QBTC scan endpoint'); }
+        finally { setLoading(false); }
+      }, 0);
+    }
+  }, []);
+
   // If last block is older than 60 seconds, mining is inactive — zero out live metrics
   const miningInactive = useMemo(() => {
     if (stats.lastBlockTime == null) return false;

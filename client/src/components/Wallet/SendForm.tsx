@@ -540,7 +540,7 @@ export default function SendForm({
             confirmations: 0,
             requiredConfirmations: requiredConfs,
             timestamp: Date.now(),
-            explorerUrl: `${qbtcSettings.rpcUrl.replace(/\/$/, '')}/tx/${txid}`,
+            explorerUrl: `/qbtc-scan?q=${txid}`,
           });
         }
 
@@ -551,7 +551,7 @@ export default function SendForm({
           to: recipient,
           fee: `${feeQbtc} QBTC`,
           feeUsd: 0,
-          explorerUrl: `${qbtcSettings.rpcUrl.replace(/\/$/, '')}/tx/${txid}`,
+          explorerUrl: `/qbtc-scan?q=${txid}`,
         });
         setShowSuccessModal(true);
 
