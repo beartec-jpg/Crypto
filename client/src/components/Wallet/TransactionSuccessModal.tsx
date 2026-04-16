@@ -3,6 +3,7 @@
 
 import { useState } from 'react';
 import { CheckCircle2, Copy, ExternalLink, X } from 'lucide-react';
+import ConfirmationTimer from './ConfirmationTimer';
 
 interface TransactionSuccessModalProps {
   amount: string;
@@ -13,6 +14,10 @@ interface TransactionSuccessModalProps {
   hash: string;
   explorerUrl: string;
   onClose: () => void;
+  /** QBTC confirmation tracking */
+  confirmationTarget?: number; // minutes (from slider)
+  targetConfirmations?: number; // block count
+  pollConfirmations?: (txid: string) => Promise<number>;
 }
 
 export default function TransactionSuccessModal({
@@ -24,8 +29,12 @@ export default function TransactionSuccessModal({
   hash,
   explorerUrl,
   onClose,
+  confirmationTarget,
+  targetConfirmations,
+  pollConfirmations,
 }: TransactionSuccessModalProps) {
   const [copied, setCopied] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
 
   const handleCopyHash = async () => {
     try {
@@ -120,6 +129,29 @@ export default function TransactionSuccessModal({
           </div>
         </div>
 
+        {/* Confirmation Progress (QBTC) */}
+        {pollConfirmations && (
+          <div className="mb-6">
+            <ConfirmationTimer
+              txid={hash}
+              pollConfirmations={pollConfirmations}
+              onConfirmed={() => setConfirmed(true)}
+              defaultStepIndex={
+                // Map target minutes back to step index
+                confirmationTarget === 1 ? 0
+                : confirmationTarget === 2 ? 1
+                : confirmationTarget === 3 ? 2
+                : confirmationTarget === 5 ? 3
+                : confirmationTarget === 10 ? 4
+                : confirmationTarget === 15 ? 5
+                : confirmationTarget === 30 ? 6
+                : confirmationTarget === 60 ? 7
+                : 4
+              }
+            />
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="flex gap-3">
           <a
@@ -141,7 +173,9 @@ export default function TransactionSuccessModal({
 
         {/* Info Text */}
         <p className="text-xs text-gray-500 text-center mt-4">
-          Your transaction is being processed. You can track its progress in Recent Transactions.
+          {confirmed
+            ? 'Transaction confirmed. You can safely close this window.'
+            : 'Your transaction is being processed. You can track its progress in Recent Transactions.'}
         </p>
       </div>
     </div>

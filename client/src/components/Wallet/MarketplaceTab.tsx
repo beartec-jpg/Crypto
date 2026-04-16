@@ -244,7 +244,7 @@ function SellerLockPanel({
 
       setStep('broadcasting');
       const qbtcChain = new QBTCChain(getQBTCRpcSettings());
-      const txid = await qbtcChain.sendTransaction(keyPair, htlcAddress, swap.qbtcAmount);
+      const { txid } = await qbtcChain.sendTransaction(keyPair, htlcAddress, swap.qbtcAmount);
 
       setStep('reporting');
       await axios.post(`${SWAP_API}/api/swap/lock/qbtc`, {
@@ -1075,7 +1075,7 @@ export default function MarketplaceTab({
       // 4. Broadcast QBTC to HTLC address
       setPostStep('Broadcasting QBTC…');
       const qbtcChain = new QBTCChain(getQBTCRpcSettings());
-      const txid = await qbtcChain.sendTransaction(keyPair, htlcAddress, qbtcAmount);
+      const { txid } = await qbtcChain.sendTransaction(keyPair, htlcAddress, qbtcAmount);
 
       // 5. Report lock to server
       setPostStep('Confirming lock…');

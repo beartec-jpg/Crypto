@@ -118,14 +118,18 @@ function fromSats(sats: number): string {
   return (sats / 100000000).toFixed(8);
 }
 
-function estimateHybridTxVSize(inputCount: number, outputCount: number): number {
+function estimateTxVSize(inputCount: number, outputCount: number, signMode: 'hybrid' | 'ecdsa' = 'hybrid'): number {
   const baseBytes = 10 + (inputCount * 41) + (outputCount * 31);
-  const witnessBytesPerInput = 1 + 73 + 34 + 2423 + 1315;
+  // 3-element ECDSA: [ecdsaSig(73) + ecdsaPub(34) + dilPub(1315)] + stack size byte
+  // 4-element hybrid: [ecdsaSig(73) + ecdsaPub(34) + dilSig(2423) + dilPub(1315)] + stack size byte
+  const witnessBytesPerInput = signMode === 'ecdsa'
+    ? 1 + 73 + 34 + 1315
+    : 1 + 73 + 34 + 2423 + 1315;
   const weight = (baseBytes * 4) + (inputCount * witnessBytesPerInput);
   return Math.ceil(weight / 4);
 }
 
-function selectUtxos(utxos: QBTCUtxo[], amountSats: number, feeRate: number): {
+function selectUtxos(utxos: QBTCUtxo[], amountSats: number, feeRate: number, signMode: 'hybrid' | 'ecdsa' = 'hybrid'): {
   selected: QBTCUtxo[];
   totalInput: number;
   fee: number;
@@ -140,7 +144,7 @@ function selectUtxos(utxos: QBTCUtxo[], amountSats: number, feeRate: number): {
     totalInput += toSats(utxo.amount);
 
     const outputCount = 2;
-    const vSize = estimateHybridTxVSize(selected.length, outputCount);
+    const vSize = estimateTxVSize(selected.length, outputCount, signMode);
     const fee = Math.max(1, Math.ceil(vSize * feeRate));
     const required = amountSats + fee;
 
@@ -550,7 +554,7 @@ export class QBTCChain {
     toAddress: string,
     amount: string,
     signMode: 'hybrid' | 'ecdsa' = 'hybrid'
-  ): Promise<string> {
+  ): Promise<{ hex: string; fee: number }> {
     const fromAddress = keyPair.getAddress(this.settings.network);
     const scanResult = await this.rpcCall<{ unspents: Array<{ txid: string; vout: number; amount: number; height: number; scriptPubKey: string }> }>(
       'scantxoutset', ['start', [{ desc: addressToRawDescriptor(fromAddress, QBTC_NETWORKS[this.settings.network]) }]]
@@ -565,7 +569,7 @@ export class QBTCChain {
 
     const amountSats = toSats(Number(amount));
     const feeRate = Math.max(5, Number(this.settings.feeRate || 5));
-    const { selected, change } = selectUtxos(utxos, amountSats, feeRate);
+    const { selected, fee, change } = selectUtxos(utxos, amountSats, feeRate, signMode);
 
     const tx = new bitcoin.Transaction();
     tx.version = 2;
@@ -613,16 +617,26 @@ export class QBTCChain {
       }
     });
 
-    return tx.toHex();
+    return { hex: tx.toHex(), fee };
   }
 
   async broadcastRawTransaction(rawHex: string): Promise<string> {
     return this.rpcCall<string>('sendrawtransaction', [rawHex]);
   }
 
-  async sendTransaction(keyPair: QBTCKeyPair, toAddress: string, amount: string, signMode: 'hybrid' | 'ecdsa' = 'hybrid'): Promise<string> {
-    const raw = await this.createAndSignTransaction(keyPair, toAddress, amount, signMode);
-    return this.broadcastRawTransaction(raw);
+  async sendTransaction(keyPair: QBTCKeyPair, toAddress: string, amount: string, signMode: 'hybrid' | 'ecdsa' = 'hybrid'): Promise<{ txid: string; fee: number }> {
+    const { hex, fee } = await this.createAndSignTransaction(keyPair, toAddress, amount, signMode);
+    const txid = await this.broadcastRawTransaction(hex);
+    return { txid, fee };
+  }
+
+  async getTransactionConfirmations(txid: string): Promise<number> {
+    try {
+      const result = await this.rpcCall<{ confirmations?: number }>('getrawtransaction', [txid, true]);
+      return result.confirmations ?? 0;
+    } catch {
+      return 0;
+    }
   }
 }
 

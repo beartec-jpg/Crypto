@@ -1,7 +1,7 @@
 // client/src/components/Wallet/SendForm.tsx
 // Secure send form with native + token support, transaction preview and passkey confirmation
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Send, AlertCircle, ChevronDown, Shield, Lock } from 'lucide-react';
 import { 
   securityManager, 
@@ -44,6 +44,7 @@ import TransactionPreviewModal from './TransactionPreviewModal';
 import PinEntryModal from './PinEntryModal';
 import PasswordModal from './PasswordModal';
 import TransactionSuccessModal from './TransactionSuccessModal';
+import ConfirmationTimer from './ConfirmationTimer';
 import BalanceDisplay from './BalanceDisplay';
 import DestinationTagInput from './DestinationTagInput';
 import MemoInput from './MemoInput';
@@ -118,6 +119,8 @@ export default function SendForm({
   const [xrpReserved, setXrpReserved] = useState<string>('0');
   const [xrpAvailable, setXrpAvailable] = useState<string>('0');
   const [qbtcSettings, setQbtcSettings] = useState<QBTCRpcSettings>(getQBTCRpcSettings());
+  const [confirmationMinutes, setConfirmationMinutes] = useState(10); // default 10min = 1 conf
+  const qbtcChainRef = useRef<InstanceType<typeof QBTCChain> | null>(null);
   const [successData, setSuccessData] = useState<{
     hash: string;
     amount: string;
@@ -516,11 +519,13 @@ export default function SendForm({
         }
 
         const qbtcChain = new QBTCChain(qbtcSettings);
+        qbtcChainRef.current = qbtcChain;
         const keyPair = await QBTCKeyPair.fromECDSAPrivateKey(privateKey);
         const signMode = isVault ? 'hybrid' : 'ecdsa';
 
         setTransactionStep('broadcasting');
-        const txid = await qbtcChain.sendTransaction(keyPair, recipient, amount, signMode);
+        const { txid, fee: feeSats } = await qbtcChain.sendTransaction(keyPair, recipient, amount, signMode);
+        const feeQbtc = (feeSats / 1e8).toFixed(8);
 
         if (onAddPendingTransaction) {
           onAddPendingTransaction({
@@ -543,7 +548,7 @@ export default function SendForm({
           hash: txid,
           amount,
           to: recipient,
-          fee: 'dynamic',
+          fee: `${feeQbtc} QBTC`,
           feeUsd: 0,
           explorerUrl: `${qbtcSettings.rpcUrl.replace(/\/$/, '')}/tx/${txid}`,
         });
@@ -942,6 +947,14 @@ export default function SendForm({
           </div>
         )}
 
+        {/* Confirmation Security Slider — QBTC only */}
+        {selectedChain === 'qbtc' && (
+          <ConfirmationTimer
+            onTargetChange={(minutes) => setConfirmationMinutes(minutes)}
+            defaultStepIndex={4}
+          />
+        )}
+
         {/* Token Selector */}
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -1282,6 +1295,10 @@ export default function SendForm({
           hash={successData.hash}
           explorerUrl={successData.explorerUrl}
           onClose={handleSuccessClose}
+          {...(selectedChain === 'qbtc' && qbtcChainRef.current ? {
+            confirmationTarget: confirmationMinutes,
+            pollConfirmations: (txid: string) => qbtcChainRef.current!.getTransactionConfirmations(txid),
+          } : {})}
         />
       )}
 
