@@ -44,11 +44,10 @@ export async function initDilithium(): Promise<void> {
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
+    const wasmResponse = await fetch('/cold-signer/dilithium.wasm');
+    const wasmBinary = new Uint8Array(await wasmResponse.arrayBuffer());
     mod = await createDilithiumModule({
-      locateFile: (path: string) => {
-        if (path.endsWith('.wasm')) return '/cold-signer/dilithium.wasm';
-        return path;
-      },
+      wasmBinary,
     });
   })();
 
