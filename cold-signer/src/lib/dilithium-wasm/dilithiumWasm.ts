@@ -14,8 +14,6 @@
 
 // @ts-ignore — emscripten-generated module
 import createDilithiumModule from './dilithium.js';
-// @ts-ignore — binary asset
-import wasmUrl from './dilithium.wasm?url';
 
 export const PK_SIZE = 1312;
 export const SK_SIZE = 2560;
@@ -48,7 +46,7 @@ export async function initDilithium(): Promise<void> {
   initPromise = (async () => {
     mod = await createDilithiumModule({
       locateFile: (path: string) => {
-        if (path.endsWith('.wasm')) return wasmUrl;
+        if (path.endsWith('.wasm')) return '/cold-signer/dilithium.wasm';
         return path;
       },
     });
