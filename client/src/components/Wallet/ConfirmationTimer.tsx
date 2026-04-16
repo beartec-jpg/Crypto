@@ -2,16 +2,14 @@
 // Non-linear confirmation time slider (1min → 1hr) with security feedback and live polling
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Shield, ShieldCheck, ShieldAlert, Clock, CheckCircle2, Loader2 } from 'lucide-react';
+import { Shield, ShieldCheck, ShieldAlert, CheckCircle2, Loader2 } from 'lucide-react';
 
 // Non-linear time steps: bottom-heavy (more sensitive at low end)
 const TIME_STEPS = [1, 2, 3, 5, 10, 15, 30, 60]; // minutes
-const BLOCK_TIME_MINUTES = 10; // QBTC 10-min blocks
+const BLOCK_TIME_SECONDS = 10; // QBTC 10-second blocks
 
 function minutesToConfirmations(minutes: number): number {
-  // 0 confs for anything under 1 block, otherwise ceil
-  if (minutes < BLOCK_TIME_MINUTES) return 0;
-  return Math.ceil(minutes / BLOCK_TIME_MINUTES);
+  return Math.floor((minutes * 60) / BLOCK_TIME_SECONDS);
 }
 
 function formatTime(minutes: number): string {
@@ -19,51 +17,43 @@ function formatTime(minutes: number): string {
   return `${minutes} min`;
 }
 
-type SecurityLevel = 'broadcast' | 'low' | 'medium' | 'high' | 'maximum';
+type SecurityLevel = 'low' | 'medium' | 'high' | 'maximum';
 
-function getSecurityLevel(minutes: number): SecurityLevel {
-  if (minutes < 10) return 'broadcast';
-  if (minutes < 15) return 'low';
-  if (minutes < 30) return 'medium';
-  if (minutes < 60) return 'high';
+function getSecurityLevel(confirmations: number): SecurityLevel {
+  if (confirmations <= 12) return 'low';
+  if (confirmations <= 30) return 'medium';
+  if (confirmations <= 90) return 'high';
   return 'maximum';
 }
 
 const SECURITY_CONFIG: Record<SecurityLevel, { label: string; color: string; bgColor: string; borderColor: string; description: string }> = {
-  broadcast: {
-    label: 'Broadcast Only',
-    color: 'text-gray-400',
-    bgColor: 'bg-gray-500/20',
-    borderColor: 'border-gray-500/30',
-    description: 'Transaction sent — no block confirmations',
-  },
   low: {
     label: 'Basic',
     color: 'text-yellow-400',
     bgColor: 'bg-yellow-500/20',
     borderColor: 'border-yellow-500/30',
-    description: '1 confirmation — suitable for small amounts',
+    description: 'Suitable for small amounts',
   },
   medium: {
     label: 'Standard',
     color: 'text-blue-400',
     bgColor: 'bg-blue-500/20',
     borderColor: 'border-blue-500/30',
-    description: '2 confirmations — good for most transactions',
+    description: 'Good for most transactions',
   },
   high: {
     label: 'Secure',
     color: 'text-emerald-400',
     bgColor: 'bg-emerald-500/20',
     borderColor: 'border-emerald-500/30',
-    description: '3 confirmations — high security',
+    description: 'High security — very hard to reverse',
   },
   maximum: {
     label: 'Maximum',
     color: 'text-cyan-400',
     bgColor: 'bg-cyan-500/20',
     borderColor: 'border-cyan-500/30',
-    description: '6 confirmations — maximum security, virtually irreversible',
+    description: 'Maximum security — virtually irreversible',
   },
 };
 
@@ -98,7 +88,7 @@ export default function ConfirmationTimer({
 
   const minutes = TIME_STEPS[stepIndex];
   const targetConfirmations = minutesToConfirmations(minutes);
-  const securityLevel = getSecurityLevel(minutes);
+  const securityLevel = getSecurityLevel(targetConfirmations);
   const config = SECURITY_CONFIG[securityLevel];
 
   // Notify parent of target changes
@@ -108,14 +98,7 @@ export default function ConfirmationTimer({
 
   // Start polling when txid is provided
   useEffect(() => {
-    if (!txid || !pollConfirmations || targetConfirmations === 0) {
-      // Broadcast-only mode — auto-confirm immediately
-      if (txid && targetConfirmations === 0) {
-        setIsConfirmed(true);
-        onConfirmed?.(0);
-      }
-      return;
-    }
+    if (!txid || !pollConfirmations) return;
 
     setIsPolling(true);
     startTimeRef.current = Date.now();
@@ -161,8 +144,7 @@ export default function ConfirmationTimer({
     return m > 0 ? `${m}m ${s.toString().padStart(2, '0')}s` : `${s}s`;
   };
 
-  const SecurityIcon = securityLevel === 'broadcast' ? Clock
-    : securityLevel === 'maximum' ? ShieldCheck
+  const SecurityIcon = securityLevel === 'maximum' ? ShieldCheck
     : securityLevel === 'low' ? ShieldAlert
     : Shield;
 
@@ -224,7 +206,7 @@ export default function ConfirmationTimer({
               <SecurityIcon className={`w-4 h-4 ${config.color} flex-shrink-0 mt-0.5`} />
               <div>
                 <p className={`text-xs ${config.color}`}>
-                  <strong>{formatTime(minutes)}</strong> — {targetConfirmations === 0 ? 'No' : targetConfirmations} block confirmation{targetConfirmations !== 1 ? 's' : ''}
+                  <strong>{formatTime(minutes)}</strong> — {targetConfirmations} block{targetConfirmations !== 1 ? 's' : ''} (10s each)
                 </p>
                 <p className="text-xs text-gray-500 mt-0.5">{config.description}</p>
               </div>
@@ -263,9 +245,7 @@ export default function ConfirmationTimer({
               <span className={isConfirmed ? 'text-emerald-400 font-medium' : 'text-gray-400'}>
                 {isConfirmed
                   ? `Confirmed — ${currentConfirmations} block${currentConfirmations !== 1 ? 's' : ''}`
-                  : targetConfirmations === 0
-                    ? 'Broadcast to network'
-                    : `${currentConfirmations} / ${targetConfirmations} confirmations`}
+                  : `${currentConfirmations} / ${targetConfirmations} blocks`}
               </span>
             </div>
             {isPolling && (
