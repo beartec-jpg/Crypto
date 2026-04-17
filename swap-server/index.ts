@@ -180,7 +180,7 @@ if (corsOrigins.length === 0) {
     console.error('[swap-server] FATAL: CORS_ORIGINS must be set in production. Refusing to start with permissive CORS.');
     process.exit(1);
   }
-  console.warn('[swap-server] WARNING: CORS_ORIGINS is not set. Defaulting to localhost origins — do NOT use in production!');
+  console.warn('[swap-server] WARNING: CORS_ORIGINS is not set. Defaulting to localhost origins (http://localhost:3000, http://localhost:5173, http://localhost:5174) — do NOT use in production!');
   // Restrict to common local-development origins so we never accept arbitrary origins even in dev
   corsOrigins.push('http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174');
 }
