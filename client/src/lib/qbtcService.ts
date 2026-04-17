@@ -261,11 +261,12 @@ export class QBTCKeyPair {
     const dilithiumSeed = hmacSha512(masterSeed, pqcContext);
 
     const privateKeyBytes = Buffer.from(ecdsaChild);
+    const ecdsaPrivateKeyHex = privateKeyBytes.toString('hex');
     const publicKey = secp256k1.getPublicKey(privateKeyBytes, true);
     const dil = await DilithiumKey.fromIndependentSeed(dilithiumSeed);
 
     return new QBTCKeyPair(
-      Buffer.from(ecdsaChild).toString('hex'),
+      ecdsaPrivateKeyHex,
       Buffer.from(publicKey).toString('hex'),
       Buffer.from(dil.publicKey).toString('hex'),
       Buffer.from(dil.privateKey).toString('hex'),

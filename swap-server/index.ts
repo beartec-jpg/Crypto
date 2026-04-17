@@ -582,7 +582,9 @@ app.post('/api/swap/accept/:offerId', async (req, res) => {
         qbtcHtlcAddress: offer.qbtc_htlc_address || null,
       });
     } catch (txErr: any) {
-      await client.query('ROLLBACK').catch(() => {});
+      await client.query('ROLLBACK').catch((rbErr: any) => {
+        console.error('POST /api/swap/accept: ROLLBACK failed:', rbErr?.message);
+      });
       throw txErr;
     } finally {
       client.release();
