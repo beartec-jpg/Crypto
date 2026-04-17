@@ -174,17 +174,17 @@ function decimalToBaseUnits(value: string, decimals: number): bigint {
 
 const app = express();
 
-const corsOrigins = (process.env.CORS_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+const corsOrigins = (process.env.CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 if (corsOrigins.length === 0) {
   if (process.env.NODE_ENV === 'production') {
-    console.error('[swap-server] FATAL: CORS_ORIGINS must be set in production. Refusing to start with wildcard CORS.');
+    console.error('[swap-server] FATAL: CORS_ORIGINS must be set in production. Refusing to start with permissive CORS.');
     process.exit(1);
   }
-  console.warn('[swap-server] WARNING: CORS_ORIGINS is not set. Defaulting to open CORS — do NOT use in production!');
+  console.warn('[swap-server] WARNING: CORS_ORIGINS is not set. Defaulting to localhost origins — do NOT use in production!');
+  // Restrict to common local-development origins so we never accept arbitrary origins even in dev
+  corsOrigins.push('http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174');
 }
-// In development (corsOrigins empty), origin:true reflects the request origin.
-// In production this code path is never reached without a non-empty corsOrigins list (process.exit above).
-app.use(cors({ origin: corsOrigins.length > 0 ? corsOrigins : true }));
+app.use(cors({ origin: corsOrigins }));
 app.use(express.json());
 
 // ─── Rate limiting ──────────────────────────────────────────────────────────
