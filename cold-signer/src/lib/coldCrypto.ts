@@ -139,8 +139,24 @@ export async function decrypt(
  * Validate password strength
  */
 export function validatePassword(password: string): { valid: boolean; error?: string } {
-  if (!password || password.length < 8) {
-    return { valid: false, error: 'Password must be at least 8 characters' };
+  if (!password || password.length < 12) {
+    return { valid: false, error: 'Password must be at least 12 characters' };
+  }
+
+  if (!/[A-Z]/.test(password)) {
+    return { valid: false, error: 'Password must contain an uppercase letter' };
+  }
+
+  if (!/[a-z]/.test(password)) {
+    return { valid: false, error: 'Password must contain a lowercase letter' };
+  }
+
+  if (!/[0-9]/.test(password)) {
+    return { valid: false, error: 'Password must contain a number' };
+  }
+
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+    return { valid: false, error: 'Password must contain a special character (!@#$%^&*(),.?":{}|<>)' };
   }
 
   return { valid: true };

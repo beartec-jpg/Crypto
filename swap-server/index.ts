@@ -174,8 +174,15 @@ function decimalToBaseUnits(value: string, decimals: number): bigint {
 
 const app = express();
 
-const corsOrigins = (process.env.CORS_ORIGINS || '*').split(',').map((s) => s.trim());
-app.use(cors({ origin: corsOrigins.includes('*') ? '*' : corsOrigins }));
+const corsOrigins = (process.env.CORS_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
+if (corsOrigins.length === 0) {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('[swap-server] FATAL: CORS_ORIGINS must be set in production. Refusing to start with wildcard CORS.');
+    process.exit(1);
+  }
+  console.warn('[swap-server] WARNING: CORS_ORIGINS is not set. Defaulting to wildcard (*) — do NOT use in production!');
+}
+app.use(cors({ origin: corsOrigins.length === 0 ? '*' : corsOrigins }));
 app.use(express.json());
 
 // ─── Rate limiting ──────────────────────────────────────────────────────────
@@ -417,7 +424,7 @@ app.post('/api/swap/accept-buy/:offerId', async (req, res) => {
     const mapped = toCamelCase(swap);
     return res.json({
       ...(mapped as any),
-      swapId: swap.id,
+      swapId: swap.public_id,
       secretHash,
       qbtcLocktime,
       evmLocktime,
@@ -568,7 +575,7 @@ app.post('/api/swap/accept/:offerId', async (req, res) => {
       await client.query('COMMIT');
 
       return res.json({
-        swapId: swap.id,
+        swapId: swap.public_id,
         secretHash,
         qbtcLocktime,
         evmLocktime,
@@ -740,7 +747,7 @@ app.get('/api/swap/by-address', async (req, res) => {
 
 app.get('/api/swap/:swapId', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM atomic_swaps WHERE id = $1', [req.params.swapId]);
+    const result = await pool.query('SELECT * FROM atomic_swaps WHERE public_id = $1::uuid', [req.params.swapId]);
     const swap = result.rows[0];
     if (!swap) return res.status(404).json({ error: 'Swap not found' });
 
@@ -811,7 +818,7 @@ app.post('/api/swap/lock/qbtc', async (req, res) => {
       return res.status(400).json({ error: 'swapId, qbtcHtlcTxid, and qbtcHtlcAddress are required' });
     }
 
-    const swapResult = await pool.query('SELECT * FROM atomic_swaps WHERE id = $1', [swapId]);
+    const swapResult = await pool.query('SELECT * FROM atomic_swaps WHERE public_id = $1::uuid', [swapId]);
     const swap = swapResult.rows[0];
     if (!swap) return res.status(404).json({ error: 'Swap not found' });
     if (swap.status !== 'PENDING_QBTC_LOCK') {
@@ -842,7 +849,7 @@ app.post('/api/swap/lock/qbtc', async (req, res) => {
 
     await pool.query(
       `UPDATE atomic_swaps SET qbtc_htlc_txid = $1, qbtc_htlc_address = $2, status = 'QBTC_LOCKED', updated_at = NOW() WHERE id = $3`,
-      [qbtcHtlcTxid, qbtcHtlcAddress, swapId],
+      [qbtcHtlcTxid, qbtcHtlcAddress, swap.id],
     );
     return res.json({ status: 'QBTC_LOCKED' });
   } catch (err: any) {
@@ -858,7 +865,7 @@ app.post('/api/swap/lock/evm', async (req, res) => {
     const { swapId, evmContractId } = req.body || {};
     if (!swapId || !evmContractId) return res.status(400).json({ error: 'swapId and evmContractId are required' });
 
-    const swapResult = await pool.query('SELECT * FROM atomic_swaps WHERE id = $1', [swapId]);
+    const swapResult = await pool.query('SELECT * FROM atomic_swaps WHERE public_id = $1::uuid', [swapId]);
     const swap = swapResult.rows[0];
     if (!swap) return res.status(404).json({ error: 'Swap not found' });
     if (swap.status !== 'QBTC_LOCKED') return res.status(409).json({ error: `Cannot record EVM lock in status: ${swap.status}` });
@@ -910,7 +917,7 @@ app.post('/api/swap/lock/evm', async (req, res) => {
 
     await pool.query(
       `UPDATE atomic_swaps SET evm_contract_id = $1, status = 'EVM_LOCKED', updated_at = NOW() WHERE id = $2`,
-      [evmContractId, swapId],
+      [evmContractId, swap.id],
     );
     return res.json({ status: 'EVM_LOCKED' });
   } catch (err: any) {
@@ -926,19 +933,19 @@ app.post('/api/swap/secret/seller', async (req, res) => {
     const { swapId, signature } = req.body || {};
     if (!swapId || !signature) return res.status(400).json({ error: 'swapId and signature are required' });
 
-    const swapResult = await pool.query('SELECT * FROM atomic_swaps WHERE id = $1', [swapId]);
+    const swapResult = await pool.query('SELECT * FROM atomic_swaps WHERE public_id = $1::uuid', [swapId]);
     const swap = swapResult.rows[0];
     if (!swap) return res.status(404).json({ error: 'Swap not found' });
     if (swap.status !== 'EVM_LOCKED' && swap.status !== 'COMPLETE') return res.status(409).json({ error: `Secret unavailable in status: ${swap.status}` });
     if (!swap.qbtc_htlc_txid || !swap.evm_contract_id) return res.status(409).json({ error: 'Swap lock legs incomplete' });
     if (!swap.secret) return res.status(422).json({ error: 'Secret not available yet' });
 
-    const message = `QBTC_SWAP_SECRET:${swap.id}`;
+    const message = `QBTC_SWAP_SECRET:${swap.public_id}`;
     let recovered = '';
     try { recovered = ethers.verifyMessage(message, String(signature)).toLowerCase(); } catch { return res.status(400).json({ error: 'Invalid seller signature' }); }
     if (recovered !== String(swap.seller_evm_address).toLowerCase()) return res.status(403).json({ error: 'Signature mismatch' });
 
-    return res.json({ swapId: swap.id, message, secret: swap.secret });
+    return res.json({ swapId: swap.public_id, message, secret: swap.secret });
   } catch (err: any) {
     console.error('POST /api/swap/secret/seller:', err.message);
     return res.status(500).json({ error: err.message || 'Failed to retrieve secret' });
@@ -952,14 +959,14 @@ app.post('/api/swap/claim/qbtc', async (req, res) => {
     const { swapId, claimTxid } = req.body || {};
     if (!swapId || !claimTxid) return res.status(400).json({ error: 'swapId and claimTxid required' });
 
-    const result = await pool.query('SELECT * FROM atomic_swaps WHERE id = $1', [swapId]);
+    const result = await pool.query('SELECT * FROM atomic_swaps WHERE public_id = $1::uuid', [swapId]);
     const swap = result.rows[0];
     if (!swap) return res.status(404).json({ error: 'Swap not found' });
     if (swap.status !== 'COMPLETE') return res.status(409).json({ error: 'Swap is not COMPLETE' });
 
     await pool.query(
       `UPDATE atomic_swaps SET buyer_qbtc_claim_txid = $1, updated_at = NOW() WHERE id = $2`,
-      [claimTxid, swapId],
+      [claimTxid, swap.id],
     );
 
     return res.json({ ok: true, claimTxid });
@@ -1041,6 +1048,27 @@ app.listen(PORT, '0.0.0.0', async () => {
     console.log(`[swap-server] DB migration: buyer_qbtc_claim_txid column ensured`);
   } catch (err: any) {
     console.error('[swap-server] DB migration error:', err.message);
+  }
+
+  // Ensure public_id UUID columns exist on atomic_swaps and swap_offers (M-3)
+  try {
+    await pool.query(`
+      ALTER TABLE atomic_swaps
+        ADD COLUMN IF NOT EXISTS public_id UUID NOT NULL DEFAULT gen_random_uuid()
+    `);
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS atomic_swaps_public_id_uidx ON atomic_swaps (public_id)
+    `);
+    await pool.query(`
+      ALTER TABLE swap_offers
+        ADD COLUMN IF NOT EXISTS public_id UUID NOT NULL DEFAULT gen_random_uuid()
+    `);
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS swap_offers_public_id_uidx ON swap_offers (public_id)
+    `);
+    console.log(`[swap-server] DB migration: public_id UUID columns ensured`);
+  } catch (err: any) {
+    console.error('[swap-server] DB migration (public_id) error:', err.message);
   }
 
   // Start EVM withdraw monitor
