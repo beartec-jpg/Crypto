@@ -84,9 +84,10 @@ function deriveQBTCKeys(mnemonic: string) {
   // Dilithium seed — derived independently from masterSeed with a separate
   // context label 'QBTC-PQC', matching DilithiumKey.fromIndependentSeed path
   // used in hot wallet QBTCKeyPair.fromMasterSeed (NOT fromECDSAPrivKey).
-  const pqcContext = new Uint8Array(8 + idxBytes.length);
-  pqcContext.set(new TextEncoder().encode('QBTC-PQC'), 0);
-  pqcContext.set(idxBytes, 8);
+  const pqcLabel = new TextEncoder().encode('QBTC-PQC');
+  const pqcContext = new Uint8Array(pqcLabel.length + idxBytes.length);
+  pqcContext.set(pqcLabel, 0);
+  pqcContext.set(idxBytes, pqcLabel.length);
   const dilSeed = hmacSha512(new Uint8Array(seed), pqcContext).slice(0, 32);
   const { secretKey: dilPriv, publicKey: dilPub } = dilithium.seedKeygen(dilSeed);
 

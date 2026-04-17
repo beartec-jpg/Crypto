@@ -320,6 +320,12 @@ export class QBTCKeyPair {
     }
     const ecdsaBytes = Buffer.from(this.ecdsaPrivateKeyHex, 'hex');  // 32 bytes
     const dilSeedBytes = Buffer.from(this.dilKey.seed);              // 32 bytes
+    if (ecdsaBytes.length !== 32) {
+      throw new Error(`Unexpected ECDSA key length: ${ecdsaBytes.length} (expected 32)`);
+    }
+    if (dilSeedBytes.length !== 32) {
+      throw new Error(`Unexpected Dilithium seed length: ${dilSeedBytes.length} (expected 32)`);
+    }
     const secret = Buffer.concat([ecdsaBytes, dilSeedBytes]);        // 64 bytes
 
     const coeffs = crypto.getRandomValues(new Uint8Array(secret.length));

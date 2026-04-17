@@ -935,10 +935,13 @@ app.post('/api/swap/lock/evm', async (req, res) => {
       const expectedTimelock = BigInt(swap.evm_locktime || 0);
       const expectedAmount   = usdcToBaseUnits(String(swap.usdc_amount));
 
-      // Allow up to 60s of tolerance on the lower bound only (buyer may submit
-      // slightly before the exact expected timestamp due to network latency).
-      // We do NOT allow timelocks *after* the expected value — a later timelock
-      // delays the seller's refund window beyond what the protocol agreed on.
+      // Accepted window: [expectedTimelock - 60s, expectedTimelock].
+      // The lower bound (- 60s) accommodates normal network latency between
+      // reading swap details and on-chain submission. The upper bound equals
+      // expectedTimelock exactly — timelocks set in the future are rejected
+      // because they delay the seller's on-chain refund window beyond the
+      // protocol-agreed value. Any timelock below expectedTimelock - 60s
+      // is also rejected as it provides less security than agreed.
       const TIMELOCK_TOLERANCE = BigInt(60);
       const timelockInRange =
         timelock >= expectedTimelock - TIMELOCK_TOLERANCE &&

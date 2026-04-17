@@ -25,20 +25,29 @@ const execFileAsync = promisify(execFile);
 const QBTC_FAUCET_CLAIM_AMOUNT = 0.5;
 const QBTC_FAUCET_RATE_LIMIT_MS = 60 * 60 * 1000;
 
+// Resolves after the faucet_claims table is guaranteed to exist.
+// The promise is created once and reused for all subsequent calls.
+let faucetTableReady: Promise<void> | null = null;
+
+function ensureFaucetTable(dbPool: any): Promise<void> {
+  if (!faucetTableReady) {
+    faucetTableReady = (dbPool.query(`
+      CREATE TABLE IF NOT EXISTS qbtc_faucet_claims (
+        key        TEXT PRIMARY KEY,
+        claimed_at BIGINT NOT NULL
+      )
+    `) as Promise<any>).then(() => undefined);
+  }
+  return faucetTableReady as Promise<void>;
+}
+
 /**
  * Check and record faucet claims using the database so that the rate limit
  * survives server restarts and works correctly across multiple instances.
- * The qbtc_faucet_claims table is created on first use if it does not exist.
  */
 async function checkAndRecordFaucetClaim(key: string): Promise<{ allowed: boolean; nextClaimAt?: number }> {
   const { pool: dbPool } = await import('./db');
-  // Ensure the table exists (idempotent)
-  await dbPool.query(`
-    CREATE TABLE IF NOT EXISTS qbtc_faucet_claims (
-      key        TEXT PRIMARY KEY,
-      claimed_at BIGINT NOT NULL
-    )
-  `);
+  await ensureFaucetTable(dbPool);
   const now = Date.now();
   const existing = await dbPool.query(
     'SELECT claimed_at FROM qbtc_faucet_claims WHERE key = $1',
