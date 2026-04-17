@@ -105,7 +105,10 @@ const DERIVATION_PATHS = {
   bsc: "m/44'/60'/0'/0/0",
   xrp: "m/44'/144'/0'/0/0",
   solana: "m/44'/501'/0'/0/0",
-  qbtc: "m/44'/0'/0'/0/0",
+  // I-1: Uses a QBTC-specific coin type (9999) to avoid private-key reuse with BTC.
+  // Note: QBTC key derivation in practice uses QBTCKeyPair.fromMasterSeed which
+  // derives keys via HMAC rather than this BIP-44 path.
+  qbtc: "m/44'/9999'/0'/0/0",
 };
 
 // Security: In-memory key cache with automatic cleanup

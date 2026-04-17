@@ -4,6 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "migrate": "node --import tsx migrate.ts",
     "start": "node --import tsx index.ts",
     "dev": "node --import tsx --watch index.ts"
   },
