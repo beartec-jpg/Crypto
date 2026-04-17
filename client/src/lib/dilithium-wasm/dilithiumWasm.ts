@@ -4,6 +4,23 @@
  * Provides keygen/sign/verify using the exact same pq-crystals Dilithium2
  * (ML-DSA-44) code that the QuantBTC nodes run, compiled to WebAssembly.
  *
+ * ┌─────────────────────────────────────────────────────────────────────────┐
+ * │  PQC IMPLEMENTATION SPLIT — READ BEFORE MODIFYING                      │
+ * │                                                                         │
+ * │  This module implements ML-DSA-44 (Dilithium2, NIST security level 2). │
+ * │  Key sizes: PK=1312 B, SK=2560 B, Sig=2420 B.                         │
+ * │  It is used EXCLUSIVELY by qbtcService.ts for QBTC on-chain signing,   │
+ * │  because the QuantBTC node consensus layer requires Dilithium2.         │
+ * │                                                                         │
+ * │  The generic hybrid-wallet UI uses a DIFFERENT implementation:          │
+ * │    • client/src/lib/crypto.ts — ML-DSA-65 (Dilithium3) via             │
+ * │      @noble/post-quantum. PK=1952 B, Sig=3309 B.                       │
+ * │                                                                         │
+ * │  Do NOT use this WASM wrapper for the hybrid-wallet UI signing flow,    │
+ * │  and do NOT use @noble/post-quantum ml_dsa65 for QBTC on-chain txns.   │
+ * │  Signatures from one implementation WILL NOT verify in the other.       │
+ * └─────────────────────────────────────────────────────────────────────────┘
+ *
  * Usage:
  *   import { initDilithium, dilithium } from './dilithium-wasm/dilithiumWasm';
  *   await initDilithium();                         // call once at startup

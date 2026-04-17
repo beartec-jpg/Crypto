@@ -17,6 +17,7 @@ import pg from 'pg';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { ethers } from 'ethers';
+import rateLimit from 'express-rate-limit';
 
 const { Pool } = pg;
 
@@ -176,6 +177,36 @@ const app = express();
 const corsOrigins = (process.env.CORS_ORIGINS || '*').split(',').map((s) => s.trim());
 app.use(cors({ origin: corsOrigins.includes('*') ? '*' : corsOrigins }));
 app.use(express.json());
+
+// ─── Rate limiting ──────────────────────────────────────────────────────────
+
+/** General read-endpoint rate limit: 120 req / min per IP */
+const readLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+});
+
+/** Write-endpoint rate limit: 20 req / min per IP — protects against
+ *  fake-offer flooding and DB connection exhaustion (H-7). */
+const writeLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+});
+
+app.use('/api/swap/offer',        writeLimiter);
+app.use('/api/swap/buy-offer',    writeLimiter);
+app.use('/api/swap/accept',       writeLimiter);
+app.use('/api/swap/accept-buy',   writeLimiter);
+app.use('/api/swap/cancel',       writeLimiter);
+app.use('/api/swap/lock',         writeLimiter);
+app.use('/api/swap/secret',       writeLimiter);
+app.use('/api/swap',              readLimiter);
 
 // Serve cold-signer PWA
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -474,60 +505,88 @@ app.post('/api/swap/accept/:offerId', async (req, res) => {
       return res.status(authErr.statusCode || 403).json({ error: authErr.message });
     }
 
-    const offerResult = await pool.query('SELECT * FROM swap_offers WHERE id = $1', [offerId]);
-    const offer = offerResult.rows[0];
-    if (!offer) return res.status(404).json({ error: 'Offer not found' });
-    if (offer.status !== 'OPEN' && offer.status !== 'LOCKED') return res.status(409).json({ error: 'Offer is no longer open' });
+    // Use a serializable transaction with SELECT FOR UPDATE to prevent a race
+    // condition where two concurrent buyers both pass the status check and each
+    // create an atomic_swap row for the same offer (H-5).
+    const client = await pool.connect();
+    let swap: any;
+    let offer: any;
+    try {
+      await client.query('BEGIN');
 
-    const secretHash  = offer.secret_hash;
-    if (!secretHash) return res.status(422).json({ error: 'Offer is missing secretHash (legacy offer)' });
+      const offerResult = await client.query(
+        'SELECT * FROM swap_offers WHERE id = $1 FOR UPDATE',
+        [offerId],
+      );
+      offer = offerResult.rows[0];
+      if (!offer) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Offer not found' });
+      }
+      if (offer.status !== 'OPEN' && offer.status !== 'LOCKED') {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Offer is no longer open' });
+      }
 
-    const now          = Math.floor(Date.now() / 1000);
-    const qbtcLocktime = offer.qbtc_locktime || (now + SWAP_QBTC_TIMELOCK_SECS);
-    const evmLocktime  = now + SWAP_EVM_TIMELOCK_SECS;
+      const secretHash  = offer.secret_hash;
+      if (!secretHash) {
+        await client.query('ROLLBACK');
+        return res.status(422).json({ error: 'Offer is missing secretHash (legacy offer)' });
+      }
 
-    // Determine initial status based on whether seller already locked QBTC
-    const initialStatus = offer.qbtc_htlc_txid ? 'QBTC_LOCKED' : 'PENDING_QBTC_LOCK';
+      const now          = Math.floor(Date.now() / 1000);
+      const qbtcLocktime = offer.qbtc_locktime || (now + SWAP_QBTC_TIMELOCK_SECS);
+      const evmLocktime  = now + SWAP_EVM_TIMELOCK_SECS;
 
-    // C-3: secret is NOT propagated from the offer — the plaintext preimage is
-    // never stored server-side. The EVM monitor will write it once it is
-    // revealed on-chain by the seller when they withdraw USDC.
-    const swapResult = await pool.query(
-      `INSERT INTO atomic_swaps (
-        offer_id, seller_qbtc_address, seller_evm_address, seller_pub_key_hex,
-        buyer_qbtc_address, buyer_evm_address, buyer_pub_key_hex,
-        qbtc_amount, usdc_amount, secret_hash,
-        qbtc_htlc_txid, qbtc_htlc_address,
-        qbtc_locktime, evm_locktime, status, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),NOW()) RETURNING *`,
-      [
-        offerId,
-        offer.seller_qbtc_address, offer.seller_evm_address, offer.seller_pub_key_hex,
-        buyerQbtcAddress, buyerEvmAddress, buyerPubKeyHex,
-        offer.qbtc_amount, offer.usdc_amount_requested,
+      // Determine initial status based on whether seller already locked QBTC
+      const initialStatus = offer.qbtc_htlc_txid ? 'QBTC_LOCKED' : 'PENDING_QBTC_LOCK';
+
+      // C-3: secret is NOT propagated from the offer — the plaintext preimage is
+      // never stored server-side. The EVM monitor will write it once it is
+      // revealed on-chain by the seller when they withdraw USDC.
+      const swapResult = await client.query(
+        `INSERT INTO atomic_swaps (
+          offer_id, seller_qbtc_address, seller_evm_address, seller_pub_key_hex,
+          buyer_qbtc_address, buyer_evm_address, buyer_pub_key_hex,
+          qbtc_amount, usdc_amount, secret_hash,
+          qbtc_htlc_txid, qbtc_htlc_address,
+          qbtc_locktime, evm_locktime, status, created_at, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),NOW()) RETURNING *`,
+        [
+          offerId,
+          offer.seller_qbtc_address, offer.seller_evm_address, offer.seller_pub_key_hex,
+          buyerQbtcAddress, buyerEvmAddress, buyerPubKeyHex,
+          offer.qbtc_amount, offer.usdc_amount_requested,
+          secretHash,
+          offer.qbtc_htlc_txid || null, offer.qbtc_htlc_address || null,
+          qbtcLocktime, evmLocktime, initialStatus,
+        ],
+      );
+      swap = swapResult.rows[0];
+
+      await client.query("UPDATE swap_offers SET status = 'MATCHED' WHERE id = $1", [offerId]);
+      await client.query('COMMIT');
+
+      return res.json({
+        swapId: swap.id,
         secretHash,
-        offer.qbtc_htlc_txid || null, offer.qbtc_htlc_address || null,
-        qbtcLocktime, evmLocktime, initialStatus,
-      ],
-    );
-    const swap = swapResult.rows[0];
-
-    await pool.query("UPDATE swap_offers SET status = 'MATCHED' WHERE id = $1", [offerId]);
-
-    return res.json({
-      swapId: swap.id,
-      secretHash,
-      qbtcLocktime,
-      evmLocktime,
-      sellerPubKeyHex: offer.seller_pub_key_hex,
-      sellerEvmAddress: offer.seller_evm_address,
-      buyerPubKeyHex,
-      qbtcAmount: offer.qbtc_amount,
-      usdcAmount: offer.usdc_amount_requested,
-      status: initialStatus,
-      qbtcHtlcTxid: offer.qbtc_htlc_txid || null,
-      qbtcHtlcAddress: offer.qbtc_htlc_address || null,
-    });
+        qbtcLocktime,
+        evmLocktime,
+        sellerPubKeyHex: offer.seller_pub_key_hex,
+        sellerEvmAddress: offer.seller_evm_address,
+        buyerPubKeyHex,
+        qbtcAmount: offer.qbtc_amount,
+        usdcAmount: offer.usdc_amount_requested,
+        status: initialStatus,
+        qbtcHtlcTxid: offer.qbtc_htlc_txid || null,
+        qbtcHtlcAddress: offer.qbtc_htlc_address || null,
+      });
+    } catch (txErr: any) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw txErr;
+    } finally {
+      client.release();
+    }
   } catch (err: any) {
     console.error('POST /api/swap/accept:', err.message);
     return res.status(500).json({ error: err.message || 'Failed to accept offer' });
@@ -829,10 +888,18 @@ app.post('/api/swap/lock/evm', async (req, res) => {
       const expectedTimelock = BigInt(swap.evm_locktime || 0);
       const expectedAmount   = usdcToBaseUnits(String(swap.usdc_amount));
 
+      // Allow ±60-second tolerance on the timelock to accommodate normal
+      // network latency between reading swap details and submitting the EVM
+      // transaction (H-6 — strict equality is too fragile in practice).
+      const TIMELOCK_TOLERANCE = BigInt(60);
+      const timelockInRange =
+        timelock >= expectedTimelock - TIMELOCK_TOLERANCE &&
+        timelock <= expectedTimelock + TIMELOCK_TOLERANCE;
+
       if (withdrawn || refunded) return res.status(422).json({ error: 'EVM HTLC is already settled/refunded' });
       if (hashlock !== expectedHash) return res.status(422).json({ error: 'EVM HTLC hashlock mismatch' });
       if (receiver !== expectedReceiver) return res.status(422).json({ error: 'EVM HTLC receiver mismatch' });
-      if (timelock !== expectedTimelock) return res.status(422).json({ error: 'EVM HTLC timelock mismatch' });
+      if (!timelockInRange) return res.status(422).json({ error: 'EVM HTLC timelock mismatch' });
       if (amount !== expectedAmount) return res.status(422).json({ error: 'EVM HTLC amount mismatch' });
       if (expectedUsdc && tokenContract !== expectedUsdc.toLowerCase()) return res.status(422).json({ error: 'EVM HTLC token contract mismatch' });
     } catch (verifyErr: any) {
