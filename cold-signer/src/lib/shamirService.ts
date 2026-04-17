@@ -63,9 +63,7 @@ export function reconstructMnemonic(shares: string[]): string {
   }
 
   try {
-    const normalizedShares = shares
-      .slice(0, SHARE_COUNT)
-      .map((share) => share.trim().toLowerCase());
+    const normalizedShares = shares.map((share) => share.trim().toLowerCase());
     const recoveredHex = secrets.combine(normalizedShares);
     return new TextDecoder().decode(hexToBytes(recoveredHex));
   } catch (error) {
