@@ -171,6 +171,29 @@ export class DilithiumKey {
     this.privateKey = privateKey;
   }
 
+  /**
+   * Derive a Dilithium key from an independently-generated seed.
+   * The seed MUST be derived from entropy that is independent of the ECDSA
+   * private key (e.g. a separate HMAC-SHA512 over the BIP-32 master seed with
+   * a different context label). This is the preferred factory method.
+   */
+  static async fromIndependentSeed(seed: Uint8Array): Promise<DilithiumKey> {
+    if (seed.length < DILITHIUM_SEED_SIZE) {
+      throw new Error(`Dilithium seed must be at least ${DILITHIUM_SEED_SIZE} bytes`);
+    }
+    await initDilithium();
+    const dilSeed = seed.slice(0, DILITHIUM_SEED_SIZE);
+    const { publicKey, secretKey } = dilithium.seedKeygen(dilSeed);
+    return new DilithiumKey(dilSeed, publicKey, secretKey);
+  }
+
+  /**
+   * @deprecated Deriving the Dilithium key from the ECDSA private key couples
+   * PQC security to the classical key: if the ECDSA key is compromised the
+   * Dilithium key is immediately derivable. Use `fromIndependentSeed` wherever
+   * a BIP-32 master seed is available. This path is kept only for legacy
+   * reconstruction flows where only the ECDSA key is on hand.
+   */
   static async fromECDSAPrivKey(ecdsaPriv: Uint8Array): Promise<DilithiumKey> {
     await initDilithium();
     const seed = hmacSha512(ecdsaPriv, new TextEncoder().encode('QuantBTC-Dilithium')).slice(0, DILITHIUM_SEED_SIZE);
@@ -223,12 +246,32 @@ export class QBTCKeyPair {
     const dv = new DataView(idxBytes.buffer);
     dv.setUint32(0, pathIndex, false);
 
-    const context = new Uint8Array(4 + idxBytes.length);
-    context.set(new TextEncoder().encode('QBTC'), 0);
-    context.set(idxBytes, 4);
+    // ECDSA child key — context label 'QBTC'
+    const ecdsaContext = new Uint8Array(4 + idxBytes.length);
+    ecdsaContext.set(new TextEncoder().encode('QBTC'), 0);
+    ecdsaContext.set(idxBytes, 4);
+    const ecdsaChild = hmacSha512(masterSeed, ecdsaContext).slice(0, 32);
 
-    const child = hmacSha512(masterSeed, context).slice(0, 32);
-    return QBTCKeyPair.fromECDSAPrivateKey(Buffer.from(child).toString('hex'));
+    // Dilithium seed — derived independently from masterSeed with a separate
+    // context label 'QBTC-PQC'. This ensures the PQC key pair provides
+    // independent security even if the ECDSA key is compromised.
+    const pqcContext = new Uint8Array(8 + idxBytes.length);
+    pqcContext.set(new TextEncoder().encode('QBTC-PQC'), 0);
+    pqcContext.set(idxBytes, 8);
+    const dilithiumSeed = hmacSha512(masterSeed, pqcContext);
+
+    const privateKeyBytes = Buffer.from(ecdsaChild);
+    const ecdsaPrivateKeyHex = privateKeyBytes.toString('hex');
+    const publicKey = secp256k1.getPublicKey(privateKeyBytes, true);
+    const dil = await DilithiumKey.fromIndependentSeed(dilithiumSeed);
+
+    return new QBTCKeyPair(
+      ecdsaPrivateKeyHex,
+      Buffer.from(publicKey).toString('hex'),
+      Buffer.from(dil.publicKey).toString('hex'),
+      Buffer.from(dil.privateKey).toString('hex'),
+      dil,
+    );
   }
 
   static async fromMnemonic(mnemonic: string, _derivationPath = QBTC_DERIVATION_PATH, pathIndex = 0): Promise<QBTCKeyPair> {

@@ -1,6 +1,27 @@
 // client/src/lib/crypto.ts
 // Hybrid post-quantum cryptography utilities
-// Uses ML-DSA (Dilithium) for post-quantum security + ECDSA for compatibility
+// Uses ML-DSA-65 (Dilithium3) for post-quantum security + ECDSA for compatibility
+//
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │  PQC IMPLEMENTATION SPLIT — READ BEFORE MODIFYING                      │
+// │                                                                         │
+// │  This file (crypto.ts) implements generic hybrid-wallet signing using   │
+// │  ML-DSA-65 (Dilithium3, security level 3) via @noble/post-quantum.     │
+// │  Key sizes: PK=1952 B, Sig=3309 B.                                     │
+// │                                                                         │
+// │  The QBTC on-chain flow uses a DIFFERENT implementation:                │
+// │    • dilithium-wasm/dilithiumWasm.ts  — ML-DSA-44 (Dilithium2, level 2)│
+// │    • qbtcService.ts                  — uses the WASM wrapper above      │
+// │  Key sizes: PK=1312 B, Sig=2420 B.                                     │
+// │                                                                         │
+// │  These two implementations are INTENTIONALLY SEPARATE and are NOT       │
+// │  cross-compatible:                                                       │
+// │    • crypto.ts  → generic hybrid-wallet UI only                        │
+// │    • qbtcService.ts → QBTC node on-chain transactions only             │
+// │                                                                         │
+// │  ML-DSA-65 signatures produced here CANNOT be verified by the QBTC     │
+// │  node, which expects ML-DSA-44 / Dilithium2. Do NOT mix these paths.   │
+// └─────────────────────────────────────────────────────────────────────────┘
 
 import { ml_dsa65 } from '@noble/post-quantum/ml-dsa.js';
 import { secp256k1 } from '@noble/curves/secp256k1';
@@ -85,15 +106,18 @@ export async function hybridSign(
   // For demo, we generate ephemeral keys if none provided
   const keyPair = keys || await generateHybridKeys();
   
-  // Hash the message for consistent signing
+  // Hash the message for ECDSA signing (secp256k1 expects a 32-byte digest)
   const messageHash = sha256(message);
-  
+
   // Sign with ML-DSA (post-quantum).
+  // Per FIPS 204, ML-DSA performs its own internal hashing — pass the raw
+  // message, NOT a prehash, to remain spec-compliant and preserve full
+  // collision-resistance properties.
   // Any failure here is fatal — a zero-filled placeholder is NOT a valid
   // ML-DSA signature and will not verify, so we let the exception propagate.
-  const mlDsaSignature = ml_dsa65.sign(keyPair.mlDsaSecretKey, messageHash);
-  
-  // Sign with ECDSA (classical, EVM-compatible)
+  const mlDsaSignature = ml_dsa65.sign(keyPair.mlDsaSecretKey, message);
+
+  // Sign with ECDSA (classical, EVM-compatible) — uses SHA-256 prehash
   const ecdsaSignature = secp256k1.sign(messageHash, keyPair.ecdsaPrivateKey);
   
   return {
@@ -115,8 +139,9 @@ export function verifyHybridSignature(
   ecdsaPublicKey: string
 ): boolean {
   try {
+    // ECDSA operates on the SHA-256 hash of the message
     const messageHash = sha256(message);
-    
+
     // Verify ECDSA signature (always required - this is our baseline security)
     const ecdsaSig = secp256k1.Signature.fromCompact(signature.ecdsaSignature);
     const ecdsaValid = secp256k1.verify(
@@ -130,11 +155,14 @@ export function verifyHybridSignature(
       return false;
     }
     
-    // Verify ML-DSA signature. If it throws or returns false the whole
-    // verification fails — we never silently accept an invalid PQC signature.
+    // Verify ML-DSA signature against the raw message (FIPS 204 — ML-DSA
+    // performs its own internal hashing; passing a prehash here would fail
+    // to verify signatures produced by hybridSign).
+    // If it throws or returns false the whole verification fails — we never
+    // silently accept an invalid PQC signature.
     const mlDsaValid = ml_dsa65.verify(
       hexToBytes(mlDsaPublicKey),
-      messageHash,
+      message,
       hexToBytes(signature.mlDsaSignature)
     );
     

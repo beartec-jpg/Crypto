@@ -321,8 +321,6 @@ export async function signTransaction(
 
     // Reconstruct mnemonic from 2 shares
     mnemonic = reconstructMnemonic([coldShare, hotShare]);
-    console.log('[ColdSigner] Reconstructed mnemonic word count:', mnemonic.split(' ').length);
-    console.log('[ColdSigner] First word:', mnemonic.split(' ')[0], 'Last word:', mnemonic.split(' ').slice(-1)[0]);
 
     // Validate mnemonic
     if (!bip39.validateMnemonic(mnemonic, BIP39_ENGLISH_WORDLIST)) {
