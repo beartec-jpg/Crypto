@@ -8,6 +8,8 @@ import { Wallet as XRPLWallet } from 'xrpl';
 import { generateSeed } from 'ripple-keypairs';
 import { HDKey } from '@scure/bip32';
 import * as bip39 from 'bip39';
+import { derivePath as deriveEd25519Path } from 'ed25519-hd-key';
+import { Keypair } from '@solana/web3.js';
 import { Chain, UnsignedTransaction } from '../types/coldTypes';
 import { reconstructMnemonic } from './shamirService';
 import { signQBTCTransaction } from './qbtcSigner';
@@ -27,6 +29,10 @@ const DERIVATION_PATHS: Record<Chain, string> = {
  * Derive private key from mnemonic for a specific chain
  */
 function derivePrivateKey(mnemonic: string, chain: Chain): Uint8Array {
+  if (chain === 'solana') {
+    return deriveSolanaPrivateKey(mnemonic);
+  }
+
   const seed = bip39.mnemonicToSeedSync(mnemonic);
   const hdkey = HDKey.fromMasterSeed(seed);
   
@@ -47,6 +53,12 @@ function derivePrivateKey(mnemonic: string, chain: Chain): Uint8Array {
   }
 
   return derived.privateKey;
+}
+
+function deriveSolanaPrivateKey(mnemonic: string): Uint8Array {
+  const seed = bip39.mnemonicToSeedSync(mnemonic);
+  const { key } = deriveEd25519Path(DERIVATION_PATHS.solana, Buffer.from(seed).toString('hex'));
+  return Uint8Array.from(key);
 }
 
 /**
@@ -183,7 +195,6 @@ async function signBitcoinTransaction(
     return psbt.extractTransaction().toHex();
   } catch (err) {
     // Fallback: construct a simplified signed payload for nodes that accept JSON
-    const privateKeyHex = toHex(privateKey);
     const digest = await sha256(`btc:${txData.to}:${txData.amount}:${txData.fee}`);
 
     return JSON.stringify({
@@ -193,7 +204,6 @@ async function signBitcoinTransaction(
       fee: txData.fee,
       utxos: txData.utxos,
       changeAddress: txData.changeAddress,
-      publicKey: privateKeyHex.slice(0, 66),
       signature: digest,
       note: 'bitcoinjs-lib unavailable — simplified payload',
     });
@@ -205,7 +215,6 @@ async function signBitcoinTransaction(
  * Uses Ed25519 derivation from the mnemonic seed.
  */
 async function signSolanaTransaction(
-  _privateKey: Uint8Array,
   txData: UnsignedTransaction['tx'],
   mnemonic: string
 ): Promise<string> {
@@ -213,11 +222,8 @@ async function signSolanaTransaction(
     const { Keypair, Transaction, SystemProgram, PublicKey, LAMPORTS_PER_SOL } =
       await import('@solana/web3.js');
 
-    // Solana uses a 64-byte keypair (32 private + 32 public)
-    // Derive from seed at Solana's BIP-44 path
-    const seed = bip39.mnemonicToSeedSync(mnemonic);
-    const derivedSeed = seed.slice(0, 32); // First 32 bytes for Ed25519
-    const keypair = Keypair.fromSeed(derivedSeed);
+    // Solana: derive Ed25519 key from BIP-44 path m/44'/501'/0'/0'
+    const keypair = Keypair.fromSeed(deriveSolanaPrivateKey(mnemonic));
 
     const lamports = Math.round(parseFloat(txData.amount) * LAMPORTS_PER_SOL);
     const recipientPubkey = new PublicKey(txData.to);
@@ -278,6 +284,7 @@ export async function signTransaction(
   unsignedTx: UnsignedTransaction
 ): Promise<string> {
   let mnemonic = '';
+  let privateKey: Uint8Array | null = null;
   
   try {
     const coldTrimmed = coldShare.trim().toLowerCase();
@@ -343,28 +350,28 @@ export async function signTransaction(
       return result.txHex;
     }
 
-    // Derive private key for the chain
-    const privateKey = derivePrivateKey(mnemonic, chain);
-
     let signedTx: string;
 
     // Sign based on chain
     switch (chain) {
       case 'ethereum':
       case 'bsc':
+        privateKey = derivePrivateKey(mnemonic, chain);
         signedTx = await signEthereumTransaction(privateKey, unsignedTx.tx);
         break;
       
       case 'xrp':
+        privateKey = derivePrivateKey(mnemonic, chain);
         signedTx = signXRPTransaction(privateKey, unsignedTx.tx);
         break;
 
       case 'bitcoin':
+        privateKey = derivePrivateKey(mnemonic, chain);
         signedTx = await signBitcoinTransaction(privateKey, unsignedTx.tx);
         break;
 
       case 'solana':
-        signedTx = await signSolanaTransaction(privateKey, unsignedTx.tx, mnemonic);
+        signedTx = await signSolanaTransaction(unsignedTx.tx, mnemonic);
         break;
       
       default:
@@ -372,7 +379,9 @@ export async function signTransaction(
     }
 
     // Zero out sensitive key material
-    privateKey.fill(0);
+    if (privateKey) {
+      privateKey.fill(0);
+    }
     
     return signedTx;
   } finally {
@@ -389,13 +398,14 @@ export async function signTransaction(
  * Get address for a chain from mnemonic
  */
 export function getAddress(mnemonic: string, chain: Chain): string {
-  const privateKey = derivePrivateKey(mnemonic, chain);
-
   let address: string;
+  let privateKey: Uint8Array | null = null;
 
   switch (chain) {
     case 'ethereum':
-    case 'bsc': {
+    case 'bsc':
+      privateKey = derivePrivateKey(mnemonic, chain);
+      {
       const privateKeyHex = '0x' + Array.from(privateKey)
         .map(b => b.toString(16).padStart(2, '0'))
         .join('');
@@ -404,7 +414,9 @@ export function getAddress(mnemonic: string, chain: Chain): string {
       break;
     }
     
-    case 'xrp': {
+    case 'xrp':
+      privateKey = derivePrivateKey(mnemonic, chain);
+      {
       const entropy = Buffer.from(privateKey.slice(0, 16));
       const seed = generateSeed({ entropy, algorithm: 'ecdsa-secp256k1' });
       const wallet = XRPLWallet.fromSeed(seed);
@@ -414,21 +426,25 @@ export function getAddress(mnemonic: string, chain: Chain): string {
 
     case 'bitcoin':
     case 'qbtc':
+      privateKey = derivePrivateKey(mnemonic, chain);
       // Placeholder — would need bitcoinjs-lib to derive bech32 address
       address = `[${chain}-address-from-pubkey]`;
       break;
 
-    case 'solana':
-      // Placeholder — would need @solana/web3.js Keypair
-      address = `[solana-address-from-pubkey]`;
+    case 'solana': {
+      const keypair = Keypair.fromSeed(deriveSolanaPrivateKey(mnemonic));
+      address = keypair.publicKey.toBase58();
       break;
+    }
     
     default:
       throw new Error(`Unsupported chain: ${chain}`);
   }
 
   // Zero out private key
-  privateKey.fill(0);
+  if (privateKey) {
+    privateKey.fill(0);
+  }
 
   return address;
 }
