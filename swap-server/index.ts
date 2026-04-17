@@ -180,9 +180,11 @@ if (corsOrigins.length === 0) {
     console.error('[swap-server] FATAL: CORS_ORIGINS must be set in production. Refusing to start with wildcard CORS.');
     process.exit(1);
   }
-  console.warn('[swap-server] WARNING: CORS_ORIGINS is not set. Defaulting to wildcard (*) — do NOT use in production!');
+  console.warn('[swap-server] WARNING: CORS_ORIGINS is not set. Defaulting to open CORS — do NOT use in production!');
 }
-app.use(cors({ origin: corsOrigins.length === 0 ? '*' : corsOrigins }));
+// In development (corsOrigins empty), origin:true reflects the request origin.
+// In production this code path is never reached without a non-empty corsOrigins list (process.exit above).
+app.use(cors({ origin: corsOrigins.length > 0 ? corsOrigins : true }));
 app.use(express.json());
 
 // ─── Rate limiting ──────────────────────────────────────────────────────────
@@ -848,8 +850,8 @@ app.post('/api/swap/lock/qbtc', async (req, res) => {
     }
 
     await pool.query(
-      `UPDATE atomic_swaps SET qbtc_htlc_txid = $1, qbtc_htlc_address = $2, status = 'QBTC_LOCKED', updated_at = NOW() WHERE id = $3`,
-      [qbtcHtlcTxid, qbtcHtlcAddress, swap.id],
+      `UPDATE atomic_swaps SET qbtc_htlc_txid = $1, qbtc_htlc_address = $2, status = 'QBTC_LOCKED', updated_at = NOW() WHERE public_id = $3::uuid`,
+      [qbtcHtlcTxid, qbtcHtlcAddress, swap.public_id],
     );
     return res.json({ status: 'QBTC_LOCKED' });
   } catch (err: any) {
@@ -916,8 +918,8 @@ app.post('/api/swap/lock/evm', async (req, res) => {
     }
 
     await pool.query(
-      `UPDATE atomic_swaps SET evm_contract_id = $1, status = 'EVM_LOCKED', updated_at = NOW() WHERE id = $2`,
-      [evmContractId, swap.id],
+      `UPDATE atomic_swaps SET evm_contract_id = $1, status = 'EVM_LOCKED', updated_at = NOW() WHERE public_id = $2::uuid`,
+      [evmContractId, swap.public_id],
     );
     return res.json({ status: 'EVM_LOCKED' });
   } catch (err: any) {
@@ -965,8 +967,8 @@ app.post('/api/swap/claim/qbtc', async (req, res) => {
     if (swap.status !== 'COMPLETE') return res.status(409).json({ error: 'Swap is not COMPLETE' });
 
     await pool.query(
-      `UPDATE atomic_swaps SET buyer_qbtc_claim_txid = $1, updated_at = NOW() WHERE id = $2`,
-      [claimTxid, swap.id],
+      `UPDATE atomic_swaps SET buyer_qbtc_claim_txid = $1, updated_at = NOW() WHERE public_id = $2::uuid`,
+      [claimTxid, swap.public_id],
     );
 
     return res.json({ ok: true, claimTxid });
