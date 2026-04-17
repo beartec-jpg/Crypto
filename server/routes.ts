@@ -935,6 +935,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const isProduction = process.env.REPLIT_DEPLOYMENT === '1' || 
                        process.env.VERCEL === '1' ||
                        process.env.NODE_ENV === 'production';
+  const devAdminUserId = process.env.DEV_ADMIN_CLERK_USER_ID?.trim() || 'dev-admin-mode';
+  const devAdminEmail = process.env.DEV_ADMIN_EMAIL?.trim() || 'dev-admin@localhost';
   
 // Clerk authentication middleware for crypto routes
 const requireCryptoAuth: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
@@ -943,8 +945,8 @@ const requireCryptoAuth: RequestHandler = async (req: Request, res: Response, ne
     // Check if admin mode is requested via header
     const isAdminMode = req.headers['x-dev-admin-mode'] === 'true';
     req.cryptoUser = isAdminMode ? {
-      id: 'user_36jmTprDUlzK89xlpNgGGtcH2KJ',
-      email: 'beartec@beartec.uk',
+      id: devAdminUserId,
+      email: devAdminEmail,
       firstName: 'BearTec',
       lastName: 'Admin',
     } : {
