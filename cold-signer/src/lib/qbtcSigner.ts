@@ -73,15 +73,22 @@ function deriveQBTCKeys(mnemonic: string) {
 
   // Same derivation as QBTCKeyPair.fromMasterSeed(seed, 0)
   const idxBytes = new Uint8Array(4); // pathIndex = 0
-  const context = new Uint8Array(8);
-  context.set(new TextEncoder().encode('QBTC'), 0);
-  context.set(idxBytes, 4);
 
-  const ecdsaPriv = hmacSha512(new Uint8Array(seed), context).slice(0, 32);
+  // ECDSA child key — context label 'QBTC' (matches hot wallet)
+  const ecdsaContext = new Uint8Array(4 + idxBytes.length);
+  ecdsaContext.set(new TextEncoder().encode('QBTC'), 0);
+  ecdsaContext.set(idxBytes, 4);
+  const ecdsaPriv = hmacSha512(new Uint8Array(seed), ecdsaContext).slice(0, 32);
   const ecdsaPub = ecc.getPublicKey(ecdsaPriv, true);
 
-  // Same derivation as DilithiumKey.fromECDSAPrivKey
-  const dilSeed = hmacSha512(ecdsaPriv, new TextEncoder().encode('QuantBTC-Dilithium')).slice(0, 32);
+  // Dilithium seed — derived independently from masterSeed with a separate
+  // context label 'QBTC-PQC', matching DilithiumKey.fromIndependentSeed path
+  // used in hot wallet QBTCKeyPair.fromMasterSeed (NOT fromECDSAPrivKey).
+  const pqcLabel = new TextEncoder().encode('QBTC-PQC');
+  const pqcContext = new Uint8Array(pqcLabel.length + idxBytes.length);
+  pqcContext.set(pqcLabel, 0);
+  pqcContext.set(idxBytes, pqcLabel.length);
+  const dilSeed = hmacSha512(new Uint8Array(seed), pqcContext).slice(0, 32);
   const { secretKey: dilPriv, publicKey: dilPub } = dilithium.seedKeygen(dilSeed);
 
   // Hybrid address hash: Hash160(ecdsa_pk || pqc_pk)
@@ -135,10 +142,11 @@ export async function signQBTCTransaction(
   txData.utxos.forEach((utxo, idx) => {
     const digest = tx.hashForWitnessV0(idx, scriptCode, utxo.value, bitcoin.Transaction.SIGHASH_ALL);
 
-    // ECDSA signature
+    // ECDSA signature — encode as DER+sighash (bitcoinjs-lib's script.signature.encode
+    // expects a DER-encoded buffer, not compact r||s bytes)
     const rawSig = ecc.sign(digest, keys.ecdsaPriv);
     const ecdsaSignature = bitcoin.script.signature.encode(
-      Buffer.from(rawSig.toCompactRawBytes()),
+      Buffer.from(rawSig.toDERRawBytes()),
       bitcoin.Transaction.SIGHASH_ALL
     );
 

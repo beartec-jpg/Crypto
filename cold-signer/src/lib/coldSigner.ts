@@ -50,19 +50,6 @@ function derivePrivateKey(mnemonic: string, chain: Chain): Uint8Array {
 }
 
 /**
- * Zero out sensitive data from memory (best effort in JavaScript)
- * Note: JavaScript strings are immutable, so this is a best-effort approach
- * The main benefit is removing references to allow garbage collection
- */
-function zeroMemory(data: string): void {
-  // In JavaScript, we can't truly zero memory due to string immutability
-  // This function serves as a documentation of intent
-  // The main security comes from proper scoping and not storing sensitive data
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (data as any) = null;
-}
-
-/**
  * Sign an Ethereum/BSC transaction
  */
 async function signEthereumTransaction(
@@ -343,6 +330,19 @@ export async function signTransaction(
 
     const { chain } = unsignedTx.tx;
 
+    // QBTC uses its own HMAC-SHA512 key derivation inside signQBTCTransaction.
+    // Skip the BIP-32 derivation step — the result would be unused.
+    if (chain === 'qbtc') {
+      const result = await signQBTCTransaction(mnemonic, {
+        to: unsignedTx.tx.to,
+        amount: unsignedTx.tx.amount,
+        fee: unsignedTx.tx.fee,
+        utxos: unsignedTx.tx.utxos,
+        changeAddress: unsignedTx.tx.changeAddress,
+      });
+      return result.txHex;
+    }
+
     // Derive private key for the chain
     const privateKey = derivePrivateKey(mnemonic, chain);
 
@@ -366,30 +366,21 @@ export async function signTransaction(
       case 'solana':
         signedTx = await signSolanaTransaction(privateKey, unsignedTx.tx, mnemonic);
         break;
-
-      case 'qbtc': {
-        const result = await signQBTCTransaction(mnemonic, {
-          to: unsignedTx.tx.to,
-          amount: unsignedTx.tx.amount,
-          fee: unsignedTx.tx.fee,
-          utxos: unsignedTx.tx.utxos,
-          changeAddress: unsignedTx.tx.changeAddress,
-        });
-        signedTx = result.txHex;
-        break;
-      }
       
       default:
         throw new Error(`Unsupported chain: ${chain}`);
     }
 
-    // Zero out sensitive data
+    // Zero out sensitive key material
     privateKey.fill(0);
     
     return signedTx;
   } finally {
-    // Always zero out mnemonic from memory
-    zeroMemory(mnemonic);
+    // Best-effort: clear the mnemonic string reference. Note that JavaScript
+    // strings are immutable and cannot be truly zeroed in memory; the GC
+    // will reclaim the memory non-deterministically. The main protection
+    // comes from keeping the mnemonic in local scope only for the duration
+    // of signing and not persisting it anywhere.
     mnemonic = '';
   }
 }

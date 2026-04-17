@@ -24,7 +24,51 @@ const execFileAsync = promisify(execFile);
 
 const QBTC_FAUCET_CLAIM_AMOUNT = 0.5;
 const QBTC_FAUCET_RATE_LIMIT_MS = 60 * 60 * 1000;
-const qbtcFaucetClaims = new Map<string, number>();
+
+// Resolves after the faucet_claims table is guaranteed to exist.
+// The promise is created once and reused for all subsequent calls.
+let faucetTableReady: Promise<void> | null = null;
+
+function ensureFaucetTable(dbPool: any): Promise<void> {
+  if (!faucetTableReady) {
+    faucetTableReady = (dbPool.query(`
+      CREATE TABLE IF NOT EXISTS qbtc_faucet_claims (
+        key        TEXT PRIMARY KEY,
+        claimed_at BIGINT NOT NULL
+      )
+    `) as Promise<any>).then(() => undefined);
+  }
+  return faucetTableReady as Promise<void>;
+}
+
+/**
+ * Check and record faucet claims using the database so that the rate limit
+ * survives server restarts and works correctly across multiple instances.
+ */
+async function checkAndRecordFaucetClaim(key: string): Promise<{ allowed: boolean; nextClaimAt?: number }> {
+  const { pool: dbPool } = await import('./db');
+  await ensureFaucetTable(dbPool);
+  const now = Date.now();
+  const existing = await dbPool.query(
+    'SELECT claimed_at FROM qbtc_faucet_claims WHERE key = $1',
+    [key],
+  );
+  if (existing.rows.length > 0) {
+    const lastClaimAt = Number(existing.rows[0].claimed_at);
+    const nextClaimAt = lastClaimAt + QBTC_FAUCET_RATE_LIMIT_MS;
+    if (now < nextClaimAt) {
+      return { allowed: false, nextClaimAt };
+    }
+  }
+  // Upsert before issuing the RPC call — treated as a provisional hold.
+  await dbPool.query(
+    `INSERT INTO qbtc_faucet_claims (key, claimed_at)
+     VALUES ($1, $2)
+     ON CONFLICT (key) DO UPDATE SET claimed_at = $2`,
+    [key, now],
+  );
+  return { allowed: true };
+}
 
 function getClientIp(req: Request): string {
   const forwarded = req.headers['x-forwarded-for'];
@@ -8641,11 +8685,10 @@ CRITICAL DATA RULES:
         });
       }
 
-      const now = Date.now();
-      const lastClaimAt = qbtcFaucetClaims.get(clientIp) || 0;
-      const nextClaimAt = lastClaimAt + QBTC_FAUCET_RATE_LIMIT_MS;
+      const rateLimitKey = `ip:${clientIp}`;
+      const { allowed, nextClaimAt } = await checkAndRecordFaucetClaim(rateLimitKey);
 
-      if (now < nextClaimAt) {
+      if (!allowed) {
         return res.status(429).json({
           success: false,
           error: 'Rate limit exceeded. You can claim once per hour.',
@@ -8661,7 +8704,6 @@ CRITICAL DATA RULES:
         amount: QBTC_FAUCET_CLAIM_AMOUNT,
         fee_rate: 10,
       }], faucetWallet);
-      qbtcFaucetClaims.set(clientIp, now);
 
       return res.json({
         success: true,
@@ -8866,30 +8908,42 @@ CRITICAL DATA RULES:
 
   // QuantumBTC RPC proxy (avoids browser CORS/auth limitations)
   app.post('/api/qbtc/rpc', async (req: Request, res: Response) => {
-    try {
-      const { rpcUrl, username, password, method, params } = req.body || {};
+    // Allowlist of safe read/write methods the client may invoke.
+    // The rpcUrl, credentials, and any host details are NEVER accepted from
+    // the client — they come exclusively from server-side env variables to
+    // prevent SSRF attacks.
+    const ALLOWED_QBTC_RPC_METHODS = new Set([
+      'getblockcount', 'getblockhash', 'getblock', 'getblockchaininfo',
+      'getrawtransaction', 'sendrawtransaction', 'scantxoutset',
+      'getmempoolinfo', 'getnetworkhashps', 'getpeerinfo', 'gettxoutsetinfo',
+      'getbalance', 'listunspent', 'estimatesmartfee', 'getmininginfo',
+      'validateaddress', 'decodescript', 'decoderawtransaction',
+    ]);
 
-      if (!rpcUrl || !method) {
+    try {
+      const { method, params, network } = req.body || {};
+
+      if (!method || typeof method !== 'string') {
         return res.status(400).json({
-          error: { code: -32600, message: 'rpcUrl and method are required' },
+          error: { code: -32600, message: 'method is required' },
         });
       }
 
-      const payload = {
-        jsonrpc: '2.0',
-        id: Date.now(),
-        method,
-        params: params || [],
-      };
+      if (!ALLOWED_QBTC_RPC_METHODS.has(method)) {
+        return res.status(400).json({
+          error: { code: -32601, message: `Method '${method}' is not allowed via this proxy` },
+        });
+      }
 
-      const response = await axios.post(rpcUrl, payload, {
-        timeout: 20000,
-        headers: { 'Content-Type': 'application/json' },
-        auth: username || password ? { username: username || '', password: password || '' } : undefined,
-      });
-
-      return res.json(response.data);
+      const net = (network === 'mainnet' ? 'mainnet' : 'testnet') as QbtcNetwork;
+      const result = await qbtcRpcCall(method, Array.isArray(params) ? params : [], '', net);
+      return res.json({ jsonrpc: '2.0', id: Date.now(), result });
     } catch (error: any) {
+      if (error?.code === 'MAINNET_NOT_ACTIVE') {
+        return res.status(503).json({
+          error: { code: -32000, message: error.message },
+        });
+      }
       const rpcError = error?.response?.data?.error;
       if (rpcError) {
         return res.status(200).json({ error: rpcError });

@@ -82,6 +82,10 @@ function buildCanonicalMessage(action: 'CREATE_BID', evmAddress: string, qbtcAmo
 function buildCanonicalMessage(action: 'ACCEPT', offerId: string, evmAddress: string, timestamp: number): string;
 function buildCanonicalMessage(action: 'ACCEPT_BID', offerId: string, evmAddress: string, timestamp: number): string;
 function buildCanonicalMessage(action: 'CANCEL', offerId: string, timestamp: number): string;
+function buildCanonicalMessage(action: 'LOCK_OFFER', offerId: string, qbtcHtlcTxid: string, timestamp: number): string;
+function buildCanonicalMessage(action: 'LOCK_QBTC', swapId: string, qbtcHtlcTxid: string, timestamp: number): string;
+function buildCanonicalMessage(action: 'SECRET_SELLER', swapId: string, timestamp: number): string;
+function buildCanonicalMessage(action: 'CLAIM_QBTC', swapId: string, claimTxid: string, timestamp: number): string;
 function buildCanonicalMessage(action: string, ...args: (string | number)[]): string {
   return `QBTC_SWAP:${action}:${args.join(':')}`;
 }
@@ -768,19 +772,35 @@ app.get('/api/swap/:swapId', async (req, res) => {
 
 app.post('/api/swap/lock/offer', async (req, res) => {
   try {
-    const { offerId, qbtcHtlcTxid, qbtcHtlcAddress } = req.body || {};
+    const { offerId, qbtcHtlcTxid, qbtcHtlcAddress, signature, timestamp } = req.body || {};
     if (!offerId || !qbtcHtlcTxid || !qbtcHtlcAddress) {
       return res.status(400).json({ error: 'offerId, qbtcHtlcTxid, and qbtcHtlcAddress are required' });
     }
+    if (!signature || typeof signature !== 'string') {
+      return res.status(400).json({ error: 'signature is required' });
+    }
+    const tsErr = checkTimestamp(timestamp);
+    if (tsErr) return res.status(400).json({ error: tsErr });
 
     const offerResult = await pool.query('SELECT * FROM swap_offers WHERE id = $1', [offerId]);
     const offer = offerResult.rows[0];
     if (!offer) return res.status(404).json({ error: 'Offer not found' });
     if (offer.status !== 'OPEN') return res.status(409).json({ error: `Cannot lock QBTC for offer in status: ${offer.status}` });
 
-    // Verify HTLC transaction on-chain
+    // Verify seller's EVM signature — prevents griefing by unauthorised parties
+    const canonicalMsg = buildCanonicalMessage('LOCK_OFFER', String(offerId), String(qbtcHtlcTxid), Number(timestamp));
+    try {
+      assertEvmSignature(canonicalMsg, signature, offer.seller_evm_address);
+    } catch (authErr: any) {
+      return res.status(authErr.statusCode || 403).json({ error: authErr.message });
+    }
+
+    // Verify HTLC transaction on-chain (require at least 1 confirmation to prevent double-spend)
     try {
       const tx = await qbtcRpcCall('getrawtransaction', [qbtcHtlcTxid, true]);
+      if (!tx?.confirmations || tx.confirmations < 1) {
+        return res.status(422).json({ error: 'QBTC HTLC tx must have at least 1 confirmation before locking' });
+      }
       const expectedMinSats = qbtcToSats(offer.qbtc_amount);
       const target = String(qbtcHtlcAddress).toLowerCase();
 
@@ -815,10 +835,15 @@ app.post('/api/swap/lock/offer', async (req, res) => {
 
 app.post('/api/swap/lock/qbtc', async (req, res) => {
   try {
-    const { swapId, qbtcHtlcTxid, qbtcHtlcAddress } = req.body || {};
+    const { swapId, qbtcHtlcTxid, qbtcHtlcAddress, signature, timestamp } = req.body || {};
     if (!swapId || !qbtcHtlcTxid || !qbtcHtlcAddress) {
       return res.status(400).json({ error: 'swapId, qbtcHtlcTxid, and qbtcHtlcAddress are required' });
     }
+    if (!signature || typeof signature !== 'string') {
+      return res.status(400).json({ error: 'signature is required' });
+    }
+    const tsErr = checkTimestamp(timestamp);
+    if (tsErr) return res.status(400).json({ error: tsErr });
 
     const swapResult = await pool.query('SELECT * FROM atomic_swaps WHERE public_id = $1::uuid', [swapId]);
     const swap = swapResult.rows[0];
@@ -827,9 +852,20 @@ app.post('/api/swap/lock/qbtc', async (req, res) => {
       return res.status(409).json({ error: `Cannot lock QBTC in status: ${swap.status}` });
     }
 
-    // Verify HTLC transaction on-chain
+    // Verify seller's EVM signature — prevents griefing by unauthorised parties
+    const canonicalMsg = buildCanonicalMessage('LOCK_QBTC', String(swapId), String(qbtcHtlcTxid), Number(timestamp));
+    try {
+      assertEvmSignature(canonicalMsg, signature, swap.seller_evm_address);
+    } catch (authErr: any) {
+      return res.status(authErr.statusCode || 403).json({ error: authErr.message });
+    }
+
+    // Verify HTLC transaction on-chain (require at least 1 confirmation to prevent double-spend)
     try {
       const tx = await qbtcRpcCall('getrawtransaction', [qbtcHtlcTxid, true]);
+      if (!tx?.confirmations || tx.confirmations < 1) {
+        return res.status(422).json({ error: 'QBTC HTLC tx must have at least 1 confirmation before locking' });
+      }
       const expectedMinSats = qbtcToSats(swap.qbtc_amount);
       const target = String(qbtcHtlcAddress).toLowerCase();
 
@@ -899,13 +935,17 @@ app.post('/api/swap/lock/evm', async (req, res) => {
       const expectedTimelock = BigInt(swap.evm_locktime || 0);
       const expectedAmount   = usdcToBaseUnits(String(swap.usdc_amount));
 
-      // Allow ±60-second tolerance on the timelock to accommodate normal
-      // network latency between reading swap details and submitting the EVM
-      // transaction (H-6 — strict equality is too fragile in practice).
+      // Accepted window: [expectedTimelock - 60s, expectedTimelock].
+      // The lower bound (- 60s) accommodates normal network latency between
+      // reading swap details and on-chain submission. The upper bound equals
+      // expectedTimelock exactly — timelocks set in the future are rejected
+      // because they delay the seller's on-chain refund window beyond the
+      // protocol-agreed value. Any timelock below expectedTimelock - 60s
+      // is also rejected as it provides less security than agreed.
       const TIMELOCK_TOLERANCE = BigInt(60);
       const timelockInRange =
         timelock >= expectedTimelock - TIMELOCK_TOLERANCE &&
-        timelock <= expectedTimelock + TIMELOCK_TOLERANCE;
+        timelock <= expectedTimelock;
 
       if (withdrawn || refunded) return res.status(422).json({ error: 'EVM HTLC is already settled/refunded' });
       if (hashlock !== expectedHash) return res.status(422).json({ error: 'EVM HTLC hashlock mismatch' });
@@ -932,8 +972,10 @@ app.post('/api/swap/lock/evm', async (req, res) => {
 
 app.post('/api/swap/secret/seller', async (req, res) => {
   try {
-    const { swapId, signature } = req.body || {};
+    const { swapId, signature, timestamp } = req.body || {};
     if (!swapId || !signature) return res.status(400).json({ error: 'swapId and signature are required' });
+    const tsErr = checkTimestamp(timestamp);
+    if (tsErr) return res.status(400).json({ error: tsErr });
 
     const swapResult = await pool.query('SELECT * FROM atomic_swaps WHERE public_id = $1::uuid', [swapId]);
     const swap = swapResult.rows[0];
@@ -942,7 +984,8 @@ app.post('/api/swap/secret/seller', async (req, res) => {
     if (!swap.qbtc_htlc_txid || !swap.evm_contract_id) return res.status(409).json({ error: 'Swap lock legs incomplete' });
     if (!swap.secret) return res.status(422).json({ error: 'Secret not available yet' });
 
-    const message = `QBTC_SWAP_SECRET:${swap.public_id}`;
+    // Timestamp is included in the message to prevent replay attacks
+    const message = buildCanonicalMessage('SECRET_SELLER', String(swap.public_id), Number(timestamp));
     let recovered = '';
     try { recovered = ethers.verifyMessage(message, String(signature)).toLowerCase(); } catch { return res.status(400).json({ error: 'Invalid seller signature' }); }
     if (recovered !== String(swap.seller_evm_address).toLowerCase()) return res.status(403).json({ error: 'Signature mismatch' });
@@ -958,13 +1001,24 @@ app.post('/api/swap/secret/seller', async (req, res) => {
 
 app.post('/api/swap/claim/qbtc', async (req, res) => {
   try {
-    const { swapId, claimTxid } = req.body || {};
+    const { swapId, claimTxid, signature, timestamp } = req.body || {};
     if (!swapId || !claimTxid) return res.status(400).json({ error: 'swapId and claimTxid required' });
+    if (!signature || typeof signature !== 'string') return res.status(400).json({ error: 'signature is required' });
+    const tsErr = checkTimestamp(timestamp);
+    if (tsErr) return res.status(400).json({ error: tsErr });
 
     const result = await pool.query('SELECT * FROM atomic_swaps WHERE public_id = $1::uuid', [swapId]);
     const swap = result.rows[0];
     if (!swap) return res.status(404).json({ error: 'Swap not found' });
     if (swap.status !== 'COMPLETE') return res.status(409).json({ error: 'Swap is not COMPLETE' });
+
+    // Verify buyer's EVM signature — prevents arbitrary parties from setting the claim txid
+    const canonicalMsg = buildCanonicalMessage('CLAIM_QBTC', String(swapId), String(claimTxid), Number(timestamp));
+    try {
+      assertEvmSignature(canonicalMsg, signature, swap.buyer_evm_address);
+    } catch (authErr: any) {
+      return res.status(authErr.statusCode || 403).json({ error: authErr.message });
+    }
 
     await pool.query(
       `UPDATE atomic_swaps SET buyer_qbtc_claim_txid = $1, updated_at = NOW() WHERE public_id = $2::uuid`,
