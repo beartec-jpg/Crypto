@@ -302,18 +302,26 @@ export class QBTCKeyPair {
   }
 
   /**
-   * Split the ECDSA private key into 2-of-3 Shamir shares.
+   * Split the key material (ECDSA private key + Dilithium seed) into 2-of-3
+   * Shamir shares.
    *
-   * NOTE: Only the ECDSA private key is split. The Dilithium (PQC) key is NOT
-   * included in the shares — it is re-derived deterministically from the ECDSA
-   * key on reconstruction (via DilithiumKey.fromECDSAPrivKey). Recovery via
-   * reconstructFromShares will rebuild the full QBTCKeyPair from the ECDSA key.
+   * The 64-byte payload encodes [ecdsaPrivKey (32 B) || dilithiumSeed (32 B)].
+   * This ensures reconstruction via `reconstructFromShares` can rebuild the
+   * Dilithium key using `DilithiumKey.fromIndependentSeed`, producing the same
+   * hybrid address as the original hot-wallet key pair.
+   *
+   * NOTE: shares from the previous 32-byte (ECDSA-only) format are still
+   * accepted by `reconstructFromShares` but fall back to the deprecated
+   * `DilithiumKey.fromECDSAPrivKey` path.
    */
   splitECDSAPrivateKey(shares = 3, threshold = 2): string[] {
     if (shares !== 3 || threshold !== 2) {
       throw new Error('QBTC split requires 2-of-3 shares to match node tooling');
     }
-    const secret = Buffer.from(this.ecdsaPrivateKeyHex, 'hex');
+    const ecdsaBytes = Buffer.from(this.ecdsaPrivateKeyHex, 'hex');  // 32 bytes
+    const dilSeedBytes = Buffer.from(this.dilKey.seed);              // 32 bytes
+    const secret = Buffer.concat([ecdsaBytes, dilSeedBytes]);        // 64 bytes
+
     const coeffs = crypto.getRandomValues(new Uint8Array(secret.length));
     const out = [new Uint8Array(secret.length), new Uint8Array(secret.length), new Uint8Array(secret.length)];
 
@@ -343,6 +351,28 @@ export class QBTCKeyPair {
     for (let i = 0; i < shareA.length; i++) {
       out[i] = gf256Mul(shareA[i], la) ^ gf256Mul(shareB[i], lb);
     }
+
+    if (out.length === 64) {
+      // New format (64 bytes): first 32 bytes = ECDSA private key,
+      // next 32 bytes = Dilithium seed (independent derivation path).
+      const ecdsaPrivHex = Buffer.from(out.slice(0, 32)).toString('hex');
+      const dilSeed = new Uint8Array(out.slice(32, 64));
+      const privateKeyBytes = Buffer.from(ecdsaPrivHex, 'hex');
+      const publicKey = secp256k1.getPublicKey(privateKeyBytes, true);
+      const dil = await DilithiumKey.fromIndependentSeed(dilSeed);
+      return new QBTCKeyPair(
+        ecdsaPrivHex,
+        Buffer.from(publicKey).toString('hex'),
+        Buffer.from(dil.publicKey).toString('hex'),
+        Buffer.from(dil.privateKey).toString('hex'),
+        dil,
+      );
+    }
+
+    // Legacy format (32 bytes): ECDSA private key only — Dilithium key
+    // re-derived via the deprecated coupled path. Existing legacy shares
+    // are still reconstructable but will produce a different hybrid address
+    // than shares created with the new 64-byte format.
     return QBTCKeyPair.fromECDSAPrivateKey(Buffer.from(out).toString('hex'));
   }
 
@@ -359,6 +389,16 @@ export class QBTCKeyPair {
 
     const ecdsaSignature = bitcoin.script.signature.encode(Buffer.from(rawSig), bitcoin.Transaction.SIGHASH_ALL);
     const ecdsaPublicKey = Buffer.from(this.ecdsaPublicKeyHex, 'hex');
+
+    // NOTE (FIPS 204 §5): We pass the BIP-143 sighash digest (a SHA-256 hash)
+    // directly to ML-DSA-44. This is a pre-hash (HashML-DSA) usage pattern:
+    // the message has already been SHA-256-hashed by hashForWitnessV0, and
+    // ML-DSA applies SHAKE-256 internally on top of it. The QBTC node verifier
+    // must check this same pre-hashed digest. This differs from pure ML-DSA
+    // (which signs the raw message) and from the formal HashML-DSA construction
+    // in FIPS 204 §5.4 (which uses specific domain-separation bytes). The
+    // design is intentional for Bitcoin-protocol compatibility and is
+    // documented here for auditor clarity.
     const dilithiumSignature = Buffer.from(this.dilKey.sign(digest));
     const dilithiumPublicKey = Buffer.from(this.dilithiumPublicKeyHex, 'hex');
 
@@ -408,7 +448,7 @@ function gf256Mul(a: number, b: number): number {
 }
 
 function gf256Inv(a: number): number {
-  if (a === 0) return 0;
+  if (a === 0) throw new Error('gf256Inv: zero has no multiplicative inverse — share indices must be distinct');
   let r = a;
   for (let i = 0; i < 6; i++) {
     r = gf256Mul(r, r);

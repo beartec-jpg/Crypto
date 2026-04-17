@@ -3,7 +3,7 @@
  * Ported from client/src/lib/walletService.ts
  */
 
-const PBKDF2_ITERATIONS = 100000;
+const PBKDF2_ITERATIONS = 600000;
 const SALT_LENGTH = 32;
 const IV_LENGTH = 12;
 
