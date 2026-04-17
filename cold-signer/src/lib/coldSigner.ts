@@ -5,6 +5,7 @@
 
 import { ethers } from 'ethers';
 import { Wallet as XRPLWallet } from 'xrpl';
+import { generateSeed } from 'ripple-keypairs';
 import { HDKey } from '@scure/bip32';
 import * as bip39 from 'bip39';
 import { Chain, UnsignedTransaction } from '../types/coldTypes';
@@ -19,7 +20,7 @@ const DERIVATION_PATHS: Record<Chain, string> = {
   xrp: "m/44'/144'/0'/0/0",
   bitcoin: "m/84'/0'/0'/0/0",   // Native SegWit (BIP-84)
   solana: "m/44'/501'/0'/0'",    // Ed25519
-  qbtc: "m/44'/0'/0'/0/0",       // Bitcoin-like + Dilithium
+  qbtc: "m/44'/9999'/0'/0/0",       // Custom coin type to avoid BTC key reuse (I-1)
 };
 
 /**
@@ -94,10 +95,10 @@ function signXRPTransaction(
   privateKey: Uint8Array,
   txData: UnsignedTransaction['tx']
 ): string {
-  // Convert first 16 bytes of private key to seed for XRP
-  const seedBytes = privateKey.slice(0, 16);
-  const seed = Buffer.from(seedBytes).toString('hex').toUpperCase();
-  
+  // Use first 16 bytes as entropy for seed generation — mirrors walletService.ts deriveXRPAddress.
+  // The XRPL family-seed format is capped at 16 bytes; this is the maximum entropy supported.
+  const entropy = Buffer.from(privateKey.slice(0, 16));
+  const seed = generateSeed({ entropy, algorithm: 'ecdsa-secp256k1' });
   const wallet = XRPLWallet.fromSeed(seed);
 
   const tx: any = {
@@ -413,8 +414,8 @@ export function getAddress(mnemonic: string, chain: Chain): string {
     }
     
     case 'xrp': {
-      const seedBytes = privateKey.slice(0, 16);
-      const seed = Buffer.from(seedBytes).toString('hex').toUpperCase();
+      const entropy = Buffer.from(privateKey.slice(0, 16));
+      const seed = generateSeed({ entropy, algorithm: 'ecdsa-secp256k1' });
       const wallet = XRPLWallet.fromSeed(seed);
       address = wallet.address;
       break;

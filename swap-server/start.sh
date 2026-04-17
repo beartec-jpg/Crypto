@@ -26,5 +26,8 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
+echo "[swap-server] Running database migrations..."
+npm run migrate
+
 echo "[swap-server] Starting..."
 exec node --import tsx index.ts

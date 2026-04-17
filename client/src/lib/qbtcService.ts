@@ -47,7 +47,9 @@ const DILITHIUM_PK_SIZE = PK_SIZE;
 const DILITHIUM_SK_SIZE = SK_SIZE;
 const DILITHIUM_SIG_SIZE = SIG_SIZE;
 const DILITHIUM_SEED_SIZE = SEED_SIZE;
-const QBTC_DERIVATION_PATH = "m/44'/0'/0'/0/0";
+// I-1: Use a QBTC-specific coin type (9999) to avoid key reuse with BTC (coin type 0).
+// Register a permanent BIP-44 coin type before mainnet launch.
+const QBTC_DERIVATION_PATH = "m/44'/9999'/0'/0/0";
 const DUST_THRESHOLD = 546;
 
 const QBTC_NETWORKS: Record<QBTCNetwork, bitcoin.networks.Network> = {
@@ -120,11 +122,11 @@ function fromSats(sats: number): string {
 
 function estimateTxVSize(inputCount: number, outputCount: number, signMode: 'hybrid' | 'ecdsa' = 'hybrid'): number {
   const baseBytes = 10 + (inputCount * 41) + (outputCount * 31);
-  // 3-element ECDSA: [ecdsaSig(73) + ecdsaPub(34) + dilPub(1315)] + stack size byte
-  // 4-element hybrid: [ecdsaSig(73) + ecdsaPub(34) + dilSig(2423) + dilPub(1315)] + stack size byte
+  // 3-element ECDSA: [ecdsaSig(73) + ecdsaPub(34) + dilPub(DILITHIUM_PK_SIZE)] + stack size byte
+  // 4-element hybrid: [ecdsaSig(73) + ecdsaPub(34) + dilSig(DILITHIUM_SIG_SIZE) + dilPub(DILITHIUM_PK_SIZE)] + stack size byte
   const witnessBytesPerInput = signMode === 'ecdsa'
-    ? 1 + 73 + 34 + 1315
-    : 1 + 73 + 34 + 2423 + 1315;
+    ? 1 + 73 + 34 + DILITHIUM_PK_SIZE
+    : 1 + 73 + 34 + DILITHIUM_SIG_SIZE + DILITHIUM_PK_SIZE;
   const weight = (baseBytes * 4) + (inputCount * witnessBytesPerInput);
   return Math.ceil(weight / 4);
 }
@@ -299,6 +301,14 @@ export class QBTCKeyPair {
     return p2wpkh.address;
   }
 
+  /**
+   * Split the ECDSA private key into 2-of-3 Shamir shares.
+   *
+   * NOTE: Only the ECDSA private key is split. The Dilithium (PQC) key is NOT
+   * included in the shares — it is re-derived deterministically from the ECDSA
+   * key on reconstruction (via DilithiumKey.fromECDSAPrivKey). Recovery via
+   * reconstructFromShares will rebuild the full QBTCKeyPair from the ECDSA key.
+   */
   splitECDSAPrivateKey(shares = 3, threshold = 2): string[] {
     if (shares !== 3 || threshold !== 2) {
       throw new Error('QBTC split requires 2-of-3 shares to match node tooling');
@@ -318,6 +328,9 @@ export class QBTCKeyPair {
   }
 
   static async reconstructFromShares(shareAHex: string, idxA: 1 | 2 | 3, shareBHex: string, idxB: 1 | 2 | 3): Promise<QBTCKeyPair> {
+    if (idxA === idxB) {
+      throw new Error('Share indices must be distinct — cannot reconstruct from duplicate shares');
+    }
     const shareA = Buffer.from(shareAHex, 'hex');
     const shareB = Buffer.from(shareBHex, 'hex');
     if (shareA.length !== shareB.length) {
@@ -777,7 +790,7 @@ export function createHTLCClaimTransaction(
 
   const secretLen = Buffer.from(secretHex, 'hex').length;
   const witnessOverhead = claimerKeyPair
-    ? 1 + (secretLen + 3) + 73 + 34 + 2423 + 1315 + htlcScript.length + 10
+    ? 1 + (secretLen + 3) + 73 + 34 + DILITHIUM_SIG_SIZE + DILITHIUM_PK_SIZE + htlcScript.length + 10
     : 1 + (secretLen + 3) + 2 + htlcScript.length + 10;
   const weight = (10 + utxos.length * 41 + 31) * 4 + utxos.length * witnessOverhead;
   const vSize = Math.ceil(weight / 4);
@@ -843,7 +856,7 @@ export function createHTLCRefundTransaction(
   const net = QBTC_NETWORKS[network];
   const totalInput = utxos.reduce((s, u) => s + toSats(u.amount), 0);
 
-  const witnessOverhead = 1 + 73 + 34 + 2423 + 1315 + htlcScript.length + 10;
+  const witnessOverhead = 1 + 73 + 34 + DILITHIUM_SIG_SIZE + DILITHIUM_PK_SIZE + htlcScript.length + 10;
   const weight = (10 + utxos.length * 41 + 31) * 4 + utxos.length * witnessOverhead;
   const vSize = Math.ceil(weight / 4);
   const fee = Math.max(1, Math.ceil(vSize * feeRate));
@@ -893,6 +906,13 @@ export function qbtcPubKeyHash160(compressedPubKeyHex: string): string {
   return Buffer.from(ripemd160(sha256(pub))).toString('hex');
 }
 
+/**
+ * @deprecated Derives a standard P2WPKH address from an ECDSA-only compressed
+ * public key. This is NOT a valid QBTC hybrid address — full QBTC addresses use
+ * Hash160(ecdsaPub || dilPub) (see QBTCKeyPair.getAddress). Only use this
+ * function for legacy migration / address-reconstruction fallback where the
+ * Dilithium public key is unavailable.
+ */
 export function qbtcAddressFromCompressedPubKey(compressedPubKeyHex: string, network: QBTCNetwork = 'testnet'): string {
   const net = QBTC_NETWORKS[network];
   const payment = bitcoin.payments.p2wpkh({

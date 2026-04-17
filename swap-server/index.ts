@@ -1044,35 +1044,6 @@ app.listen(PORT, '0.0.0.0', async () => {
   console.log(`[swap-server] Listening on 0.0.0.0:${PORT}`);
   console.log(`[swap-server] Health check: http://localhost:${PORT}/api/swap/health`);
 
-  // Ensure buyer_qbtc_claim_txid column exists
-  try {
-    await pool.query(`ALTER TABLE atomic_swaps ADD COLUMN IF NOT EXISTS buyer_qbtc_claim_txid TEXT`);
-    console.log(`[swap-server] DB migration: buyer_qbtc_claim_txid column ensured`);
-  } catch (err: any) {
-    console.error('[swap-server] DB migration error:', err.message);
-  }
-
-  // Ensure public_id UUID columns exist on atomic_swaps and swap_offers (M-3)
-  try {
-    await pool.query(`
-      ALTER TABLE atomic_swaps
-        ADD COLUMN IF NOT EXISTS public_id UUID NOT NULL DEFAULT gen_random_uuid()
-    `);
-    await pool.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS atomic_swaps_public_id_uidx ON atomic_swaps (public_id)
-    `);
-    await pool.query(`
-      ALTER TABLE swap_offers
-        ADD COLUMN IF NOT EXISTS public_id UUID NOT NULL DEFAULT gen_random_uuid()
-    `);
-    await pool.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS swap_offers_public_id_uidx ON swap_offers (public_id)
-    `);
-    console.log(`[swap-server] DB migration: public_id UUID columns ensured`);
-  } catch (err: any) {
-    console.error('[swap-server] DB migration (public_id) error:', err.message);
-  }
-
   // Start EVM withdraw monitor
   setInterval(pollEvmLocked, MONITOR_POLL_MS);
   console.log(`[swap-server] EVM withdraw monitor started (${MONITOR_POLL_MS / 1000}s interval)`);
