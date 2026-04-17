@@ -16,6 +16,7 @@ import crypto from 'crypto';
 import pg from 'pg';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { ethers } from 'ethers';
 
 const { Pool } = pg;
 
@@ -23,10 +24,66 @@ const { Pool } = pg;
 
 const PORT = Number(process.env.PORT) || 3099;
 
-const SWAP_QBTC_TIMELOCK_SECS = 48 * 3600; // 48 h
-const SWAP_EVM_TIMELOCK_SECS  = 24 * 3600; // 24 h
-const SWAP_EVM_GRACE_SECS     = 3600;       // 1 h grace
-const MONITOR_POLL_MS         = 60_000;     // 60 s
+const SWAP_QBTC_TIMELOCK_SECS     = 48 * 3600; // 48 h
+const SWAP_EVM_TIMELOCK_SECS      = 24 * 3600; // 24 h
+const SWAP_EVM_GRACE_SECS         = 3600;       // 1 h grace
+const MONITOR_POLL_MS             = 60_000;     // 60 s
+// Maximum age of a signed challenge (prevents replay attacks)
+const SIGNATURE_MAX_AGE_SECS      = 300;        // 5 min
+// How far in the future a client timestamp may be (clock skew tolerance)
+const SIGNATURE_FUTURE_TOLERANCE_SECS = 60;     // 1 min
+
+// ─── Auth helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Verify that a timestamp is recent (within SIGNATURE_MAX_AGE_SECS).
+ * Returns an error string or null if the timestamp is acceptable.
+ */
+function checkTimestamp(timestamp: number | string): string | null {
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts) || ts <= 0) return 'timestamp must be a positive Unix timestamp (seconds)';
+  const now = Math.floor(Date.now() / 1000);
+  if (ts > now + SIGNATURE_FUTURE_TOLERANCE_SECS) return 'timestamp is too far in the future';
+  if (now - ts > SIGNATURE_MAX_AGE_SECS) return `timestamp is too old (max ${SIGNATURE_MAX_AGE_SECS}s)`;
+  return null;
+}
+
+/**
+ * Verify an Ethereum personal-sign signature.
+ * Returns the lower-cased recovered address, or throws on any error.
+ */
+function recoverEvmSigner(message: string, signature: string): string {
+  return ethers.verifyMessage(message, signature).toLowerCase();
+}
+
+/**
+ * Assert that a signed canonical message was produced by the claimed EVM address.
+ * Throws with a descriptive message if verification fails.
+ */
+function assertEvmSignature(message: string, signature: string, expectedAddress: string): void {
+  let recovered: string;
+  try {
+    recovered = recoverEvmSigner(message, signature);
+  } catch {
+    throw Object.assign(new Error('Invalid EVM signature'), { statusCode: 400 });
+  }
+  if (recovered !== expectedAddress.toLowerCase()) {
+    throw Object.assign(
+      new Error('Signature does not match the claimed EVM address'),
+      { statusCode: 403 },
+    );
+  }
+}
+
+/** Build the canonical signed message for each swap action. */
+function buildCanonicalMessage(action: 'CREATE_OFFER', evmAddress: string, qbtcAmount: string, usdcAmount: string, secretHash: string, timestamp: number): string;
+function buildCanonicalMessage(action: 'CREATE_BID', evmAddress: string, qbtcAmount: string, usdcAmount: string, secretHash: string, timestamp: number): string;
+function buildCanonicalMessage(action: 'ACCEPT', offerId: string, evmAddress: string, timestamp: number): string;
+function buildCanonicalMessage(action: 'ACCEPT_BID', offerId: string, evmAddress: string, timestamp: number): string;
+function buildCanonicalMessage(action: 'CANCEL', offerId: string, timestamp: number): string;
+function buildCanonicalMessage(action: string, ...args: (string | number)[]): string {
+  return `QBTC_SWAP:${action}:${args.join(':')}`;
+}
 
 // ─── Database ───────────────────────────────────────────────────────────────
 
@@ -133,25 +190,35 @@ app.get('/api/swap/health', (_req, res) => res.json({ status: 'ok', uptime: proc
 
 app.post('/api/swap/offer', async (req, res) => {
   try {
-    const { sellerQbtcAddress, sellerEvmAddress, sellerPubKeyHex, qbtcAmount, usdcAmountRequested } = req.body || {};
+    const { sellerQbtcAddress, sellerEvmAddress, sellerPubKeyHex, qbtcAmount, usdcAmountRequested, secretHash, qbtcLocktime, signature, timestamp } = req.body || {};
 
     if (!sellerQbtcAddress || typeof sellerQbtcAddress !== 'string') return res.status(400).json({ error: 'sellerQbtcAddress is required' });
     if (!sellerEvmAddress  || typeof sellerEvmAddress  !== 'string') return res.status(400).json({ error: 'sellerEvmAddress is required' });
     if (!sellerPubKeyHex   || typeof sellerPubKeyHex   !== 'string' || sellerPubKeyHex.length !== 66) return res.status(400).json({ error: 'sellerPubKeyHex must be 66 hex chars' });
     if (!qbtcAmount        || typeof qbtcAmount        !== 'string') return res.status(400).json({ error: 'qbtcAmount is required' });
     if (!usdcAmountRequested || typeof usdcAmountRequested !== 'string') return res.status(400).json({ error: 'usdcAmountRequested is required' });
+    // C-3: client-supplied secretHash (server never generates or stores the plaintext preimage)
+    if (!secretHash || typeof secretHash !== 'string' || !/^[0-9a-fA-F]{64}$/.test(secretHash)) return res.status(400).json({ error: 'secretHash must be a 32-byte hex string (64 chars)' });
+    if (!qbtcLocktime || !Number.isFinite(Number(qbtcLocktime)) || Number(qbtcLocktime) <= Math.floor(Date.now() / 1000)) return res.status(400).json({ error: 'qbtcLocktime must be a future Unix timestamp' });
+    // C-4: timestamp-bounded EVM signature check
+    if (!signature || typeof signature !== 'string') return res.status(400).json({ error: 'signature is required' });
+    if (timestamp === undefined || timestamp === null) return res.status(400).json({ error: 'timestamp is required' });
+    const tsErr = checkTimestamp(timestamp);
+    if (tsErr) return res.status(400).json({ error: tsErr });
 
-    // Generate secret + hash at offer creation time so seller can lock immediately
-    const secretBytes = crypto.randomBytes(32);
-    const secretHex   = secretBytes.toString('hex');
-    const secretHash  = crypto.createHash('sha256').update(secretBytes).digest('hex');
-    const now          = Math.floor(Date.now() / 1000);
-    const qbtcLocktime = now + SWAP_QBTC_TIMELOCK_SECS;
+    const canonicalMsg = buildCanonicalMessage('CREATE_OFFER', sellerEvmAddress.toLowerCase(), qbtcAmount, usdcAmountRequested, secretHash.toLowerCase(), Number(timestamp));
+    try {
+      assertEvmSignature(canonicalMsg, signature, sellerEvmAddress);
+    } catch (authErr: any) {
+      return res.status(authErr.statusCode || 403).json({ error: authErr.message });
+    }
+
+    const now = Math.floor(Date.now() / 1000);
 
     const result = await pool.query(
-      `INSERT INTO swap_offers (seller_qbtc_address, seller_evm_address, seller_pub_key_hex, qbtc_amount, usdc_amount_requested, secret, secret_hash, qbtc_locktime, status, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'OPEN', NOW()) RETURNING *`,
-      [sellerQbtcAddress, sellerEvmAddress, sellerPubKeyHex, qbtcAmount, usdcAmountRequested, secretHex, secretHash, qbtcLocktime],
+      `INSERT INTO swap_offers (seller_qbtc_address, seller_evm_address, seller_pub_key_hex, qbtc_amount, usdc_amount_requested, secret_hash, qbtc_locktime, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'OPEN', NOW()) RETURNING *`,
+      [sellerQbtcAddress, sellerEvmAddress, sellerPubKeyHex, qbtcAmount, usdcAmountRequested, secretHash.toLowerCase(), Number(qbtcLocktime)],
     );
     const offer = result.rows[0];
 
@@ -162,7 +229,7 @@ app.post('/api/swap/offer', async (req, res) => {
       [pricePerQbtc, qbtcAmount, usdcAmountRequested, offer.id],
     );
 
-    return res.json({ ...toCamelCase(offer), secretHash, qbtcLocktime });
+    return res.json({ ...toCamelCase(offer), secretHash: offer.secret_hash, qbtcLocktime: offer.qbtc_locktime });
   } catch (err: any) {
     console.error('POST /api/swap/offer:', err.message);
     return res.status(500).json({ error: err.message || 'Failed to create offer' });
@@ -192,27 +259,35 @@ app.get('/api/swap/offers', async (_req, res) => {
 
 app.post('/api/swap/buy-offer', async (req, res) => {
   try {
-    const { buyerQbtcAddress, buyerEvmAddress, buyerPubKeyHex, qbtcAmount, usdcAmountOffered } = req.body || {};
+    const { buyerQbtcAddress, buyerEvmAddress, buyerPubKeyHex, qbtcAmount, usdcAmountOffered, secretHash, qbtcLocktime, signature, timestamp } = req.body || {};
 
     if (!buyerQbtcAddress || typeof buyerQbtcAddress !== 'string') return res.status(400).json({ error: 'buyerQbtcAddress is required' });
     if (!buyerEvmAddress  || typeof buyerEvmAddress  !== 'string') return res.status(400).json({ error: 'buyerEvmAddress is required' });
     if (!buyerPubKeyHex   || typeof buyerPubKeyHex   !== 'string' || buyerPubKeyHex.length !== 66) return res.status(400).json({ error: 'buyerPubKeyHex must be 66 hex chars' });
     if (!qbtcAmount        || typeof qbtcAmount        !== 'string') return res.status(400).json({ error: 'qbtcAmount is required' });
     if (!usdcAmountOffered || typeof usdcAmountOffered !== 'string') return res.status(400).json({ error: 'usdcAmountOffered is required' });
+    // C-3: client-supplied secretHash
+    if (!secretHash || typeof secretHash !== 'string' || !/^[0-9a-fA-F]{64}$/.test(secretHash)) return res.status(400).json({ error: 'secretHash must be a 32-byte hex string (64 chars)' });
+    if (!qbtcLocktime || !Number.isFinite(Number(qbtcLocktime)) || Number(qbtcLocktime) <= Math.floor(Date.now() / 1000)) return res.status(400).json({ error: 'qbtcLocktime must be a future Unix timestamp' });
+    // C-4: timestamp-bounded EVM signature check
+    if (!signature || typeof signature !== 'string') return res.status(400).json({ error: 'signature is required' });
+    if (timestamp === undefined || timestamp === null) return res.status(400).json({ error: 'timestamp is required' });
+    const tsErr = checkTimestamp(timestamp);
+    if (tsErr) return res.status(400).json({ error: tsErr });
 
-    // Generate secret + hash — buyer holds the secret, seller will need it revealed
-    const secretBytes = crypto.randomBytes(32);
-    const secretHex   = secretBytes.toString('hex');
-    const secretHash  = crypto.createHash('sha256').update(secretBytes).digest('hex');
-    const now          = Math.floor(Date.now() / 1000);
-    const qbtcLocktime = now + SWAP_QBTC_TIMELOCK_SECS;
+    const canonicalMsg = buildCanonicalMessage('CREATE_BID', buyerEvmAddress.toLowerCase(), qbtcAmount, usdcAmountOffered, secretHash.toLowerCase(), Number(timestamp));
+    try {
+      assertEvmSignature(canonicalMsg, signature, buyerEvmAddress);
+    } catch (authErr: any) {
+      return res.status(authErr.statusCode || 403).json({ error: authErr.message });
+    }
 
     const result = await pool.query(
       `INSERT INTO swap_offers (
         offer_type, buyer_qbtc_address, buyer_evm_address, buyer_pub_key_hex,
-        qbtc_amount, usdc_amount_requested, secret, secret_hash, qbtc_locktime, status, created_at
-      ) VALUES ('BID', $1, $2, $3, $4, $5, $6, $7, $8, 'OPEN', NOW()) RETURNING *`,
-      [buyerQbtcAddress, buyerEvmAddress, buyerPubKeyHex, qbtcAmount, usdcAmountOffered, secretHex, secretHash, qbtcLocktime],
+        qbtc_amount, usdc_amount_requested, secret_hash, qbtc_locktime, status, created_at
+      ) VALUES ('BID', $1, $2, $3, $4, $5, $6, $7, 'OPEN', NOW()) RETURNING *`,
+      [buyerQbtcAddress, buyerEvmAddress, buyerPubKeyHex, qbtcAmount, usdcAmountOffered, secretHash.toLowerCase(), Number(qbtcLocktime)],
     );
     const offer = result.rows[0];
 
@@ -223,7 +298,7 @@ app.post('/api/swap/buy-offer', async (req, res) => {
       [pricePerQbtc, qbtcAmount, usdcAmountOffered, offer.id],
     );
 
-    return res.json({ ...toCamelCase(offer), secretHash, qbtcLocktime });
+    return res.json({ ...toCamelCase(offer), secretHash: offer.secret_hash, qbtcLocktime: offer.qbtc_locktime });
   } catch (err: any) {
     console.error('POST /api/swap/buy-offer:', err.message);
     return res.status(500).json({ error: err.message || 'Failed to create buy offer' });
@@ -253,11 +328,23 @@ app.get('/api/swap/buy-offers', async (_req, res) => {
 app.post('/api/swap/accept-buy/:offerId', async (req, res) => {
   try {
     const { offerId } = req.params;
-    const { sellerQbtcAddress, sellerEvmAddress, sellerPubKeyHex } = req.body || {};
+    const { sellerQbtcAddress, sellerEvmAddress, sellerPubKeyHex, signature, timestamp } = req.body || {};
 
     if (!sellerQbtcAddress || typeof sellerQbtcAddress !== 'string') return res.status(400).json({ error: 'sellerQbtcAddress is required' });
     if (!sellerEvmAddress  || typeof sellerEvmAddress  !== 'string') return res.status(400).json({ error: 'sellerEvmAddress is required' });
     if (!sellerPubKeyHex   || typeof sellerPubKeyHex   !== 'string' || sellerPubKeyHex.length !== 66) return res.status(400).json({ error: 'sellerPubKeyHex must be 66 hex chars' });
+    // C-4: timestamp-bounded EVM signature check
+    if (!signature || typeof signature !== 'string') return res.status(400).json({ error: 'signature is required' });
+    if (timestamp === undefined || timestamp === null) return res.status(400).json({ error: 'timestamp is required' });
+    const tsErr = checkTimestamp(timestamp);
+    if (tsErr) return res.status(400).json({ error: tsErr });
+
+    const canonicalMsg = buildCanonicalMessage('ACCEPT_BID', offerId, sellerEvmAddress.toLowerCase(), Number(timestamp));
+    try {
+      assertEvmSignature(canonicalMsg, signature, sellerEvmAddress);
+    } catch (authErr: any) {
+      return res.status(authErr.statusCode || 403).json({ error: authErr.message });
+    }
 
     const offerResult = await pool.query('SELECT * FROM swap_offers WHERE id = $1', [offerId]);
     const offer = offerResult.rows[0];
@@ -265,27 +352,28 @@ app.post('/api/swap/accept-buy/:offerId', async (req, res) => {
     if (offer.offer_type !== 'BID') return res.status(409).json({ error: 'This is not a buy offer' });
     if (offer.status !== 'OPEN') return res.status(409).json({ error: 'Buy offer is no longer open' });
 
-    const secretHex   = offer.secret;
     const secretHash  = offer.secret_hash;
-    if (!secretHex || !secretHash) return res.status(422).json({ error: 'Buy offer is missing secret/hash' });
+    if (!secretHash) return res.status(422).json({ error: 'Buy offer is missing secretHash' });
 
     const now          = Math.floor(Date.now() / 1000);
     const qbtcLocktime = offer.qbtc_locktime || (now + SWAP_QBTC_TIMELOCK_SECS);
     const evmLocktime  = now + SWAP_EVM_TIMELOCK_SECS;
 
-    // Create the atomic swap with seller info filled in from the accepting seller
+    // C-3: secret is NOT propagated from the offer — it is never stored server-side.
+    // The plaintext preimage will be written by the EVM monitor once it is
+    // revealed on-chain by the buyer when they withdraw USDC.
     const swapResult = await pool.query(
       `INSERT INTO atomic_swaps (
         offer_id, seller_qbtc_address, seller_evm_address, seller_pub_key_hex,
         buyer_qbtc_address, buyer_evm_address, buyer_pub_key_hex,
-        qbtc_amount, usdc_amount, secret_hash, secret,
+        qbtc_amount, usdc_amount, secret_hash,
         qbtc_locktime, evm_locktime, status, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'PENDING_QBTC_LOCK',NOW(),NOW()) RETURNING *`,
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'PENDING_QBTC_LOCK',NOW(),NOW()) RETURNING *`,
       [
         offerId,
         sellerQbtcAddress, sellerEvmAddress, sellerPubKeyHex,
         offer.buyer_qbtc_address, offer.buyer_evm_address, offer.buyer_pub_key_hex,
-        offer.qbtc_amount, offer.usdc_amount_requested, secretHash, secretHex,
+        offer.qbtc_amount, offer.usdc_amount_requested, secretHash,
         qbtcLocktime, evmLocktime,
       ],
     );
@@ -318,10 +406,13 @@ app.post('/api/swap/accept-buy/:offerId', async (req, res) => {
 app.post('/api/swap/cancel/:offerId', async (req, res) => {
   try {
     const { offerId } = req.params;
-    const { sellerQbtcAddress } = req.body || {};
-    if (!sellerQbtcAddress || typeof sellerQbtcAddress !== 'string') {
-      return res.status(400).json({ error: 'sellerQbtcAddress is required' });
-    }
+    const { signature, timestamp } = req.body || {};
+
+    // C-4: timestamp-bounded EVM signature check
+    if (!signature || typeof signature !== 'string') return res.status(400).json({ error: 'signature is required' });
+    if (timestamp === undefined || timestamp === null) return res.status(400).json({ error: 'timestamp is required' });
+    const tsErr = checkTimestamp(timestamp);
+    if (tsErr) return res.status(400).json({ error: tsErr });
 
     const offerResult = await pool.query('SELECT * FROM swap_offers WHERE id = $1', [offerId]);
     const offer = offerResult.rows[0];
@@ -330,12 +421,17 @@ app.post('/api/swap/cancel/:offerId', async (req, res) => {
       return res.status(409).json({ error: `Cannot cancel offer in status: ${offer.status}` });
     }
 
-    // For ASK offers the seller cancels; for BID offers the buyer cancels
-    const ownerAddress = offer.offer_type === 'BID'
-      ? (offer.buyer_qbtc_address || '').toLowerCase()
-      : (offer.seller_qbtc_address || '').toLowerCase();
-    if (ownerAddress !== sellerQbtcAddress.toLowerCase()) {
-      return res.status(403).json({ error: 'Only the offer creator can cancel this offer' });
+    // Identify the owner's EVM address from the DB (cannot be forged by client)
+    const ownerEvmAddress: string = offer.offer_type === 'BID'
+      ? (offer.buyer_evm_address || '')
+      : (offer.seller_evm_address || '');
+    if (!ownerEvmAddress) return res.status(422).json({ error: 'Offer is missing owner EVM address' });
+
+    const canonicalMsg = buildCanonicalMessage('CANCEL', offerId, Number(timestamp));
+    try {
+      assertEvmSignature(canonicalMsg, signature, ownerEvmAddress);
+    } catch (authErr: any) {
+      return res.status(authErr.statusCode || 403).json({ error: authErr.message });
     }
 
     await pool.query("UPDATE swap_offers SET status = 'CANCELLED' WHERE id = $1", [offerId]);
@@ -360,21 +456,31 @@ app.post('/api/swap/cancel/:offerId', async (req, res) => {
 app.post('/api/swap/accept/:offerId', async (req, res) => {
   try {
     const { offerId } = req.params;
-    const { buyerQbtcAddress, buyerEvmAddress, buyerPubKeyHex } = req.body || {};
+    const { buyerQbtcAddress, buyerEvmAddress, buyerPubKeyHex, signature, timestamp } = req.body || {};
 
     if (!buyerQbtcAddress || typeof buyerQbtcAddress !== 'string') return res.status(400).json({ error: 'buyerQbtcAddress is required' });
     if (!buyerEvmAddress  || typeof buyerEvmAddress  !== 'string') return res.status(400).json({ error: 'buyerEvmAddress is required' });
     if (!buyerPubKeyHex   || typeof buyerPubKeyHex   !== 'string' || buyerPubKeyHex.length !== 66) return res.status(400).json({ error: 'buyerPubKeyHex must be 66 hex chars' });
+    // C-4: timestamp-bounded EVM signature check
+    if (!signature || typeof signature !== 'string') return res.status(400).json({ error: 'signature is required' });
+    if (timestamp === undefined || timestamp === null) return res.status(400).json({ error: 'timestamp is required' });
+    const tsErr = checkTimestamp(timestamp);
+    if (tsErr) return res.status(400).json({ error: tsErr });
+
+    const canonicalMsg = buildCanonicalMessage('ACCEPT', offerId, buyerEvmAddress.toLowerCase(), Number(timestamp));
+    try {
+      assertEvmSignature(canonicalMsg, signature, buyerEvmAddress);
+    } catch (authErr: any) {
+      return res.status(authErr.statusCode || 403).json({ error: authErr.message });
+    }
 
     const offerResult = await pool.query('SELECT * FROM swap_offers WHERE id = $1', [offerId]);
     const offer = offerResult.rows[0];
     if (!offer) return res.status(404).json({ error: 'Offer not found' });
     if (offer.status !== 'OPEN' && offer.status !== 'LOCKED') return res.status(409).json({ error: 'Offer is no longer open' });
 
-    // Copy secret/hash from the offer (generated at offer creation time)
-    const secretHex   = offer.secret;
     const secretHash  = offer.secret_hash;
-    if (!secretHex || !secretHash) return res.status(422).json({ error: 'Offer is missing secret/hash (legacy offer)' });
+    if (!secretHash) return res.status(422).json({ error: 'Offer is missing secretHash (legacy offer)' });
 
     const now          = Math.floor(Date.now() / 1000);
     const qbtcLocktime = offer.qbtc_locktime || (now + SWAP_QBTC_TIMELOCK_SECS);
@@ -383,20 +489,23 @@ app.post('/api/swap/accept/:offerId', async (req, res) => {
     // Determine initial status based on whether seller already locked QBTC
     const initialStatus = offer.qbtc_htlc_txid ? 'QBTC_LOCKED' : 'PENDING_QBTC_LOCK';
 
+    // C-3: secret is NOT propagated from the offer — the plaintext preimage is
+    // never stored server-side. The EVM monitor will write it once it is
+    // revealed on-chain by the seller when they withdraw USDC.
     const swapResult = await pool.query(
       `INSERT INTO atomic_swaps (
         offer_id, seller_qbtc_address, seller_evm_address, seller_pub_key_hex,
         buyer_qbtc_address, buyer_evm_address, buyer_pub_key_hex,
-        qbtc_amount, usdc_amount, secret_hash, secret,
+        qbtc_amount, usdc_amount, secret_hash,
         qbtc_htlc_txid, qbtc_htlc_address,
         qbtc_locktime, evm_locktime, status, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),NOW()) RETURNING *`,
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW(),NOW()) RETURNING *`,
       [
         offerId,
         offer.seller_qbtc_address, offer.seller_evm_address, offer.seller_pub_key_hex,
         buyerQbtcAddress, buyerEvmAddress, buyerPubKeyHex,
         offer.qbtc_amount, offer.usdc_amount_requested,
-        secretHash, secretHex,
+        secretHash,
         offer.qbtc_htlc_txid || null, offer.qbtc_htlc_address || null,
         qbtcLocktime, evmLocktime, initialStatus,
       ],
@@ -699,7 +808,6 @@ app.post('/api/swap/lock/evm', async (req, res) => {
     if (!evmRpcUrl || !htlcAddress) return res.status(503).json({ error: 'EVM swap verifier is not configured' });
 
     try {
-      const { ethers } = await import('ethers');
       const provider = new ethers.JsonRpcProvider(evmRpcUrl);
       const htlcAbi = [
         'function getContract(bytes32 contractId) view returns (address sender, address receiver, address tokenContract, uint256 amount, bytes32 hashlock, uint256 timelock, bool withdrawn, bool refunded, bytes32 preimage)',
@@ -756,7 +864,6 @@ app.post('/api/swap/secret/seller', async (req, res) => {
     if (!swap.qbtc_htlc_txid || !swap.evm_contract_id) return res.status(409).json({ error: 'Swap lock legs incomplete' });
     if (!swap.secret) return res.status(422).json({ error: 'Secret not available yet' });
 
-    const { ethers } = await import('ethers');
     const message = `QBTC_SWAP_SECRET:${swap.id}`;
     let recovered = '';
     try { recovered = ethers.verifyMessage(message, String(signature)).toLowerCase(); } catch { return res.status(400).json({ error: 'Invalid seller signature' }); }
@@ -801,7 +908,6 @@ async function pollEvmLocked() {
   if (!evmRpcUrl || !htlcAddress) return;
 
   try {
-    const { ethers } = await import('ethers');
     const provider = new ethers.JsonRpcProvider(evmRpcUrl);
     const htlcAbi = [
       'function getContract(bytes32 contractId) view returns (address sender, address receiver, address tokenContract, uint256 amount, bytes32 hashlock, uint256 timelock, bool withdrawn, bool refunded, bytes32 preimage)',
