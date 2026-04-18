@@ -34,6 +34,7 @@ import ChainSection from './ChainSection';
 import AddTokenModal from './AddTokenModal';
 import PortfolioSummary from './PortfolioSummary';
 import PasswordModal from './PasswordModal';
+import { getChainNetworkAddress, type WalletAddresses } from '@/lib/networkAddress';
 import type { PendingTransaction } from '@/hooks/usePendingTransactions';
 
 interface WalletDashboardProps {
@@ -193,7 +194,7 @@ export default function WalletDashboard({
         const updatedTokens = await getWalletTokens(sovereignWallet.id, tokenNetwork);
         setTokens(updatedTokens);
         
-        const block = await fetchBlockNumber(selectedChain);
+        const block = await fetchBlockNumber(selectedChain, tokenNetwork);
         setBlockNumber(block);
       } catch (error) {
         console.error('Balance fetch failed:', error);
@@ -239,10 +240,15 @@ export default function WalletDashboard({
       }
       
       // Refresh XRPL token balances (trust lines)
-      if (sovereignWallet.addresses.xrp) {
+      const xrpAddress = getChainNetworkAddress(
+        sovereignWallet.addresses as WalletAddresses,
+        'xrp',
+        tokenNetwork
+      );
+      if (xrpAddress) {
         const result = await refreshXRPLTokenBalances(
           sovereignWallet.id,
-          sovereignWallet.addresses.xrp,
+          xrpAddress,
           tokenNetwork
         );
         if (result.success) {
@@ -257,7 +263,7 @@ export default function WalletDashboard({
       const updatedTokens = await getWalletTokens(sovereignWallet.id, tokenNetwork);
       setTokens(updatedTokens);
       
-      const block = await fetchBlockNumber(selectedChain);
+      const block = await fetchBlockNumber(selectedChain, tokenNetwork);
       setBlockNumber(block);
     } catch (error) {
       console.error('Refresh failed:', error);
@@ -278,7 +284,11 @@ export default function WalletDashboard({
       
       // Fetch from all chains in parallel
       const transactionPromises = chains.map(async (chain) => {
-        const address = sovereignWallet.addresses[chain];
+        const address = getChainNetworkAddress(
+          sovereignWallet.addresses as WalletAddresses,
+          chain,
+          tokenNetwork
+        );
         if (!address) return [];
         
         try {
@@ -773,7 +783,11 @@ To: ${tx.to}`;
         <AddTokenModal
           chain={addTokenChain}
           network={tokenNetwork}
-          walletAddress={sovereignWallet.addresses[addTokenChain]}
+          walletAddress={getChainNetworkAddress(
+            sovereignWallet.addresses as WalletAddresses,
+            addTokenChain,
+            tokenNetwork
+          )}
           onClose={() => setAddTokenChain(null)}
           onAdd={(tokenData) => handleAddToken(addTokenChain, tokenData)}
           onSetTrustline={addTokenChain === 'xrp' ? handleSetTrustline : undefined}

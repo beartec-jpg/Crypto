@@ -5,6 +5,7 @@ import axios from 'axios';
 import { Contract, JsonRpcProvider } from 'ethers';
 import { xrplService } from './xrpService';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
+import { getChainNetworkAddress, type WalletAddresses } from './networkAddress';
 
 // ERC-20 ABI (string-returning metadata)
 const ERC20_ABI = [
@@ -413,7 +414,7 @@ export async function fetchERC20TokenInfo(
 
 export async function refreshEvmTokenBalances(
   walletId: string,
-  addresses: Record<Chain, string>,
+  addresses: WalletAddresses,
   network: TokenNetwork = 'mainnet'
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -627,7 +628,7 @@ export async function fetchXRPLIssuerInfo(
 /**
  * Auto-detect tokens for all chains
  */
-export async function autoDetectTokens(addresses: Record<Chain, string>, network: TokenNetwork = 'mainnet'): Promise<Token[]> {
+export async function autoDetectTokens(addresses: WalletAddresses, network: TokenNetwork = 'mainnet'): Promise<Token[]> {
   const activeNetwork = normalizeNetwork(network);
   const detectedTokens: Token[] = [];
   
@@ -646,7 +647,10 @@ export async function autoDetectTokens(addresses: Record<Chain, string>, network
   }
   
   try {
-    const result = await detectXRPLTrustlines(addresses.xrp, activeNetwork);
+    const result = await detectXRPLTrustlines(
+      getChainNetworkAddress(addresses as WalletAddresses, 'xrp', activeNetwork),
+      activeNetwork
+    );
     detectedTokens.push(...result.tokens);
     if (result.error) {
       console.error('Failed to detect XRP trustlines:', result.error);

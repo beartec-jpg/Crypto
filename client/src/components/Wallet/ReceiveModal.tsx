@@ -5,17 +5,10 @@ import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Copy, Check, X, ChevronDown, AlertTriangle, Download, Share2 } from 'lucide-react';
 import type { Chain } from '@/lib/balanceService';
+import { getChainNetworkAddress, type WalletAddresses } from '@/lib/networkAddress';
 
 interface ReceiveModalProps {
-  addresses: {
-    ethereum: string;
-    bitcoin: string;
-    bsc: string;
-    xrp: string;
-    solana: string;
-    qbtc: string;
-    qbtcMainnet: string;
-  };
+  addresses: WalletAddresses;
   publicKeys?: {
     ethereum: string;
     bitcoin: string;
@@ -86,9 +79,7 @@ export default function ReceiveModal({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   
   const config = CHAIN_CONFIG[selectedChain];
-  const address = selectedChain === 'qbtc' && tokenNetwork === 'mainnet'
-    ? (addresses.qbtcMainnet || addresses.qbtc)
-    : addresses[selectedChain];
+  const address = getChainNetworkAddress(addresses, selectedChain, tokenNetwork);
   const qbtcPublicKey = selectedChain === 'qbtc' ? publicKeys?.qbtc || '' : '';
 
   const handleCopy = async () => {

@@ -32,6 +32,7 @@ import {
 } from '@/lib/xrpSendService';
 import { getWalletTokens, ensureNativeTokens, type Token } from '@/lib/tokenService';
 import type { TokenNetwork } from '@/lib/tokenService';
+import { getChainNetworkAddress, getVaultNetworkAddress, type WalletAddresses } from '@/lib/networkAddress';
 import {
   QBTCChain,
   QBTCKeyPair,
@@ -134,6 +135,26 @@ export default function SendForm({
   const currentSecurityTier = getSecuritySettings(userId).tier;
   const isColdDeviceMode = currentSecurityTier === 'cold';
 
+  const resolveChainAddress = useCallback((chain: Chain) => {
+    if (!sovereignWallet?.addresses) return '';
+    return getChainNetworkAddress(
+      sovereignWallet.addresses as WalletAddresses,
+      chain,
+      tokenNetwork
+    );
+  }, [sovereignWallet?.addresses, tokenNetwork]);
+
+  const getFromAddress = useCallback(() => {
+    if (!sovereignWallet?.addresses) return '';
+    if (selectedChain === 'qbtc' && qbtcSource === 'vault') {
+      return getVaultNetworkAddress(
+        sovereignWallet.addresses as WalletAddresses,
+        tokenNetwork
+      );
+    }
+    return resolveChainAddress(selectedChain);
+  }, [sovereignWallet?.addresses, selectedChain, qbtcSource, tokenNetwork, resolveChainAddress]);
+
   useEffect(() => {
     if (isColdDeviceMode && coldSignerAvailable) {
       setUseColdSigner(true);
@@ -201,14 +222,12 @@ export default function SendForm({
   // Fetch balance when token or QBTC source changes
   useEffect(() => {
     async function fetchBalance() {
-      if (!selectedToken || !sovereignWallet?.addresses?.[selectedChain]) return;
+      if (!selectedToken) return;
       
       try {
         if (selectedToken.isNative) {
           // For QBTC, use the correct source address (hot or vault)
-          const address = selectedChain === 'qbtc' && qbtcSource === 'vault'
-            ? (sovereignWallet.addresses.qbtcVault || sovereignWallet.addresses.qbtcVaultMainnet)
-            : sovereignWallet.addresses[selectedChain];
+          const address = getFromAddress();
 
           if (!address) return;
 
@@ -227,7 +246,7 @@ export default function SendForm({
           if (selectedChain === 'xrp') {
             try {
               const accountInfo = await getXrpAccountInfo(
-                sovereignWallet.addresses[selectedChain],
+                getFromAddress(),
                 tokenNetwork
               );
               setXrpReserved(accountInfo.reserves.total.toString());
@@ -250,7 +269,7 @@ export default function SendForm({
     }
     
     fetchBalance();
-  }, [selectedChain, selectedToken, sovereignWallet, qbtcSource]);
+  }, [selectedChain, selectedToken, sovereignWallet, qbtcSource, getFromAddress, tokenNetwork]);
 
   const handleTokenSelect = (token: Token) => {
     setSelectedToken(token);
@@ -383,8 +402,8 @@ export default function SendForm({
       if (selectedChain === 'qbtc') {
         const isVault = qbtcSource === 'vault';
         const fromAddress = isVault
-          ? (sovereignWallet?.addresses?.qbtcVault || sovereignWallet?.addresses?.qbtcVaultMainnet)
-          : sovereignWallet?.addresses?.qbtc;
+          ? getVaultNetworkAddress(sovereignWallet?.addresses as WalletAddresses, tokenNetwork)
+          : resolveChainAddress('qbtc');
         if (!fromAddress) throw new Error(`QBTC ${isVault ? 'vault' : 'hot wallet'} address not found`);
         const qbtcChain = new QBTCChain(qbtcSettings);
         const rawUtxos = await qbtcChain.scanUTXOs(fromAddress);
@@ -454,7 +473,7 @@ export default function SendForm({
     setShowUnsignedTxQR(false);
 
     if (onAddPendingTransaction) {
-      const fromAddress = sovereignWallet?.addresses?.[selectedChain];
+      const fromAddress = getFromAddress();
       onAddPendingTransaction({
         hash: result.hash,
         chain: selectedChain,
@@ -493,9 +512,7 @@ export default function SendForm({
         throw new Error('No token selected');
       }
 
-      const fromAddress = selectedChain === 'qbtc' && qbtcSource === 'vault'
-        ? (sovereignWallet?.addresses?.qbtcVault || sovereignWallet?.addresses?.qbtcVaultMainnet)
-        : sovereignWallet?.addresses?.[selectedChain];
+      const fromAddress = getFromAddress();
       if (!fromAddress) {
         throw new Error('Wallet address not found. Please try again.');
       }
