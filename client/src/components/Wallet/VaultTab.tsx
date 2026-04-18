@@ -1,8 +1,8 @@
 /**
  * VaultTab — Quantum-safe cold storage for QBTC.
  *
- * Uses a separate QBTC address (pathIndex 1) with forced PQC hybrid
- * signatures (ECDSA + ML-DSA-44) on all sends.  Completely isolated
+ * Uses a separate QBTC address (pathIndex 1) with forced QBTC PQC hybrid
+ * signatures on all sends. Completely isolated
  * from the hot-wallet spending flow.
  */
 
@@ -149,7 +149,7 @@ export default function VaultTab({ userId, sovereignWallet }: VaultTabProps) {
               <ShieldCheck className="w-3 h-3" /> {securityTier.charAt(0).toUpperCase() + securityTier.slice(1)}
             </span>
             <span className="px-3 py-1 bg-cyan-500/20 text-cyan-400 text-xs font-semibold rounded-full border border-cyan-500/30 flex items-center gap-1">
-              <Shield className="w-3 h-3" /> ML-DSA-44
+              <Shield className="w-3 h-3" /> PQC Hybrid
             </span>
           </div>
         </div>
@@ -251,7 +251,7 @@ export default function VaultTab({ userId, sovereignWallet }: VaultTabProps) {
             <Shield className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
             <div className="text-cyan-400 text-sm">
               <p>
-                All vault sends require <strong>PQC hybrid signatures</strong> (ECDSA + ML-DSA-44). 
+                All vault sends require <strong>PQC hybrid signatures</strong> using the current QBTC network format.
                 This protects your funds against quantum computing attacks.
               </p>
               <p className="mt-1 text-cyan-400/80">
@@ -330,7 +330,7 @@ export default function VaultTab({ userId, sovereignWallet }: VaultTabProps) {
           </li>
           <li className="flex items-start gap-2">
             <Lock className="w-3 h-3 text-cyan-500 mt-0.5 flex-shrink-0" />
-            <span>All sends require <strong className="text-gray-400">ECDSA + ML-DSA-44 (Dilithium)</strong> dual signatures — quantum resistant</span>
+            <span>All sends require <strong className="text-gray-400">ECDSA + QBTC PQC hybrid</strong> dual signatures — quantum resistant</span>
           </li>
           <li className="flex items-start gap-2">
             <AlertTriangle className="w-3 h-3 text-cyan-500 mt-0.5 flex-shrink-0" />

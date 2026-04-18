@@ -8,7 +8,7 @@ import { sha512 } from '@noble/hashes/sha512';
 import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
 import { hexToBytes } from '@noble/hashes/utils';
-import { initDilithium, dilithium, PK_SIZE, SK_SIZE, SIG_SIZE, SEED_SIZE } from './dilithium-wasm/dilithiumWasm';
+import { initFalcon, falcon, PK_SIZE, SK_SIZE, SIG_SIZE, SEED_SIZE } from './falcon-wasm/falconWasm';
 import {
   falconSign,
   falconVerify,
@@ -59,10 +59,15 @@ export interface QBTCFalconCompatibilityProof {
 }
 
 const QBTC_SETTINGS_KEY = 'qbtc_rpc_settings';
+const QBTC_PQC_SEED_SIZE = 48;
 const DILITHIUM_PK_SIZE = PK_SIZE;
 const DILITHIUM_SK_SIZE = SK_SIZE;
 const DILITHIUM_SIG_SIZE = SIG_SIZE;
 const DILITHIUM_SEED_SIZE = SEED_SIZE;
+const QBTC_FALCON_PK_SIZE = 897;
+const QBTC_FALCON_SK_SIZE = 1281;
+const QBTC_FALCON_SIG_SIZE = 666;
+const QBTC_FALCON_SEED_SIZE = 48;
 // I-1: Use a QBTC-specific coin type (9999) to avoid key reuse with BTC (coin type 0).
 // Register a permanent BIP-44 coin type before mainnet launch.
 const QBTC_DERIVATION_PATH = "m/44'/9999'/0'/0/0";
@@ -159,8 +164,8 @@ function fromSats(sats: number): string {
 
 function estimateTxVSize(inputCount: number, outputCount: number, signMode: 'hybrid' | 'ecdsa' = 'hybrid'): number {
   const baseBytes = 10 + (inputCount * 41) + (outputCount * 31);
-  // 3-element ECDSA: [ecdsaSig(73) + ecdsaPub(34) + dilPub(DILITHIUM_PK_SIZE)] + stack size byte
-  // 4-element hybrid: [ecdsaSig(73) + ecdsaPub(34) + dilSig(DILITHIUM_SIG_SIZE) + dilPub(DILITHIUM_PK_SIZE)] + stack size byte
+  // 3-element ECDSA: [ecdsaSig(73) + ecdsaPub(34) + dilPub(1312)] + stack size byte
+  // 4-element hybrid: [ecdsaSig(73) + ecdsaPub(34) + dilSig(2420) + dilPub(1312)] + stack size byte
   const witnessBytesPerInput = signMode === 'ecdsa'
     ? 1 + 73 + 34 + DILITHIUM_PK_SIZE
     : 1 + 73 + 34 + DILITHIUM_SIG_SIZE + DILITHIUM_PK_SIZE;
@@ -211,37 +216,32 @@ export class DilithiumKey {
   }
 
   /**
-   * Derive a Dilithium key from an independently-generated seed.
-   * The seed MUST be derived from entropy that is independent of the ECDSA
-   * private key (e.g. a separate HMAC-SHA512 over the BIP-32 master seed with
-   * a different context label). This is the preferred factory method.
+   * Legacy class name retained for compatibility.
+   * The actual on-chain PQC witness now uses Falcon-padded-512.
    */
   static async fromIndependentSeed(seed: Uint8Array): Promise<DilithiumKey> {
-    if (seed.length < DILITHIUM_SEED_SIZE) {
-      throw new Error(`Dilithium seed must be at least ${DILITHIUM_SEED_SIZE} bytes`);
+    if (seed.length < QBTC_PQC_SEED_SIZE) {
+      throw new Error(`QBTC Falcon seed must be at least ${QBTC_PQC_SEED_SIZE} bytes`);
     }
-    await initDilithium();
-    const dilSeed = seed.slice(0, DILITHIUM_SEED_SIZE);
-    const { publicKey, secretKey } = dilithium.seedKeygen(dilSeed);
-    return new DilithiumKey(dilSeed, publicKey, secretKey);
+    await initFalcon();
+    const falconSeed = seed.slice(0, DILITHIUM_SEED_SIZE);
+    const { publicKey, secretKey } = falcon.seedKeygen(falconSeed);
+    return new DilithiumKey(falconSeed, publicKey, secretKey);
   }
 
   /**
-   * @deprecated Deriving the Dilithium key from the ECDSA private key couples
-   * PQC security to the classical key: if the ECDSA key is compromised the
-   * Dilithium key is immediately derivable. Use `fromIndependentSeed` wherever
-   * a BIP-32 master seed is available. This path is kept only for legacy
-   * reconstruction flows where only the ECDSA key is on hand.
+   * @deprecated Fallback for legacy reconstruction flows where only the ECDSA
+   * private key is available.
    */
   static async fromECDSAPrivKey(ecdsaPriv: Uint8Array): Promise<DilithiumKey> {
-    await initDilithium();
-    const seed = hmacSha512(ecdsaPriv, new TextEncoder().encode('QuantBTC-Dilithium')).slice(0, DILITHIUM_SEED_SIZE);
-    const { publicKey, secretKey } = dilithium.seedKeygen(seed);
+    await initFalcon();
+    const seed = hmacSha512(ecdsaPriv, new TextEncoder().encode('QuantBTC-Falcon')).slice(0, DILITHIUM_SEED_SIZE);
+    const { publicKey, secretKey } = falcon.seedKeygen(seed);
     return new DilithiumKey(seed, publicKey, secretKey);
   }
 
   sign(message: Uint8Array): Uint8Array {
-    return dilithium.sign(message, this.privateKey);
+    return falcon.sign(message, this.privateKey);
   }
 }
 
@@ -291,9 +291,9 @@ export class QBTCKeyPair {
     ecdsaContext.set(idxBytes, 4);
     const ecdsaChild = hmacSha512(masterSeed, ecdsaContext).slice(0, 32);
 
-    // Dilithium seed — derived independently from masterSeed with a separate
-    // context label 'QBTC-PQC'. This ensures the PQC key pair provides
-    // independent security even if the ECDSA key is compromised.
+    // Falcon seed material — derived independently from masterSeed with a separate
+    // context label 'QBTC-PQC'. This keeps the Falcon key independent even if
+    // the ECDSA key is compromised.
     const pqcContext = new Uint8Array(8 + idxBytes.length);
     pqcContext.set(new TextEncoder().encode('QBTC-PQC'), 0);
     pqcContext.set(idxBytes, 8);
@@ -339,31 +339,30 @@ export class QBTCKeyPair {
   }
 
   /**
-   * Split the key material (ECDSA private key + Dilithium seed) into 2-of-3
+   * Split the key material (ECDSA private key + Falcon seed) into 2-of-3
    * Shamir shares.
    *
-   * The 64-byte payload encodes [ecdsaPrivKey (32 B) || dilithiumSeed (32 B)].
+   * The 80-byte payload encodes [ecdsaPrivKey (32 B) || falconSeed (48 B)].
    * This ensures reconstruction via `reconstructFromShares` can rebuild the
-   * Dilithium key using `DilithiumKey.fromIndependentSeed`, producing the same
+   * Falcon key using `DilithiumKey.fromIndependentSeed`, producing the same
    * hybrid address as the original hot-wallet key pair.
    *
-   * NOTE: shares from the previous 32-byte (ECDSA-only) format are still
-   * accepted by `reconstructFromShares` but fall back to the deprecated
-   * `DilithiumKey.fromECDSAPrivKey` path.
+   * NOTE: shares from the previous 32-byte and 64-byte legacy formats are
+   * still accepted by `reconstructFromShares`.
    */
   splitECDSAPrivateKey(shares = 3, threshold = 2): string[] {
     if (shares !== 3 || threshold !== 2) {
       throw new Error('QBTC split requires 2-of-3 shares to match node tooling');
     }
     const ecdsaBytes = Buffer.from(this.ecdsaPrivateKeyHex, 'hex');  // 32 bytes
-    const dilSeedBytes = Buffer.from(this.dilKey.seed);              // 32 bytes
+    const dilSeedBytes = Buffer.from(this.dilKey.seed);              // 48 bytes for Falcon-512
     if (ecdsaBytes.length !== 32) {
       throw new Error(`Unexpected ECDSA key length: ${ecdsaBytes.length} (expected 32)`);
     }
-    if (dilSeedBytes.length !== 32) {
-      throw new Error(`Unexpected Dilithium seed length: ${dilSeedBytes.length} (expected 32)`);
+    if (dilSeedBytes.length !== 48) {
+      throw new Error(`Unexpected QBTC Falcon seed length: ${dilSeedBytes.length} (expected 48)`);
     }
-    const secret = Buffer.concat([ecdsaBytes, dilSeedBytes]);        // 64 bytes
+    const secret = Buffer.concat([ecdsaBytes, dilSeedBytes]);        // 80 bytes
 
     const coeffs = crypto.getRandomValues(new Uint8Array(secret.length));
     const out = [new Uint8Array(secret.length), new Uint8Array(secret.length), new Uint8Array(secret.length)];
@@ -395,9 +394,26 @@ export class QBTCKeyPair {
       out[i] = gf256Mul(shareA[i], la) ^ gf256Mul(shareB[i], lb);
     }
 
+    if (out.length === 80) {
+      // Falcon format (80 bytes): first 32 bytes = ECDSA private key,
+      // next 48 bytes = Falcon seed.
+      const ecdsaPrivHex = Buffer.from(out.slice(0, 32)).toString('hex');
+      const dilSeed = new Uint8Array(out.slice(32, 80));
+      const privateKeyBytes = Buffer.from(ecdsaPrivHex, 'hex');
+      const publicKey = secp256k1.getPublicKey(privateKeyBytes, true);
+      const dil = await DilithiumKey.fromIndependentSeed(dilSeed);
+      return new QBTCKeyPair(
+        ecdsaPrivHex,
+        Buffer.from(publicKey).toString('hex'),
+        Buffer.from(dil.publicKey).toString('hex'),
+        Buffer.from(dil.privateKey).toString('hex'),
+        dil,
+      );
+    }
+
     if (out.length === 64) {
-      // New format (64 bytes): first 32 bytes = ECDSA private key,
-      // next 32 bytes = Dilithium seed (independent derivation path).
+      // Legacy hybrid format: first 32 bytes = ECDSA private key,
+      // next 32 bytes = legacy PQC seed.
       const ecdsaPrivHex = Buffer.from(out.slice(0, 32)).toString('hex');
       const dilSeed = new Uint8Array(out.slice(32, 64));
       const privateKeyBytes = Buffer.from(ecdsaPrivHex, 'hex');
@@ -412,10 +428,8 @@ export class QBTCKeyPair {
       );
     }
 
-    // Legacy format (32 bytes): ECDSA private key only — Dilithium key
-    // re-derived via the deprecated coupled path. Existing legacy shares
-    // are still reconstructable but will produce a different hybrid address
-    // than shares created with the new 64-byte format.
+    // Legacy format (32 bytes): ECDSA private key only — PQC key
+    // re-derived via the deprecated coupled path.
     return QBTCKeyPair.fromECDSAPrivateKey(Buffer.from(out).toString('hex'));
   }
 
@@ -432,16 +446,6 @@ export class QBTCKeyPair {
 
     const ecdsaSignature = bitcoin.script.signature.encode(Buffer.from(rawSig), bitcoin.Transaction.SIGHASH_ALL);
     const ecdsaPublicKey = Buffer.from(this.ecdsaPublicKeyHex, 'hex');
-
-    // NOTE (FIPS 204 §5): We pass the BIP-143 sighash digest (a SHA-256 hash)
-    // directly to ML-DSA-44. This is a pre-hash (HashML-DSA) usage pattern:
-    // the message has already been SHA-256-hashed by hashForWitnessV0, and
-    // ML-DSA applies SHAKE-256 internally on top of it. The QBTC node verifier
-    // must check this same pre-hashed digest. This differs from pure ML-DSA
-    // (which signs the raw message) and from the formal HashML-DSA construction
-    // in FIPS 204 §5.4 (which uses specific domain-separation bytes). The
-    // design is intentional for Bitcoin-protocol compatibility and is
-    // documented here for auditor clarity.
     const dilithiumSignature = Buffer.from(this.dilKey.sign(digest));
     const dilithiumPublicKey = Buffer.from(this.dilithiumPublicKeyHex, 'hex');
 
@@ -455,7 +459,7 @@ export class QBTCKeyPair {
 
   /**
    * ECDSA-only witness for hybrid addresses — 3-element witness stack.
-   * [ecdsaSignature, ecdsaPublicKey, dilithiumPublicKey]
+   * [ecdsaSignature, ecdsaPublicKey, falconPublicKey]
    * PQC pubkey included for address matching (Hash160(ecdsa_pk || pqc_pk))
    * but NO PQC signature — ECDSA verification only.
    */
@@ -495,7 +499,7 @@ export class QBTCKeyPair {
       messageDigestHex: Buffer.from(messageDigest).toString('hex'),
       falconPublicKeyHex: Buffer.from(falcon.publicKey).toString('hex'),
       falconSignatureHex: Buffer.from(falconSig).toString('hex'),
-      note: 'Staged compatibility proof only. QBTC consensus witness remains ML-DSA-44 + ECDSA until protocol upgrade.',
+      note: 'Derived from the same Falcon material used in the live QBTC hybrid witness.',
     };
   }
 }
@@ -757,7 +761,7 @@ export class QBTCChain {
       throw new Error('Failed to construct QBTC scriptCode for witness signing');
     }
 
-    selected.forEach((utxo, idx) => {
+    for (const [idx, utxo] of selected.entries()) {
       const digest = tx.hashForWitnessV0(idx, scriptCode, toSats(utxo.amount), bitcoin.Transaction.SIGHASH_ALL);
 
       if (signMode === 'ecdsa') {
@@ -769,7 +773,7 @@ export class QBTCChain {
           witness.dilithiumPublicKey,
         ]);
       } else {
-        // PQC hybrid — ECDSA + ML-DSA-44 for vault sends
+        // PQC hybrid — ECDSA + Falcon-512 witness format
         const witness = keyPair.signDigestForWitness(digest);
         tx.setWitness(idx, [
           witness.ecdsaSignature,
@@ -778,7 +782,7 @@ export class QBTCChain {
           witness.dilithiumPublicKey,
         ]);
       }
-    });
+    }
 
     const hex = tx.toHex();
     const falconCompatibilityProof = signMode === 'hybrid'
@@ -903,7 +907,7 @@ export function getHTLCAddress(htlcScript: Buffer, network: QBTCNetwork): string
  * 2. Hash-only (claimerKeyPair omitted): witness = [secret, OP_1, htlcScript]
  *    Used for seller-lock-first HTLCs where anyone with the secret can claim.
  */
-export function createHTLCClaimTransaction(
+export async function createHTLCClaimTransaction(
   htlcScript: Buffer,
   utxos: QBTCUtxo[],
   secretHex: string,
@@ -911,7 +915,7 @@ export function createHTLCClaimTransaction(
   outputAddress: string,
   network: QBTCNetwork,
   feeRate = 5,
-): string {
+): Promise<string> {
   const net = QBTC_NETWORKS[network];
   const totalInput = utxos.reduce((s, u) => s + toSats(u.amount), 0);
 
@@ -936,7 +940,7 @@ export function createHTLCClaimTransaction(
   }
   tx.addOutput(bitcoin.address.toOutputScript(outputAddress, net), outputSats);
 
-  utxos.forEach((utxo, idx) => {
+  for (const [idx, utxo] of utxos.entries()) {
     if (claimerKeyPair) {
       // Standard mode: signature required
       const digest = tx.hashForWitnessV0(idx, htlcScript, toSats(utxo.amount), bitcoin.Transaction.SIGHASH_ALL);
@@ -953,12 +957,12 @@ export function createHTLCClaimTransaction(
     } else {
       // Hash-only mode: secret is enough to claim
       tx.setWitness(idx, [
-        Buffer.from(secretHex, 'hex'),  // secret → OP_IF (truthy) → OP_SHA256 → OP_EQUAL
-        Buffer.from([0x01]),            // OP_TRUE to trigger OP_IF branch
+        Buffer.from(secretHex, 'hex'),
+        Buffer.from([0x01]),
         htlcScript,
       ]);
     }
-  });
+  }
 
   return tx.toHex();
 }
@@ -967,11 +971,11 @@ export function createHTLCClaimTransaction(
  * Builds and signs a P2WSH HTLC refund transaction (seller path, post-timelock).
  *
  * Witness structure per input:
- *   [OP_1 (truthy but not the secret), ecdsaSig, ecdsaPubkey, dilithiumSig, dilithiumPubkey, htlcScript]
+ *   [OP_1 (truthy but not the secret), ecdsaSig, ecdsaPubkey, dilSig, dilPubkey, htlcScript]
  *
  * nLockTime must be >= the HTLC locktime; nSequence must be < 0xffffffff.
  */
-export function createHTLCRefundTransaction(
+export async function createHTLCRefundTransaction(
   htlcScript: Buffer,
   utxos: QBTCUtxo[],
   refunderKeyPair: QBTCKeyPair,
@@ -979,7 +983,7 @@ export function createHTLCRefundTransaction(
   locktime: number,
   network: QBTCNetwork,
   feeRate = 5,
-): string {
+): Promise<string> {
   const net = QBTC_NETWORKS[network];
   const totalInput = utxos.reduce((s, u) => s + toSats(u.amount), 0);
 
@@ -1002,18 +1006,18 @@ export function createHTLCRefundTransaction(
   }
   tx.addOutput(bitcoin.address.toOutputScript(outputAddress, net), outputSats);
 
-  utxos.forEach((utxo, idx) => {
+  for (const [idx, utxo] of utxos.entries()) {
     const digest = tx.hashForWitnessV0(idx, htlcScript, toSats(utxo.amount), bitcoin.Transaction.SIGHASH_ALL);
     const witness = refunderKeyPair.signDigestForWitness(digest);
     tx.setWitness(idx, [
-      Buffer.alloc(0),             // empty = falsy, takes OP_ELSE branch
+      Buffer.alloc(0),
       witness.ecdsaSignature,
       witness.ecdsaPublicKey,
       witness.dilithiumSignature,
       witness.dilithiumPublicKey,
       htlcScript,
     ]);
-  });
+  }
 
   return tx.toHex();
 }
@@ -1036,9 +1040,9 @@ export function qbtcPubKeyHash160(compressedPubKeyHex: string): string {
 /**
  * @deprecated Derives a standard P2WPKH address from an ECDSA-only compressed
  * public key. This is NOT a valid QBTC hybrid address — full QBTC addresses use
- * Hash160(ecdsaPub || dilPub) (see QBTCKeyPair.getAddress). Only use this
+ * Hash160(ecdsaPub || pqcPub) (see QBTCKeyPair.getAddress). Only use this
  * function for legacy migration / address-reconstruction fallback where the
- * Dilithium public key is unavailable.
+ * QBTC PQC public key is unavailable.
  */
 export function qbtcAddressFromCompressedPubKey(compressedPubKeyHex: string, network: QBTCNetwork = 'testnet'): string {
   const net = QBTC_NETWORKS[network];

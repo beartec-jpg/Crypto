@@ -45,8 +45,8 @@ const ROADMAP: RoadmapPhase[] = [
     status: 'completed',
     statusLabel: 'Completed ✅',
     items: [
-      'Hybrid ECDSA + CRYSTALS-Dilithium transaction signing',
-      'SPHINCS+ and Falcon signature support',
+      'Hybrid ECDSA + post-quantum transaction signing',
+      'Falcon compatibility support across wallet and explorer flows',
       'Kyber, NTRU, FrodoKEM key encapsulation',
       'PQC wallet tooling (qbtc_wallet.py with Shamir secret sharing)',
       '16 MB block weight limit (accommodating larger PQC signatures)',
@@ -110,7 +110,7 @@ const STATS = [
   { label: 'Block Time', value: '~1 second' },
   { label: 'GHOSTDAG K', value: '32' },
   { label: 'Max DAG Parents', value: '64' },
-  { label: 'PQC Algorithms', value: 'Dilithium, SPHINCS+, Falcon, Kyber, NTRU' },
+  { label: 'PQC Algorithms', value: 'Falcon, SPHINCS+, Kyber, NTRU' },
   { label: 'Genesis', value: 'March 31, 2026' },
   { label: 'Ticker', value: 'QBTC' },
 ];
@@ -241,7 +241,7 @@ export default function QBTCHomePage() {
               </div>
               <h3 className="font-semibold text-lg">Post-Quantum Cryptography</h3>
               <p className="text-slate-400 text-sm">
-                Hybrid ECDSA + Dilithium/SPHINCS+ signatures protect your coins from quantum
+                Hybrid ECDSA + post-quantum signatures protect your coins from quantum
                 computers — today and in the future.
               </p>
             </div>
@@ -388,7 +388,7 @@ export default function QBTCHomePage() {
                   Quantum-Safe Transactions
                 </div>
                 <p className="text-sm text-slate-400">
-                  Hybrid ECDSA + Dilithium/SPHINCS+ signatures protect your coins from Shor's
+                  Hybrid ECDSA + Falcon/SPHINCS+ signatures protect your coins from Shor's
                   algorithm. Grover's only gives a quadratic speedup on mining — 128-bit security
                   remains sufficient for PoW.
                 </p>

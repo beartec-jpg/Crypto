@@ -62,7 +62,7 @@ function MainnetActiveBanner() {
           time-locks; no custodian or intermediary is involved.
         </p>
         <p className="text-xs text-emerald-300/70">
-          QBTC side: P2WSH HTLC with ML-DSA-44 + ECDSA hybrid signatures on the QBTC mainnet chain (port 58332).
+          QBTC side: P2WSH HTLC with QBTC hybrid post-quantum + ECDSA signatures on the QBTC mainnet chain (port 58332).
           EVM side: HashedTimelockERC20 contract on Ethereum, settling in USDC.
         </p>
       </div>
@@ -190,7 +190,7 @@ export default function QBTCMarketplacePage() {
                     step: 2,
                     icon: Lock,
                     title: 'Seller Locks QBTC in P2WSH HTLC',
-                    desc: 'Seller broadcasts a QBTC transaction to a P2WSH Hash Time-Lock Contract address. The script uses an ML-DSA-44 + ECDSA hybrid signature scheme. The buyer can redeem with the secret; the seller can refund after 48 hours via CLTV.',
+                    desc: 'Seller broadcasts a QBTC transaction to a P2WSH Hash Time-Lock Contract address. The script uses QBTC\'s hybrid post-quantum + ECDSA signature scheme. The buyer can redeem with the secret; the seller can refund after 48 hours via CLTV.',
                     color: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
                   },
                   {
@@ -234,7 +234,7 @@ export default function QBTCMarketplacePage() {
                   </div>
                   <div className="flex justify-between gap-2">
                     <span>Signature Scheme</span>
-                    <span className="text-slate-300 font-mono">ML-DSA-44 + ECDSA</span>
+                    <span className="text-slate-300 font-mono">Hybrid PQC + ECDSA</span>
                   </div>
                   <div className="flex justify-between gap-2">
                     <span>EVM Contract</span>

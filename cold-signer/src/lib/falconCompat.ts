@@ -1,30 +1,13 @@
 import { sha256 } from '@noble/hashes/sha256';
-import type { FalconKernel } from 'falcon-sign';
+import { initFalcon, falcon, SEED_SIZE } from './falcon-wasm/falconWasm';
 
-// falcon-sign exposes versioned kernel IDs. "n3" is the upstream kernel flavor
-// identifier used by the package (falcon512_n3_v1 / falcon1024_n3_v1).
-const FALCON_KERNEL_ID = 'falcon512_n3_v1';
-let kernelPromise: Promise<FalconKernel> | null = null;
-
-async function getFalconKernel(): Promise<FalconKernel> {
-  if (!kernelPromise) {
-    kernelPromise = (async () => {
-      const mod = await import('falcon-sign');
-      const getKernel =
-        typeof (mod as any).getKernel === 'function'
-          ? (mod as any).getKernel
-          : typeof (mod as any).default?.getKernel === 'function'
-            ? (mod as any).default.getKernel
-            : null;
-      if (typeof getKernel !== 'function') {
-        throw new Error('falcon-sign module does not export getKernel');
-      }
-      const kernel = await getKernel(FALCON_KERNEL_ID);
-      if (!kernel) throw new Error(`Unsupported Falcon kernel: ${FALCON_KERNEL_ID}`);
-      return kernel as FalconKernel;
-    })();
-  }
-  return kernelPromise;
+export interface FalconCompatibilityProof {
+  algorithm: 'falcon-512-staged-compat';
+  mode: 'offchain-sidecar';
+  messageDigestHex: string;
+  falconPublicKeyHex: string;
+  falconSignatureHex: string;
+  note: string;
 }
 
 function expandSeed(masterSeed: Uint8Array, targetLength: number, label: string): Uint8Array {
@@ -48,13 +31,20 @@ function expandSeed(masterSeed: Uint8Array, targetLength: number, label: string)
   return out;
 }
 
-export interface FalconCompatibilityProof {
-  algorithm: 'falcon-512-staged-compat';
-  mode: 'offchain-sidecar';
-  messageDigestHex: string;
-  falconPublicKeyHex: string;
-  falconSignatureHex: string;
-  note: string;
+export async function deriveQBTCFalconKeyPair(seedMaterial: Uint8Array) {
+  await initFalcon();
+  const falconSeed = expandSeed(seedMaterial, SEED_SIZE, 'QBTC-FALCON-SEED');
+  const keyPair = falcon.seedKeygen(falconSeed);
+  return {
+    publicKey: keyPair.publicKey,
+    secretKey: keyPair.secretKey,
+    seed: falconSeed,
+  };
+}
+
+export async function signQBTCFalconDigest(messageDigest: Uint8Array, secretKey: Uint8Array): Promise<Uint8Array> {
+  await initFalcon();
+  return falcon.sign(messageDigest, secretKey);
 }
 
 export async function createQBTCFalconCompatibilityProof(
@@ -62,25 +52,19 @@ export async function createQBTCFalconCompatibilityProof(
   dilSeed: Uint8Array,
   messageDigest: Uint8Array
 ): Promise<FalconCompatibilityProof> {
-  const kernel = await getFalconKernel();
+  await initFalcon();
   const master = new Uint8Array(ecdsaPriv.length + dilSeed.length);
   master.set(ecdsaPriv, 0);
   master.set(dilSeed, ecdsaPriv.length);
-  const falconSeed = expandSeed(master, kernel.genkeySeedByte, 'QBTC-FALCON-COMPAT');
-  const keyPair = kernel.genkey(falconSeed);
-  if (!keyPair) {
-    throw new Error('Falcon compatibility key generation failed');
-  }
-  const sig = kernel.sign(messageDigest, keyPair.sk);
-  if (!sig) {
-    throw new Error('Falcon compatibility signing failed');
-  }
+  const falconSeed = expandSeed(master, SEED_SIZE, 'QBTC-FALCON-COMPAT');
+  const keyPair = falcon.seedKeygen(falconSeed);
+  const sig = falcon.sign(messageDigest, keyPair.secretKey);
   return {
     algorithm: 'falcon-512-staged-compat',
     mode: 'offchain-sidecar',
     messageDigestHex: Buffer.from(messageDigest).toString('hex'),
-    falconPublicKeyHex: Buffer.from(keyPair.pk).toString('hex'),
+    falconPublicKeyHex: Buffer.from(keyPair.publicKey).toString('hex'),
     falconSignatureHex: Buffer.from(sig).toString('hex'),
-    note: 'Staged compatibility proof only. QBTC consensus witness remains ML-DSA-44 + ECDSA until protocol upgrade.',
+    note: 'Generated with the exact QuantBTC Falcon-padded-512 runtime.',
   };
 }

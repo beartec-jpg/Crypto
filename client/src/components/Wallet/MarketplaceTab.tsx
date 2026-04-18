@@ -751,7 +751,7 @@ function BuyerClaimQBTCPanel({
 
       // 3. Build claim tx (hash-only mode — no key needed, just secret)
       setStep('Signing claim transaction…');
-      const rawTx = createHTLCClaimTransaction(
+      const rawTx = await createHTLCClaimTransaction(
         htlcScript,
         utxos,
         swap.secret!,

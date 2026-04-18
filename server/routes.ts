@@ -131,6 +131,56 @@ async function qbtcRpcCall(method: string, params: any[] = [], wallet = '', netw
   return response.data.result;
 }
 
+function qbtcDescriptorFromAddressInfo(address: string, scriptPubKey?: string): { desc: string } {
+  if (scriptPubKey && typeof scriptPubKey === 'string') {
+    return { desc: `raw(${scriptPubKey})` };
+  }
+  return { desc: `addr(${address})` };
+}
+
+function normalizeBlockchainWarnings(warnings: unknown): string[] {
+  if (Array.isArray(warnings)) {
+    return warnings.map((item) => String(item)).filter(Boolean);
+  }
+  if (typeof warnings === 'string' && warnings.trim()) {
+    return [warnings.trim()];
+  }
+  return [];
+}
+
+function inferQbtcTransactionCompatibility(tx: any, pqcInfo?: any) {
+  const witnessHexLengths = Array.isArray(tx?.vin)
+    ? tx.vin
+        .filter((vin: any) => Array.isArray(vin?.txinwitness))
+        .map((vin: any) =>
+          vin.txinwitness.map((item: unknown) => typeof item === 'string' ? item.length : 0)
+        )
+    : [];
+
+  const flattenedLengths = witnessHexLengths.reduce((all: number[], row: number[]) => all.concat(row), []);
+  const maxHexLength = flattenedLengths.length > 0 ? Math.max(...flattenedLengths) : 0;
+
+  let detectedAlgorithm: string | null = null;
+  if (typeof pqcInfo?.standard === 'string' && pqcInfo.standard) {
+    detectedAlgorithm = pqcInfo.standard;
+  } else if (typeof pqcInfo?.scheme === 'string' && pqcInfo.scheme) {
+    detectedAlgorithm = pqcInfo.scheme;
+  } else if (maxHexLength >= 4000) {
+    detectedAlgorithm = 'ML-DSA / Dilithium hybrid';
+  } else if (maxHexLength >= 1200) {
+    detectedAlgorithm = 'Falcon-padded hybrid';
+  }
+
+  return {
+    standard: detectedAlgorithm,
+    scheme: pqcInfo?.scheme ?? null,
+    witnessInputCount: witnessHexLengths.length,
+    witnessElementsMax: witnessHexLengths.reduce((max: number, row: number[]) => Math.max(max, row.length), 0),
+    witnessHexLengths: witnessHexLengths.slice(0, 6),
+    hybridWitness: witnessHexLengths.some((row: number[]) => row.length >= 4),
+  };
+}
+
 async function verifyRecaptchaToken(token?: string): Promise<boolean> {
   const secret = process.env.RECAPTCHA_SECRET_KEY;
   if (!secret) return true;
@@ -8640,18 +8690,18 @@ CRITICAL DATA RULES:
         blockHeight,
         difficulty: blockchainInfo?.difficulty ?? null,
         pqc: pqcInfo ? {
-          enabled: pqcInfo.pqc_enabled ?? false,
-          mode: pqcInfo.pqc_mode ?? 'unknown',
-          algorithm: pqcInfo.pqc_algorithm ?? 'ML-DSA-44',
+          enabled: pqcInfo.pqc_enabled ?? blockchainInfo?.pqc ?? true,
+          mode: pqcInfo.pqc_mode ?? pqcInfo.scheme ?? 'hybrid',
+          algorithm: pqcInfo.pqc_algorithm ?? pqcInfo.standard ?? pqcInfo.scheme ?? 'Falcon-padded-512',
         } : {
-          enabled: true,
+          enabled: Boolean(blockchainInfo?.pqc ?? true),
           mode: 'hybrid',
-          algorithm: 'ML-DSA-44',
+          algorithm: 'Falcon-padded-512',
         },
         dag: {
-          ghostdagK: 18,
-          blockTargetSeconds: 2,
-          mergeSetSize: null,
+          ghostdagK: blockchainInfo?.ghostdag_k ?? 32,
+          blockTargetSeconds: 10,
+          mergeSetSize: blockchainInfo?.dag_tips ?? null,
           parentCount: null,
         },
       });
@@ -8660,8 +8710,8 @@ CRITICAL DATA RULES:
         network: 'qbtc-testnet',
         blockHeight: null,
         difficulty: null,
-        pqc: { enabled: true, mode: 'hybrid', algorithm: 'ML-DSA-44' },
-        dag: { ghostdagK: 18, blockTargetSeconds: 2, mergeSetSize: null, parentCount: null },
+        pqc: { enabled: true, mode: 'hybrid', algorithm: 'Falcon-padded-512' },
+        dag: { ghostdagK: 32, blockTargetSeconds: 10, mergeSetSize: null, parentCount: null },
         warning: error?.message || 'Unable to fetch QBTC faucet stats',
       });
     }
@@ -8724,11 +8774,50 @@ CRITICAL DATA RULES:
   app.get('/api/qbtc-scan/stats', async (req: Request, res: Response) => {
     try {
       const network = ((req.query.network as string) || 'testnet') as QbtcNetwork;
-      const [blockchainInfo, mempoolInfo, netHashPs] = await Promise.all([
+      const [
+        blockchainInfo,
+        mempoolInfo,
+        netHashPs,
+        peerInfo,
+        txoutInfo,
+        chainTxStats,
+        miningInfo,
+        pqcInfo,
+        uptimeSeconds,
+        networkInfo,
+      ] = await Promise.all([
         qbtcRpcCall('getblockchaininfo', [], '', network),
-        qbtcRpcCall('getmempoolinfo', [], '', network),
-        qbtcRpcCall('getnetworkhashps', [], '', network),
+        qbtcRpcCall('getmempoolinfo', [], '', network).catch(() => null),
+        qbtcRpcCall('getnetworkhashps', [], '', network).catch(() => null),
+        qbtcRpcCall('getpeerinfo', [], '', network).catch(() => []),
+        qbtcRpcCall('gettxoutsetinfo', [], '', network).catch(() => null),
+        qbtcRpcCall('getchaintxstats', [], '', network).catch(() => null),
+        qbtcRpcCall('getmininginfo', [], '', network).catch(() => null),
+        qbtcRpcCall('getpqcinfo', [], '', network).catch(() => null),
+        qbtcRpcCall('uptime', [], '', network).catch(() => null),
+        qbtcRpcCall('getnetworkinfo', [], '', network).catch(() => null),
       ]);
+
+      const latestBlock = blockchainInfo?.bestblockhash
+        ? await qbtcRpcCall('getblock', [blockchainInfo.bestblockhash, 2], '', network).catch(() => null)
+        : null;
+
+      const warnings = normalizeBlockchainWarnings(blockchainInfo?.warnings);
+      const avgBlockTime = chainTxStats?.window_block_count
+        ? chainTxStats.window_interval / chainTxStats.window_block_count
+        : null;
+      const avgTxsPerBlock = chainTxStats?.window_block_count
+        ? chainTxStats.window_tx_count / chainTxStats.window_block_count
+        : Array.isArray(latestBlock?.tx) ? latestBlock.tx.length : null;
+      const latestBlockOutputCount = Array.isArray(latestBlock?.tx)
+        ? latestBlock.tx.reduce((sum: number, tx: any) => sum + (Array.isArray(tx?.vout) ? tx.vout.length : 0), 0)
+        : null;
+      const paymentsPerSec = latestBlockOutputCount != null && avgBlockTime && avgBlockTime > 0
+        ? latestBlockOutputCount / avgBlockTime
+        : chainTxStats?.txrate ?? null;
+      const avgFee = mempoolInfo?.mempoolminfee != null
+        ? Number(((Number(mempoolInfo.mempoolminfee) * 1e8) / 1000).toFixed(2))
+        : null;
 
       return res.json({
         selectedNetwork: network,
@@ -8740,7 +8829,28 @@ CRITICAL DATA RULES:
         verificationProgress: blockchainInfo?.verificationprogress ?? null,
         mempoolTx: mempoolInfo?.size ?? 0,
         mempoolBytes: mempoolInfo?.bytes ?? 0,
-        networkHashPs: netHashPs ?? 0,
+        networkHashPs: netHashPs ?? miningInfo?.networkhashps ?? 0,
+        lastBlockTime: blockchainInfo?.time ?? null,
+        peers: Array.isArray(peerInfo) ? peerInfo.length : null,
+        uptime: typeof uptimeSeconds === 'number' ? uptimeSeconds : null,
+        txCount: chainTxStats?.txcount ?? txoutInfo?.transactions ?? null,
+        txRate: chainTxStats?.txrate ?? null,
+        paymentsPerSec: paymentsPerSec != null ? Number(paymentsPerSec.toFixed(2)) : null,
+        circulatingSupply: txoutInfo?.total_amount != null ? Number(txoutInfo.total_amount).toFixed(8) : null,
+        utxoCount: txoutInfo?.txouts ?? null,
+        dagTips: blockchainInfo?.dag_tips ?? null,
+        ghostdagK: blockchainInfo?.ghostdag_k ?? null,
+        pqcActive: Boolean(blockchainInfo?.pqc ?? pqcInfo),
+        pqcAlgorithm: pqcInfo?.standard ?? pqcInfo?.scheme ?? null,
+        dagMode: blockchainInfo?.dagmode ?? null,
+        chainSizeBytes: blockchainInfo?.size_on_disk ?? null,
+        chainwork: blockchainInfo?.chainwork ?? null,
+        nodeVersion: networkInfo?.subversion ?? peerInfo?.[0]?.subver ?? null,
+        avgTxsPerBlock: avgTxsPerBlock != null ? Number(avgTxsPerBlock.toFixed(2)) : null,
+        avgBlockTime: avgBlockTime != null ? Number(avgBlockTime.toFixed(2)) : null,
+        avgFee,
+        warnings,
+        warningCount: warnings.length,
       });
     } catch (error: any) {
       if (error?.code === 'MAINNET_NOT_ACTIVE') {
@@ -8817,10 +8927,23 @@ CRITICAL DATA RULES:
       if (isAddress) {
         let utxoSet: any = null;
         let walletTxs: any[] = [];
+        const descriptors: Array<{ desc: string }> = [];
+
         try {
-          utxoSet = await qbtcRpcCall('scantxoutset', ['start', [`addr(${q})`]], '', network);
+          const addressInfo = await qbtcRpcCall('validateaddress', [q], '', network);
+          descriptors.push(qbtcDescriptorFromAddressInfo(q, addressInfo?.scriptPubKey));
         } catch {
-          utxoSet = null;
+          // Fall back to addr() descriptor below.
+        }
+        descriptors.push({ desc: `addr(${q})` });
+
+        for (const descriptor of descriptors) {
+          try {
+            utxoSet = await qbtcRpcCall('scantxoutset', ['start', [descriptor]], '', network);
+            break;
+          } catch {
+            utxoSet = null;
+          }
         }
 
         try {
@@ -8839,7 +8962,7 @@ CRITICAL DATA RULES:
             unspents: utxoSet?.unspents ?? [],
             txCount: walletTxs.length,
             recentWalletTxs: walletTxs.slice(0, 20),
-            note: utxoSet ? undefined : 'Address scan limited: node may not support scantxoutset or address index.',
+            note: utxoSet ? undefined : 'Address scan limited: node may not support this address descriptor format.',
           },
         });
       }
@@ -8860,7 +8983,15 @@ CRITICAL DATA RULES:
         }
 
         const tx = await qbtcRpcCall('getrawtransaction', [q, true], '', network);
-        return res.json({ type: 'transaction', query: q, result: tx });
+        const pqcInfo = await qbtcRpcCall('getpqcinfo', [], '', network).catch(() => null);
+        return res.json({
+          type: 'transaction',
+          query: q,
+          result: {
+            ...tx,
+            qbtcCompatibility: inferQbtcTransactionCompatibility(tx, pqcInfo),
+          },
+        });
       }
 
       return res.status(400).json({

@@ -16,6 +16,9 @@
 #include "sign.h"
 #include "params.h"
 
+static const uint8_t QBTC_MLDSA_CTX[] = "QuantBTC-MLDSA-v1";
+static const size_t QBTC_MLDSA_CTX_LEN = sizeof(QBTC_MLDSA_CTX) - 1;
+
 /* ── keygen (random) ──────────────────────────────────────────── */
 EMSCRIPTEN_KEEPALIVE
 int dilithium_keygen(uint8_t *pk, uint8_t *sk) {
@@ -34,8 +37,8 @@ int dilithium_sign(uint8_t *sig, size_t *siglen,
                    const uint8_t *msg, size_t msglen,
                    const uint8_t *sk)
 {
-    /* Empty context (nullptr, 0) — matches the node's Dilithium::Sign() */
-    return crypto_sign_signature(sig, siglen, msg, msglen, (const uint8_t*)0, 0, sk);
+    /* Match the live node's QuantBTC-specific ML-DSA domain context. */
+    return crypto_sign_signature(sig, siglen, msg, msglen, QBTC_MLDSA_CTX, QBTC_MLDSA_CTX_LEN, sk);
 }
 
 /* ── verify ───────────────────────────────────────────────────── */
@@ -44,8 +47,8 @@ int dilithium_verify(const uint8_t *sig, size_t siglen,
                      const uint8_t *msg, size_t msglen,
                      const uint8_t *pk)
 {
-    /* Empty context — matches the node's Dilithium::Verify() */
-    return crypto_sign_verify(sig, siglen, msg, msglen, (const uint8_t*)0, 0, pk);
+    /* Match the live node's QuantBTC-specific ML-DSA domain context. */
+    return crypto_sign_verify(sig, siglen, msg, msglen, QBTC_MLDSA_CTX, QBTC_MLDSA_CTX_LEN, pk);
 }
 
 /* ── size constants (readable from JS) ────────────────────────── */

@@ -941,7 +941,7 @@ export default function SendForm({
               <div className="mt-2 px-3 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-start gap-2">
                 <Shield className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-cyan-400">
-                  Vault sends use <strong>ECDSA + ML-DSA-44</strong> dual signatures. Larger transaction size but quantum-resistant.
+                  Vault sends use <strong>ECDSA + QBTC PQC hybrid</strong> signatures. Larger transaction size but quantum-resistant.
                 </p>
               </div>
             )}

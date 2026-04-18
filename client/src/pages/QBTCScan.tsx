@@ -28,9 +28,12 @@ interface ScanStats {
   ghostdagK?: number | null;
   pqcActive?: boolean | null;
   dagMode?: boolean | null;
+  pqcAlgorithm?: string | null;
   chainSizeBytes?: number | null;
   chainwork?: string | null;
   nodeVersion?: string | null;
+  warnings?: string[] | null;
+  warningCount?: number | null;
   // Per-block averages
   avgTxsPerBlock?: number | null;
   avgBlockTime?: number | null;
@@ -531,6 +534,53 @@ export default function QBTCScanPage() {
   const openChart = useCallback((metric: MetricKey) => setSelectedMetric(metric), []);
   const closeChart = useCallback(() => setSelectedMetric(null), []);
 
+  const runSearch = useCallback(async (nextQuery?: string) => {
+    const q = (nextQuery ?? query).trim();
+    if (!q) return;
+
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const res = await fetch(`/api/qbtc-scan/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || 'Search failed');
+        return;
+      }
+
+      setResult(data);
+      setActiveTab('chain');
+    } catch {
+      setError('Unable to reach QBTC scan endpoint');
+    } finally {
+      setLoading(false);
+    }
+  }, [query]);
+
+  const txSummary = useMemo(() => {
+    if (result?.type !== 'transaction' || !result.result) return null;
+
+    const tx = result.result;
+    const outputs = Array.isArray(tx.vout) ? tx.vout : [];
+    const totalOutput = outputs.reduce((sum: number, out: any) => sum + Number(out?.value || 0), 0);
+    const compatibility = tx.qbtcCompatibility || {};
+
+    return {
+      txid: tx.txid || result.query,
+      confirmations: tx.confirmations ?? 0,
+      inputs: Array.isArray(tx.vin) ? tx.vin.length : 0,
+      outputs: outputs.length,
+      totalOutput,
+      pqcLabel: compatibility.standard || compatibility.scheme || (compatibility.hybridWitness ? 'Hybrid PQC witness' : 'Standard witness'),
+      witnessShape: Array.isArray(compatibility.witnessHexLengths) && compatibility.witnessHexLengths.length > 0
+        ? compatibility.witnessHexLengths[0].join(' / ')
+        : null,
+    };
+  }, [result]);
+
   // Read ?q= from URL and auto-search on mount
   const initialSearchDone = useRef(false);
   useEffect(() => {
@@ -540,22 +590,10 @@ export default function QBTCScanPage() {
     if (q) {
       initialSearchDone.current = true;
       setQuery(q);
-      setActiveTab('tx');
-      // Trigger search after state settles
-      setTimeout(async () => {
-        setLoading(true);
-        setError(null);
-        setResult(null);
-        try {
-          const res = await fetch(`/api/qbtc-scan/search?q=${encodeURIComponent(q)}`);
-          const data = await res.json();
-          if (!res.ok) { setError(data.error || 'Search failed'); return; }
-          setResult(data);
-        } catch { setError('Unable to reach QBTC scan endpoint'); }
-        finally { setLoading(false); }
-      }, 0);
+      setActiveTab('chain');
+      void runSearch(q);
     }
-  }, []);
+  }, [runSearch]);
 
   // If last block is older than 60 seconds, mining is inactive — zero out live metrics
   const miningInactive = useMemo(() => {
@@ -606,30 +644,9 @@ export default function QBTCScanPage() {
     return () => clearInterval(id);
   }, []);
 
-  const onSearch = async () => {
-    const q = query.trim();
-    if (!q) return;
-
-    setLoading(true);
-    setError(null);
-    setResult(null);
-
-    try {
-      const res = await fetch(`/api/qbtc-scan/search?q=${encodeURIComponent(q)}`);
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || 'Search failed');
-        return;
-      }
-
-      setResult(data);
-    } catch {
-      setError('Unable to reach QBTC scan endpoint');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const onSearch = useCallback(() => {
+    void runSearch();
+  }, [runSearch]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 relative overflow-hidden">
@@ -674,7 +691,7 @@ export default function QBTCScanPage() {
 
         <div className="rounded-2xl border border-slate-700 bg-slate-900/70 backdrop-blur p-6 md:p-8">
           <h1 className="text-3xl font-bold tracking-tight mb-2">QBTC Scan</h1>
-          <p className="text-slate-300 mb-4">Search transactions, addresses, blocks, and monitor live QBTC performance stats.</p>
+          <p className="text-slate-300 mb-4">Search transactions, addresses, blocks, and monitor live QBTC chain, DAG, and PQC status.</p>
 
           {/* Tabs */}
           <div className="flex gap-1 mb-6 border-b border-slate-700 pb-0">
@@ -688,7 +705,7 @@ export default function QBTCScanPage() {
               onClick={() => setActiveTab('tx')}
               className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${activeTab === 'tx' ? 'bg-slate-800 text-cyan-300 border border-slate-700 border-b-transparent -mb-px' : 'text-slate-400 hover:text-slate-200'}`}
             >
-              <span className="flex items-center gap-1.5"><ArrowLeftRight className="w-3.5 h-3.5" /> TX Data</span>
+              <span className="flex items-center gap-1.5"><ArrowLeftRight className="w-3.5 h-3.5" /> Market Data</span>
             </button>
           </div>
 
@@ -831,6 +848,11 @@ export default function QBTCScanPage() {
                 </span>
               ) : <span className="text-slate-500">...</span>}
             </span>
+            {stats.pqcAlgorithm && (
+              <span className="px-2 py-0.5 rounded-full font-medium bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                {stats.pqcAlgorithm}
+              </span>
+            )}
             <span className="flex items-center gap-1">
               <Network className="w-3.5 h-3.5 text-slate-400" />
               <span className="text-slate-400">DAG Mode:</span>
@@ -847,6 +869,11 @@ export default function QBTCScanPage() {
                 {stripSlashes(stats.nodeVersion)}
               </span>
             </span>
+            {(stats.warningCount ?? 0) > 0 && (
+              <span className="px-2 py-0.5 rounded-full font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                {stats.warningCount} warning{stats.warningCount === 1 ? '' : 's'}
+              </span>
+            )}
           </div>
 
           <div className="flex gap-2 mb-3">
@@ -880,7 +907,10 @@ export default function QBTCScanPage() {
                   {overview.latestBlocks.slice(0, 10).map((block) => (
                     <button
                       key={block.hash}
-                      onClick={() => setQuery(block.hash)}
+                      onClick={() => {
+                        setQuery(block.hash);
+                        void runSearch(block.hash);
+                      }}
                       className="w-full text-left rounded-lg border border-slate-800 p-2 hover:border-cyan-500/50 transition-colors"
                       title="Click to search this block hash"
                     >
@@ -901,7 +931,10 @@ export default function QBTCScanPage() {
                   {overview.latestMempoolTxids.slice(0, 20).map((txid) => (
                     <button
                       key={txid}
-                      onClick={() => setQuery(txid)}
+                      onClick={() => {
+                        setQuery(txid);
+                        void runSearch(txid);
+                      }}
                       className="w-full text-left rounded-lg border border-slate-800 p-2 hover:border-cyan-500/50 transition-colors"
                       title="Click to search this transaction"
                     >
@@ -934,6 +967,27 @@ export default function QBTCScanPage() {
                   </a>
                 )}
               </div>
+              {txSummary && (
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4 text-xs">
+                  <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
+                    <p className="text-slate-400">Confirmations</p>
+                    <p className="font-semibold text-slate-100">{txSummary.confirmations}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
+                    <p className="text-slate-400">Inputs / Outputs</p>
+                    <p className="font-semibold text-slate-100">{txSummary.inputs} / {txSummary.outputs}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
+                    <p className="text-slate-400">Total Output</p>
+                    <p className="font-semibold text-slate-100">{txSummary.totalOutput.toFixed(8)} QBTC</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-800 bg-slate-900 p-3 md:col-span-2">
+                    <p className="text-slate-400">PQC Witness</p>
+                    <p className="font-semibold text-cyan-300">{txSummary.pqcLabel}</p>
+                    {txSummary.witnessShape && <p className="text-[10px] text-slate-500 mt-1">Hex lengths: {txSummary.witnessShape}</p>}
+                  </div>
+                </div>
+              )}
               <pre className="text-xs overflow-auto max-h-[420px] p-3 rounded bg-slate-900 border border-slate-800">
                 {JSON.stringify(result.result, null, 2)}
               </pre>

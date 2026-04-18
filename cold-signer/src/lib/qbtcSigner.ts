@@ -1,12 +1,7 @@
 /**
- * QBTC Hybrid Signature Service - Quantum-resistant signing for QuantumBTC
+ * QBTC Hybrid Signature Service - offline signing for QuantumBTC.
  *
- * QBTC uses a dual-signature scheme:
- *   1. ECDSA (secp256k1) — backwards-compatible with Bitcoin
- *   2. ML-DSA-44 (Dilithium) — post-quantum resistant
- *
- * Both signatures are required for a valid QBTC transaction.
- * Addresses use hybrid format: Hash160(ecdsa_pk || pqc_pk)
+ * Uses the exact Falcon-padded-512 runtime for the PQC witness path.
  */
 
 import * as bitcoin from 'bitcoinjs-lib';
@@ -16,7 +11,7 @@ import { sha256 as sha256Hash } from '@noble/hashes/sha256';
 import { sha512 } from '@noble/hashes/sha512';
 import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
-import { initDilithium, dilithium } from './dilithium-wasm/dilithiumWasm';
+import { initFalcon, falcon } from './falcon-wasm/falconWasm';
 import { createQBTCFalconCompatibilityProof, type FalconCompatibilityProof } from './falconCompat';
 import * as bip39 from 'bip39';
 
@@ -51,6 +46,7 @@ export interface QBTCSignedResult {
   txHex: string;
   ecdsaPublicKey: string;
   dilithiumPublicKey: string;
+  pqcPublicKey: string;
   falconCompatibilityProof?: FalconCompatibilityProof;
 }
 
@@ -83,15 +79,15 @@ function deriveQBTCKeys(mnemonic: string) {
   const ecdsaPriv = hmacSha512(new Uint8Array(seed), ecdsaContext).slice(0, 32);
   const ecdsaPub = ecc.getPublicKey(ecdsaPriv, true);
 
-  // Dilithium seed — derived independently from masterSeed with a separate
-  // context label 'QBTC-PQC', matching DilithiumKey.fromIndependentSeed path
-  // used in hot wallet QBTCKeyPair.fromMasterSeed (NOT fromECDSAPrivKey).
+  // PQC seed material — derived independently from the master seed with
+  // the QBTC-PQC context label to match the hot-wallet flow.
   const pqcLabel = new TextEncoder().encode('QBTC-PQC');
   const pqcContext = new Uint8Array(pqcLabel.length + idxBytes.length);
   pqcContext.set(pqcLabel, 0);
   pqcContext.set(idxBytes, pqcLabel.length);
-  const dilSeed = hmacSha512(new Uint8Array(seed), pqcContext).slice(0, 32);
-  const { secretKey: dilPriv, publicKey: dilPub } = dilithium.seedKeygen(dilSeed);
+  const dilSeed = hmacSha512(new Uint8Array(seed), pqcContext).slice(0, 48);
+
+  const { secretKey: dilPriv, publicKey: dilPub } = falcon.seedKeygen(dilSeed);
 
   // Hybrid address hash: Hash160(ecdsa_pk || pqc_pk)
   const combined = Buffer.concat([Buffer.from(ecdsaPub), Buffer.from(dilPub)]);
@@ -108,7 +104,7 @@ function deriveQBTCKeys(mnemonic: string) {
 }
 
 /**
- * Sign a QBTC transaction with hybrid ECDSA + Dilithium signatures.
+ * Sign a QBTC transaction with hybrid ECDSA + Falcon signatures.
  * Produces a real serialized Bitcoin transaction with 4-element witness.
  */
 export async function signQBTCTransaction(
@@ -119,7 +115,7 @@ export async function signQBTCTransaction(
     throw new Error('No UTXOs provided for QBTC transaction');
   }
 
-  await initDilithium();
+  await initFalcon();
   const keys = deriveQBTCKeys(mnemonic);
   const network = QBTC_TESTNET;
 
@@ -148,7 +144,7 @@ export async function signQBTCTransaction(
   const scriptCode = bitcoin.payments.p2pkh({ hash: keys.hybridHash, network }).output!;
 
   // Sign each input
-  txData.utxos.forEach((utxo, idx) => {
+  for (const [idx, utxo] of txData.utxos.entries()) {
     const digest = tx.hashForWitnessV0(idx, scriptCode, utxo.value, bitcoin.Transaction.SIGHASH_ALL);
 
     // ECDSA signature — `bitcoin.script.signature.encode` accepts compact
@@ -159,8 +155,8 @@ export async function signQBTCTransaction(
       bitcoin.Transaction.SIGHASH_ALL
     );
 
-    // Dilithium signature over the same BIP-143 digest
-    const dilithiumSignature = Buffer.from(dilithium.sign(digest, keys.dilPriv));
+    // Falcon signature over the same BIP-143 digest
+    const dilithiumSignature = Buffer.from(falcon.sign(digest, keys.dilPriv));
 
     tx.setWitness(idx, [
       ecdsaSignature,
@@ -168,7 +164,7 @@ export async function signQBTCTransaction(
       dilithiumSignature,
       keys.dilPub,
     ]);
-  });
+  }
 
   const txHex = tx.toHex();
   const falconCompatibilityProof = await createQBTCFalconCompatibilityProof(
@@ -177,12 +173,11 @@ export async function signQBTCTransaction(
     sha256(Buffer.from(txHex, 'hex'))
   );
 
-  // `dilSeed` stays internal to this signer flow for compatibility proof
-  // derivation and is not exposed in the public QBTCSignedResult payload.
   return {
     txHex,
     ecdsaPublicKey: keys.ecdsaPub.toString('hex'),
     dilithiumPublicKey: keys.dilPub.toString('hex'),
+    pqcPublicKey: keys.dilPub.toString('hex'),
     falconCompatibilityProof,
   };
 }

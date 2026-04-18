@@ -61,8 +61,17 @@ export async function initDilithium(): Promise<void> {
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    const wasmResponse = await fetch('/cold-signer/dilithium.wasm');
-    const wasmBinary = new Uint8Array(await wasmResponse.arrayBuffer());
+    let wasmBinary: Uint8Array;
+
+    if (typeof window === 'undefined') {
+      const { readFile } = await import('node:fs/promises');
+      const wasmUrl = new URL('./dilithium.wasm', import.meta.url);
+      wasmBinary = new Uint8Array(await readFile(wasmUrl));
+    } else {
+      const wasmResponse = await fetch(new URL('./dilithium.wasm', import.meta.url));
+      wasmBinary = new Uint8Array(await wasmResponse.arrayBuffer());
+    }
+
     mod = await createDilithiumModule({
       wasmBinary,
     });

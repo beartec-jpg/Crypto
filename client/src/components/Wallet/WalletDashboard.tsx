@@ -436,6 +436,28 @@ export default function WalletDashboard({
     }
   };
 
+  const inProgressTransactions = pendingTransactions.filter((tx) => tx.status !== 'confirmed');
+  const confirmedPendingTransactions: Transaction[] = pendingTransactions
+    .filter((tx) => tx.status === 'confirmed')
+    .map((tx) => ({
+      hash: tx.hash,
+      type: 'send' as const,
+      amount: tx.amount,
+      token: tx.token,
+      to: tx.to,
+      from: tx.from,
+      timestamp: new Date(tx.timestamp),
+      status: 'confirmed' as const,
+      chain: tx.chain,
+    }));
+
+  const recentTransactions = [...confirmedPendingTransactions, ...allTransactions]
+    .filter(
+      (tx, index, arr) =>
+        arr.findIndex((item) => item.chain === tx.chain && item.hash === tx.hash) === index
+    )
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
   // Get tokens for each chain
   const getChainTokens = (chain: Chain) => {
     return tokens.filter(t => t.chain === chain && t.network === tokenNetwork && !t.isNative && t.isVisible);
@@ -459,7 +481,7 @@ export default function WalletDashboard({
         : `https://bscscan.com/tx/${hash}`,
       xrp: `https://xrpscan.com/tx/${hash}`,
       solana: `https://solscan.io/tx/${hash}`,
-      qbtc: `http://localhost:28332/tx/${hash}`,
+      qbtc: `/qbtc-scan?q=${encodeURIComponent(hash)}`,
     };
     return explorers[chain];
   };
@@ -631,10 +653,10 @@ To: ${tx.to}`;
             <h3 className="text-lg font-semibold mb-4">Recent Transactions</h3>
             
             {/* Pending Transactions */}
-            {pendingTransactions.length > 0 && (
+            {inProgressTransactions.length > 0 && (
               <div className="space-y-3 mb-4">
                 <h4 className="text-sm font-medium text-gray-400">Pending</h4>
-                {pendingTransactions.map((tx) => (
+                {inProgressTransactions.map((tx) => (
                   <PendingTransactionCard 
                     key={tx.hash} 
                     transaction={tx}
@@ -645,7 +667,7 @@ To: ${tx.to}`;
             )}
 
             {/* Confirmed Transactions */}
-            {allTransactions.length === 0 ? (
+            {recentTransactions.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <Clock className="w-12 h-12 mx-auto mb-2 opacity-50" />
                 <p>No recent transactions</p>
@@ -653,10 +675,10 @@ To: ${tx.to}`;
               </div>
             ) : (
               <div className="space-y-3">
-                {pendingTransactions.length > 0 && (
+                {inProgressTransactions.length > 0 && (
                   <h4 className="text-sm font-medium text-gray-400 mt-4">Confirmed</h4>
                 )}
-                {allTransactions.slice(0, 5).map((tx) => (
+                {recentTransactions.slice(0, 5).map((tx) => (
                   <div
                     key={tx.hash}
                     className="group flex flex-col md:flex-row md:items-center md:justify-between p-3 rounded-lg bg-gray-900/50 hover:bg-gray-900 transition-colors"
