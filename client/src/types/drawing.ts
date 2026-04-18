@@ -290,7 +290,6 @@ export interface Drawing {
     /** For elliott_wave drawings: whether to show the label */
     showLabel?: boolean;
     /** For elliott_wave drawings: font size of the label */
-    fontSize?: string;
     /** For elliott_wave drawings: color of impulse waves */
     impulseColor?: string;
     /** For elliott_wave drawings: color of corrective/zigzag waves */

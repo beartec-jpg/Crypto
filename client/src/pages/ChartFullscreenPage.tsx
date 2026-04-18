@@ -761,7 +761,7 @@ export function ChartFullscreenPage({
     setOrderBlocksEnabled: (enabled) => obSettings.updateSetting('enabled', enabled),
     setBOSEnabled: (enabled) => bosSettings.updateSetting('enabled', enabled),
     setLiquidityEnabled: (enabled) => liquiditySettings.updateSetting('enabled', enabled),
-    setPDZonesEnabled: (enabled) => pdZoneSettings.updateSetting('enabled', enabled),
+    setPDZonesEnabled: (enabled: boolean) => pdZoneSettings.updateSetting('enabled', enabled),
     setAutoFibEnabled: (enabled) => autoFibSettings.updateSettings({ enabled }),
     
     // Tools
@@ -1280,6 +1280,7 @@ export function ChartFullscreenPage({
       fvgs,
       orderBlocks,
       breakers,
+      sqzData: [],
       liquidityZones,
       volumeProfileData,
       swingPoints,
@@ -1618,7 +1619,7 @@ export function ChartFullscreenPage({
     drawing.points.forEach((point, index) => {
       const x = chartRef.current?.timeScale().timeToCoordinate(point.time as Time);
       const y = candleSeriesRef.current?.priceToCoordinate(point.price);
-      if (x === null || y === null) return;
+      if (x == null || y == null) return;
 
       const distance = Math.hypot(localX - x, localY - y);
       if (distance < bestDistance) {

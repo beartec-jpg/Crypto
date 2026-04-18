@@ -36,6 +36,7 @@ export interface TradingSystemCallbacks {
   setOrderBlocksEnabled?: (enabled: boolean) => void;
   setBOSEnabled?: (enabled: boolean) => void;
   setLiquidityEnabled?: (enabled: boolean) => void;
+  setPDZonesEnabled?: (enabled: boolean) => void;
   setAutoFibEnabled?: (enabled: boolean) => void;
   
   // Tool callbacks
@@ -70,6 +71,7 @@ export function useTradingSystem(callbacks: TradingSystemCallbacks) {
     callbacks.setOrderBlocksEnabled?.(false);
     callbacks.setBOSEnabled?.(false);
     callbacks.setLiquidityEnabled?.(false);
+    callbacks.setPDZonesEnabled?.(false);
     callbacks.setAutoFibEnabled?.(false);
 
     // Tools

@@ -131,8 +131,17 @@ export function generateZoneEntrySignals(
   positionSize: string;
   reason: string;
 }> {
-  
-  const entries = [];
+  const entries: Array<{
+    entryId: string;
+    direction: 'BUY' | 'SELL';
+    entry: number;
+    stopLoss: number;
+    target: number;
+    riskReward: string;
+    confidence: '🔥' | '⚡' | '⚠️';
+    positionSize: string;
+    reason: string;
+  }> = [];
   const atr = calculateATR(data);
   
   // Score FVG zones
@@ -186,7 +195,7 @@ export function generateZoneEntrySignals(
   
   return entries.sort((a, b) => {
     // Sort by confidence first, then by risk/reward
-    const confRank = { '🔥': 3, '⚡': 2, '⚠️': 1 };
+    const confRank: Record<'🔥' | '⚡' | '⚠️', number> = { '🔥': 3, '⚡': 2, '⚠️': 1 };
     const confDiff = confRank[b.confidence] - confRank[a.confidence];
     if (confDiff !== 0) return confDiff;
     return parseFloat(b.riskReward) - parseFloat(a.riskReward);

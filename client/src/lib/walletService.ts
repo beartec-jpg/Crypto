@@ -237,7 +237,7 @@ async function encryptData(data: string, password: string, salt: Uint8Array): Pr
     const keyBits = await crypto.subtle.deriveBits(
       {
         name: 'PBKDF2',
-        salt: salt,
+        salt: new Uint8Array(salt),
         iterations: 100000,
         hash: 'SHA-256',
       },
@@ -299,7 +299,7 @@ async function decryptData(encryptedHex: string, password: string, salt: Uint8Ar
     const keyBits = await crypto.subtle.deriveBits(
       {
         name: 'PBKDF2',
-        salt: salt,
+        salt: new Uint8Array(salt),
         iterations: 100000,
         hash: 'SHA-256',
       },

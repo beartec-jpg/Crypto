@@ -429,7 +429,9 @@ export async function refreshEvmTokenBalances(
 
     await Promise.all(
       evmTokens.map(async token => {
-        const walletAddress = addresses[token.chain];
+        const chain = token.chain === 'ethereum' || token.chain === 'bsc' ? token.chain : null;
+        if (!chain) return;
+        const walletAddress = addresses[chain];
         const contractAddress = token.contractAddress;
 
         if (!walletAddress || !contractAddress) return;
@@ -439,7 +441,7 @@ export async function refreshEvmTokenBalances(
             walletAddress,
             contractAddress,
             token.decimals,
-            token.chain,
+            chain,
             activeNetwork
           );
           await updateTokenBalance(walletId, token.id, balance, undefined, activeNetwork);

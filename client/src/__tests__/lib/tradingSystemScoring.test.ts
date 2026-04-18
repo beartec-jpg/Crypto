@@ -7,6 +7,7 @@ import {
 } from '@/lib/tradingSystemScoring';
 import { resetWeightsToDefault, setConditionWeight } from '@/lib/conditionWeights';
 import type { ScoringInput } from '@/lib/tradingSystemScoring';
+import type { FibSetResult } from '@/types/autoFib';
 
 const NOW = 2000;
 
@@ -26,6 +27,18 @@ const baseInput: ScoringInput = {
 
 // A bullish FVG that price is currently inside, having entered from above (previousClose > high)
 const BULLISH_FVG_INSIDE = { high: 100.5, low: 99.5, filled: false, type: 'bullish' as const };
+
+function createSecondaryFib(levelPrice: number): FibSetResult {
+  return {
+    start: { index: 0, time: 0, price: 95 },
+    end: { index: 1, time: 2000, price: 105 },
+    levels: [{ level: '61.8', percentage: '61.8%', price: levelPrice, isExtension: false, isGolden: true, isFrozen: false }],
+    color: '#FF8C00',
+    showLabels: true,
+    labelPosition: 'right',
+    extendRight: true,
+  };
+}
 
 describe('SMC Scoring - Entry Zone Filtering', () => {
   beforeEach(() => {
@@ -277,13 +290,10 @@ describe('SMC Scoring - Counter-Trend Zone Scoring', () => {
 
   // Phase 4: secondary fib alignment boosts counter-trend to 1.0x (no penalty)
   // A secondary fib level within 1% of currentPrice=100 triggers the boost.
-  const SECONDARY_FIB_NEAR_PRICE = {
-    primary: null,
-    secondary: {
-      levels: [{ label: '61.8', price: 100.5, isFrozen: false }],
-      high: 105, low: 95, startTime: 0, endTime: 2000,
-    },
-  };
+const SECONDARY_FIB_NEAR_PRICE = {
+  primary: null,
+  secondary: createSecondaryFib(100.5),
+};
 
   it('should boost counter-trend multiplier to 1.0x when secondary fib is near price', () => {
     const input: ScoringInput = {
@@ -337,10 +347,7 @@ describe('SMC Scoring - Counter-Trend Zone Scoring', () => {
   it('should not apply secondary fib boost when secondary fib is outside 1% of price', () => {
     const farFibResult = {
       primary: null,
-      secondary: {
-        levels: [{ label: '61.8', price: 102.0, isFrozen: false }], // 2% away → outside 1% threshold
-        high: 110, low: 90, startTime: 0, endTime: 2000,
-      },
+      secondary: createSecondaryFib(102.0), // 2% away → outside 1% threshold
     };
     const input: ScoringInput = {
       ...baseInput, // bullish structure
