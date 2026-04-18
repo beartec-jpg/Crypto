@@ -6,7 +6,7 @@ import { secp256k1 } from '@noble/curves/secp256k1';
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
 import * as bip39 from 'bip39';
-import { falconSign, falconVerify, generateFalconKeyPair } from './falconSigner';
+import { falconSign, falconVerify, generateFalconKeyPair, getFalconSeedLength } from './falconSigner';
 
 /**
  * Hybrid key pair containing both post-quantum (Falcon) and classical (ECDSA) keys
@@ -37,8 +37,26 @@ export interface HybridSignature {
  */
 export async function generateHybridKeys(): Promise<HybridKeyPair> {
   try {
-    const falconKeys = await generateFalconKeyPair();
-    const ecdsaPrivateKey = crypto.getRandomValues(new Uint8Array(32));
+    const masterSeed = crypto.getRandomValues(new Uint8Array(64));
+    return generateHybridKeysFromSeed(masterSeed);
+  } catch (error) {
+    console.error('Hybrid key generation failed (Falcon+ECDSA):', error);
+    throw new Error('Failed to generate Falcon/ECDSA keys. Please try again or use a different browser.');
+  }
+}
+
+/**
+ * Deterministically derive Falcon + ECDSA keys from a shared seed.
+ * Use with mnemonicToSeed(...) output to support recovery workflows.
+ */
+export async function generateHybridKeysFromSeed(masterSeed: Uint8Array): Promise<HybridKeyPair> {
+  try {
+    const falconSeedLength = await getFalconSeedLength();
+    const falconSeed = expandSeed(masterSeed, falconSeedLength, 'FALCON-512');
+    const ecdsaSeed = expandSeed(masterSeed, 32, 'ECDSA-SECP256K1');
+    const ecdsaPrivateKey = deriveDeterministicSecp256k1PrivateKey(ecdsaSeed);
+
+    const falconKeys = await generateFalconKeyPair(falconSeed);
     const ecdsaPublicKey = secp256k1.getPublicKey(ecdsaPrivateKey);
 
     return {
@@ -48,9 +66,44 @@ export async function generateHybridKeys(): Promise<HybridKeyPair> {
       ecdsaPrivateKey,
     };
   } catch (error) {
-    console.error('Key generation failed:', error);
-    throw new Error('Failed to generate cryptographic keys. Please try again or use a different browser.');
+    console.error('Seed-based hybrid key derivation failed:', error);
+    throw new Error('Failed to derive Falcon/ECDSA keys from seed material.');
   }
+}
+
+function expandSeed(masterSeed: Uint8Array, targetLength: number, label: string): Uint8Array {
+  const labelBytes = new TextEncoder().encode(label);
+  const output = new Uint8Array(targetLength);
+  let offset = 0;
+  let counter = 0;
+
+  while (offset < targetLength) {
+    const input = new Uint8Array(masterSeed.length + labelBytes.length + 1);
+    input.set(masterSeed, 0);
+    input.set(labelBytes, masterSeed.length);
+    input[input.length - 1] = counter & 0xff;
+    const block = sha256(input);
+    const remaining = targetLength - offset;
+    const chunkLength = Math.min(remaining, block.length);
+    output.set(block.slice(0, chunkLength), offset);
+    offset += chunkLength;
+    counter += 1;
+  }
+
+  return output;
+}
+
+function deriveDeterministicSecp256k1PrivateKey(seed: Uint8Array): Uint8Array {
+  for (let counter = 0; counter < 256; counter += 1) {
+    const input = new Uint8Array(seed.length + 1);
+    input.set(seed, 0);
+    input[input.length - 1] = counter;
+    const candidate = sha256(input);
+    if (secp256k1.utils.isValidPrivateKey(candidate)) {
+      return candidate;
+    }
+  }
+  throw new Error('Unable to derive valid secp256k1 private key from seed');
 }
 
 /**
