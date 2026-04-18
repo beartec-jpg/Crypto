@@ -354,13 +354,22 @@ export async function fetchAllBalances(
     
     const prices = await fetchPrices();
 
+    const chainAddresses = {
+      ethereum: getChainNetworkAddress(addresses, 'ethereum', network),
+      bitcoin: getChainNetworkAddress(addresses, 'bitcoin', network),
+      bsc: getChainNetworkAddress(addresses, 'bsc', network),
+      xrp: getChainNetworkAddress(addresses, 'xrp', network),
+      solana: getChainNetworkAddress(addresses, 'solana', network),
+      qbtc: getChainNetworkAddress(addresses, 'qbtc', network),
+    };
+
     const [ethBalance, btcBalance, bscBalance, xrpBalance, solBalance, qbtcBalance] = await Promise.all([
-      fetchEthereumBalance(getChainNetworkAddress(addresses, 'ethereum', network), network),
-      fetchBitcoinBalance(getChainNetworkAddress(addresses, 'bitcoin', network), network),
-      fetchBSCBalance(getChainNetworkAddress(addresses, 'bsc', network), network),
-      fetchXRPBalance(getChainNetworkAddress(addresses, 'xrp', network), network),
-      fetchSolanaBalance(getChainNetworkAddress(addresses, 'solana', network), network),
-      fetchQBTCBalance(getChainNetworkAddress(addresses, 'qbtc', network)),
+      chainAddresses.ethereum ? fetchEthereumBalance(chainAddresses.ethereum, network) : Promise.resolve('0'),
+      chainAddresses.bitcoin ? fetchBitcoinBalance(chainAddresses.bitcoin, network) : Promise.resolve('0'),
+      chainAddresses.bsc ? fetchBSCBalance(chainAddresses.bsc, network) : Promise.resolve('0'),
+      chainAddresses.xrp ? fetchXRPBalance(chainAddresses.xrp, network) : Promise.resolve('0'),
+      chainAddresses.solana ? fetchSolanaBalance(chainAddresses.solana, network) : Promise.resolve('0'),
+      chainAddresses.qbtc ? fetchQBTCBalance(chainAddresses.qbtc) : Promise.resolve('0'),
     ]);
 
     const balances: ChainBalance[] = [

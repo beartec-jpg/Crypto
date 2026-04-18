@@ -928,14 +928,17 @@ export async function unlockWallet(walletId: string, password: string): Promise<
 
     const btcNode = derivePath(root, DERIVATION_PATHS.bitcoin);
     privateKeys.bitcoin = btcNode.privateKey ? Buffer.from(btcNode.privateKey).toString('hex') : '';
+    const btcTestnetNode = derivePath(root, DERIVATION_PATHS.bitcoinTestnet);
 
     privateKeys.bsc = privateKeys.ethereum;
 
     const xrpNode = derivePath(root, DERIVATION_PATHS.xrp);
     privateKeys.xrp = xrpNode.privateKey ? Buffer.from(xrpNode.privateKey).toString('hex') : '';
+    const xrpTestnetNode = derivePath(root, DERIVATION_PATHS.xrpTestnet);
 
     const solNode = derivePath(root, DERIVATION_PATHS.solana);
     privateKeys.solana = solNode.privateKey ? Buffer.from(solNode.privateKey).toString('hex') : '';
+    const solTestnetNode = derivePath(root, DERIVATION_PATHS.solanaTestnet);
 
     const qbtcKeyPair = await QBTCKeyPair.fromMasterSeed(seed, 0);
     privateKeys.qbtc = qbtcKeyPair.ecdsaPrivateKeyHex;
@@ -949,12 +952,12 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     const mergedAddresses = {
       ethereum: wallet.addresses.ethereum,
       bitcoin: wallet.addresses.bitcoin,
-      bitcoinTestnet: wallet.addresses.bitcoinTestnet || deriveBitcoinAddress(btcNode.privateKey!, 'testnet'),
+      bitcoinTestnet: wallet.addresses.bitcoinTestnet || deriveBitcoinAddress(btcTestnetNode.privateKey!, 'testnet'),
       bsc: wallet.addresses.bsc,
       xrp: wallet.addresses.xrp,
-      xrpTestnet: wallet.addresses.xrpTestnet || deriveXRPAddress(xrpNode.privateKey!),
+      xrpTestnet: wallet.addresses.xrpTestnet || deriveXRPAddress(xrpTestnetNode.privateKey!),
       solana: wallet.addresses.solana,
-      solanaTestnet: wallet.addresses.solanaTestnet || deriveSolanaAddress(solNode.privateKey!),
+      solanaTestnet: wallet.addresses.solanaTestnet || deriveSolanaAddress(solTestnetNode.privateKey!),
       qbtc: wallet.addresses.qbtc || qbtcKeyPair.getAddress('testnet'),
       qbtcMainnet: wallet.addresses.qbtcMainnet || qbtcKeyPair.getAddress('mainnet'),
       qbtcVault: wallet.addresses.qbtcVault || vaultKeyPair.getAddress('testnet'),
@@ -1053,12 +1056,12 @@ export async function getCurrentWallet(userId: string): Promise<Wallet | null> {
     const addresses = {
       ethereum: wallet.addresses.ethereum,
       bitcoin: wallet.addresses.bitcoin,
-      bitcoinTestnet: wallet.addresses.bitcoinTestnet || wallet.addresses.bitcoin,
+      bitcoinTestnet: wallet.addresses.bitcoinTestnet || '',
       bsc: wallet.addresses.bsc,
       xrp: wallet.addresses.xrp,
-      xrpTestnet: wallet.addresses.xrpTestnet || wallet.addresses.xrp,
+      xrpTestnet: wallet.addresses.xrpTestnet || '',
       solana: wallet.addresses.solana,
-      solanaTestnet: wallet.addresses.solanaTestnet || wallet.addresses.solana,
+      solanaTestnet: wallet.addresses.solanaTestnet || '',
       qbtc: qbtcAddress,
       qbtcMainnet: qbtcMainnetAddress,
       qbtcVault: (wallet.addresses as any).qbtcVault || '',

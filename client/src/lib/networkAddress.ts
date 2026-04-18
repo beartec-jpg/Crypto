@@ -29,20 +29,20 @@ export function getChainNetworkAddress(
 
   if (chain === 'bitcoin') {
     return network === 'testnet'
-      ? (addresses.bitcoinTestnet || addresses.bitcoin)
-      : (addresses.bitcoin || addresses.bitcoinTestnet || '');
+      ? (addresses.bitcoinTestnet || '')
+      : addresses.bitcoin;
   }
 
   if (chain === 'xrp') {
     return network === 'testnet'
-      ? (addresses.xrpTestnet || addresses.xrp)
-      : (addresses.xrp || addresses.xrpTestnet || '');
+      ? (addresses.xrpTestnet || '')
+      : addresses.xrp;
   }
 
   if (chain === 'solana') {
     return network === 'testnet'
-      ? (addresses.solanaTestnet || addresses.solana)
-      : (addresses.solana || addresses.solanaTestnet || '');
+      ? (addresses.solanaTestnet || '')
+      : addresses.solana;
   }
 
   return addresses[chain];
@@ -56,4 +56,3 @@ export function getVaultNetworkAddress(
     ? (addresses.qbtcVaultMainnet || addresses.qbtcVault || '')
     : (addresses.qbtcVault || addresses.qbtcVaultMainnet || '');
 }
-

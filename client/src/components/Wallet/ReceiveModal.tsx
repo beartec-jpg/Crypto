@@ -80,9 +80,11 @@ export default function ReceiveModal({
   
   const config = CHAIN_CONFIG[selectedChain];
   const address = getChainNetworkAddress(addresses, selectedChain, tokenNetwork);
+  const isAddressAvailable = Boolean(address);
   const qbtcPublicKey = selectedChain === 'qbtc' ? publicKeys?.qbtc || '' : '';
 
   const handleCopy = async () => {
+    if (!address) return;
     try {
       await navigator.clipboard.writeText(address);
       setCopied(true);
@@ -93,7 +95,7 @@ export default function ReceiveModal({
   };
 
   const handleShare = async () => {
-    if (!navigator.share) return;
+    if (!address || !navigator.share) return;
     
     try {
       await navigator.share({
@@ -221,15 +223,21 @@ export default function ReceiveModal({
 
         {/* QR Code */}
         <div className="bg-white p-6 rounded-2xl flex items-center justify-center">
-          <QRCodeSVG
-            id="receive-qr"
-            value={address}
-            size={240}
-            level="H"
-            includeMargin
-            bgColor="#ffffff"
-            fgColor="#000000"
-          />
+          {isAddressAvailable ? (
+            <QRCodeSVG
+              id="receive-qr"
+              value={address}
+              size={240}
+              level="H"
+              includeMargin
+              bgColor="#ffffff"
+              fgColor="#000000"
+            />
+          ) : (
+            <p className="text-center text-gray-700 text-sm px-4">
+              Address unavailable for this network on this wallet.
+            </p>
+          )}
         </div>
 
         {/* Address Display */}
@@ -238,18 +246,19 @@ export default function ReceiveModal({
             Your {config.name} Address
           </label>
           <div className="flex items-stretch gap-2">
-            <div className="flex-1 bg-gray-800 rounded-xl p-4 font-mono text-sm break-all border border-gray-700">
-              {address}
-            </div>
-            <button
-              onClick={handleCopy}
-              className={`px-4 rounded-xl transition-colors flex items-center justify-center ${
-                copied
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-              }`}
-              title="Copy address"
-            >
+              <div className="flex-1 bg-gray-800 rounded-xl p-4 font-mono text-sm break-all border border-gray-700">
+                {address || 'Address unavailable'}
+              </div>
+              <button
+                onClick={handleCopy}
+                disabled={!isAddressAvailable}
+                className={`px-4 rounded-xl transition-colors flex items-center justify-center ${
+                  copied
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-gray-700 hover:bg-gray-600 text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed'
+                }`}
+                title="Copy address"
+              >
               {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
             </button>
           </div>
@@ -294,6 +303,7 @@ export default function ReceiveModal({
           {'share' in navigator && (
             <button
               onClick={handleShare}
+              disabled={!isAddressAvailable}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-800 rounded-xl hover:bg-gray-700 transition-colors"
             >
               <Share2 className="w-5 h-5" />
