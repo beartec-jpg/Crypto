@@ -11,7 +11,12 @@ async function getFalconKernel(): Promise<FalconKernel> {
   if (!kernelPromise) {
     kernelPromise = (async () => {
       const mod = await import('falcon-sign');
-      const getKernel = (mod as any).getKernel || (mod as any).default?.getKernel;
+      const getKernel =
+        typeof (mod as any).getKernel === 'function'
+          ? (mod as any).getKernel
+          : typeof (mod as any).default?.getKernel === 'function'
+            ? (mod as any).default.getKernel
+            : null;
       if (typeof getKernel !== 'function') {
         throw new Error('Falcon module failed to load');
       }

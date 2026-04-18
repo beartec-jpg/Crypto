@@ -1,6 +1,6 @@
 # Falcon Migration Audit (Issue #504)
 
-## Scope audited
+## Scope Audited
 - `client/src/lib/crypto.ts`
 - `client/src/lib/qbtcService.ts`
 - `cold-signer/src/lib/qbtcSigner.ts`
