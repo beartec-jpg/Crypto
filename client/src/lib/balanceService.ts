@@ -7,6 +7,7 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { QBTCChain } from './qbtcService';
 import type { TokenNetwork } from './tokenService';
+import { getChainNetworkAddress, type WalletAddresses } from './networkAddress';
 
 export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana' | 'qbtc';
 
@@ -98,12 +99,14 @@ export async function fetchEthereumBalance(address: string, network: TokenNetwor
 /**
  * Fetch Bitcoin balance via Blockstream API
  */
-export async function fetchBitcoinBalance(address: string): Promise<string> {
+export async function fetchBitcoinBalance(address: string, network: TokenNetwork = 'mainnet'): Promise<string> {
   try {
-    console.log('🔍 Fetching BTC balance from MAINNET for:', address);
+    const baseUrl = network === 'testnet' ? 'https://blockstream.info/testnet/api' : 'https://blockstream.info/api';
+    const networkLabel = network === 'testnet' ? 'TESTNET' : 'MAINNET';
+    console.log(`🔍 Fetching BTC balance from ${networkLabel} for:`, address);
     
     const response = await axios.get(
-      `https://blockstream.info/api/address/${address}`,
+      `${baseUrl}/address/${address}`,
       { timeout: 10000 }
     );
     
@@ -185,16 +188,19 @@ export async function fetchXRPBalance(address: string, network: TokenNetwork = '
 /**
  * Fetch Solana balance via RPC
  */
-export async function fetchSolanaBalance(address: string): Promise<string> {
+export async function fetchSolanaBalance(address: string, network: TokenNetwork = 'mainnet'): Promise<string> {
   try {
-    console.log('🔍 Fetching SOL balance from MAINNET for:', address);
+    const networkLabel = network === 'testnet' ? 'TESTNET' : 'MAINNET';
+    console.log(`🔍 Fetching SOL balance from ${networkLabel} for:`, address);
     
-const HELIUS_KEY = import.meta.env.VITE_HELIUS_API_KEY || '';
-const rpcUrl = HELIUS_KEY 
-  ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`
-  : 'https://rpc.ankr.com/solana';
+    const HELIUS_KEY = import.meta.env.VITE_HELIUS_API_KEY || '';
+    const rpcUrl = network === 'testnet'
+      ? 'https://api.testnet.solana.com'
+      : HELIUS_KEY 
+        ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`
+        : 'https://rpc.ankr.com/solana';
 
-const response = await axios.post(rpcUrl, {
+    const response = await axios.post(rpcUrl, {
       jsonrpc: '2.0',
       id: 1,
       method: 'getBalance',
@@ -237,11 +243,12 @@ export async function fetchQBTCBalance(address: string): Promise<string> {
 /**
  * Fetch current block/ledger number for a chain
  */
-export async function fetchBlockNumber(chain: Chain): Promise<number | null> {
+export async function fetchBlockNumber(chain: Chain, network: TokenNetwork = 'mainnet'): Promise<number | null> {
   try {
     switch (chain) {
       case 'ethereum': {
-        const response = await axios.post('https://eth.llamarpc.com', {
+        const rpcUrl = network === 'testnet' ? 'https://rpc.sepolia.org' : 'https://eth.llamarpc.com';
+        const response = await axios.post(rpcUrl, {
           jsonrpc: '2.0',
           id: 1,
           method: 'eth_blockNumber',
@@ -251,15 +258,19 @@ export async function fetchBlockNumber(chain: Chain): Promise<number | null> {
       }
 
       case 'bitcoin': {
+        const baseUrl = network === 'testnet' ? 'https://blockstream.info/testnet/api' : 'https://blockstream.info/api';
         const response = await axios.get(
-          'https://blockstream.info/api/blocks/tip/height',
+          `${baseUrl}/blocks/tip/height`,
           { timeout: 5000 }
         );
         return response.data;
       }
 
       case 'bsc': {
-        const response = await axios.post('https://bsc-dataseed.binance.org/', {
+        const rpcUrl = network === 'testnet'
+          ? 'https://data-seed-prebsc-1-s1.binance.org:8545/'
+          : 'https://bsc-dataseed.binance.org/';
+        const response = await axios.post(rpcUrl, {
           jsonrpc: '2.0',
           id: 1,
           method: 'eth_blockNumber',
@@ -269,12 +280,15 @@ export async function fetchBlockNumber(chain: Chain): Promise<number | null> {
       }
 
       case 'xrp': {
-        const ledgerIndex = await xrplService.getLedgerInfo(true);
+        const ledgerIndex = await xrplService.getLedgerInfo(network === 'mainnet');
         return ledgerIndex;
       }
 
       case 'solana': {
-        const response = await axios.post('https://api.mainnet-beta.solana.com', {
+        const rpcUrl = network === 'testnet'
+          ? 'https://api.testnet.solana.com'
+          : 'https://api.mainnet-beta.solana.com';
+        const response = await axios.post(rpcUrl, {
           jsonrpc: '2.0',
           id: 1,
           method: 'getSlot',
@@ -307,7 +321,7 @@ export async function fetchChainBalance(chain: Chain, address: string, network: 
       balance = await fetchEthereumBalance(address, network);
       break;
     case 'bitcoin':
-      balance = await fetchBitcoinBalance(address);
+      balance = await fetchBitcoinBalance(address, network);
       break;
     case 'bsc':
       balance = await fetchBSCBalance(address, network);
@@ -316,7 +330,7 @@ export async function fetchChainBalance(chain: Chain, address: string, network: 
     balance = await fetchXRPBalance(address, network);
       break;
     case 'solana':
-      balance = await fetchSolanaBalance(address);
+      balance = await fetchSolanaBalance(address, network);
       break;
     case 'qbtc':
       balance = await fetchQBTCBalance(address);
@@ -329,14 +343,10 @@ export async function fetchChainBalance(chain: Chain, address: string, network: 
 /**
  * Fetch balances for all chains
  */
-export async function fetchAllBalances(addresses: {
-  ethereum: string;
-  bitcoin: string;
-  bsc: string;
-  xrp: string;
-  solana: string;
-  qbtc: string;
-}, network: TokenNetwork = 'mainnet'): Promise<ChainBalance[]> {
+export async function fetchAllBalances(
+  addresses: WalletAddresses,
+  network: TokenNetwork = 'mainnet'
+): Promise<ChainBalance[]> {
   try {
     const networkLabel = network === 'testnet' ? 'TESTNET' : 'MAINNET';
     const shouldValueInUsd = network === 'mainnet';
@@ -344,13 +354,22 @@ export async function fetchAllBalances(addresses: {
     
     const prices = await fetchPrices();
 
+    const chainAddresses = {
+      ethereum: getChainNetworkAddress(addresses, 'ethereum', network),
+      bitcoin: getChainNetworkAddress(addresses, 'bitcoin', network),
+      bsc: getChainNetworkAddress(addresses, 'bsc', network),
+      xrp: getChainNetworkAddress(addresses, 'xrp', network),
+      solana: getChainNetworkAddress(addresses, 'solana', network),
+      qbtc: getChainNetworkAddress(addresses, 'qbtc', network),
+    };
+
     const [ethBalance, btcBalance, bscBalance, xrpBalance, solBalance, qbtcBalance] = await Promise.all([
-      fetchEthereumBalance(addresses.ethereum, network),
-      fetchBitcoinBalance(addresses.bitcoin),
-      fetchBSCBalance(addresses.bsc, network),
-      fetchXRPBalance(addresses.xrp, network),
-      fetchSolanaBalance(addresses.solana),
-      fetchQBTCBalance(addresses.qbtc),
+      chainAddresses.ethereum ? fetchEthereumBalance(chainAddresses.ethereum, network) : Promise.resolve('0'),
+      chainAddresses.bitcoin ? fetchBitcoinBalance(chainAddresses.bitcoin, network) : Promise.resolve('0'),
+      chainAddresses.bsc ? fetchBSCBalance(chainAddresses.bsc, network) : Promise.resolve('0'),
+      chainAddresses.xrp ? fetchXRPBalance(chainAddresses.xrp, network) : Promise.resolve('0'),
+      chainAddresses.solana ? fetchSolanaBalance(chainAddresses.solana, network) : Promise.resolve('0'),
+      chainAddresses.qbtc ? fetchQBTCBalance(chainAddresses.qbtc) : Promise.resolve('0'),
     ]);
 
     const balances: ChainBalance[] = [

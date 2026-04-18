@@ -29,9 +29,12 @@ interface WalletDB extends DBSchema {
       addresses: {
         ethereum: string;
         bitcoin: string;
+        bitcoinTestnet: string;
         bsc: string;
         xrp: string;
+        xrpTestnet: string;
         solana: string;
+        solanaTestnet: string;
         qbtc: string;
         qbtcMainnet: string;
         qbtcVault?: string;
@@ -58,9 +61,12 @@ interface Wallet {
   addresses: {
     ethereum: string;
     bitcoin: string;
+    bitcoinTestnet: string;
     bsc: string;
     xrp: string;
+    xrpTestnet: string;
     solana: string;
+    solanaTestnet: string;
     qbtc: string;
     qbtcMainnet: string;
     qbtcVault?: string;
@@ -102,9 +108,12 @@ const DB_VERSION = 2;
 const DERIVATION_PATHS = {
   ethereum: "m/44'/60'/0'/0/0",
   bitcoin: "m/44'/0'/0'/0/0",
+  bitcoinTestnet: "m/44'/1'/0'/0/0",
   bsc: "m/44'/60'/0'/0/0",
   xrp: "m/44'/144'/0'/0/0",
+  xrpTestnet: "m/44'/144'/1'/0/0",
   solana: "m/44'/501'/0'/0/0",
+  solanaTestnet: "m/44'/501'/1'/0/0",
   // I-1: Uses a QBTC-specific coin type (9999) to avoid private-key reuse with BTC.
   // Note: QBTC key derivation in practice uses QBTCKeyPair.fromMasterSeed which
   // derives keys via HMAC rather than this BIP-44 path.
@@ -343,13 +352,13 @@ function deriveEthereumAddress(privateKeyBytes: Uint8Array): string {
 /**
  * Derive Bitcoin address from private key (P2PKH)
  */
-function deriveBitcoinAddress(privateKeyBytes: Uint8Array): string {
+function deriveBitcoinAddress(privateKeyBytes: Uint8Array, network: 'mainnet' | 'testnet' = 'mainnet'): string {
   const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, true);
   const sha256Hash = sha256(publicKeyBytes);
   const ripemd160Hash = ripemd160(sha256Hash);
   
   const versionedHash = new Uint8Array(21);
-  versionedHash[0] = 0x00; // Mainnet
+  versionedHash[0] = network === 'testnet' ? 0x6f : 0x00;
   versionedHash.set(ripemd160Hash, 1);
   
   const checksum = sha256(sha256(versionedHash)).slice(0, 4);
@@ -423,9 +432,12 @@ export async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
   const addresses: Wallet['addresses'] = {
     ethereum: '',
     bitcoin: '',
+    bitcoinTestnet: '',
     bsc: '',
     xrp: '',
+    xrpTestnet: '',
     solana: '',
+    solanaTestnet: '',
     qbtc: '',
     qbtcMainnet: '',
     qbtcVault: '',
@@ -447,27 +459,36 @@ export async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
   addresses.ethereum = deriveEthereumAddress(ethNode.privateKey);
   publicKeys.ethereum = Buffer.from(secp256k1.getPublicKey(ethNode.privateKey, false)).toString('hex');
   
-  // Bitcoin (mainnet)
+  // Bitcoin (mainnet + testnet)
   const btcNode = derivePath(root, DERIVATION_PATHS.bitcoin);
   if (!btcNode.privateKey) throw new Error('Failed to derive BTC key');
-  addresses.bitcoin = deriveBitcoinAddress(btcNode.privateKey);
+  addresses.bitcoin = deriveBitcoinAddress(btcNode.privateKey, 'mainnet');
   publicKeys.bitcoin = Buffer.from(secp256k1.getPublicKey(btcNode.privateKey, true)).toString('hex');
+  const btcTestnetNode = derivePath(root, DERIVATION_PATHS.bitcoinTestnet);
+  if (!btcTestnetNode.privateKey) throw new Error('Failed to derive BTC testnet key');
+  addresses.bitcoinTestnet = deriveBitcoinAddress(btcTestnetNode.privateKey, 'testnet');
   
   // BSC (same as Ethereum)
   addresses.bsc = addresses.ethereum;
   publicKeys.bsc = publicKeys.ethereum;
   
-  // XRP
+  // XRP (mainnet + testnet)
   const xrpNode = derivePath(root, DERIVATION_PATHS.xrp);
   if (!xrpNode.privateKey) throw new Error('Failed to derive XRP key');
   addresses.xrp = deriveXRPAddress(xrpNode.privateKey);
   publicKeys.xrp = Buffer.from(secp256k1.getPublicKey(xrpNode.privateKey, true)).toString('hex');
+  const xrpTestnetNode = derivePath(root, DERIVATION_PATHS.xrpTestnet);
+  if (!xrpTestnetNode.privateKey) throw new Error('Failed to derive XRP testnet key');
+  addresses.xrpTestnet = deriveXRPAddress(xrpTestnetNode.privateKey);
   
-  // Solana
+  // Solana (mainnet + testnet)
   const solNode = derivePath(root, DERIVATION_PATHS.solana);
   if (!solNode.privateKey) throw new Error('Failed to derive SOL key');
   addresses.solana = deriveSolanaAddress(solNode.privateKey);
   publicKeys.solana = Buffer.from(solNode.privateKey).toString('hex');
+  const solTestnetNode = derivePath(root, DERIVATION_PATHS.solanaTestnet);
+  if (!solTestnetNode.privateKey) throw new Error('Failed to derive SOL testnet key');
+  addresses.solanaTestnet = deriveSolanaAddress(solTestnetNode.privateKey);
 
   // QBTC Hot Wallet (pathIndex 0)
   const qbtcKeyPair = await QBTCKeyPair.fromMasterSeed(seed, 0);
@@ -907,14 +928,17 @@ export async function unlockWallet(walletId: string, password: string): Promise<
 
     const btcNode = derivePath(root, DERIVATION_PATHS.bitcoin);
     privateKeys.bitcoin = btcNode.privateKey ? Buffer.from(btcNode.privateKey).toString('hex') : '';
+    const btcTestnetNode = derivePath(root, DERIVATION_PATHS.bitcoinTestnet);
 
     privateKeys.bsc = privateKeys.ethereum;
 
     const xrpNode = derivePath(root, DERIVATION_PATHS.xrp);
     privateKeys.xrp = xrpNode.privateKey ? Buffer.from(xrpNode.privateKey).toString('hex') : '';
+    const xrpTestnetNode = derivePath(root, DERIVATION_PATHS.xrpTestnet);
 
     const solNode = derivePath(root, DERIVATION_PATHS.solana);
     privateKeys.solana = solNode.privateKey ? Buffer.from(solNode.privateKey).toString('hex') : '';
+    const solTestnetNode = derivePath(root, DERIVATION_PATHS.solanaTestnet);
 
     const qbtcKeyPair = await QBTCKeyPair.fromMasterSeed(seed, 0);
     privateKeys.qbtc = qbtcKeyPair.ecdsaPrivateKeyHex;
@@ -928,9 +952,12 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     const mergedAddresses = {
       ethereum: wallet.addresses.ethereum,
       bitcoin: wallet.addresses.bitcoin,
+      bitcoinTestnet: wallet.addresses.bitcoinTestnet || deriveBitcoinAddress(btcTestnetNode.privateKey!, 'testnet'),
       bsc: wallet.addresses.bsc,
       xrp: wallet.addresses.xrp,
+      xrpTestnet: wallet.addresses.xrpTestnet || deriveXRPAddress(xrpTestnetNode.privateKey!),
       solana: wallet.addresses.solana,
+      solanaTestnet: wallet.addresses.solanaTestnet || deriveSolanaAddress(solTestnetNode.privateKey!),
       qbtc: wallet.addresses.qbtc || qbtcKeyPair.getAddress('testnet'),
       qbtcMainnet: wallet.addresses.qbtcMainnet || qbtcKeyPair.getAddress('mainnet'),
       qbtcVault: wallet.addresses.qbtcVault || vaultKeyPair.getAddress('testnet'),
@@ -938,7 +965,13 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     };
 
     // Auto-upgrade older wallet records that were created before QBTC/vault support.
-    if (!wallet.addresses.qbtc || !wallet.addresses.qbtcVault) {
+    if (
+      !wallet.addresses.qbtc ||
+      !wallet.addresses.qbtcVault ||
+      !wallet.addresses.bitcoinTestnet ||
+      !wallet.addresses.xrpTestnet ||
+      !wallet.addresses.solanaTestnet
+    ) {
       wallet.addresses = mergedAddresses;
       wallet.publicKeys = {
         ...wallet.publicKeys,
@@ -1023,9 +1056,12 @@ export async function getCurrentWallet(userId: string): Promise<Wallet | null> {
     const addresses = {
       ethereum: wallet.addresses.ethereum,
       bitcoin: wallet.addresses.bitcoin,
+      bitcoinTestnet: wallet.addresses.bitcoinTestnet || '',
       bsc: wallet.addresses.bsc,
       xrp: wallet.addresses.xrp,
+      xrpTestnet: wallet.addresses.xrpTestnet || '',
       solana: wallet.addresses.solana,
+      solanaTestnet: wallet.addresses.solanaTestnet || '',
       qbtc: qbtcAddress,
       qbtcMainnet: qbtcMainnetAddress,
       qbtcVault: (wallet.addresses as any).qbtcVault || '',

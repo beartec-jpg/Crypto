@@ -21,6 +21,7 @@ import { getCurrentWallet, migrateWalletToUser, deleteWallet } from '@/lib/walle
 import { securityManager, getSecurityRequirements, hasPinSetup, setupPin } from '@/lib/securityService';
 import { getWalletTokens, clearWalletTokens, ensureNativeTokens, type Token } from '@/lib/tokenService';
 import type { TokenNetwork } from '@/lib/tokenService';
+import { getChainNetworkAddress, type WalletAddresses } from '@/lib/networkAddress';
 import { deriveWIFFromPrivateKey } from '@/lib/bitcoinService';
 import { usePendingTransactions } from '@/hooks/usePendingTransactions';
 import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle, Send, QrCode, Settings as SettingsIcon, ArrowLeftRight } from 'lucide-react';
@@ -390,7 +391,11 @@ export default function WalletPage() {
   };
 
   const isWalletConnected = isConnected || (sovereignWallet !== null && isWalletUnlocked);
-  const activeAddress = address || (sovereignWallet?.addresses[selectedChain] as `0x${string}` | undefined);
+  const activeAddress = address || (
+    sovereignWallet?.addresses
+      ? (getChainNetworkAddress(sovereignWallet.addresses as WalletAddresses, selectedChain, tokenNetwork) as `0x${string}` | undefined)
+      : undefined
+  );
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">

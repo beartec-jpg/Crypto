@@ -96,12 +96,14 @@ export async function fetchEthereumTransactions(address: string, network: TokenN
 /**
  * Fetch Bitcoin transactions via Blockstream API
  */
-export async function fetchBitcoinTransactions(address: string): Promise<Transaction[]> {
+export async function fetchBitcoinTransactions(address: string, network: TokenNetwork = 'mainnet'): Promise<Transaction[]> {
   try {
-    console.log('🔍 Fetching BTC transactions from MAINNET for:', address);
+    const baseUrl = network === 'testnet' ? 'https://blockstream.info/testnet/api' : 'https://blockstream.info/api';
+    const label = network === 'testnet' ? 'TESTNET' : 'MAINNET';
+    console.log(`🔍 Fetching BTC transactions from ${label} for:`, address);
     
     const response = await axios.get(
-      `https://blockstream.info/api/address/${address}/txs`,
+      `${baseUrl}/address/${address}/txs`,
       { timeout: 10000 }
     );
 
@@ -260,14 +262,17 @@ export async function fetchXRPTransactions(address: string, network: TokenNetwor
 /**
  * Fetch Solana transactions via RPC
  */
-export async function fetchSolanaTransactions(address: string): Promise<Transaction[]> {
+export async function fetchSolanaTransactions(address: string, network: TokenNetwork = 'mainnet'): Promise<Transaction[]> {
   try {
-    console.log('🔍 Fetching SOL transactions from MAINNET for:', address);
+    const label = network === 'testnet' ? 'TESTNET' : 'MAINNET';
+    console.log(`🔍 Fetching SOL transactions from ${label} for:`, address);
     
     const HELIUS_KEY = import.meta.env.VITE_HELIUS_API_KEY || '';
-    const rpcUrl = HELIUS_KEY 
-      ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`
-      : 'https://rpc.ankr.com/solana';
+    const rpcUrl = network === 'testnet'
+      ? 'https://api.testnet.solana.com'
+      : HELIUS_KEY 
+        ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_KEY}`
+        : 'https://rpc.ankr.com/solana';
     
     const response = await axios.post(rpcUrl, {  // ← YOU NEED THIS LINE!
       jsonrpc: '2.0',
@@ -328,13 +333,13 @@ export async function fetchChainTransactions(
       case 'ethereum':
         return await fetchEthereumTransactions(address, network);
       case 'bitcoin':
-        return await fetchBitcoinTransactions(address);
+        return await fetchBitcoinTransactions(address, network);
       case 'bsc':
         return await fetchBSCTransactions(address, network);
       case 'xrp':
         return await fetchXRPTransactions(address, network);
       case 'solana':
-        return await fetchSolanaTransactions(address);
+        return await fetchSolanaTransactions(address, network);
       case 'qbtc':
         return await fetchQBTCTransactions(address);
       default:
