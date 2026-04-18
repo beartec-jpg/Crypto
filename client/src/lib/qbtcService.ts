@@ -8,6 +8,12 @@ import { sha512 } from '@noble/hashes/sha512';
 import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
 import { initDilithium, dilithium, PK_SIZE, SK_SIZE, SIG_SIZE, SEED_SIZE } from './dilithium-wasm/dilithiumWasm';
+import {
+  falconSign,
+  falconVerify,
+  generateFalconKeyPair,
+  getFalconSeedLength,
+} from './falconSigner';
 
 bitcoin.initEccLib(ecc);
 
@@ -42,6 +48,15 @@ export interface QBTCTransaction {
   chain: 'qbtc';
 }
 
+export interface QBTCFalconCompatibilityProof {
+  algorithm: 'falcon-512-staged-compat';
+  mode: 'offchain-sidecar';
+  messageDigestHex: string;
+  falconPublicKeyHex: string;
+  falconSignatureHex: string;
+  note: string;
+}
+
 const QBTC_SETTINGS_KEY = 'qbtc_rpc_settings';
 const DILITHIUM_PK_SIZE = PK_SIZE;
 const DILITHIUM_SK_SIZE = SK_SIZE;
@@ -72,6 +87,27 @@ function addressToRawDescriptor(address: string, network: bitcoin.networks.Netwo
 
 function hmacSha512(key: Uint8Array, data: Uint8Array): Uint8Array {
   return hmac(sha512, key, data);
+}
+
+function expandCompatibilitySeed(masterSeed: Uint8Array, targetLength: number, label: string): Uint8Array {
+  const labelBytes = new TextEncoder().encode(label);
+  const out = new Uint8Array(targetLength);
+  let written = 0;
+  let counter = 0;
+
+  while (written < targetLength) {
+    const input = new Uint8Array(masterSeed.length + labelBytes.length + 1);
+    input.set(masterSeed, 0);
+    input.set(labelBytes, masterSeed.length);
+    input[input.length - 1] = counter & 0xff;
+    const block = sha256(input);
+    const chunk = Math.min(block.length, targetLength - written);
+    out.set(block.slice(0, chunk), written);
+    written += chunk;
+    counter += 1;
+  }
+
+  return out;
 }
 
 export function getQBTCRpcSettings(): QBTCRpcSettings {
@@ -437,6 +473,30 @@ export class QBTCKeyPair {
       dilithiumPublicKey: Buffer.from(this.dilithiumPublicKeyHex, 'hex'),
     };
   }
+
+  async createFalconCompatibilityProof(messageDigest: Uint8Array): Promise<QBTCFalconCompatibilityProof> {
+    const falconSeedBytes = await getFalconSeedLength();
+    const master = Buffer.concat([
+      Buffer.from(this.ecdsaPrivateKeyHex, 'hex'),
+      Buffer.from(this.dilKey.seed),
+    ]);
+    const falconSeed = expandCompatibilitySeed(
+      new Uint8Array(master),
+      falconSeedBytes,
+      'QBTC-FALCON-COMPAT'
+    );
+    const falcon = await generateFalconKeyPair(falconSeed);
+    const falconSig = await falconSign(messageDigest, falcon.secretKey);
+
+    return {
+      algorithm: 'falcon-512-staged-compat',
+      mode: 'offchain-sidecar',
+      messageDigestHex: Buffer.from(messageDigest).toString('hex'),
+      falconPublicKeyHex: Buffer.from(falcon.publicKey).toString('hex'),
+      falconSignatureHex: Buffer.from(falconSig).toString('hex'),
+      note: 'Staged compatibility proof only. QBTC consensus witness remains ML-DSA-44 + ECDSA until protocol upgrade.',
+    };
+  }
 }
 
 function gf256Mul(a: number, b: number): number {
@@ -656,7 +716,7 @@ export class QBTCChain {
     toAddress: string,
     amount: string,
     signMode: 'hybrid' | 'ecdsa' = 'hybrid'
-  ): Promise<{ hex: string; fee: number }> {
+  ): Promise<{ hex: string; fee: number; falconCompatibilityProof?: QBTCFalconCompatibilityProof }> {
     const fromAddress = keyPair.getAddress(this.settings.network);
     const scanResult = await this.rpcCall<{ unspents: Array<{ txid: string; vout: number; amount: number; height: number; scriptPubKey: string }> }>(
       'scantxoutset', ['start', [{ desc: addressToRawDescriptor(fromAddress, QBTC_NETWORKS[this.settings.network]) }]]
@@ -719,17 +779,27 @@ export class QBTCChain {
       }
     });
 
-    return { hex: tx.toHex(), fee };
+    const hex = tx.toHex();
+    const falconCompatibilityProof = signMode === 'hybrid'
+      ? await keyPair.createFalconCompatibilityProof(sha256(Buffer.from(hex, 'hex')))
+      : undefined;
+
+    return { hex, fee, falconCompatibilityProof };
   }
 
   async broadcastRawTransaction(rawHex: string): Promise<string> {
     return this.rpcCall<string>('sendrawtransaction', [rawHex]);
   }
 
-  async sendTransaction(keyPair: QBTCKeyPair, toAddress: string, amount: string, signMode: 'hybrid' | 'ecdsa' = 'hybrid'): Promise<{ txid: string; fee: number }> {
-    const { hex, fee } = await this.createAndSignTransaction(keyPair, toAddress, amount, signMode);
+  async sendTransaction(
+    keyPair: QBTCKeyPair,
+    toAddress: string,
+    amount: string,
+    signMode: 'hybrid' | 'ecdsa' = 'hybrid'
+  ): Promise<{ txid: string; fee: number; falconCompatibilityProof?: QBTCFalconCompatibilityProof }> {
+    const { hex, fee, falconCompatibilityProof } = await this.createAndSignTransaction(keyPair, toAddress, amount, signMode);
     const txid = await this.broadcastRawTransaction(hex);
-    return { txid, fee };
+    return { txid, fee, falconCompatibilityProof };
   }
 
   async getTransactionConfirmations(txid: string): Promise<number> {
@@ -740,6 +810,16 @@ export class QBTCChain {
       return 0;
     }
   }
+}
+
+export async function verifyQBTCFalconCompatibilityProof(
+  proof: QBTCFalconCompatibilityProof
+): Promise<boolean> {
+  return falconVerify(
+    Buffer.from(proof.falconSignatureHex, 'hex'),
+    Buffer.from(proof.messageDigestHex, 'hex'),
+    Buffer.from(proof.falconPublicKeyHex, 'hex')
+  );
 }
 
 // ─── HTLC support ───────────────────────────────────────────────────────────

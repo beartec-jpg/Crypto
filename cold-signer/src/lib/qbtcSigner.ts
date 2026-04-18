@@ -17,6 +17,7 @@ import { sha512 } from '@noble/hashes/sha512';
 import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
 import { initDilithium, dilithium } from './dilithium-wasm/dilithiumWasm';
+import { createQBTCFalconCompatibilityProof, type FalconCompatibilityProof } from './falconCompat';
 import * as bip39 from 'bip39';
 
 // Required: set HMAC for @noble/secp256k1 v2 deterministic signing (RFC 6979)
@@ -50,6 +51,7 @@ export interface QBTCSignedResult {
   txHex: string;
   ecdsaPublicKey: string;
   dilithiumPublicKey: string;
+  falconCompatibilityProof?: FalconCompatibilityProof;
 }
 
 function hmacSha512(key: Uint8Array, data: Uint8Array): Uint8Array {
@@ -95,7 +97,14 @@ function deriveQBTCKeys(mnemonic: string) {
   const combined = Buffer.concat([Buffer.from(ecdsaPub), Buffer.from(dilPub)]);
   const hybridHash = hash160(combined);
 
-  return { ecdsaPriv, ecdsaPub: Buffer.from(ecdsaPub), dilPriv, dilPub: Buffer.from(dilPub), hybridHash };
+  return {
+    ecdsaPriv,
+    ecdsaPub: Buffer.from(ecdsaPub),
+    dilPriv,
+    dilPub: Buffer.from(dilPub),
+    dilSeed: Buffer.from(dilSeed),
+    hybridHash,
+  };
 }
 
 /**
@@ -143,10 +152,10 @@ export async function signQBTCTransaction(
     const digest = tx.hashForWitnessV0(idx, scriptCode, utxo.value, bitcoin.Transaction.SIGHASH_ALL);
 
     // ECDSA signature — encode as DER+sighash (bitcoinjs-lib's script.signature.encode
-    // expects a DER-encoded buffer, not compact r||s bytes)
+    // accepts compact r||s bytes and handles DER encoding internally.
     const rawSig = ecc.sign(digest, keys.ecdsaPriv);
     const ecdsaSignature = bitcoin.script.signature.encode(
-      Buffer.from(rawSig.toDERRawBytes()),
+      Buffer.from(rawSig.toCompactRawBytes()),
       bitcoin.Transaction.SIGHASH_ALL
     );
 
@@ -161,9 +170,17 @@ export async function signQBTCTransaction(
     ]);
   });
 
+  const txHex = tx.toHex();
+  const falconCompatibilityProof = await createQBTCFalconCompatibilityProof(
+    keys.ecdsaPriv,
+    keys.dilSeed,
+    sha256(Buffer.from(txHex, 'hex'))
+  );
+
   return {
-    txHex: tx.toHex(),
+    txHex,
     ecdsaPublicKey: keys.ecdsaPub.toString('hex'),
     dilithiumPublicKey: keys.dilPub.toString('hex'),
+    falconCompatibilityProof,
   };
 }

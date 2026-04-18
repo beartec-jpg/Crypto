@@ -18,7 +18,7 @@
   - Current PQC: Dilithium / ML-DSA-44 variant
   - Classical companion: ECDSA secp256k1
   - Dependency: QBTC node/witness format expectations
-  - **Status:** not changed in this patch (consensus-coupled, requires coordinated network migration)
+  - **Status in this change:** on-chain witness unchanged, plus new off-chain Falcon staged compatibility sidecar proof for signed QBTC transactions
 
 - **Non-QBTC chain transaction signing (`cold-signer/src/lib/coldSigner.ts`)**
   - Current signing is chain-native (EVM secp256k1, XRP secp256k1, BTC secp256k1, Solana ed25519)
@@ -30,9 +30,13 @@
 - Generic hybrid signature payload keys are now Falcon-based:
   - `falconPublicKey` / `falconSecretKey`
   - `falconSignature`
+- QBTC signing now emits optional compatibility proof metadata in the signer layer:
+  - `algorithm: falcon-512-staged-compat`
+  - `mode: offchain-sidecar`
+  - `messageDigestHex`, `falconPublicKeyHex`, `falconSignatureHex`
+  - This proof is **not part of QBTC consensus witness validation yet** and must be treated as transitional telemetry/compatibility material.
 
 ## Remaining high-priority tasks
-- Add Falcon support path for cold-signer transaction workflows where protocol permits detached/auxiliary signatures.
 - Define QBTC protocol migration plan from Dilithium witness fields to Falcon witness fields (network upgrade required).
 - Add Falcon-focused test vectors and integration checks for all migrated paths.
 - Update user-facing QBTC/cold-signer copy to clearly distinguish:
