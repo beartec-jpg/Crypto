@@ -193,7 +193,7 @@ class PriceMonitorService {
         .where(eq(cryptoSubscriptions.userId, userId.toString()));
       
       // Only send notifications to intermediate+ tiers
-      const allowedTiers = ['intermediate', 'pro', 'elite'];
+      const allowedTiers = ['intermediate', 'pro', 'professional', 'elite'];
       const tier = (userSubscription?.tier || '').toLowerCase();
       if (!userSubscription || !allowedTiers.includes(tier)) {
         console.log(`User ${userId} tier (${tier || 'none'}) not eligible for trade notifications`);
