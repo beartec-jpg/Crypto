@@ -1,0 +1,63 @@
+import type { FalconKernel } from 'falcon-sign';
+
+const FALCON_KERNEL_ID = 'falcon512_n3_v1';
+let kernelPromise: Promise<FalconKernel> | null = null;
+
+function toBytes(data: Uint8Array | string): Uint8Array {
+  return typeof data === 'string' ? new TextEncoder().encode(data) : data;
+}
+
+async function getFalconKernel(): Promise<FalconKernel> {
+  if (!kernelPromise) {
+    kernelPromise = (async () => {
+      const mod = await import('falcon-sign');
+      const getKernel = (mod as any).getKernel || (mod as any).default?.getKernel;
+      if (typeof getKernel !== 'function') {
+        throw new Error('Falcon module failed to load');
+      }
+      const kernel = await getKernel(FALCON_KERNEL_ID);
+      if (!kernel) {
+        throw new Error(`Unsupported Falcon kernel: ${FALCON_KERNEL_ID}`);
+      }
+      return kernel as FalconKernel;
+    })();
+  }
+  return kernelPromise;
+}
+
+export interface FalconKeyPair {
+  publicKey: Uint8Array;
+  secretKey: Uint8Array;
+  seed: Uint8Array;
+}
+
+export async function generateFalconKeyPair(seed?: Uint8Array): Promise<FalconKeyPair> {
+  const kernel = await getFalconKernel();
+  const keyPair = kernel.genkey(seed);
+  if (!keyPair) {
+    throw new Error('Falcon key generation failed');
+  }
+  return {
+    publicKey: keyPair.pk,
+    secretKey: keyPair.sk,
+    seed: keyPair.genkeySeed,
+  };
+}
+
+export async function falconSign(message: Uint8Array | string, secretKey: Uint8Array): Promise<Uint8Array> {
+  const kernel = await getFalconKernel();
+  const signature = kernel.sign(toBytes(message), secretKey);
+  if (!signature) {
+    throw new Error('Falcon signing failed');
+  }
+  return signature;
+}
+
+export async function falconVerify(
+  signature: Uint8Array,
+  message: Uint8Array | string,
+  publicKey: Uint8Array
+): Promise<boolean> {
+  const kernel = await getFalconKernel();
+  return kernel.verify(signature, toBytes(message), publicKey);
+}
