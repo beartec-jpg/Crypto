@@ -7,6 +7,7 @@ import { hmac } from '@noble/hashes/hmac';
 import { sha512 } from '@noble/hashes/sha512';
 import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
+import { hexToBytes } from '@noble/hashes/utils';
 import { initDilithium, dilithium, PK_SIZE, SK_SIZE, SIG_SIZE, SEED_SIZE } from './dilithium-wasm/dilithiumWasm';
 import {
   falconSign,
@@ -816,9 +817,9 @@ export async function verifyQBTCFalconCompatibilityProof(
   proof: QBTCFalconCompatibilityProof
 ): Promise<boolean> {
   return falconVerify(
-    Buffer.from(proof.falconSignatureHex, 'hex'),
-    Buffer.from(proof.messageDigestHex, 'hex'),
-    Buffer.from(proof.falconPublicKeyHex, 'hex')
+    hexToBytes(proof.falconSignatureHex),
+    hexToBytes(proof.messageDigestHex),
+    hexToBytes(proof.falconPublicKeyHex)
   );
 }
 
