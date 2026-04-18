@@ -2465,7 +2465,7 @@ export function scoreDivergenceMaster(input: ScoringInput): SystemEvaluation {
 
   if (activeSetupDirection) {
     for (const condition of conditions) {
-      if (!confluenceIds.includes(condition.id)) continue;
+      if (!condition.id || !confluenceIds.includes(condition.id)) continue;
       const level = (condition.userWeight ?? 0) as WeightLevel;
       if (level <= 0) continue;
 

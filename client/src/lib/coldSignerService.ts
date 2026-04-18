@@ -60,7 +60,7 @@ async function deriveKey(password: string, salt: Uint8Array, usage: 'encrypt' | 
     ['deriveBits']
   );
   const keyBits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: new Uint8Array(salt), iterations: 100000, hash: 'SHA-256' },
     keyMaterial,
     256
   );

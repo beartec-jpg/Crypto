@@ -184,15 +184,19 @@ class PriceMonitorService {
 
       // Get user's subscription tier
       const { db } = await import("../db");
-      const { users } = await import("@shared/schema");
+      const { cryptoSubscriptions } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
       
-      const [user] = await db.select().from(users).where(eq(users.id, userId.toString()));
+      const [userSubscription] = await db
+        .select()
+        .from(cryptoSubscriptions)
+        .where(eq(cryptoSubscriptions.userId, userId.toString()));
       
       // Only send notifications to intermediate+ tiers
-      const allowedTiers = ['intermediate', 'professional', 'elite'];
-      if (!user || !allowedTiers.includes(user.subscriptionTier?.toLowerCase() || '')) {
-        console.log(`User ${userId} tier (${user?.subscriptionTier}) not eligible for trade notifications`);
+      const allowedTiers = ['intermediate', 'pro', 'elite'];
+      const tier = (userSubscription?.tier || '').toLowerCase();
+      if (!userSubscription || !allowedTiers.includes(tier)) {
+        console.log(`User ${userId} tier (${tier || 'none'}) not eligible for trade notifications`);
         return;
       }
 

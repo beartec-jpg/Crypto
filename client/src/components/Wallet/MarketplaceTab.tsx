@@ -299,7 +299,7 @@ function SellerLockPanel({
         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
         {loading ? 'Locking…' : 'Lock QBTC'}
       </button>
-      {showPinModal && <PinEntryModal userId={userId} onSuccess={handlePinSuccess} onCancel={() => setShowPinModal(false)} />}
+      {showPinModal && <PinEntryModal userId={userId} onSuccess={handlePinSuccess} onClose={() => setShowPinModal(false)} />}
       {loading && step !== 'idle' && (
         <p className="text-xs text-amber-300/60 flex items-center gap-2">
           <Loader2 className="w-3 h-3 animate-spin" /> {stepLabels[step] || ''}
@@ -565,7 +565,7 @@ function BuyerLockPanel({
       {error && (
         <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">{error}</div>
       )}
-      {showPinModal && <PinEntryModal userId={userId} onSuccess={handlePinSuccess} onCancel={() => setShowPinModal(false)} />}
+      {showPinModal && <PinEntryModal userId={userId} onSuccess={handlePinSuccess} onClose={() => setShowPinModal(false)} />}
     </div>
   );
 }
@@ -705,7 +705,7 @@ function SellerClaimPanel({
       {error && (
         <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-red-300 text-sm">{error}</div>
       )}
-      {showPinModal && <PinEntryModal userId={userId} onSuccess={handlePinSuccess} onCancel={() => setShowPinModal(false)} />}
+      {showPinModal && <PinEntryModal userId={userId} onSuccess={handlePinSuccess} onClose={() => setShowPinModal(false)} />}
     </div>
   );
 }
@@ -1323,6 +1323,7 @@ export default function MarketplaceTab({
                 qbtcLocktime: acceptSuccess.qbtcLocktime,
                 evmLocktime: acceptSuccess.evmLocktime,
                 status: 'QBTC_LOCKED',
+                buyerQbtcClaimTxid: null,
                 createdAt: new Date().toISOString(),
               } satisfies AtomicSwap}
               walletId={walletId}
