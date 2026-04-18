@@ -94,6 +94,8 @@ function expandSeed(masterSeed: Uint8Array, targetLength: number, label: string)
 }
 
 function deriveDeterministicSecp256k1PrivateKey(seed: Uint8Array): Uint8Array {
+  // 256 attempts gives an astronomically low failure chance for finding a valid
+  // secp256k1 scalar from SHA-256-derived candidates while keeping runtime bounded.
   for (let counter = 0; counter < 256; counter += 1) {
     const input = new Uint8Array(seed.length + 1);
     input.set(seed, 0);

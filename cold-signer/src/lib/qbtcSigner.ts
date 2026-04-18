@@ -151,8 +151,8 @@ export async function signQBTCTransaction(
   txData.utxos.forEach((utxo, idx) => {
     const digest = tx.hashForWitnessV0(idx, scriptCode, utxo.value, bitcoin.Transaction.SIGHASH_ALL);
 
-    // ECDSA signature — bitcoinjs-lib accepts compact r||s bytes and appends
-    // sighash type while performing DER encoding internally.
+    // ECDSA signature — `bitcoin.script.signature.encode` accepts compact
+    // r||s bytes, DER-encodes them, and appends the sighash type byte.
     const rawSig = ecc.sign(digest, keys.ecdsaPriv);
     const ecdsaSignature = bitcoin.script.signature.encode(
       Buffer.from(rawSig.toCompactRawBytes()),
@@ -177,8 +177,8 @@ export async function signQBTCTransaction(
     sha256(Buffer.from(txHex, 'hex'))
   );
 
-  // `dilSeed` is kept in-memory only for Falcon compatibility sidecar proof
-  // derivation in this function. It is never returned to callers.
+  // `dilSeed` stays internal to this signer flow for compatibility proof
+  // derivation and is not exposed in the public QBTCSignedResult payload.
   return {
     txHex,
     ecdsaPublicKey: keys.ecdsaPub.toString('hex'),

@@ -1,6 +1,8 @@
 import { sha256 } from '@noble/hashes/sha256';
 import type { FalconKernel } from 'falcon-sign';
 
+// falcon-sign exposes versioned kernel IDs. "n3" is the upstream kernel flavor
+// identifier used by the package (falcon512_n3_v1 / falcon1024_n3_v1).
 const FALCON_KERNEL_ID = 'falcon512_n3_v1';
 let kernelPromise: Promise<FalconKernel> | null = null;
 

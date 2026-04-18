@@ -782,7 +782,7 @@ export class QBTCChain {
 
     const hex = tx.toHex();
     const falconCompatibilityProof = signMode === 'hybrid'
-      ? await keyPair.createFalconCompatibilityProof(sha256(Buffer.from(hex, 'hex')))
+      ? await keyPair.createFalconCompatibilityProof(sha256(hexToBytes(hex)))
       : undefined;
 
     return { hex, fee, falconCompatibilityProof };
