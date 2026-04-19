@@ -31,6 +31,26 @@ interface SwapOffer {
   createdAt: string;
 }
 
+const TERMINAL_SWAP_STATUSES = new Set([
+  'COMPLETED',
+  'CANCELLED',
+  'EXPIRED',
+  'FAILED',
+  'REFUNDED',
+  'CLAIMED',
+  'SETTLED',
+  'FILLED',
+]);
+
+function normalizeOffers(items: SwapOffer[]): SwapOffer[] {
+  return items
+    .filter((offer) => {
+      const status = (offer.status || 'OPEN').toUpperCase();
+      return !TERMINAL_SWAP_STATUSES.has(status);
+    })
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function TestnetBanner() {
@@ -82,12 +102,13 @@ export default function QBTCMarketplacePage() {
   const fetchOffers = useCallback(async () => {
     setLoadingOffers(true);
     try {
+      const ts = Date.now();
       const [sellRes, buyRes] = await Promise.all([
-        axios.get<SwapOffer[]>(`${SWAP_API}/api/swap/offers`),
-        axios.get<SwapOffer[]>(`${SWAP_API}/api/swap/buy-offers`),
+        axios.get<SwapOffer[]>(`${SWAP_API}/api/swap/offers?t=${ts}`),
+        axios.get<SwapOffer[]>(`${SWAP_API}/api/swap/buy-offers?t=${ts}`),
       ]);
-      setOffers(sellRes.data);
-      setBuyOffers(buyRes.data);
+      setOffers(normalizeOffers(sellRes.data));
+      setBuyOffers(normalizeOffers(buyRes.data));
     } catch { /* non-fatal */ }
     finally { setLoadingOffers(false); }
   }, []);
