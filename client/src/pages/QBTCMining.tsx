@@ -106,7 +106,9 @@ export default function QBTCMiningPage() {
   const [browserStatus, setBrowserStatus] = useState('Idle');
   const [browserHashrate, setBrowserHashrate] = useState(0);
   const [browserAcceptedShares, setBrowserAcceptedShares] = useState(0);
+  const [browserWeightedShares, setBrowserWeightedShares] = useState(0);
   const [browserRejectedShares, setBrowserRejectedShares] = useState(0);
+  const browserShareDifficultyRef = useRef(0.00025);
   const browserWorkersRef = useRef<Worker[]>([]);
   const browserJobTimerRef = useRef<number | null>(null);
 
@@ -167,6 +169,8 @@ export default function QBTCMiningPage() {
       extranonce2_size: Number(data.extranonce2_size ?? 4),
       share_difficulty: Number(data.share_difficulty ?? 0.000001),
       pool_tier: String(data.pool_tier || 'home'),
+      // stash so submitBrowserShare can weight contributions
+      _diff: Number(data.share_difficulty ?? 0.000001),
       job: data.job,
     };
   }, [browserMinerAddress, browserMinerAlias]);
@@ -181,6 +185,7 @@ export default function QBTCMiningPage() {
       const data = await res.json();
       if (data?.ok) {
         setBrowserAcceptedShares((v) => v + 1);
+        setBrowserWeightedShares((v) => v + browserShareDifficultyRef.current);
         setBrowserStatus(`Mining in ${data.pool_tier || 'home'} lane`);
         fetchStats();
       } else {
@@ -200,9 +205,11 @@ export default function QBTCMiningPage() {
       stopBrowserMining();
       setBrowserStatus('Requesting browser mining job…');
       setBrowserAcceptedShares(0);
+      setBrowserWeightedShares(0);
       setBrowserRejectedShares(0);
       setBrowserHashrate(0);
       const config = await fetchBrowserJob();
+      browserShareDifficultyRef.current = (config as any)._diff ?? 0.00025;
       const count = Math.max(1, Math.min(browserThreads, browserThreadCap));
       const nextWorkers = Array.from({ length: count }, () => new Worker('/qbtc-browser-miner-worker.js'));
       nextWorkers.forEach((w) => {
@@ -463,8 +470,6 @@ export default function QBTCMiningPage() {
                 <StatCard label="Workers" value={Number(stats?.authorized_workers ?? 0)} />
               </div>
 
-              <SetupInstructions />
-
               {/* Browser miner — gateway only */}
               <div className="rounded-xl border border-cyan-500/30 bg-slate-950/60 p-5 space-y-4">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -547,8 +552,9 @@ export default function QBTCMiningPage() {
                       <p className="font-semibold text-cyan-300 text-xs">{browserStatus}</p>
                     </div>
                     <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
-                      <p className="text-xs text-slate-400">Accepted</p>
-                      <p className="font-semibold text-emerald-300">{browserAcceptedShares}</p>
+                      <p className="text-xs text-slate-400">Weight earned</p>
+                      <p className="font-semibold text-emerald-300">{browserWeightedShares.toFixed(5)}</p>
+                      <p className="text-[10px] text-slate-500">{browserAcceptedShares} raw shares</p>
                     </div>
                     <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
                       <p className="text-xs text-slate-400">Rejected</p>
@@ -563,6 +569,8 @@ export default function QBTCMiningPage() {
                   </div>
                 </div>
               </div>
+
+              <SetupInstructions />
             </div>
           )}
 
