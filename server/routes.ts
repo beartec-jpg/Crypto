@@ -85,6 +85,31 @@ function isValidQbtcTestnetAddress(address: string): boolean {
   return /^qbtct1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{38,}$/.test(address.toLowerCase());
 }
 
+function isValidQbtcAddress(address: string): boolean {
+  return /^qbtc(t|r)?1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{38,}$/i.test(address.trim().toLowerCase());
+}
+
+let qbtcPoolBindingsTableReady: Promise<void> | null = null;
+
+function ensureQbtcPoolBindingsTable(): Promise<void> {
+  if (!qbtcPoolBindingsTableReady) {
+    qbtcPoolBindingsTableReady = (async () => {
+      const { pool: dbPool } = await import('./db');
+      await dbPool.query(`
+        CREATE TABLE IF NOT EXISTS qbtc_pool_bindings (
+          user_id TEXT PRIMARY KEY REFERENCES crypto_users(id) ON DELETE CASCADE,
+          payout_address TEXT NOT NULL,
+          worker_alias TEXT NOT NULL DEFAULT 'worker1',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+    })();
+  }
+
+  return qbtcPoolBindingsTableReady;
+}
+
 type QbtcNetwork = 'testnet' | 'mainnet';
 
 function resolveQbtcRpcConfig(network: QbtcNetwork) {
@@ -9006,6 +9031,83 @@ CRITICAL DATA RULES:
         });
       }
       return res.status(500).json({ error: error?.message || 'QBTC scan search failed' });
+    }
+  });
+
+  app.get('/api/qbtc/miner/binding', requireCryptoAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.cryptoUser?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      await ensureQbtcPoolBindingsTable();
+      const { pool: dbPool } = await import('./db');
+      const result = await dbPool.query(
+        `SELECT payout_address, worker_alias, created_at, updated_at
+         FROM qbtc_pool_bindings
+         WHERE user_id = $1
+         LIMIT 1`,
+        [userId],
+      );
+
+      const row = result.rows[0];
+      return res.json({
+        binding: row
+          ? {
+              payoutAddress: row.payout_address,
+              workerAlias: row.worker_alias,
+              createdAt: row.created_at,
+              updatedAt: row.updated_at,
+            }
+          : null,
+      });
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to load miner binding' });
+    }
+  });
+
+  app.post('/api/qbtc/miner/binding', requireCryptoAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.cryptoUser?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const payoutAddress = String(req.body?.payoutAddress || '').trim();
+      const workerAliasInput = String(req.body?.workerAlias || 'worker1').trim();
+      const workerAlias = workerAliasInput.replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 32) || 'worker1';
+
+      if (!isValidQbtcAddress(payoutAddress)) {
+        return res.status(400).json({ error: 'Enter a valid QBTC payout address' });
+      }
+
+      await ensureQbtcPoolBindingsTable();
+      const { pool: dbPool } = await import('./db');
+      const result = await dbPool.query(
+        `INSERT INTO qbtc_pool_bindings (user_id, payout_address, worker_alias)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (user_id)
+         DO UPDATE SET
+           payout_address = EXCLUDED.payout_address,
+           worker_alias = EXCLUDED.worker_alias,
+           updated_at = NOW()
+         RETURNING payout_address, worker_alias, created_at, updated_at`,
+        [userId, payoutAddress, workerAlias],
+      );
+
+      const row = result.rows[0];
+      return res.json({
+        ok: true,
+        binding: {
+          payoutAddress: row.payout_address,
+          workerAlias: row.worker_alias,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        },
+      });
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || 'Failed to save miner binding' });
     }
   });
 

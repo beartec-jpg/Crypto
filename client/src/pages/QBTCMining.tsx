@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
+import { authenticatedApiRequest } from '@/lib/apiAuth';
 import QBTCNavigation from '../components/QBTCNavigation';
 
 const POOL_API = (import.meta.env.VITE_POOL_API_URL || 'http://89.167.109.241:8088').replace(/\/$/, '');
@@ -65,6 +66,8 @@ export default function QBTCMiningPage() {
   const [payoutAddress, setPayoutAddress] = useState('');
   const [workerAlias, setWorkerAlias] = useState('worker1');
   const [bindMessage, setBindMessage] = useState<string | null>(null);
+  const [bindingLoading, setBindingLoading] = useState(false);
+  const [bindingSaving, setBindingSaving] = useState(false);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -96,18 +99,45 @@ export default function QBTCMiningPage() {
     return () => window.clearInterval(id);
   }, [fetchStats]);
 
-  useEffect(() => {
-    if (!user?.id) return;
-    const raw = localStorage.getItem(`qbtc-pool-binding:${user.id}`);
-    if (!raw) return;
+  const loadBinding = useCallback(async () => {
+    if (!isAuthenticated || !user?.id) return;
+
+    setBindingLoading(true);
     try {
-      const parsed = JSON.parse(raw);
+      const res = await authenticatedApiRequest('GET', '/api/qbtc/miner/binding');
+      const data = await res.json();
+
+      if (data?.binding) {
+        setPayoutAddress(data.binding.payoutAddress || '');
+        setWorkerAlias(data.binding.workerAlias || 'worker1');
+        setBindMessage('Payout wallet loaded from your BearTec account.');
+        return;
+      }
+
+      const legacyRaw = localStorage.getItem(`qbtc-pool-binding:${user.id}`);
+      if (!legacyRaw) return;
+
+      const parsed = JSON.parse(legacyRaw);
       setPayoutAddress(parsed.payoutAddress || '');
       setWorkerAlias(parsed.workerAlias || 'worker1');
+      setBindMessage('Loaded your earlier beta wallet settings. Save once to sync them to your account.');
     } catch {
-      // ignore invalid local binding data
+      setBindMessage('Unable to load your saved miner wallet right now.');
+    } finally {
+      setBindingLoading(false);
     }
-  }, [user?.id]);
+  }, [isAuthenticated, user?.id]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user?.id) {
+      setPayoutAddress('');
+      setWorkerAlias('worker1');
+      setBindMessage(null);
+      return;
+    }
+
+    loadBinding();
+  }, [isAuthenticated, user?.id, loadBinding]);
 
   const copyText = async (label: string, value: string) => {
     try {
@@ -119,22 +149,45 @@ export default function QBTCMiningPage() {
     }
   };
 
-  const saveBinding = () => {
+  const saveBinding = async () => {
     if (!user?.id) return;
     if (!isValidQbtcAddress(payoutAddress)) {
       setBindMessage('Enter a valid QBTC payout address first.');
       return;
     }
-    localStorage.setItem(
-      `qbtc-pool-binding:${user.id}`,
-      JSON.stringify({ payoutAddress: payoutAddress.trim(), workerAlias: workerAlias.trim() || 'worker1' })
-    );
-    setBindMessage('Payout wallet bound to your BearTec account on this device.');
+
+    setBindingSaving(true);
+    try {
+      const res = await authenticatedApiRequest('POST', '/api/qbtc/miner/binding', {
+        payoutAddress: payoutAddress.trim(),
+        workerAlias: workerAlias.trim() || 'worker1',
+      });
+      const data = await res.json();
+
+      setPayoutAddress(data?.binding?.payoutAddress || payoutAddress.trim());
+      setWorkerAlias(data?.binding?.workerAlias || workerAlias.trim() || 'worker1');
+      localStorage.removeItem(`qbtc-pool-binding:${user.id}`);
+      setBindMessage('Payout wallet saved to your BearTec account.');
+    } catch {
+      setBindMessage('Unable to save your payout wallet right now. Please try again.');
+    } finally {
+      setBindingSaving(false);
+    }
   };
 
   const workers = useMemo(() => stats?.workers ?? [], [stats]);
-  const topWorkers = useMemo(() => [...workers].sort((a, b) => b.accepted_shares - a.accepted_shares).slice(0, 6), [workers]);
-  const payoutRows = useMemo(() => [...workers].sort((a, b) => (b.pending_balance + b.total_paid) - (a.pending_balance + a.total_paid)).slice(0, 8), [workers]);
+  const linkedWorkers = useMemo(() => {
+    const normalizedPayout = payoutAddress.trim().toLowerCase();
+    if (!normalizedPayout) return [] as WorkerInfo[];
+
+    return workers.filter((worker) => {
+      const workerName = String(worker.worker_name || '').toLowerCase();
+      const payout = String(worker.payout_address || '').toLowerCase();
+      return payout === normalizedPayout || workerName === normalizedPayout || workerName.startsWith(`${normalizedPayout}.`);
+    });
+  }, [workers, payoutAddress]);
+  const topWorkers = useMemo(() => [...linkedWorkers].sort((a, b) => b.accepted_shares - a.accepted_shares).slice(0, 6), [linkedWorkers]);
+  const payoutRows = useMemo(() => [...linkedWorkers].sort((a, b) => (b.pending_balance + b.total_paid) - (a.pending_balance + a.total_paid)).slice(0, 8), [linkedWorkers]);
 
   const stratumUrl = 'stratum+tcp://89.167.109.241:3333';
   const payoutSeed = payoutAddress.trim() || 'YOUR_QBTC_ADDRESS';
@@ -301,10 +354,12 @@ export default function QBTCMiningPage() {
                     />
                     <button
                       onClick={saveBinding}
-                      className="px-4 py-2 rounded-lg bg-cyan-500 text-slate-950 font-semibold text-sm hover:bg-cyan-400 transition-colors"
+                      disabled={bindingSaving}
+                      className="px-4 py-2 rounded-lg bg-cyan-500 text-slate-950 font-semibold text-sm hover:bg-cyan-400 transition-colors disabled:opacity-60"
                     >
-                      Save payout wallet
+                      {bindingSaving ? 'Saving…' : 'Save payout wallet'}
                     </button>
+                    {bindingLoading && <p className="text-xs text-slate-400">Loading your saved miner wallet…</p>}
                     {bindMessage && <p className="text-xs text-cyan-300">{bindMessage}</p>}
                   </div>
 
@@ -312,8 +367,10 @@ export default function QBTCMiningPage() {
                     <div className="flex items-center gap-2 text-slate-300 font-semibold">
                       <Users className="w-4 h-4 text-cyan-400" /> Worker dashboard
                     </div>
-                    {topWorkers.length === 0 ? (
-                      <p className="text-sm text-slate-400">No linked workers showing yet.</p>
+                    {!payoutAddress.trim() ? (
+                      <p className="text-sm text-slate-400">Save your payout wallet to load your linked workers.</p>
+                    ) : topWorkers.length === 0 ? (
+                      <p className="text-sm text-slate-400">No miners linked to this payout wallet are active yet.</p>
                     ) : (
                       <div className="space-y-2">
                         {topWorkers.map((worker) => (
@@ -332,8 +389,10 @@ export default function QBTCMiningPage() {
                   <div className="flex items-center gap-2 text-slate-300 font-semibold">
                     <Coins className="w-4 h-4 text-amber-400" /> Payout history
                   </div>
-                  {payoutRows.length === 0 ? (
-                    <p className="text-sm text-slate-400">No payout records yet.</p>
+                  {!payoutAddress.trim() ? (
+                    <p className="text-sm text-slate-400">Bind a payout wallet first to see your payout history.</p>
+                  ) : payoutRows.length === 0 ? (
+                    <p className="text-sm text-slate-400">No payout records found for this wallet yet.</p>
                   ) : (
                     <div className="space-y-2">
                       {payoutRows.map((worker) => (
@@ -384,7 +443,7 @@ export default function QBTCMiningPage() {
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 space-y-2">
               <div className="flex items-center gap-2 text-slate-300 font-semibold"><Wallet className="w-4 h-4 text-emerald-400" /> BearTec Wallet</div>
-              <p className="text-sm text-slate-400">Saved payout wallet details are now tied to the signed-in BearTec user on this beta build.</p>
+              <p className="text-sm text-slate-400">Saved payout wallet details now persist through the signed-in BearTec account, not just the browser.</p>
             </div>
           </div>
 
