@@ -17,6 +17,7 @@ import {
 import { isSwapMainnetActive } from '../lib/evmHTLC';
 
 const SWAP_API = (import.meta.env.VITE_SWAP_API_URL || '').replace(/\/$/, '');
+const POOL_API = (import.meta.env.VITE_POOL_API_URL || 'http://89.167.109.241:8088').replace(/\/$/, '');
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,18 @@ interface SwapOffer {
   usdcAmountRequested: string;
   status: string;
   createdAt: string;
+}
+
+interface PoolStats {
+  pool_name?: string;
+  running?: boolean;
+  connected_miners?: number;
+  authorized_workers?: number;
+  accepted_shares?: number;
+  invalid_shares?: number;
+  pending_payouts?: number;
+  total_paid?: number;
+  last_template_height?: number;
 }
 
 const TERMINAL_SWAP_STATUSES = new Set([
@@ -96,6 +109,8 @@ export default function QBTCMarketplacePage() {
   const [offers, setOffers]               = useState<SwapOffer[]>([]);
   const [buyOffers, setBuyOffers]         = useState<SwapOffer[]>([]);
   const [loadingOffers, setLoadingOffers] = useState(false);
+  const [poolStats, setPoolStats]         = useState<PoolStats | null>(null);
+  const [loadingPool, setLoadingPool]     = useState(false);
   const [offerTab, setOfferTab]           = useState<'sell' | 'buy'>('sell');
   const isMainnet = isSwapMainnetActive();
 
@@ -113,7 +128,25 @@ export default function QBTCMarketplacePage() {
     finally { setLoadingOffers(false); }
   }, []);
 
+  const fetchPoolStats = useCallback(async () => {
+    if (!POOL_API) return;
+    setLoadingPool(true);
+    try {
+      const { data } = await axios.get<PoolStats>(`${POOL_API}/stats`, { timeout: 5000 });
+      setPoolStats(data);
+    } catch {
+      setPoolStats(null);
+    } finally {
+      setLoadingPool(false);
+    }
+  }, []);
+
   useEffect(() => { fetchOffers(); }, [fetchOffers]);
+  useEffect(() => {
+    fetchPoolStats();
+    const id = window.setInterval(fetchPoolStats, 15000);
+    return () => window.clearInterval(id);
+  }, [fetchPoolStats]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 relative overflow-hidden">
@@ -302,6 +335,45 @@ export default function QBTCMarketplacePage() {
                   <span className="text-sm font-semibold text-cyan-300">{stat.value}</span>
                 </div>
               ))}
+            </div>
+
+            {/* Pool beta */}
+            <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-5 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-cyan-400 font-semibold text-sm">
+                  <Users className="w-4 h-4" />
+                  BearTec Pool Beta
+                </div>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${poolStats?.running ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10' : 'border-amber-500/40 text-amber-300 bg-amber-500/10'}`}>
+                  {loadingPool ? 'Refreshing…' : (poolStats?.running ? 'LIVE' : 'BOOTING')}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Public testnet mining endpoint is being brought online for BearTec. Workers,
+                shares, and payouts are now surfaced through the pool API.
+              </p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="text-slate-500">Connected Miners</div>
+                  <div className="text-cyan-300 font-semibold text-base">{poolStats?.connected_miners ?? 0}</div>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="text-slate-500">Workers</div>
+                  <div className="text-cyan-300 font-semibold text-base">{poolStats?.authorized_workers ?? 0}</div>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="text-slate-500">Accepted Shares</div>
+                  <div className="text-emerald-300 font-semibold text-base">{poolStats?.accepted_shares ?? 0}</div>
+                </div>
+                <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+                  <div className="text-slate-500">Pending Payouts</div>
+                  <div className="text-amber-300 font-semibold text-base">{Number(poolStats?.pending_payouts ?? 0).toFixed(2)} QBTC</div>
+                </div>
+              </div>
+              <div className="text-[11px] text-slate-500 space-y-1">
+                <p>Stratum: 89.167.109.241:3333</p>
+                <p>Template height: {poolStats?.last_template_height ?? '—'}</p>
+              </div>
             </div>
 
             {/* Escrow info */}
