@@ -3,15 +3,16 @@ import { Link } from 'wouter';
 import {
   Activity,
   CheckCircle2,
-  Clock3,
   Coins,
   Copy,
+  Lock,
   Pickaxe,
   ShieldCheck,
   Users,
   Wallet,
 } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import QBTCNavigation from '../components/QBTCNavigation';
 
 const POOL_API = (import.meta.env.VITE_POOL_API_URL || 'http://89.167.109.241:8088').replace(/\/$/, '');
@@ -51,11 +52,19 @@ function formatLastSeen(ts: number) {
   return new Date(ts * 1000).toLocaleString();
 }
 
+function isValidQbtcAddress(value: string) {
+  return /^qbtc(t|r)?1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]+$/i.test(value.trim());
+}
+
 export default function QBTCMiningPage() {
+  const { user, isAuthenticated, isLoading: authLoading } = useCryptoAuth();
   const [stats, setStats] = useState<PoolStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
+  const [payoutAddress, setPayoutAddress] = useState('');
+  const [workerAlias, setWorkerAlias] = useState('worker1');
+  const [bindMessage, setBindMessage] = useState<string | null>(null);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -87,6 +96,19 @@ export default function QBTCMiningPage() {
     return () => window.clearInterval(id);
   }, [fetchStats]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    const raw = localStorage.getItem(`qbtc-pool-binding:${user.id}`);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      setPayoutAddress(parsed.payoutAddress || '');
+      setWorkerAlias(parsed.workerAlias || 'worker1');
+    } catch {
+      // ignore invalid local binding data
+    }
+  }, [user?.id]);
+
   const copyText = async (label: string, value: string) => {
     try {
       await navigator.clipboard.writeText(value);
@@ -97,12 +119,26 @@ export default function QBTCMiningPage() {
     }
   };
 
+  const saveBinding = () => {
+    if (!user?.id) return;
+    if (!isValidQbtcAddress(payoutAddress)) {
+      setBindMessage('Enter a valid QBTC payout address first.');
+      return;
+    }
+    localStorage.setItem(
+      `qbtc-pool-binding:${user.id}`,
+      JSON.stringify({ payoutAddress: payoutAddress.trim(), workerAlias: workerAlias.trim() || 'worker1' })
+    );
+    setBindMessage('Payout wallet bound to your BearTec account on this device.');
+  };
+
   const workers = useMemo(() => stats?.workers ?? [], [stats]);
   const topWorkers = useMemo(() => [...workers].sort((a, b) => b.accepted_shares - a.accepted_shares).slice(0, 6), [workers]);
   const payoutRows = useMemo(() => [...workers].sort((a, b) => (b.pending_balance + b.total_paid) - (a.pending_balance + a.total_paid)).slice(0, 8), [workers]);
 
   const stratumUrl = 'stratum+tcp://89.167.109.241:3333';
-  const workerExample = 'YOUR_QBTC_ADDRESS.worker1';
+  const payoutSeed = payoutAddress.trim() || 'YOUR_QBTC_ADDRESS';
+  const workerExample = `${payoutSeed}.${(workerAlias || 'worker1').trim()}`;
   const cpuminerCommand = `minerd -a sha256d -o ${stratumUrl} -u ${workerExample} -p x`;
 
   return (
@@ -131,7 +167,7 @@ export default function QBTCMiningPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold">QBTC Mining</h1>
-              <p className="text-slate-400 text-sm">Mine into the BearTec testnet pool from one shared dashboard.</p>
+              <p className="text-slate-400 text-sm">Public pool overview plus private miner account control through BearTec login.</p>
             </div>
           </div>
 
@@ -232,64 +268,115 @@ export default function QBTCMiningPage() {
             </div>
           </div>
 
-          <div className="grid lg:grid-cols-2 gap-4">
-            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-5 space-y-3">
-              <div className="flex items-center gap-2 text-slate-300 font-semibold">
-                <Users className="w-4 h-4 text-cyan-400" /> Worker cards
-              </div>
-              {topWorkers.length === 0 ? (
-                <p className="text-sm text-slate-400">No workers connected yet.</p>
-              ) : (
-                <div className="grid sm:grid-cols-2 gap-3">
-                  {topWorkers.map((worker) => (
-                    <div key={worker.worker_name} className="rounded-xl border border-slate-700 bg-slate-900/60 p-4 space-y-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="font-semibold text-cyan-300 text-sm truncate">{worker.worker_name}</p>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-300">
-                          Active
-                        </span>
-                      </div>
-                      <div className="text-xs text-slate-400 space-y-1">
-                        <p>Shares: <span className="text-slate-200">{worker.accepted_shares}</span></p>
-                        <p>Invalid: <span className="text-slate-200">{worker.invalid_shares}</span></p>
-                        <p>Pending: <span className="text-amber-300">{Number(worker.pending_balance ?? 0).toFixed(2)} QBTC</span></p>
-                        <p>Last seen: <span className="text-slate-300">{formatLastSeen(worker.last_seen)}</span></p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+          <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-5 space-y-4">
+            <div className="flex items-center gap-2 text-slate-200 font-semibold">
+              <Lock className="w-4 h-4 text-cyan-400" />
+              Private miner account and payout control
             </div>
 
-            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-5 space-y-3">
-              <div className="flex items-center gap-2 text-slate-300 font-semibold">
-                <Coins className="w-4 h-4 text-amber-400" /> Payout history
-              </div>
-              {payoutRows.length === 0 ? (
-                <p className="text-sm text-slate-400">No payout records yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {payoutRows.map((worker) => (
-                    <div key={`${worker.worker_name}-pay`} className="rounded-lg border border-slate-700 bg-slate-900/60 p-3 flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-200 truncate">{worker.worker_name}</p>
-                        <p className="text-xs text-slate-500">{worker.payout_address}</p>
-                      </div>
-                      <div className="text-right text-xs">
-                        <p className="text-amber-300">Pending: {Number(worker.pending_balance ?? 0).toFixed(2)} QBTC</p>
-                        <p className="text-emerald-300">Paid: {Number(worker.total_paid ?? 0).toFixed(2)} QBTC</p>
-                      </div>
-                    </div>
-                  ))}
+            {authLoading ? (
+              <p className="text-sm text-slate-400">Checking BearTec login…</p>
+            ) : isAuthenticated && user ? (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                  Signed in as {user.email || user.firstName || 'BearTec user'}
                 </div>
-              )}
-            </div>
+
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4 space-y-3">
+                    <div className="flex items-center gap-2 text-slate-300 font-semibold">
+                      <Wallet className="w-4 h-4 text-emerald-400" /> Wallet binding
+                    </div>
+                    <input
+                      value={payoutAddress}
+                      onChange={(e) => setPayoutAddress(e.target.value)}
+                      placeholder="qbtct1..."
+                      className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
+                    />
+                    <input
+                      value={workerAlias}
+                      onChange={(e) => setWorkerAlias(e.target.value)}
+                      placeholder="worker1"
+                      className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
+                    />
+                    <button
+                      onClick={saveBinding}
+                      className="px-4 py-2 rounded-lg bg-cyan-500 text-slate-950 font-semibold text-sm hover:bg-cyan-400 transition-colors"
+                    >
+                      Save payout wallet
+                    </button>
+                    {bindMessage && <p className="text-xs text-cyan-300">{bindMessage}</p>}
+                  </div>
+
+                  <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4 space-y-3">
+                    <div className="flex items-center gap-2 text-slate-300 font-semibold">
+                      <Users className="w-4 h-4 text-cyan-400" /> Worker dashboard
+                    </div>
+                    {topWorkers.length === 0 ? (
+                      <p className="text-sm text-slate-400">No linked workers showing yet.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {topWorkers.map((worker) => (
+                          <div key={worker.worker_name} className="rounded-lg border border-slate-700 bg-slate-950/60 p-3">
+                            <p className="text-sm font-semibold text-cyan-300 truncate">{worker.worker_name}</p>
+                            <p className="text-xs text-slate-400">Shares: {worker.accepted_shares} • Pending: {Number(worker.pending_balance ?? 0).toFixed(2)} QBTC</p>
+                            <p className="text-xs text-slate-500">Last seen: {formatLastSeen(worker.last_seen)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-slate-300 font-semibold">
+                    <Coins className="w-4 h-4 text-amber-400" /> Payout history
+                  </div>
+                  {payoutRows.length === 0 ? (
+                    <p className="text-sm text-slate-400">No payout records yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {payoutRows.map((worker) => (
+                        <div key={`${worker.worker_name}-pay`} className="rounded-lg border border-slate-700 bg-slate-950/60 p-3 flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-200 truncate">{worker.worker_name}</p>
+                            <p className="text-xs text-slate-500">{worker.payout_address}</p>
+                          </div>
+                          <div className="text-right text-xs">
+                            <p className="text-amber-300">Pending: {Number(worker.pending_balance ?? 0).toFixed(2)} QBTC</p>
+                            <p className="text-emerald-300">Paid: {Number(worker.total_paid ?? 0).toFixed(2)} QBTC</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-5 space-y-3">
+                <p className="text-sm text-slate-300">
+                  Sign in with BearTec to unlock the private worker dashboard, payout history, and wallet binding.
+                </p>
+                <div className="flex gap-3 flex-wrap">
+                  <Link href="/cryptologin">
+                    <button className="px-4 py-2 rounded-lg bg-cyan-500 text-slate-950 font-semibold text-sm hover:bg-cyan-400 transition-colors">
+                      Sign in
+                    </button>
+                  </Link>
+                  <Link href="/wallet">
+                    <button className="px-4 py-2 rounded-lg border border-slate-600 text-slate-200 text-sm hover:border-cyan-400 transition-colors">
+                      Open wallet
+                    </button>
+                  </Link>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid md:grid-cols-3 gap-4">
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 space-y-2">
-              <div className="flex items-center gap-2 text-slate-300 font-semibold"><Users className="w-4 h-4 text-cyan-400" /> Workers</div>
-              <p className="text-sm text-slate-400">Shared pool onboarding for home miners and testnet operators.</p>
+              <div className="flex items-center gap-2 text-slate-300 font-semibold"><Users className="w-4 h-4 text-cyan-400" /> Public onboarding</div>
+              <p className="text-sm text-slate-400">Open pages bring miners in; private account controls stay behind Clerk login.</p>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 space-y-2">
               <div className="flex items-center gap-2 text-slate-300 font-semibold"><Coins className="w-4 h-4 text-amber-400" /> Payouts</div>
@@ -297,13 +384,13 @@ export default function QBTCMiningPage() {
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 space-y-2">
               <div className="flex items-center gap-2 text-slate-300 font-semibold"><Wallet className="w-4 h-4 text-emerald-400" /> BearTec Wallet</div>
-              <p className="text-sm text-slate-400">Use the wallet page for addresses, swaps, and future payout controls.</p>
+              <p className="text-sm text-slate-400">Saved payout wallet details are now tied to the signed-in BearTec user on this beta build.</p>
             </div>
           </div>
 
           <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 text-xs text-slate-400 flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            Pool listener, worker tracking, and payout accounting are live on testnet.
+            Pool listener, worker tracking, public onboarding, and Clerk-gated miner controls are live on testnet.
           </div>
         </div>
       </div>
