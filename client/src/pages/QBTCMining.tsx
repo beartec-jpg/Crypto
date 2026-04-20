@@ -16,7 +16,7 @@ import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import { authenticatedApiRequest } from '@/lib/apiAuth';
 import QBTCNavigation from '../components/QBTCNavigation';
 
-const POOL_API = (import.meta.env.VITE_POOL_API_URL || 'http://89.167.109.241:8088').replace(/\/$/, '');
+const POOL_API = '/api/qbtc/pool-stats';
 
 interface WorkerInfo {
   worker_name: string;
@@ -71,7 +71,10 @@ export default function QBTCMiningPage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch(`${POOL_API}/stats`);
+      const res = await fetch(POOL_API, { cache: 'no-store' });
+      if (!res.ok) {
+        throw new Error('Pool stats request failed');
+      }
       const data = await res.json();
       setStats(data);
       setHistory((prev) => {

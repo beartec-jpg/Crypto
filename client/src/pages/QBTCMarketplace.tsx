@@ -18,7 +18,7 @@ import { isSwapMainnetActive } from '../lib/evmHTLC';
 import QBTCNavigation from '../components/QBTCNavigation';
 
 const SWAP_API = (import.meta.env.VITE_SWAP_API_URL || '').replace(/\/$/, '');
-const POOL_API = (import.meta.env.VITE_POOL_API_URL || 'http://89.167.109.241:8088').replace(/\/$/, '');
+const POOL_API = '/api/qbtc/pool-stats';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -130,10 +130,9 @@ export default function QBTCMarketplacePage() {
   }, []);
 
   const fetchPoolStats = useCallback(async () => {
-    if (!POOL_API) return;
     setLoadingPool(true);
     try {
-      const { data } = await axios.get<PoolStats>(`${POOL_API}/stats`, { timeout: 5000 });
+      const { data } = await axios.get<PoolStats>(POOL_API, { timeout: 8000 });
       setPoolStats(data);
     } catch {
       setPoolStats(null);
