@@ -34,6 +34,15 @@ interface WorkerInfo {
   estimated_hours_to_payout?: number | null;
 }
 
+interface RoundContributor {
+  worker_name: string;
+  accepted_shares: number;
+  invalid_shares: number;
+  weighted_shares?: number;
+  reward_estimate?: number;
+  share_percent?: number;
+}
+
 interface PoolStats {
   pool_name?: string;
   running?: boolean;
@@ -51,8 +60,13 @@ interface PoolStats {
   payout_interval_sec?: number;
   pool_acceptance_rate?: number;
   pool_earnings_24h?: number;
+  current_round_id?: string;
+  current_round_status?: string;
+  current_round_started_at?: number;
   current_round_shares?: number;
   current_round_weighted_shares?: number;
+  current_round_total_rewards?: number;
+  current_round_contributors?: RoundContributor[];
   history_24h?: Partial<HistoryPoint>[];
   workers?: WorkerInfo[];
 }
@@ -311,6 +325,7 @@ export default function QBTCMiningPage() {
   }, [currentPoolHashrate, currentNetworkHashrate]);
 
   const workers = useMemo(() => stats?.workers ?? [], [stats]);
+  const roundContributors = useMemo(() => stats?.current_round_contributors ?? [], [stats]);
   const linkedWorkers = useMemo(() => {
     const normalizedPayout = payoutAddress.trim().toLowerCase();
     if (!normalizedPayout) return [] as WorkerInfo[];
@@ -499,6 +514,60 @@ export default function QBTCMiningPage() {
                 {copied && <p className="text-xs text-emerald-300">Copied {copied}.</p>}
               </div>
             </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-5 space-y-4">
+            <div className="flex items-center gap-2 text-violet-300 font-semibold">
+              <Users className="w-4 h-4" />
+              Current round fairness
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+                <p className="text-xs text-slate-400">Round status</p>
+                <p className="font-semibold text-slate-100">{stats?.current_round_status || '—'}</p>
+              </div>
+              <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+                <p className="text-xs text-slate-400">Round shares</p>
+                <p className="font-semibold text-emerald-300">{stats?.current_round_shares ?? 0}</p>
+              </div>
+              <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+                <p className="text-xs text-slate-400">Weighted shares</p>
+                <p className="font-semibold text-cyan-300">{Number(stats?.current_round_weighted_shares ?? 0).toFixed(4)}</p>
+              </div>
+              <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+                <p className="text-xs text-slate-400">Round reward est.</p>
+                <p className="font-semibold text-amber-300">{Number(stats?.current_round_total_rewards ?? 0).toFixed(6)} QBTC</p>
+              </div>
+            </div>
+
+            {roundContributors.length > 0 ? (
+              <div className="overflow-x-auto rounded-lg border border-slate-700">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-900/80 text-slate-300">
+                    <tr>
+                      <th className="text-left px-3 py-2">Worker</th>
+                      <th className="text-right px-3 py-2">Share %</th>
+                      <th className="text-right px-3 py-2">Weighted</th>
+                      <th className="text-right px-3 py-2">Accepted</th>
+                      <th className="text-right px-3 py-2">Est. reward</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {roundContributors.map((worker) => (
+                      <tr key={worker.worker_name} className="border-t border-slate-800 text-slate-200">
+                        <td className="px-3 py-2 font-mono text-[11px] break-all">{worker.worker_name}</td>
+                        <td className="px-3 py-2 text-right text-cyan-300">{Number(worker.share_percent ?? 0).toFixed(2)}%</td>
+                        <td className="px-3 py-2 text-right">{Number(worker.weighted_shares ?? 0).toFixed(4)}</td>
+                        <td className="px-3 py-2 text-right text-emerald-300">{worker.accepted_shares ?? 0}</td>
+                        <td className="px-3 py-2 text-right text-amber-300">{Number(worker.reward_estimate ?? 0).toFixed(6)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-400">Waiting for more verified round submissions to rank contributors.</p>
+            )}
           </div>
 
           <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-5 space-y-4">
