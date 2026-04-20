@@ -276,7 +276,7 @@ export default function QBTCMiningPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-8 gap-3 text-sm">
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
               <p className="text-slate-400">Pool Status</p>
               <p className={`font-semibold ${stats?.running ? 'text-emerald-300' : 'text-amber-300'}`}>
@@ -286,25 +286,35 @@ export default function QBTCMiningPage() {
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
               <p className="text-slate-400">Workers</p>
               <p className="font-semibold text-cyan-300">{stats?.authorized_workers ?? 0}</p>
+              <p className="text-[10px] text-slate-500 mt-1">Connected: {stats?.connected_miners ?? 0}</p>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
-              <p className="text-slate-400">Accepted Shares</p>
+              <p className="text-slate-400">Accepted</p>
               <p className="font-semibold text-emerald-300">{stats?.accepted_shares ?? 0}</p>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
-              <p className="text-slate-400">Pool Hash Rate</p>
-              <p className="font-semibold text-violet-300">{formatHashrate(currentPoolHashrate)}</p>
-              <p className="text-[10px] text-slate-500 mt-1">Smoothed from recent share flow</p>
+              <p className="text-slate-400">Rejected</p>
+              <p className="font-semibold text-rose-300">{stats?.invalid_shares ?? 0}</p>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
-              <p className="text-slate-400">Network Hash Rate</p>
+              <p className="text-slate-400">Pool Hash</p>
+              <p className="font-semibold text-violet-300">{formatHashrate(currentPoolHashrate)}</p>
+              <p className="text-[10px] text-slate-500 mt-1">Smoothed from recent shares</p>
+            </div>
+            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
+              <p className="text-slate-400">Network Hash</p>
               <p className="font-semibold text-cyan-300">{formatHashrate(currentNetworkHashrate)}</p>
               <p className="text-[10px] text-slate-500 mt-1">Pool share: {poolSharePercent.toFixed(2)}%</p>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
-              <p className="text-slate-400">Pending / Paid</p>
+              <p className="text-slate-400">Pending</p>
               <p className="font-semibold text-amber-300">{Number(stats?.pending_payouts ?? 0).toFixed(2)} QBTC</p>
-              <p className="text-[10px] text-cyan-300 mt-1">Paid: {Number(stats?.total_paid ?? 0).toFixed(2)} QBTC</p>
+              <p className="text-[10px] text-slate-500 mt-1">Awaiting next payout pass</p>
+            </div>
+            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
+              <p className="text-slate-400">Paid</p>
+              <p className="font-semibold text-emerald-300">{Number(stats?.total_paid ?? 0).toFixed(2)} QBTC</p>
+              <p className="text-[10px] text-slate-500 mt-1">Sent on-chain</p>
             </div>
           </div>
 
@@ -457,8 +467,15 @@ export default function QBTCMiningPage() {
                 </div>
 
                 <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4 space-y-3">
-                  <div className="flex items-center gap-2 text-slate-300 font-semibold">
-                    <Coins className="w-4 h-4 text-amber-400" /> Payout history
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-2 text-slate-300 font-semibold">
+                      <Coins className="w-4 h-4 text-amber-400" /> Payout history
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      Pending: <span className="text-amber-300">{Number(stats?.pending_payouts ?? 0).toFixed(2)} QBTC</span>
+                      {' • '}
+                      Paid: <span className="text-emerald-300">{Number(stats?.total_paid ?? 0).toFixed(2)} QBTC</span>
+                    </div>
                   </div>
                   {!payoutAddress.trim() ? (
                     <p className="text-sm text-slate-400">Bind a payout wallet first to see your payout history.</p>
