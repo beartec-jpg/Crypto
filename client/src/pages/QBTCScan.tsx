@@ -3,6 +3,7 @@ import { Link } from 'wouter';
 import { Search, Activity, Blocks, Gauge, Clock3, AlertTriangle, ExternalLink, Wifi, GitFork, Zap, Timer, Coins, Hash, HardDrive, Database, Shield, Network, Server, BarChart2, ArrowLeftRight, TrendingUp, DollarSign, ShoppingCart, XCircle, Lock, CheckCircle } from 'lucide-react';
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import MetricChartModal from '../components/MetricChartModal';
+import QBTCNavigation from '../components/QBTCNavigation';
 
 interface ScanStats {
   network?: string;
@@ -655,38 +656,16 @@ export default function QBTCScanPage() {
         <div className="absolute top-1/2 -right-24 w-96 h-96 rounded-full bg-blue-500 blur-3xl" />
       </div>
 
-      <div className="relative max-w-5xl mx-auto px-4 py-10">
-        <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Link href="/crypto">
-              <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 transition-colors">
-                ← BearTec
-              </button>
-            </Link>
-            <Link href="/qbtc">
-              <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 transition-colors">
-                ← QBTC
-              </button>
-            </Link>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap justify-end">
-            <Link href="/qbtc-faucet">
-              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
-                Faucet
-              </button>
-            </Link>
-            <Link href="/wallet">
-              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
-                Wallet
-              </button>
-            </Link>
-            <Link href="/marketplace">
-              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
-                Marketplace
-              </button>
-            </Link>
-            <span>QBTC Testnet Chain Explorer</span>
-          </div>
+      <div className="relative max-w-5xl mx-auto px-4 py-10 pb-28">
+        <div className="mb-6 flex items-center justify-between gap-3 flex-wrap">
+          <Link href="/crypto">
+            <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 transition-colors">
+              ← Back to BearTec
+            </button>
+          </Link>
+          <span className="text-xs px-3 py-1.5 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-300">
+            QBTC live scan
+          </span>
         </div>
 
         <div className="rounded-2xl border border-slate-700 bg-slate-900/70 backdrop-blur p-6 md:p-8">
@@ -1006,6 +985,7 @@ export default function QBTCScanPage() {
           onClose={closeChart}
         />
       )}
+      <QBTCNavigation />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { Pickaxe, Zap, ShieldCheck, Hourglass, CheckCircle2, AlertTriangle, ExternalLink, Lock } from 'lucide-react';
+import QBTCNavigation from '../components/QBTCNavigation';
 
 type FaucetPhase = 'idle' | 'mining' | 'success' | 'error';
 
@@ -163,41 +164,17 @@ export default function QBTCFaucetPage() {
         <div className="absolute top-1/3 -right-24 w-96 h-96 rounded-full bg-emerald-500 blur-3xl" />
       </div>
 
-      <div className="relative max-w-3xl mx-auto px-4 py-10">
-        <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Link href="/crypto">
-              <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 transition-colors">
-                ← BearTec
-              </button>
-            </Link>
-            <Link href="/qbtc">
-              <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 transition-colors">
-                ← QBTC
-              </button>
-            </Link>
-          </div>
-          <div className="text-xs text-slate-400 flex items-center gap-2 flex-wrap justify-end">
-            <Link href="/qbtc-scan">
-              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300">
-                Scan
-              </button>
-            </Link>
-            <Link href="/wallet">
-              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300">
-                Wallet
-              </button>
-            </Link>
-            <Link href="/marketplace">
-              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300">
-                Marketplace
-              </button>
-            </Link>
-            <span className="inline-flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-cyan-400" />
-              Testnet only • One claim per hour
-            </span>
-          </div>
+      <div className="relative max-w-3xl mx-auto px-4 py-10 pb-28">
+        <div className="mb-6 flex items-center justify-between gap-3 flex-wrap">
+          <Link href="/crypto">
+            <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 transition-colors">
+              ← Back to BearTec
+            </button>
+          </Link>
+          <span className="inline-flex items-center gap-2 text-xs text-cyan-300 px-3 py-1.5 rounded-full border border-cyan-500/30 bg-cyan-500/10">
+            <ShieldCheck className="w-4 h-4 text-cyan-400" />
+            Testnet only • One claim per hour
+          </span>
         </div>
 
         <div className="rounded-2xl border border-slate-700 bg-slate-900/70 backdrop-blur p-6 md:p-8">
@@ -322,6 +299,7 @@ export default function QBTCFaucetPage() {
           )}
         </div>
       </div>
+      <QBTCNavigation />
     </div>
   );
 }

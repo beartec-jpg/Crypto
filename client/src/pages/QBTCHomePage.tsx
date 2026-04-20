@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   ExternalLink,
 } from 'lucide-react';
+import QBTCNavigation from '../components/QBTCNavigation';
 
 interface RoadmapPhase {
   phase: number;
@@ -164,36 +165,16 @@ export default function QBTCHomePage() {
         <div className="absolute bottom-0 left-1/3 w-[400px] h-[400px] rounded-full bg-purple-600 blur-3xl" />
       </div>
 
-      <div className="relative max-w-5xl mx-auto px-4 py-10 space-y-20">
-        {/* Top nav bar */}
-        <div className="flex items-center justify-between">
+      <div className="relative max-w-5xl mx-auto px-4 py-10 pb-28 space-y-20">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <Link href="/crypto">
             <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 transition-colors">
               ← Back to BearTec
             </button>
           </Link>
-          <div className="flex items-center gap-2 text-xs text-slate-400">
-            <Link href="/qbtc-faucet">
-              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
-                Faucet
-              </button>
-            </Link>
-            <Link href="/qbtc-scan">
-              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
-                Scan
-              </button>
-            </Link>
-            <Link href="/wallet">
-              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
-                Wallet
-              </button>
-            </Link>
-            <Link href="/marketplace">
-              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
-                Marketplace
-              </button>
-            </Link>
-          </div>
+          <span className="text-xs px-3 py-1.5 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-300">
+            QBTC hub • mining beta live
+          </span>
         </div>
 
         {/* ── Hero ── */}
@@ -214,8 +195,13 @@ export default function QBTCHomePage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-2">
+            <Link href="/qbtc-mine">
+              <button className="px-6 py-3 rounded-xl font-semibold bg-gradient-to-r from-amber-400 to-cyan-500 text-slate-950 hover:from-amber-300 hover:to-cyan-400 transition-all w-full sm:w-auto">
+                Start Mining
+              </button>
+            </Link>
             <Link href="/qbtc-faucet">
-              <button className="px-6 py-3 rounded-xl font-semibold bg-gradient-to-r from-cyan-500 to-blue-500 text-slate-950 hover:from-cyan-400 hover:to-blue-400 transition-all w-full sm:w-auto">
+              <button className="px-6 py-3 rounded-xl font-semibold border border-slate-600 hover:border-cyan-400 hover:text-cyan-300 transition-all w-full sm:w-auto">
                 Get Testnet QBTC
               </button>
             </Link>
@@ -438,6 +424,7 @@ export default function QBTCHomePage() {
           </p>
         </footer>
       </div>
+      <QBTCNavigation />
     </div>
   );
 }

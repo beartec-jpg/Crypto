@@ -15,6 +15,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { isSwapMainnetActive } from '../lib/evmHTLC';
+import QBTCNavigation from '../components/QBTCNavigation';
 
 const SWAP_API = (import.meta.env.VITE_SWAP_API_URL || '').replace(/\/$/, '');
 const POOL_API = (import.meta.env.VITE_POOL_API_URL || 'http://89.167.109.241:8088').replace(/\/$/, '');
@@ -156,38 +157,16 @@ export default function QBTCMarketplacePage() {
         <div className="absolute bottom-0 right-0 w-[400px] h-[400px] rounded-full bg-purple-600 blur-3xl" />
       </div>
 
-      <div className="relative max-w-6xl mx-auto px-4 py-10 space-y-8">
-        {/* Top nav bar */}
+      <div className="relative max-w-6xl mx-auto px-4 py-10 pb-28 space-y-8">
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2">
-            <Link href="/crypto">
-              <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 transition-colors">
-                ← BearTec
-              </button>
-            </Link>
-            <Link href="/qbtc">
-              <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 transition-colors">
-                ← QBTC
-              </button>
-            </Link>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-slate-400">
-            <Link href="/qbtc-faucet">
-              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
-                Faucet
-              </button>
-            </Link>
-            <Link href="/qbtc-scan">
-              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
-                Scan
-              </button>
-            </Link>
-            <Link href="/wallet">
-              <button className="px-2.5 py-1 rounded-md border border-slate-700 hover:border-cyan-400 text-cyan-300 transition-colors">
-                Wallet
-              </button>
-            </Link>
-          </div>
+          <Link href="/crypto">
+            <button className="text-sm px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-400 transition-colors">
+              ← Back to BearTec
+            </button>
+          </Link>
+          <span className="text-xs px-3 py-1.5 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-300">
+            QBTC swaps • market hub
+          </span>
         </div>
 
         {/* Header */}
@@ -604,6 +583,8 @@ export default function QBTCMarketplacePage() {
           <p>QBTC P2WSH HTLC verified against QuantBTC node (CheckPQCSignature + CLTV). Secret size: 32 bytes (256-bit entropy).</p>
         </div>
       </div>
+
+      <QBTCNavigation />
     </div>
   );
 }
