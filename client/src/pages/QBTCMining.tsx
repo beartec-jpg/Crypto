@@ -219,6 +219,10 @@ export default function QBTCMiningPage() {
   }, [history]);
 
   const currentNetworkHashrate = useMemo(() => Number(stats?.networkHashPs ?? 0), [stats]);
+  const poolSharePercent = useMemo(() => {
+    if (!currentNetworkHashrate || currentNetworkHashrate <= 0) return 0;
+    return (currentPoolHashrate / currentNetworkHashrate) * 100;
+  }, [currentPoolHashrate, currentNetworkHashrate]);
 
   const workers = useMemo(() => stats?.workers ?? [], [stats]);
   const linkedWorkers = useMemo(() => {
@@ -285,17 +289,19 @@ export default function QBTCMiningPage() {
               <p className="font-semibold text-emerald-300">{stats?.accepted_shares ?? 0}</p>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
+              <p className="text-slate-400">Pool Hash Rate</p>
+              <p className="font-semibold text-violet-300">{formatHashrate(currentPoolHashrate)}</p>
+              <p className="text-[10px] text-slate-500 mt-1">Estimated from live share flow</p>
+            </div>
+            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
               <p className="text-slate-400">Network Hash Rate</p>
-              <p className="font-semibold text-violet-300">{formatHashrate(currentNetworkHashrate)}</p>
-              <p className="text-[10px] text-slate-500 mt-1">Estimated pool rate: {formatHashrate(currentPoolHashrate)}</p>
+              <p className="font-semibold text-cyan-300">{formatHashrate(currentNetworkHashrate)}</p>
+              <p className="text-[10px] text-slate-500 mt-1">Pool share: {poolSharePercent.toFixed(2)}%</p>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
-              <p className="text-slate-400">Pending Payouts</p>
+              <p className="text-slate-400">Pending / Paid</p>
               <p className="font-semibold text-amber-300">{Number(stats?.pending_payouts ?? 0).toFixed(2)} QBTC</p>
-            </div>
-            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
-              <p className="text-slate-400">Total Paid</p>
-              <p className="font-semibold text-cyan-300">{Number(stats?.total_paid ?? 0).toFixed(2)} QBTC</p>
+              <p className="text-[10px] text-cyan-300 mt-1">Paid: {Number(stats?.total_paid ?? 0).toFixed(2)} QBTC</p>
             </div>
           </div>
 
@@ -305,6 +311,7 @@ export default function QBTCMiningPage() {
                 <Activity className="w-4 h-4" />
                 Live pool charts
               </div>
+              <p className="text-xs text-slate-400">The purple line is the estimated pool hash rate; compare it against the network rate card above.</p>
               {history.length > 1 ? (
                 <div className="space-y-4">
                   <div className="h-40">
