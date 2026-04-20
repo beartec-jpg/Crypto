@@ -28,10 +28,25 @@ interface WorkerInfo {
   pending_balance: number;
   total_paid: number;
   weighted_shares?: number;
+  pool_tier?: string;
+  recent_hashrate?: number;
   acceptance_rate?: number;
   earnings_24h?: number;
   remaining_to_payout?: number;
   estimated_hours_to_payout?: number | null;
+}
+
+interface PoolTierStats {
+  key?: string;
+  label?: string;
+  worker_count?: number;
+  connected_miners?: number;
+  accepted_shares?: number;
+  invalid_shares?: number;
+  pending_payouts?: number;
+  total_paid?: number;
+  weighted_shares?: number;
+  estimated_hashrate?: number;
 }
 
 interface RoundContributor {
@@ -56,8 +71,10 @@ interface PoolStats {
   last_template_height?: number;
   networkHashPs?: number;
   reward_method?: string;
+  pool_router_mode?: string;
   payout_threshold?: number;
   payout_interval_sec?: number;
+  share_difficulty?: number;
   pool_acceptance_rate?: number;
   pool_earnings_24h?: number;
   current_round_id?: string;
@@ -67,6 +84,7 @@ interface PoolStats {
   current_round_weighted_shares?: number;
   current_round_total_rewards?: number;
   current_round_contributors?: RoundContributor[];
+  pool_tiers?: Record<string, PoolTierStats>;
   history_24h?: Partial<HistoryPoint>[];
   workers?: WorkerInfo[];
 }
@@ -146,8 +164,8 @@ export default function QBTCMiningPage() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
-  const [payoutAddress, setPayoutAddress] = useState('');
-  const [workerAlias, setWorkerAlias] = useState('worker1');
+  const [selectedTier, setSelectedTier] = useState<'all' | 'home' | 'standard' | 'pro'>('all');
+  const [payoutAddress, setPayoutAddress] = useState('');  const [workerAlias, setWorkerAlias] = useState('worker1');
   const [bindMessage, setBindMessage] = useState<string | null>(null);
   const [bindingLoading, setBindingLoading] = useState(false);
   const [bindingSaving, setBindingSaving] = useState(false);
@@ -319,13 +337,49 @@ export default function QBTCMiningPage() {
   }, [history]);
 
   const currentNetworkHashrate = useMemo(() => Number(stats?.networkHashPs ?? 0), [stats]);
+  const activeTierStats = useMemo<PoolTierStats>(() => {
+    if (selectedTier === 'all') {
+      return {
+        key: 'all',
+        label: 'Gateway',
+        worker_count: Number(stats?.authorized_workers ?? 0),
+        connected_miners: Number(stats?.connected_miners ?? 0),
+        accepted_shares: Number(stats?.accepted_shares ?? 0),
+        invalid_shares: Number(stats?.invalid_shares ?? 0),
+        pending_payouts: Number(stats?.pending_payouts ?? 0),
+        total_paid: Number(stats?.total_paid ?? 0),
+        weighted_shares: Number(stats?.weighted_shares ?? 0),
+        estimated_hashrate: currentPoolHashrate,
+      };
+    }
+
+    return stats?.pool_tiers?.[selectedTier] ?? {
+      key: selectedTier,
+      label: selectedTier,
+      worker_count: 0,
+      connected_miners: 0,
+      accepted_shares: 0,
+      invalid_shares: 0,
+      pending_payouts: 0,
+      total_paid: 0,
+      weighted_shares: 0,
+      estimated_hashrate: 0,
+    };
+  }, [selectedTier, stats, currentPoolHashrate]);
+
+  const displayedPoolHashrate = useMemo(() => Number(activeTierStats?.estimated_hashrate ?? 0), [activeTierStats]);
   const poolSharePercent = useMemo(() => {
     if (!currentNetworkHashrate || currentNetworkHashrate <= 0) return 0;
-    return Math.min((currentPoolHashrate / currentNetworkHashrate) * 100, 100);
-  }, [currentPoolHashrate, currentNetworkHashrate]);
+    return Math.min((displayedPoolHashrate / currentNetworkHashrate) * 100, 100);
+  }, [displayedPoolHashrate, currentNetworkHashrate]);
 
   const workers = useMemo(() => stats?.workers ?? [], [stats]);
-  const roundContributors = useMemo(() => stats?.current_round_contributors ?? [], [stats]);
+  const workerTierMap = useMemo(() => new Map(workers.map((worker) => [worker.worker_name, worker.pool_tier || 'home'])), [workers]);
+  const roundContributors = useMemo(() => {
+    const list = stats?.current_round_contributors ?? [];
+    if (selectedTier === 'all') return list;
+    return list.filter((worker) => workerTierMap.get(worker.worker_name) === selectedTier);
+  }, [stats, selectedTier, workerTierMap]);
   const linkedWorkers = useMemo(() => {
     const normalizedPayout = payoutAddress.trim().toLowerCase();
     if (!normalizedPayout) return [] as WorkerInfo[];
@@ -357,7 +411,8 @@ export default function QBTCMiningPage() {
   const stratumUrl = 'stratum+tcp://89.167.109.241:3333';
   const payoutSeed = payoutAddress.trim() || 'YOUR_QBTC_ADDRESS';
   const workerExample = `${payoutSeed}.${(workerAlias || 'worker1').trim()}`;
-  const cpuminerCommand = `minerd -a sha256d -o ${stratumUrl} -u ${workerExample} -p x`;
+  const passwordHint = selectedTier === 'home' ? 'home' : selectedTier === 'standard' ? 'gpu' : selectedTier === 'pro' ? 'pro' : 'x';
+  const cpuminerCommand = `minerd -a sha256d -o ${stratumUrl} -u ${workerExample} -p ${passwordHint}`;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 relative overflow-hidden">
@@ -389,6 +444,26 @@ export default function QBTCMiningPage() {
             </div>
           </div>
 
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {([
+                { key: 'all', label: 'Gateway' },
+                { key: 'home', label: 'Home CPU' },
+                { key: 'standard', label: 'Open GPU' },
+                { key: 'pro', label: 'Pro / ASIC' },
+              ] as const).map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setSelectedTier(tab.key)}
+                  className={`px-3 py-1.5 rounded-lg border text-xs transition-colors ${selectedTier === tab.key ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300' : 'border-slate-700 bg-slate-950/60 text-slate-300 hover:border-cyan-400'}`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-slate-400">One public entry point auto-routes miners by observed hash power. Switch tabs to inspect each lane while keeping the gateway unified.</p>
+          </div>
+
           <div className="grid grid-cols-2 md:grid-cols-8 gap-3 text-sm">
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
               <p className="text-slate-400">Pool Status</p>
@@ -398,20 +473,20 @@ export default function QBTCMiningPage() {
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
               <p className="text-slate-400">Workers</p>
-              <p className="font-semibold text-cyan-300">{stats?.authorized_workers ?? 0}</p>
-              <p className="text-[10px] text-slate-500 mt-1">Connected: {stats?.connected_miners ?? 0}</p>
+              <p className="font-semibold text-cyan-300">{Number(activeTierStats?.worker_count ?? 0)}</p>
+              <p className="text-[10px] text-slate-500 mt-1">Connected: {Number(activeTierStats?.connected_miners ?? 0)}</p>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
               <p className="text-slate-400">Accepted</p>
-              <p className="font-semibold text-emerald-300">{stats?.accepted_shares ?? 0}</p>
+              <p className="font-semibold text-emerald-300">{Number(activeTierStats?.accepted_shares ?? 0)}</p>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
               <p className="text-slate-400">Rejected</p>
-              <p className="font-semibold text-rose-300">{stats?.invalid_shares ?? 0}</p>
+              <p className="font-semibold text-rose-300">{Number(activeTierStats?.invalid_shares ?? 0)}</p>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
               <p className="text-slate-400">Pool Hash</p>
-              <p className="font-semibold text-violet-300">{formatHashrate(currentPoolHashrate)}</p>
+              <p className="font-semibold text-violet-300">{formatHashrate(displayedPoolHashrate)}</p>
               <p className="text-[10px] text-slate-500 mt-1">Smoothed estimate capped to network rate</p>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
@@ -421,12 +496,12 @@ export default function QBTCMiningPage() {
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
               <p className="text-slate-400">Pending</p>
-              <p className="font-semibold text-amber-300">{Number(stats?.pending_payouts ?? 0).toFixed(2)} QBTC</p>
+              <p className="font-semibold text-amber-300">{Number(activeTierStats?.pending_payouts ?? 0).toFixed(2)} QBTC</p>
               <p className="text-[10px] text-slate-500 mt-1">Awaiting next payout pass</p>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
               <p className="text-slate-400">Paid</p>
-              <p className="font-semibold text-emerald-300">{Number(stats?.total_paid ?? 0).toFixed(2)} QBTC</p>
+              <p className="font-semibold text-emerald-300">{Number(activeTierStats?.total_paid ?? 0).toFixed(2)} QBTC</p>
               <p className="text-[10px] text-slate-500 mt-1">Sent on-chain</p>
             </div>
           </div>
@@ -437,7 +512,7 @@ export default function QBTCMiningPage() {
                 <Activity className="w-4 h-4" />
                 Live pool charts
               </div>
-              <p className="text-xs text-slate-400">Charts now use a rolling 24-hour view so accepted, rejected, and workers stay readable.</p>
+              <p className="text-xs text-slate-400">Charts show the combined gateway over 24 hours; the tabs above switch the lane-specific card and fairness stats.</p>
               {history.length > 1 ? (
                 <div className="space-y-4">
                   <div className="h-40">
@@ -490,7 +565,8 @@ export default function QBTCMiningPage() {
                 <div>
                   <p>Host: 89.167.109.241</p>
                   <p>Port: 3333</p>
-                  <p>Pool fee: 1.0%</p>
+                  <p>Mode: {stats?.pool_router_mode || 'smart-gateway'}</p>
+                  <p>Lane: {activeTierStats?.label || 'Gateway'}</p>
                   <p>Template height: {stats?.last_template_height ?? '—'}</p>
                 </div>
                 <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
@@ -504,6 +580,7 @@ export default function QBTCMiningPage() {
                 </div>
                 <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
                   <p className="text-slate-400 text-xs mb-1">Example command</p>
+                  <p className="text-[10px] text-slate-500 mb-2">Optional lane hint password: {passwordHint}</p>
                   <div className="flex items-start justify-between gap-2">
                     <span className="font-mono text-[11px] text-amber-300 break-all">{cpuminerCommand}</span>
                     <button onClick={() => copyText('command', cpuminerCommand)} className="text-xs px-2 py-1 rounded border border-slate-600 hover:border-cyan-400">
@@ -645,6 +722,7 @@ export default function QBTCMiningPage() {
                           <div key={worker.worker_name} className="rounded-lg border border-slate-700 bg-slate-950/60 p-3">
                             <p className="text-sm font-semibold text-cyan-300 truncate">{worker.worker_name}</p>
                             <p className="text-xs text-slate-400">Shares: {worker.accepted_shares} • Pending: {Number(worker.pending_balance ?? 0).toFixed(2)} QBTC</p>
+                            <p className="text-xs text-slate-500">Tier: {worker.pool_tier || 'home'} • Hash: {formatHashrate(Number(worker.recent_hashrate ?? 0))}</p>
                             <p className="text-xs text-slate-500">Last seen: {formatLastSeen(worker.last_seen)}</p>
                           </div>
                         ))}
@@ -716,7 +794,7 @@ export default function QBTCMiningPage() {
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 space-y-2">
               <div className="flex items-center gap-2 text-slate-300 font-semibold"><Coins className="w-4 h-4 text-amber-400" /> Payouts</div>
-              <p className="text-sm text-slate-400">Accounting is live. Automatic payout sending remains in safe dry-run mode for now.</p>
+              <p className="text-sm text-slate-400">Accounting and automatic payouts are live, with gateway routing now separating home, standard, and pro lanes.</p>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4 space-y-2">
               <div className="flex items-center gap-2 text-slate-300 font-semibold"><Wallet className="w-4 h-4 text-emerald-400" /> BearTec Wallet</div>
