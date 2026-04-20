@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import {
   Activity,
@@ -165,10 +165,25 @@ export default function QBTCMiningPage() {
   const [copied, setCopied] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
   const [selectedTier, setSelectedTier] = useState<'all' | 'home' | 'standard' | 'pro'>('all');
-  const [payoutAddress, setPayoutAddress] = useState('');  const [workerAlias, setWorkerAlias] = useState('worker1');
+  const [payoutAddress, setPayoutAddress] = useState('');
+  const [workerAlias, setWorkerAlias] = useState('worker1');
   const [bindMessage, setBindMessage] = useState<string | null>(null);
   const [bindingLoading, setBindingLoading] = useState(false);
   const [bindingSaving, setBindingSaving] = useState(false);
+  const [browserMinerAddress, setBrowserMinerAddress] = useState('');
+  const [browserMinerAlias, setBrowserMinerAlias] = useState('browser1');
+  const [browserThreads, setBrowserThreads] = useState(() => {
+    if (typeof navigator === 'undefined') return 2;
+    return Math.max(1, Math.min(2, navigator.hardwareConcurrency || 2));
+  });
+  const [browserThrottle, setBrowserThrottle] = useState(30);
+  const [browserMining, setBrowserMining] = useState(false);
+  const [browserStatus, setBrowserStatus] = useState('Idle');
+  const [browserHashrate, setBrowserHashrate] = useState(0);
+  const [browserAcceptedShares, setBrowserAcceptedShares] = useState(0);
+  const [browserRejectedShares, setBrowserRejectedShares] = useState(0);
+  const browserWorkersRef = useRef<Worker[]>([]);
+  const browserJobTimerRef = useRef<number | null>(null);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -253,6 +268,12 @@ export default function QBTCMiningPage() {
     const id = window.setInterval(fetchStats, 15000);
     return () => window.clearInterval(id);
   }, [fetchStats]);
+
+  useEffect(() => {
+    if (payoutAddress && !browserMinerAddress) {
+      setBrowserMinerAddress(payoutAddress);
+    }
+  }, [payoutAddress, browserMinerAddress]);
 
   const loadBinding = useCallback(async () => {
     if (!isAuthenticated || !user?.id) return;
@@ -407,6 +428,123 @@ export default function QBTCMiningPage() {
     const remaining = Math.max(threshold - walletPendingBalance, 0);
     return remaining > 0 ? remaining / (walletEarnings24h / 24) : 0;
   }, [stats?.payout_threshold, walletEarnings24h, walletPendingBalance]);
+
+  const browserThreadCap = useMemo(() => {
+    if (typeof navigator === 'undefined') return 2;
+    return Math.max(1, Math.min(4, navigator.hardwareConcurrency || 2));
+  }, []);
+
+  const stopBrowserMining = useCallback(() => {
+    if (browserJobTimerRef.current) {
+      window.clearInterval(browserJobTimerRef.current);
+      browserJobTimerRef.current = null;
+    }
+    browserWorkersRef.current.forEach((worker) => {
+      worker.postMessage({ type: 'stop' });
+      worker.terminate();
+    });
+    browserWorkersRef.current = [];
+    setBrowserMining(false);
+    setBrowserStatus('Stopped');
+  }, []);
+
+  const fetchBrowserJob = useCallback(async () => {
+    const address = browserMinerAddress.trim();
+    if (!isValidQbtcAddress(address)) {
+      throw new Error('Enter a valid QBTC payout address');
+    }
+
+    const worker = (browserMinerAlias.trim() || 'browser1').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24) || 'browser1';
+    const response = await fetch(`${POOL_API.replace('pool-stats', 'browser-miner')}?action=job&address=${encodeURIComponent(address)}&worker=${encodeURIComponent(worker)}`, {
+      cache: 'no-store',
+    });
+    const data = await response.json();
+    if (!response.ok || !data?.ok) {
+      throw new Error(data?.error || 'Unable to fetch browser mining job');
+    }
+    return {
+      worker_name: data.worker_name,
+      extranonce1: data.extranonce1 || data.subscription_id,
+      extranonce2_size: Number(data.extranonce2_size ?? 4),
+      share_difficulty: Number(data.share_difficulty ?? 0.000001),
+      pool_tier: String(data.pool_tier || 'home'),
+      job: data.job,
+    };
+  }, [browserMinerAddress, browserMinerAlias]);
+
+  const submitBrowserShare = useCallback(async (payload: Record<string, string>) => {
+    try {
+      const response = await fetch(`${POOL_API.replace('pool-stats', 'browser-miner')}?action=submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (data?.ok) {
+        setBrowserAcceptedShares((value) => value + 1);
+        setBrowserStatus(`Mining in ${data.pool_tier || 'home'} lane`);
+        fetchStats();
+      } else {
+        setBrowserRejectedShares((value) => value + 1);
+        setBrowserStatus(`Share ${data?.reason || 'rejected'}`);
+      }
+    } catch {
+      setBrowserRejectedShares((value) => value + 1);
+      setBrowserStatus('Share submit retrying…');
+    }
+  }, [fetchStats]);
+
+  const startBrowserMining = useCallback(async () => {
+    try {
+      if (typeof window === 'undefined' || typeof Worker === 'undefined') {
+        throw new Error('This browser does not support worker-based mining');
+      }
+      if (!window.isSecureContext && window.location.hostname !== 'localhost') {
+        throw new Error('Browser mining requires HTTPS');
+      }
+
+      stopBrowserMining();
+      setBrowserStatus('Requesting browser mining job…');
+      setBrowserAcceptedShares(0);
+      setBrowserRejectedShares(0);
+      setBrowserHashrate(0);
+
+      const config = await fetchBrowserJob();
+      const workerCount = Math.max(1, Math.min(browserThreads, browserThreadCap));
+      const nextWorkers = Array.from({ length: workerCount }, () => new Worker('/qbtc-browser-miner-worker.js'));
+
+      nextWorkers.forEach((worker) => {
+        worker.onmessage = (event) => {
+          const { type, payload } = event.data || {};
+          if (type === 'stats') {
+            setBrowserHashrate((value) => (value > 0 ? (value * 0.6) + (Number(payload?.hashrate ?? 0) * 0.4) : Number(payload?.hashrate ?? 0)));
+          }
+          if (type === 'share') {
+            void submitBrowserShare(payload);
+          }
+        };
+        worker.postMessage({ type: 'start', payload: { ...config, throttleMs: browserThrottle } });
+      });
+
+      browserWorkersRef.current = nextWorkers;
+      browserJobTimerRef.current = window.setInterval(async () => {
+        try {
+          const nextJob = await fetchBrowserJob();
+          browserWorkersRef.current.forEach((worker) => worker.postMessage({ type: 'job', payload: { ...nextJob, throttleMs: browserThrottle } }));
+        } catch {
+          setBrowserStatus('Waiting for the next job…');
+        }
+      }, 15000);
+
+      setBrowserMining(true);
+      setBrowserStatus(`Mining in ${config.pool_tier || 'home'} lane`);
+    } catch (error: any) {
+      setBrowserMining(false);
+      setBrowserStatus(error?.message || 'Unable to start browser miner');
+    }
+  }, [browserThrottle, browserThreadCap, browserThreads, fetchBrowserJob, stopBrowserMining, submitBrowserShare]);
+
+  useEffect(() => () => stopBrowserMining(), [stopBrowserMining]);
 
   const stratumUrl = 'stratum+tcp://89.167.109.241:3333';
   const payoutSeed = payoutAddress.trim() || 'YOUR_QBTC_ADDRESS';
@@ -589,6 +727,111 @@ export default function QBTCMiningPage() {
                   </div>
                 </div>
                 {copied && <p className="text-xs text-emerald-300">Copied {copied}.</p>}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-cyan-500/30 bg-slate-950/60 p-5 space-y-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2 text-cyan-300 font-semibold">
+                <Pickaxe className="w-4 h-4" />
+                One-click browser CPU miner
+              </div>
+              <span className="text-[10px] px-2 py-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-200">
+                Home lane • no install
+              </span>
+            </div>
+            <p className="text-sm text-slate-400">
+              Enter a QBTC payout wallet and start mining directly in this browser. It is designed for easy low-power CPU participation and routes into the home lane automatically.
+            </p>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <input
+                  value={browserMinerAddress}
+                  onChange={(e) => setBrowserMinerAddress(e.target.value)}
+                  placeholder="qbtct1..."
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    value={browserMinerAlias}
+                    onChange={(e) => setBrowserMinerAlias(e.target.value)}
+                    placeholder="browser1"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
+                  />
+                  <div className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 flex items-center justify-between">
+                    <span>Threads</span>
+                    <select
+                      value={browserThreads}
+                      onChange={(e) => setBrowserThreads(Number(e.target.value))}
+                      className="bg-transparent text-cyan-300 focus:outline-none"
+                    >
+                      {Array.from({ length: browserThreadCap }, (_, i) => i + 1).map((count) => (
+                        <option key={count} value={count} className="bg-slate-900 text-slate-100">
+                          {count}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-700 bg-slate-900 p-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs text-slate-400">
+                    <span>CPU throttle</span>
+                    <span>{browserThrottle} ms pause</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={200}
+                    step={5}
+                    value={browserThrottle}
+                    onChange={(e) => setBrowserThrottle(Number(e.target.value))}
+                    className="w-full accent-cyan-400"
+                  />
+                  <p className="text-[11px] text-slate-500">Lower pause means more hashing and more CPU usage.</p>
+                </div>
+                <div className="flex gap-3 flex-wrap">
+                  <button
+                    onClick={() => void startBrowserMining()}
+                    disabled={browserMining}
+                    className="px-4 py-2 rounded-lg bg-cyan-500 text-slate-950 font-semibold text-sm hover:bg-cyan-400 transition-colors disabled:opacity-60"
+                  >
+                    {browserMining ? 'Mining…' : 'Start mining'}
+                  </button>
+                  <button
+                    onClick={stopBrowserMining}
+                    disabled={!browserMining}
+                    className="px-4 py-2 rounded-lg border border-slate-600 text-slate-200 text-sm hover:border-rose-400 transition-colors disabled:opacity-60"
+                  >
+                    Stop
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+                  <p className="text-xs text-slate-400">Local hash rate</p>
+                  <p className="font-semibold text-violet-300">{formatHashrate(browserHashrate)}</p>
+                </div>
+                <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+                  <p className="text-xs text-slate-400">Status</p>
+                  <p className="font-semibold text-cyan-300">{browserStatus}</p>
+                </div>
+                <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+                  <p className="text-xs text-slate-400">Accepted</p>
+                  <p className="font-semibold text-emerald-300">{browserAcceptedShares}</p>
+                </div>
+                <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+                  <p className="text-xs text-slate-400">Rejected</p>
+                  <p className="font-semibold text-rose-300">{browserRejectedShares}</p>
+                </div>
+                <div className="col-span-2 rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+                  <p className="text-xs text-slate-400">Browser worker name</p>
+                  <p className="font-mono text-[11px] text-amber-300 break-all">
+                    {(browserMinerAddress.trim() || 'qbtct1...')}.{(browserMinerAlias.trim() || 'browser1').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24) || 'browser1'}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
