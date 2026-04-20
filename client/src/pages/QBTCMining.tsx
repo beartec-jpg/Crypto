@@ -276,11 +276,12 @@ export default function QBTCMiningPage() {
 
   // ── Render helpers ─────────────────────────────────────────────────────────
 
-  function StatCard({ label, value, color = 'text-slate-100' }: { label: string; value: string | number; color?: string }) {
+  function StatCard({ label, value, sub, color = 'text-slate-100' }: { label: string; value: string | number; sub?: string; color?: string }) {
     return (
       <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
         <p className="text-slate-400 text-xs mb-1">{label}</p>
         <p className={`font-semibold ${color}`}>{value}</p>
+        {sub && <p className="text-[10px] text-slate-500 mt-0.5">{sub}</p>}
       </div>
     );
   }
@@ -581,8 +582,8 @@ export default function QBTCMiningPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <StatCard label="Pool hash rate" value={formatHashrate(Number(tierStats.estimated_hashrate ?? 0))} color="text-violet-300" />
                 <StatCard label="Workers" value={Number(tierStats.worker_count ?? 0)} color="text-cyan-300" />
-                <StatCard label="Accepted shares" value={Number(tierStats.accepted_shares ?? 0)} color="text-emerald-300" />
-                <StatCard label="Rejected shares" value={Number(tierStats.invalid_shares ?? 0)} color="text-rose-300" />
+                <StatCard label="Weighted contribution" value={Number(tierStats.weighted_shares ?? 0).toFixed(4)} color="text-emerald-300" sub={`${Number(tierStats.accepted_shares ?? 0).toLocaleString()} raw shares`} />
+                <StatCard label="Rejected shares" value={Number(tierStats.invalid_shares ?? 0)} color="text-rose-300" sub="raw count" />
                 <StatCard label="Pending payouts" value={`${Number(tierStats.pending_payouts ?? 0).toFixed(4)} QBTC`} color="text-amber-300" />
                 <StatCard label="Total paid" value={`${Number(tierStats.total_paid ?? 0).toFixed(4)} QBTC`} color="text-emerald-300" />
                 <StatCard label="Connected" value={Number(tierStats.connected_miners ?? 0)} />
