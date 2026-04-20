@@ -53,6 +53,7 @@ interface PoolStats {
   pool_earnings_24h?: number;
   current_round_shares?: number;
   current_round_weighted_shares?: number;
+  history_24h?: Partial<HistoryPoint>[];
   workers?: WorkerInfo[];
 }
 
@@ -92,6 +93,39 @@ function formatEta(hours?: number | null) {
   return `${(hours / 24).toFixed(1)}d`;
 }
 
+function normalizeServerHistory(points: Partial<HistoryPoint>[] | undefined, networkHashPs: number) {
+  if (!Array.isArray(points) || points.length === 0) return [] as HistoryPoint[];
+
+  return points.map((point, index, all) => {
+    const timestamp = Number(point.timestamp ?? Date.now());
+    const previous = all[index - 1];
+    const accepted24h = Number(point.accepted24h ?? point.shares ?? 0);
+    const rejected24h = Number(point.rejected24h ?? point.rejected ?? 0);
+    const elapsedSeconds = previous ? Math.max((timestamp - Number(previous.timestamp ?? timestamp)) / 1000, 1) : 300;
+    const acceptedDelta = previous ? Math.max(accepted24h - Number(previous.accepted24h ?? previous.shares ?? 0), 0) : 0;
+
+    let hashrate = Number(point.hashrate ?? 0);
+    if (!hashrate && acceptedDelta > 0) {
+      hashrate = (acceptedDelta * 4294967296) / elapsedSeconds;
+    }
+    if (networkHashPs > 0) {
+      hashrate = Math.min(hashrate, networkHashPs * 0.98);
+    }
+
+    return {
+      time: String(point.time ?? new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })),
+      timestamp,
+      shares: accepted24h,
+      rejected: rejected24h,
+      accepted24h,
+      rejected24h,
+      workers: Number(point.workers ?? 0),
+      pending: Number(point.pending ?? 0),
+      hashrate: Math.max(hashrate, 0),
+    };
+  });
+}
+
 export default function QBTCMiningPage() {
   const { user, isAuthenticated, isLoading: authLoading } = useCryptoAuth();
   const [stats, setStats] = useState<PoolStats | null>(null);
@@ -123,6 +157,13 @@ export default function QBTCMiningPage() {
       };
 
       setStats(data);
+
+      const serverHistory = normalizeServerHistory(data.history_24h, Number(data.networkHashPs ?? 0));
+      if (serverHistory.length > 0) {
+        setHistory(serverHistory);
+        return;
+      }
+
       setHistory((prev) => {
         const now = Date.now();
         const shares = Number(data.accepted_shares ?? 0);
