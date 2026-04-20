@@ -22,10 +22,16 @@ interface WorkerInfo {
   worker_name: string;
   payout_address: string;
   last_seen: number;
+  last_share_at?: number;
   accepted_shares: number;
   invalid_shares: number;
   pending_balance: number;
   total_paid: number;
+  weighted_shares?: number;
+  acceptance_rate?: number;
+  earnings_24h?: number;
+  remaining_to_payout?: number;
+  estimated_hours_to_payout?: number | null;
 }
 
 interface PoolStats {
@@ -35,10 +41,18 @@ interface PoolStats {
   authorized_workers?: number;
   accepted_shares?: number;
   invalid_shares?: number;
+  weighted_shares?: number;
   pending_payouts?: number;
   total_paid?: number;
   last_template_height?: number;
   networkHashPs?: number;
+  reward_method?: string;
+  payout_threshold?: number;
+  payout_interval_sec?: number;
+  pool_acceptance_rate?: number;
+  pool_earnings_24h?: number;
+  current_round_shares?: number;
+  current_round_weighted_shares?: number;
   workers?: WorkerInfo[];
 }
 
@@ -46,6 +60,9 @@ interface HistoryPoint {
   time: string;
   timestamp: number;
   shares: number;
+  rejected: number;
+  accepted24h: number;
+  rejected24h: number;
   workers: number;
   pending: number;
   hashrate: number;
@@ -66,6 +83,13 @@ function formatHashrate(value: number) {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)} MH/s`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(2)} kH/s`;
   return `${value.toFixed(0)} H/s`;
+}
+
+function formatEta(hours?: number | null) {
+  if (hours == null || !Number.isFinite(hours) || hours <= 0) return '—';
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m`;
+  if (hours < 24) return `${hours.toFixed(1)}h`;
+  return `${(hours / 24).toFixed(1)}d`;
 }
 
 export default function QBTCMiningPage() {
@@ -102,29 +126,47 @@ export default function QBTCMiningPage() {
       setHistory((prev) => {
         const now = Date.now();
         const shares = Number(data.accepted_shares ?? 0);
-        const workers = Number(data.authorized_workers ?? 0);
+        const rejected = Number(data.invalid_shares ?? 0);
+        const workers = Number(data.connected_miners ?? data.authorized_workers ?? 0);
         const pending = Number(data.pending_payouts ?? 0);
+        const networkHashPs = Math.max(Number(data.networkHashPs ?? 0), 0);
         const previous = prev[prev.length - 1];
-        const windowStart = prev.length > 6 ? prev[prev.length - 6] : previous;
+        const windowStart = prev.length > 10 ? prev[prev.length - 10] : prev[0];
         const elapsedSeconds = windowStart ? Math.max((now - windowStart.timestamp) / 1000, 1) : 15;
         const sharesDelta = windowStart ? Math.max(shares - windowStart.shares, 0) : 0;
         const rawHashrate = sharesDelta > 0 ? (sharesDelta * 4294967296) / elapsedSeconds : 0;
-        const hashrate = rawHashrate > 0
-          ? previous?.hashrate ? (previous.hashrate * 0.4) + (rawHashrate * 0.6) : rawHashrate
-          : previous?.hashrate ? previous.hashrate * 0.94 : 0;
 
+        let smoothedHashrate = rawHashrate > 0
+          ? previous?.hashrate ? (previous.hashrate * 0.7) + (rawHashrate * 0.3) : rawHashrate
+          : previous?.hashrate ? previous.hashrate * 0.9 : 0;
+
+        if (networkHashPs > 0) {
+          smoothedHashrate = Math.min(smoothedHashrate, networkHashPs * 0.98);
+        }
+
+        const hashrate = Math.max(smoothedHashrate, 0);
+        const cutoff = now - (24 * 60 * 60 * 1000);
         const next = [
           ...prev,
           {
-            time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             timestamp: now,
             shares,
+            rejected,
+            accepted24h: 0,
+            rejected24h: 0,
             workers,
             pending,
             hashrate,
           },
-        ];
-        return next.slice(-24);
+        ].filter((point) => point.timestamp >= cutoff);
+
+        const base = next[0];
+        return next.map((point) => ({
+          ...point,
+          accepted24h: Math.max(point.shares - (base?.shares ?? 0), 0),
+          rejected24h: Math.max(point.rejected - (base?.rejected ?? 0), 0),
+        }));
       });
     } catch {
       setStats(null);
@@ -224,7 +266,7 @@ export default function QBTCMiningPage() {
   const currentNetworkHashrate = useMemo(() => Number(stats?.networkHashPs ?? 0), [stats]);
   const poolSharePercent = useMemo(() => {
     if (!currentNetworkHashrate || currentNetworkHashrate <= 0) return 0;
-    return (currentPoolHashrate / currentNetworkHashrate) * 100;
+    return Math.min((currentPoolHashrate / currentNetworkHashrate) * 100, 100);
   }, [currentPoolHashrate, currentNetworkHashrate]);
 
   const workers = useMemo(() => stats?.workers ?? [], [stats]);
@@ -240,6 +282,21 @@ export default function QBTCMiningPage() {
   }, [workers, payoutAddress]);
   const topWorkers = useMemo(() => [...linkedWorkers].sort((a, b) => b.accepted_shares - a.accepted_shares).slice(0, 6), [linkedWorkers]);
   const payoutRows = useMemo(() => [...linkedWorkers].sort((a, b) => (b.pending_balance + b.total_paid) - (a.pending_balance + a.total_paid)).slice(0, 8), [linkedWorkers]);
+  const walletAcceptedShares = useMemo(() => linkedWorkers.reduce((sum, worker) => sum + Number(worker.accepted_shares ?? 0), 0), [linkedWorkers]);
+  const walletInvalidShares = useMemo(() => linkedWorkers.reduce((sum, worker) => sum + Number(worker.invalid_shares ?? 0), 0), [linkedWorkers]);
+  const walletAcceptanceRate = useMemo(() => {
+    const total = walletAcceptedShares + walletInvalidShares;
+    return total > 0 ? (walletAcceptedShares / total) * 100 : 100;
+  }, [walletAcceptedShares, walletInvalidShares]);
+  const walletEarnings24h = useMemo(() => linkedWorkers.reduce((sum, worker) => sum + Number(worker.earnings_24h ?? 0), 0), [linkedWorkers]);
+  const walletPendingBalance = useMemo(() => linkedWorkers.reduce((sum, worker) => sum + Number(worker.pending_balance ?? 0), 0), [linkedWorkers]);
+  const walletPaidTotal = useMemo(() => linkedWorkers.reduce((sum, worker) => sum + Number(worker.total_paid ?? 0), 0), [linkedWorkers]);
+  const nextPayoutEstimateHours = useMemo(() => {
+    const threshold = Number(stats?.payout_threshold ?? 0);
+    if (!threshold || walletEarnings24h <= 0) return null;
+    const remaining = Math.max(threshold - walletPendingBalance, 0);
+    return remaining > 0 ? remaining / (walletEarnings24h / 24) : 0;
+  }, [stats?.payout_threshold, walletEarnings24h, walletPendingBalance]);
 
   const stratumUrl = 'stratum+tcp://89.167.109.241:3333';
   const payoutSeed = payoutAddress.trim() || 'YOUR_QBTC_ADDRESS';
@@ -299,7 +356,7 @@ export default function QBTCMiningPage() {
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
               <p className="text-slate-400">Pool Hash</p>
               <p className="font-semibold text-violet-300">{formatHashrate(currentPoolHashrate)}</p>
-              <p className="text-[10px] text-slate-500 mt-1">Smoothed from recent shares</p>
+              <p className="text-[10px] text-slate-500 mt-1">Smoothed estimate capped to network rate</p>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
               <p className="text-slate-400">Network Hash</p>
@@ -324,7 +381,7 @@ export default function QBTCMiningPage() {
                 <Activity className="w-4 h-4" />
                 Live pool charts
               </div>
-              <p className="text-xs text-slate-400">The purple line is the estimated pool hash rate; compare it against the network rate card above.</p>
+              <p className="text-xs text-slate-400">Charts now use a rolling 24-hour view so accepted, rejected, and workers stay readable.</p>
               {history.length > 1 ? (
                 <div className="space-y-4">
                   <div className="h-40">
@@ -334,8 +391,9 @@ export default function QBTCMiningPage() {
                         <XAxis dataKey="time" tick={{ fill: '#94a3b8', fontSize: 10 }} />
                         <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} />
                         <Tooltip />
-                        <Line type="monotone" dataKey="shares" stroke="#22c55e" strokeWidth={2} dot={false} name="Accepted Shares" />
-                        <Line type="monotone" dataKey="workers" stroke="#22d3ee" strokeWidth={2} dot={false} name="Workers" />
+                        <Line type="monotone" dataKey="accepted24h" stroke="#22c55e" strokeWidth={2} dot={false} name="Accepted 24h" />
+                        <Line type="monotone" dataKey="rejected24h" stroke="#fb7185" strokeWidth={2} dot={false} name="Rejected 24h" />
+                        <Line type="monotone" dataKey="workers" stroke="#22d3ee" strokeWidth={2} dot={false} name="Workers Live" />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
@@ -416,6 +474,25 @@ export default function QBTCMiningPage() {
                   Signed in as {user.email || user.firstName || 'BearTec user'}
                 </div>
 
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-3">
+                    <p className="text-xs text-slate-400">Acceptance</p>
+                    <p className="text-sm font-semibold text-emerald-300">{walletAcceptanceRate.toFixed(1)}%</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-3">
+                    <p className="text-xs text-slate-400">24h earnings</p>
+                    <p className="text-sm font-semibold text-cyan-300">{walletEarnings24h.toFixed(2)} QBTC</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-3">
+                    <p className="text-xs text-slate-400">Next payout</p>
+                    <p className="text-sm font-semibold text-amber-300">{formatEta(nextPayoutEstimateHours)}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-3">
+                    <p className="text-xs text-slate-400">Reward method</p>
+                    <p className="text-sm font-semibold text-violet-300">{stats?.reward_method || 'PPS'}</p>
+                  </div>
+                </div>
+
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-4 space-y-3">
                     <div className="flex items-center gap-2 text-slate-300 font-semibold">
@@ -472,9 +549,11 @@ export default function QBTCMiningPage() {
                       <Coins className="w-4 h-4 text-amber-400" /> Payout history
                     </div>
                     <div className="text-xs text-slate-400">
-                      Pending: <span className="text-amber-300">{Number(stats?.pending_payouts ?? 0).toFixed(2)} QBTC</span>
+                      Pending: <span className="text-amber-300">{walletPendingBalance.toFixed(2)} QBTC</span>
                       {' • '}
-                      Paid: <span className="text-emerald-300">{Number(stats?.total_paid ?? 0).toFixed(2)} QBTC</span>
+                      Paid: <span className="text-emerald-300">{walletPaidTotal.toFixed(2)} QBTC</span>
+                      {' • '}
+                      Threshold: <span className="text-cyan-300">{Number(stats?.payout_threshold ?? 0).toFixed(2)} QBTC</span>
                     </div>
                   </div>
                   {!payoutAddress.trim() ? (
