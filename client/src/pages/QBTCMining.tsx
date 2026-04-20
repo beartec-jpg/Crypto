@@ -125,8 +125,11 @@ export default function QBTCMiningPage() {
       const networkData = networkRes?.ok ? await networkRes.json() : null;
       const data: PoolStats = { ...poolData, networkHashPs: Number(networkData?.networkHashPs ?? 0) };
       setStats(data);
-      const recent = (data.history_24h ?? []).slice(-8).map((p) => Number(p.hashrate ?? 0)).filter((v) => v > 0);
-      setPoolHashrate(recent.length > 0 ? recent.reduce((a, b) => a + b, 0) / recent.length : 0);
+      // Sum tier estimated_hashrate values — accurate, difficulty-adjusted figures
+      const tierHash = Object.values(data.pool_tiers ?? {}).reduce(
+        (sum, t: any) => sum + Number(t.estimated_hashrate ?? 0), 0
+      );
+      setPoolHashrate(tierHash);
     } catch {
       // non-fatal
     } finally {
