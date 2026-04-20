@@ -1,9 +1,47 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
-import { Copy, Pickaxe, ShieldCheck } from 'lucide-react';
+import { Copy, Pickaxe, ShieldCheck, Users } from 'lucide-react';
 import QBTCNavigation from '../components/QBTCNavigation';
 
 const POOL_API = '/api/qbtc/pool-stats';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface TierStats {
+  key?: string;
+  label?: string;
+  worker_count?: number;
+  connected_miners?: number;
+  accepted_shares?: number;
+  invalid_shares?: number;
+  pending_payouts?: number;
+  total_paid?: number;
+  weighted_shares?: number;
+  estimated_hashrate?: number;
+  earnings_24h?: number;
+}
+
+interface RoundContributor {
+  worker_name: string;
+  accepted_shares: number;
+  invalid_shares: number;
+  weighted_shares?: number;
+  reward_estimate?: number;
+  share_percent?: number;
+}
+
+interface WorkerInfo {
+  worker_name: string;
+  payout_address: string;
+  last_seen: number;
+  accepted_shares: number;
+  invalid_shares: number;
+  pending_balance: number;
+  total_paid: number;
+  pool_tier?: string;
+  recent_hashrate?: number;
+  earnings_24h?: number;
+}
 
 interface PoolStats {
   running?: boolean;
@@ -13,8 +51,28 @@ interface PoolStats {
   pool_earnings_24h?: number;
   last_template_height?: number;
   pool_router_mode?: string;
+  reward_method?: string;
+  payout_threshold?: number;
+  current_round_status?: string;
+  current_round_shares?: number;
+  current_round_weighted_shares?: number;
+  current_round_total_rewards?: number;
+  current_round_contributors?: RoundContributor[];
+  pool_tiers?: Record<string, TierStats>;
+  workers?: WorkerInfo[];
   history_24h?: { timestamp?: number; hashrate?: number; shares?: number }[];
 }
+
+type Tab = 'gateway' | 'home' | 'standard' | 'pro';
+
+const TABS: { key: Tab; label: string; tierKey?: string; lane: string; password: string }[] = [
+  { key: 'gateway',  label: 'Gateway',   tierKey: undefined,    lane: 'auto-routed', password: 'x' },
+  { key: 'home',     label: 'Home CPU',  tierKey: 'home',       lane: 'home',        password: 'home' },
+  { key: 'standard', label: 'Open GPU',  tierKey: 'standard',   lane: 'gpu',         password: 'gpu' },
+  { key: 'pro',      label: 'Pro / ASIC',tierKey: 'pro',        lane: 'pro',         password: 'pro' },
+];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function isValidQbtcAddress(value: string) {
   return /^qbtc(t|r)?1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]+$/i.test(value.trim());
@@ -28,12 +86,16 @@ function formatHashrate(value: number) {
   return `${value.toFixed(0)} H/s`;
 }
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function QBTCMiningPage() {
   const [stats, setStats] = useState<PoolStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [poolHashrate, setPoolHashrate] = useState(0);
   const [copied, setCopied] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>('gateway');
 
+  // Browser miner — gateway only
   const [browserMinerAddress, setBrowserMinerAddress] = useState('');
   const [browserMinerAlias, setBrowserMinerAlias] = useState('browser1');
   const [browserThreads, setBrowserThreads] = useState(() =>
@@ -47,6 +109,8 @@ export default function QBTCMiningPage() {
   const [browserRejectedShares, setBrowserRejectedShares] = useState(0);
   const browserWorkersRef = useRef<Worker[]>([]);
   const browserJobTimerRef = useRef<number | null>(null);
+
+  // ── Data fetching ──────────────────────────────────────────────────────────
 
   const fetchStats = useCallback(async () => {
     try {
@@ -74,15 +138,7 @@ export default function QBTCMiningPage() {
     return () => window.clearInterval(id);
   }, [fetchStats]);
 
-  const copyText = async (label: string, value: string) => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(label);
-      window.setTimeout(() => setCopied(null), 1500);
-    } catch {
-      setCopied(null);
-    }
-  };
+  // ── Browser miner logic ────────────────────────────────────────────────────
 
   const browserThreadCap = useMemo(() =>
     typeof navigator === 'undefined' ? 2 : Math.max(1, Math.min(4, navigator.hardwareConcurrency || 2)), []);
@@ -174,11 +230,179 @@ export default function QBTCMiningPage() {
 
   useEffect(() => () => stopBrowserMining(), [stopBrowserMining]);
 
-  const stratumUrl = 'stratum+tcp://89.167.109.241:3333';
-  const cpuminerCommand = `minerd -a sha256d -o ${stratumUrl} -u YOUR_QBTC_ADDRESS.worker1 -p x`;
+  const copyText = async (label: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(label);
+      window.setTimeout(() => setCopied(null), 1500);
+    } catch { setCopied(null); }
+  };
+
+  // ── Derived data ───────────────────────────────────────────────────────────
+
   const networkHashPs = Number(stats?.networkHashPs ?? 0);
-  const earnings24h = Number(stats?.pool_earnings_24h ?? 0);
-  const workerCount = Number(stats?.authorized_workers ?? 0);
+  const currentTabMeta = TABS.find((t) => t.key === tab)!;
+  const tierKey = currentTabMeta.tierKey;
+
+  // Per-tier stats (for non-gateway tabs)
+  const tierStats: TierStats = useMemo(() => {
+    if (!tierKey) return {};
+    return stats?.pool_tiers?.[tierKey] ?? {};
+  }, [tierKey, stats]);
+
+  // Per-tier workers
+  const tierWorkers = useMemo(() => {
+    if (!tierKey) return [];
+    return (stats?.workers ?? []).filter((w) => (w.pool_tier || 'home') === tierKey);
+  }, [tierKey, stats]);
+
+  // Per-tier round contributors
+  const tierRoundContributors = useMemo(() => {
+    const contributors = stats?.current_round_contributors ?? [];
+    if (!tierKey) return contributors;
+    const tierWorkerNames = new Set(tierWorkers.map((w) => w.worker_name));
+    return contributors.filter((c) => tierWorkerNames.has(c.worker_name));
+  }, [tierKey, tierWorkers, stats]);
+
+  const stratumUrl = 'stratum+tcp://89.167.109.241:3333';
+  const cpuminerCommand = `minerd -a sha256d -o ${stratumUrl} -u YOUR_QBTC_ADDRESS.worker1 -p ${currentTabMeta.password}`;
+
+  // ── Render helpers ─────────────────────────────────────────────────────────
+
+  function StatCard({ label, value, color = 'text-slate-100' }: { label: string; value: string | number; color?: string }) {
+    return (
+      <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
+        <p className="text-slate-400 text-xs mb-1">{label}</p>
+        <p className={`font-semibold ${color}`}>{value}</p>
+      </div>
+    );
+  }
+
+  function SetupInstructions() {
+    return (
+      <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-5 space-y-4">
+        <div className="flex items-center gap-2 text-emerald-300 font-semibold">
+          <ShieldCheck className="w-4 h-4" />
+          Connect your miner
+        </div>
+        <div className="grid md:grid-cols-2 gap-4 text-sm text-slate-300">
+          <div className="space-y-1">
+            <p><span className="text-slate-400">Host:</span> 89.167.109.241</p>
+            <p><span className="text-slate-400">Port:</span> 3333</p>
+            <p><span className="text-slate-400">Algorithm:</span> SHA-256d</p>
+            <p><span className="text-slate-400">Lane:</span> {currentTabMeta.lane}</p>
+            <p><span className="text-slate-400">Block height:</span> {stats?.last_template_height ?? '—'}</p>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <p className="text-slate-400 text-xs mb-1">Username format</p>
+              <div className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 font-mono text-xs text-cyan-300">
+                YOUR_QBTC_ADDRESS.worker1
+              </div>
+            </div>
+            <div>
+              <p className="text-slate-400 text-xs mb-1">Password</p>
+              <div className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 font-mono text-xs text-slate-300">
+                <span className="text-amber-300">{currentTabMeta.password}</span>
+                {tab === 'gateway' && <span className="text-slate-500 ml-3">(or: home · gpu · pro to pin a lane)</span>}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <p className="text-slate-400 text-xs">Example command</p>
+            <button
+              onClick={() => copyText('command', cpuminerCommand)}
+              className="text-xs px-2 py-1 rounded border border-slate-600 hover:border-cyan-400 transition-colors flex items-center gap-1"
+            >
+              <Copy className="w-3 h-3" />
+              {copied === 'command' ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          <p className="font-mono text-[11px] text-amber-300 break-all">{cpuminerCommand}</p>
+        </div>
+        {tab === 'gateway' && (
+          <div className="text-xs text-slate-400 space-y-1">
+            <p>• <span className="text-slate-300">Home CPU</span> — low-power CPUs and browser miners. Password: <code className="text-amber-300">home</code></p>
+            <p>• <span className="text-slate-300">Open GPU</span> — consumer GPUs. Password: <code className="text-amber-300">gpu</code></p>
+            <p>• <span className="text-slate-300">Pro / ASIC</span> — high-performance hardware. Password: <code className="text-amber-300">pro</code></p>
+            <p>• Leave password as <code className="text-amber-300">x</code> to auto-route by observed hash rate.</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function RoundFairness() {
+    return (
+      <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-5 space-y-4">
+        <div className="flex items-center gap-2 text-violet-300 font-semibold">
+          <Users className="w-4 h-4" />
+          Round fairness — {currentTabMeta.label}
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+          <StatCard label="Round status" value={stats?.current_round_status || '—'} />
+          <StatCard label="Round shares" value={stats?.current_round_shares ?? 0} color="text-emerald-300" />
+          <StatCard label="Weighted shares" value={Number(stats?.current_round_weighted_shares ?? 0).toFixed(4)} color="text-cyan-300" />
+          <StatCard label="Reward est." value={`${Number(stats?.current_round_total_rewards ?? 0).toFixed(6)} QBTC`} color="text-amber-300" />
+        </div>
+        {tierRoundContributors.length > 0 ? (
+          <div className="overflow-x-auto rounded-lg border border-slate-700">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-900/80 text-slate-300">
+                <tr>
+                  <th className="text-left px-3 py-2">Worker</th>
+                  <th className="text-right px-3 py-2">Share %</th>
+                  <th className="text-right px-3 py-2">Weighted</th>
+                  <th className="text-right px-3 py-2">Accepted</th>
+                  <th className="text-right px-3 py-2">Est. reward</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tierRoundContributors.map((c) => (
+                  <tr key={c.worker_name} className="border-t border-slate-800 text-slate-200">
+                    <td className="px-3 py-2 font-mono text-[11px] break-all">{c.worker_name}</td>
+                    <td className="px-3 py-2 text-right text-cyan-300">{Number(c.share_percent ?? 0).toFixed(2)}%</td>
+                    <td className="px-3 py-2 text-right">{Number(c.weighted_shares ?? 0).toFixed(4)}</td>
+                    <td className="px-3 py-2 text-right text-emerald-300">{c.accepted_shares ?? 0}</td>
+                    <td className="px-3 py-2 text-right text-amber-300">{Number(c.reward_estimate ?? 0).toFixed(6)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-400">No {currentTabMeta.label} contributors in the current round yet.</p>
+        )}
+      </div>
+    );
+  }
+
+  function WorkerList() {
+    if (tierWorkers.length === 0) return (
+      <p className="text-sm text-slate-400">No active workers in the {currentTabMeta.label} lane.</p>
+    );
+    return (
+      <div className="space-y-2">
+        {tierWorkers.slice(0, 10).map((w) => (
+          <div key={w.worker_name} className="rounded-lg border border-slate-700 bg-slate-950/60 p-3 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-sm font-semibold text-cyan-300 truncate max-w-xs">{w.worker_name}</p>
+              <p className="text-xs text-slate-500 font-mono truncate max-w-xs">{w.payout_address}</p>
+            </div>
+            <div className="text-right text-xs space-y-0.5">
+              <p className="text-emerald-300">Accepted: {w.accepted_shares}</p>
+              <p className="text-amber-300">Pending: {Number(w.pending_balance ?? 0).toFixed(4)} QBTC</p>
+              <p className="text-slate-400">Hash: {formatHashrate(Number(w.recent_hashrate ?? 0))}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 relative overflow-hidden">
@@ -200,6 +424,7 @@ export default function QBTCMiningPage() {
         </div>
 
         <div className="rounded-2xl border border-slate-700 bg-slate-900/70 p-6 md:p-8 space-y-6">
+          {/* Title + Tabs */}
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center">
               <Pickaxe className="w-6 h-6 text-amber-300" />
@@ -210,180 +435,166 @@ export default function QBTCMiningPage() {
             </div>
           </div>
 
-          {/* Stats strip */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
-            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
-              <p className="text-slate-400 text-xs mb-1">Pool status</p>
-              <p className={`font-semibold ${loading ? 'text-slate-400' : stats?.running ? 'text-emerald-300' : 'text-amber-300'}`}>
-                {loading ? 'Loading…' : stats?.running ? 'Live' : 'Offline'}
-              </p>
-            </div>
-            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
-              <p className="text-slate-400 text-xs mb-1">Pool hash rate</p>
-              <p className="font-semibold text-violet-300">{formatHashrate(poolHashrate)}</p>
-            </div>
-            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
-              <p className="text-slate-400 text-xs mb-1">Network hash rate</p>
-              <p className="font-semibold text-cyan-300">{formatHashrate(networkHashPs)}</p>
-            </div>
-            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
-              <p className="text-slate-400 text-xs mb-1">24 hr QBTC earned</p>
-              <p className="font-semibold text-amber-300">{earnings24h.toFixed(4)}</p>
-            </div>
-            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
-              <p className="text-slate-400 text-xs mb-1">Workers</p>
-              <p className="font-semibold text-slate-100">{workerCount}</p>
-            </div>
+          <div className="flex flex-wrap gap-2">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`px-3 py-1.5 rounded-lg border text-xs transition-colors ${tab === t.key ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300' : 'border-slate-700 bg-slate-950/60 text-slate-300 hover:border-cyan-400'}`}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
 
-          {/* Setup instructions */}
-          <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-5 space-y-4">
-            <div className="flex items-center gap-2 text-emerald-300 font-semibold">
-              <ShieldCheck className="w-4 h-4" />
-              Connect your miner
-            </div>
-            <div className="grid md:grid-cols-2 gap-4 text-sm text-slate-300">
-              <div className="space-y-1">
-                <p><span className="text-slate-400">Host:</span> 89.167.109.241</p>
-                <p><span className="text-slate-400">Port:</span> 3333</p>
-                <p><span className="text-slate-400">Algorithm:</span> SHA-256d</p>
-                <p><span className="text-slate-400">Mode:</span> {stats?.pool_router_mode || 'smart-gateway'}</p>
-                <p><span className="text-slate-400">Block height:</span> {stats?.last_template_height ?? '—'}</p>
-              </div>
-              <div className="space-y-3">
-                <div>
-                  <p className="text-slate-400 text-xs mb-1">Username format</p>
-                  <div className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 font-mono text-xs text-cyan-300">
-                    YOUR_QBTC_ADDRESS.worker1
-                  </div>
-                </div>
-                <div>
-                  <p className="text-slate-400 text-xs mb-1">Password</p>
-                  <div className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 font-mono text-xs text-slate-300">
-                    x <span className="text-slate-500 ml-3">(or: home · gpu · pro to pin a lane)</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
-              <div className="flex items-center justify-between gap-2 mb-1">
-                <p className="text-slate-400 text-xs">Example cpuminer command</p>
-                <button
-                  onClick={() => copyText('command', cpuminerCommand)}
-                  className="text-xs px-2 py-1 rounded border border-slate-600 hover:border-cyan-400 transition-colors flex items-center gap-1"
-                >
-                  <Copy className="w-3 h-3" />
-                  {copied === 'command' ? 'Copied' : 'Copy'}
-                </button>
-              </div>
-              <p className="font-mono text-[11px] text-amber-300 break-all">{cpuminerCommand}</p>
-            </div>
-            <div className="text-xs text-slate-400 space-y-1">
-              <p>• <span className="text-slate-300">Home CPU lane</span> — low-power CPUs and browser miners. Password: <code className="text-amber-300">home</code></p>
-              <p>• <span className="text-slate-300">Open GPU lane</span> — consumer GPUs. Password: <code className="text-amber-300">gpu</code></p>
-              <p>• <span className="text-slate-300">Pro / ASIC lane</span> — high-performance hardware. Password: <code className="text-amber-300">pro</code></p>
-              <p>• Leave password as <code className="text-amber-300">x</code> to auto-route by observed hash rate.</p>
-            </div>
-          </div>
-
-          {/* Browser miner */}
-          <div className="rounded-xl border border-cyan-500/30 bg-slate-950/60 p-5 space-y-4">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-2 text-cyan-300 font-semibold">
-                <Pickaxe className="w-4 h-4" />
-                One-click browser CPU miner
-              </div>
-              <span className="text-[10px] px-2 py-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-200">
-                Home lane • no install
-              </span>
-            </div>
-            <p className="text-sm text-slate-400">
-              Enter a QBTC payout address and start mining directly in this browser. Routes into the home lane automatically — no software needed.
-            </p>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <input
-                  value={browserMinerAddress}
-                  onChange={(e) => setBrowserMinerAddress(e.target.value)}
-                  placeholder="qbtct1… your payout address"
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
+          {/* ── GATEWAY TAB ─────────────────────────────────────────────── */}
+          {tab === 'gateway' && (
+            <div className="space-y-6">
+              {/* Global stats strip */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                <StatCard
+                  label="Pool status"
+                  value={loading ? 'Loading…' : stats?.running ? 'Live' : 'Offline'}
+                  color={loading ? 'text-slate-400' : stats?.running ? 'text-emerald-300' : 'text-amber-300'}
                 />
-                <div className="grid grid-cols-2 gap-3">
-                  <input
-                    value={browserMinerAlias}
-                    onChange={(e) => setBrowserMinerAlias(e.target.value)}
-                    placeholder="browser1"
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
-                  />
-                  <div className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 flex items-center justify-between">
-                    <span>Threads</span>
-                    <select
-                      value={browserThreads}
-                      onChange={(e) => setBrowserThreads(Number(e.target.value))}
-                      className="bg-transparent text-cyan-300 focus:outline-none"
-                    >
-                      {Array.from({ length: browserThreadCap }, (_, i) => i + 1).map((n) => (
-                        <option key={n} value={n} className="bg-slate-900 text-slate-100">{n}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className="rounded-lg border border-slate-700 bg-slate-900 p-3 space-y-2">
-                  <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span>CPU throttle</span>
-                    <span>{browserThrottle} ms pause</span>
-                  </div>
-                  <input
-                    type="range" min={0} max={200} step={5}
-                    value={browserThrottle}
-                    onChange={(e) => setBrowserThrottle(Number(e.target.value))}
-                    className="w-full accent-cyan-400"
-                  />
-                  <p className="text-[11px] text-slate-500">Lower pause = more hashing = more CPU usage.</p>
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => void startBrowserMining()}
-                    disabled={browserMining}
-                    className="px-4 py-2 rounded-lg bg-cyan-500 text-slate-950 font-semibold text-sm hover:bg-cyan-400 transition-colors disabled:opacity-60"
-                  >
-                    {browserMining ? 'Mining…' : 'Start mining'}
-                  </button>
-                  <button
-                    onClick={stopBrowserMining}
-                    disabled={!browserMining}
-                    className="px-4 py-2 rounded-lg border border-slate-600 text-slate-200 text-sm hover:border-rose-400 transition-colors disabled:opacity-60"
-                  >
-                    Stop
-                  </button>
-                </div>
+                <StatCard label="Pool hash rate" value={formatHashrate(poolHashrate)} color="text-violet-300" />
+                <StatCard label="Network hash rate" value={formatHashrate(networkHashPs)} color="text-cyan-300" />
+                <StatCard label="24 hr QBTC earned" value={`${Number(stats?.pool_earnings_24h ?? 0).toFixed(4)}`} color="text-amber-300" />
+                <StatCard label="Workers" value={Number(stats?.authorized_workers ?? 0)} />
               </div>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
-                  <p className="text-xs text-slate-400">Local hash rate</p>
-                  <p className="font-semibold text-violet-300">{formatHashrate(browserHashrate)}</p>
+
+              <SetupInstructions />
+
+              {/* Browser miner — gateway only */}
+              <div className="rounded-xl border border-cyan-500/30 bg-slate-950/60 p-5 space-y-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2 text-cyan-300 font-semibold">
+                    <Pickaxe className="w-4 h-4" />
+                    One-click browser CPU miner
+                  </div>
+                  <span className="text-[10px] px-2 py-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 text-cyan-200">
+                    Home lane • no install
+                  </span>
                 </div>
-                <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
-                  <p className="text-xs text-slate-400">Status</p>
-                  <p className="font-semibold text-cyan-300 text-xs">{browserStatus}</p>
-                </div>
-                <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
-                  <p className="text-xs text-slate-400">Accepted</p>
-                  <p className="font-semibold text-emerald-300">{browserAcceptedShares}</p>
-                </div>
-                <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
-                  <p className="text-xs text-slate-400">Rejected</p>
-                  <p className="font-semibold text-rose-300">{browserRejectedShares}</p>
-                </div>
-                <div className="col-span-2 rounded-lg border border-slate-700 bg-slate-900/60 p-3">
-                  <p className="text-xs text-slate-400 mb-1">Worker name</p>
-                  <p className="font-mono text-[11px] text-amber-300 break-all">
-                    {(browserMinerAddress.trim() || 'qbtct1…')}.{(browserMinerAlias.trim() || 'browser1').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24) || 'browser1'}
-                  </p>
+                <p className="text-sm text-slate-400">
+                  Enter a QBTC payout address and start mining directly in this browser. Routes into the home lane automatically — no software needed.
+                </p>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    <input
+                      value={browserMinerAddress}
+                      onChange={(e) => setBrowserMinerAddress(e.target.value)}
+                      placeholder="qbtct1… your payout address"
+                      className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
+                    />
+                    <div className="grid grid-cols-2 gap-3">
+                      <input
+                        value={browserMinerAlias}
+                        onChange={(e) => setBrowserMinerAlias(e.target.value)}
+                        placeholder="browser1"
+                        className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
+                      />
+                      <div className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 flex items-center justify-between">
+                        <span>Threads</span>
+                        <select
+                          value={browserThreads}
+                          onChange={(e) => setBrowserThreads(Number(e.target.value))}
+                          className="bg-transparent text-cyan-300 focus:outline-none"
+                        >
+                          {Array.from({ length: browserThreadCap }, (_, i) => i + 1).map((n) => (
+                            <option key={n} value={n} className="bg-slate-900 text-slate-100">{n}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-slate-700 bg-slate-900 p-3 space-y-2">
+                      <div className="flex items-center justify-between text-xs text-slate-400">
+                        <span>CPU throttle</span>
+                        <span>{browserThrottle} ms pause</span>
+                      </div>
+                      <input
+                        type="range" min={0} max={200} step={5}
+                        value={browserThrottle}
+                        onChange={(e) => setBrowserThrottle(Number(e.target.value))}
+                        className="w-full accent-cyan-400"
+                      />
+                      <p className="text-[11px] text-slate-500">Lower pause = more hashing = more CPU usage.</p>
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => void startBrowserMining()}
+                        disabled={browserMining}
+                        className="px-4 py-2 rounded-lg bg-cyan-500 text-slate-950 font-semibold text-sm hover:bg-cyan-400 transition-colors disabled:opacity-60"
+                      >
+                        {browserMining ? 'Mining…' : 'Start mining'}
+                      </button>
+                      <button
+                        onClick={stopBrowserMining}
+                        disabled={!browserMining}
+                        className="px-4 py-2 rounded-lg border border-slate-600 text-slate-200 text-sm hover:border-rose-400 transition-colors disabled:opacity-60"
+                      >
+                        Stop
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+                      <p className="text-xs text-slate-400">Local hash rate</p>
+                      <p className="font-semibold text-violet-300">{formatHashrate(browserHashrate)}</p>
+                    </div>
+                    <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+                      <p className="text-xs text-slate-400">Status</p>
+                      <p className="font-semibold text-cyan-300 text-xs">{browserStatus}</p>
+                    </div>
+                    <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+                      <p className="text-xs text-slate-400">Accepted</p>
+                      <p className="font-semibold text-emerald-300">{browserAcceptedShares}</p>
+                    </div>
+                    <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+                      <p className="text-xs text-slate-400">Rejected</p>
+                      <p className="font-semibold text-rose-300">{browserRejectedShares}</p>
+                    </div>
+                    <div className="col-span-2 rounded-lg border border-slate-700 bg-slate-900/60 p-3">
+                      <p className="text-xs text-slate-400 mb-1">Worker name</p>
+                      <p className="font-mono text-[11px] text-amber-300 break-all">
+                        {(browserMinerAddress.trim() || 'qbtct1…')}.{(browserMinerAlias.trim() || 'browser1').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24) || 'browser1'}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
+
+          {/* ── POOL LANE TABS (Home CPU / Open GPU / Pro/ASIC) ─────────── */}
+          {tab !== 'gateway' && (
+            <div className="space-y-6">
+              {/* Lane stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                <StatCard label="Pool hash rate" value={formatHashrate(Number(tierStats.estimated_hashrate ?? 0))} color="text-violet-300" />
+                <StatCard label="Workers" value={Number(tierStats.worker_count ?? 0)} color="text-cyan-300" />
+                <StatCard label="Accepted shares" value={Number(tierStats.accepted_shares ?? 0)} color="text-emerald-300" />
+                <StatCard label="Rejected shares" value={Number(tierStats.invalid_shares ?? 0)} color="text-rose-300" />
+                <StatCard label="Pending payouts" value={`${Number(tierStats.pending_payouts ?? 0).toFixed(4)} QBTC`} color="text-amber-300" />
+                <StatCard label="Total paid" value={`${Number(tierStats.total_paid ?? 0).toFixed(4)} QBTC`} color="text-emerald-300" />
+                <StatCard label="Connected" value={Number(tierStats.connected_miners ?? 0)} />
+                <StatCard label="Network hash rate" value={formatHashrate(networkHashPs)} color="text-cyan-300" />
+              </div>
+
+              <SetupInstructions />
+
+              <RoundFairness />
+
+              {/* Active workers in this lane */}
+              <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-5 space-y-3">
+                <div className="flex items-center gap-2 text-slate-300 font-semibold">
+                  <Users className="w-4 h-4 text-cyan-400" />
+                  Active workers — {currentTabMeta.label}
+                </div>
+                <WorkerList />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
