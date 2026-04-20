@@ -43,9 +43,11 @@ interface PoolStats {
 
 interface HistoryPoint {
   time: string;
+  timestamp: number;
   shares: number;
   workers: number;
   pending: number;
+  hashrate: number;
 }
 
 function formatLastSeen(ts: number) {
@@ -55,6 +57,14 @@ function formatLastSeen(ts: number) {
 
 function isValidQbtcAddress(value: string) {
   return /^qbtc(t|r)?1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]+$/i.test(value.trim());
+}
+
+function formatHashrate(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0 H/s';
+  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)} GH/s`;
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)} MH/s`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(2)} kH/s`;
+  return `${value.toFixed(0)} H/s`;
 }
 
 export default function QBTCMiningPage() {
@@ -78,13 +88,24 @@ export default function QBTCMiningPage() {
       const data = await res.json();
       setStats(data);
       setHistory((prev) => {
+        const now = Date.now();
+        const shares = Number(data.accepted_shares ?? 0);
+        const workers = Number(data.authorized_workers ?? 0);
+        const pending = Number(data.pending_payouts ?? 0);
+        const previous = prev[prev.length - 1];
+        const elapsedSeconds = previous ? Math.max((now - previous.timestamp) / 1000, 1) : 15;
+        const sharesDelta = previous ? Math.max(shares - previous.shares, 0) : 0;
+        const hashrate = sharesDelta > 0 ? (sharesDelta * 4294967296) / elapsedSeconds : 0;
+
         const next = [
           ...prev,
           {
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-            shares: Number(data.accepted_shares ?? 0),
-            workers: Number(data.authorized_workers ?? 0),
-            pending: Number(data.pending_payouts ?? 0),
+            time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            timestamp: now,
+            shares,
+            workers,
+            pending,
+            hashrate,
           },
         ];
         return next.slice(-24);
@@ -178,6 +199,11 @@ export default function QBTCMiningPage() {
     }
   };
 
+  const currentHashrate = useMemo(() => {
+    const latest = history[history.length - 1];
+    return latest?.hashrate ?? 0;
+  }, [history]);
+
   const workers = useMemo(() => stats?.workers ?? [], [stats]);
   const linkedWorkers = useMemo(() => {
     const normalizedPayout = payoutAddress.trim().toLowerCase();
@@ -227,7 +253,7 @@ export default function QBTCMiningPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
               <p className="text-slate-400">Pool Status</p>
               <p className={`font-semibold ${stats?.running ? 'text-emerald-300' : 'text-amber-300'}`}>
@@ -241,6 +267,10 @@ export default function QBTCMiningPage() {
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
               <p className="text-slate-400">Accepted Shares</p>
               <p className="font-semibold text-emerald-300">{stats?.accepted_shares ?? 0}</p>
+            </div>
+            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
+              <p className="text-slate-400">Hash Rate</p>
+              <p className="font-semibold text-violet-300">{formatHashrate(currentHashrate)}</p>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
               <p className="text-slate-400">Pending Payouts</p>
@@ -260,7 +290,7 @@ export default function QBTCMiningPage() {
               </div>
               {history.length > 1 ? (
                 <div className="space-y-4">
-                  <div className="h-44">
+                  <div className="h-40">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={history}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
@@ -272,7 +302,18 @@ export default function QBTCMiningPage() {
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
-                  <div className="h-32">
+                  <div className="h-28">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={history}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                        <XAxis dataKey="time" tick={{ fill: '#94a3b8', fontSize: 10 }} />
+                        <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} tickFormatter={(value) => formatHashrate(Number(value))} width={70} />
+                        <Tooltip formatter={(value) => formatHashrate(Number(value))} />
+                        <Line type="monotone" dataKey="hashrate" stroke="#a78bfa" strokeWidth={2} dot={false} name="Estimated Hash Rate" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="h-28">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={history}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
