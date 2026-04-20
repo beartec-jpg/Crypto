@@ -38,6 +38,7 @@ interface PoolStats {
   pending_payouts?: number;
   total_paid?: number;
   last_template_height?: number;
+  networkHashPs?: number;
   workers?: WorkerInfo[];
 }
 
@@ -81,11 +82,22 @@ export default function QBTCMiningPage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch(POOL_API, { cache: 'no-store' });
-      if (!res.ok) {
+      const [poolRes, networkRes] = await Promise.all([
+        fetch(POOL_API, { cache: 'no-store' }),
+        fetch('/api/qbtc-scan/stats', { cache: 'no-store' }).catch(() => null),
+      ]);
+
+      if (!poolRes.ok) {
         throw new Error('Pool stats request failed');
       }
-      const data = await res.json();
+
+      const poolData = await poolRes.json();
+      const networkData = networkRes && networkRes.ok ? await networkRes.json() : null;
+      const data = {
+        ...poolData,
+        networkHashPs: Number(networkData?.networkHashPs ?? 0),
+      };
+
       setStats(data);
       setHistory((prev) => {
         const now = Date.now();
@@ -199,10 +211,14 @@ export default function QBTCMiningPage() {
     }
   };
 
-  const currentHashrate = useMemo(() => {
-    const latest = history[history.length - 1];
-    return latest?.hashrate ?? 0;
+  const currentPoolHashrate = useMemo(() => {
+    for (let i = history.length - 1; i >= 0; i -= 1) {
+      if (history[i].hashrate > 0) return history[i].hashrate;
+    }
+    return 0;
   }, [history]);
+
+  const currentNetworkHashrate = useMemo(() => Number(stats?.networkHashPs ?? 0), [stats]);
 
   const workers = useMemo(() => stats?.workers ?? [], [stats]);
   const linkedWorkers = useMemo(() => {
@@ -269,8 +285,9 @@ export default function QBTCMiningPage() {
               <p className="font-semibold text-emerald-300">{stats?.accepted_shares ?? 0}</p>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
-              <p className="text-slate-400">Hash Rate</p>
-              <p className="font-semibold text-violet-300">{formatHashrate(currentHashrate)}</p>
+              <p className="text-slate-400">Network Hash Rate</p>
+              <p className="font-semibold text-violet-300">{formatHashrate(currentNetworkHashrate)}</p>
+              <p className="text-[10px] text-slate-500 mt-1">Estimated pool rate: {formatHashrate(currentPoolHashrate)}</p>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
               <p className="text-slate-400">Pending Payouts</p>
@@ -309,7 +326,7 @@ export default function QBTCMiningPage() {
                         <XAxis dataKey="time" tick={{ fill: '#94a3b8', fontSize: 10 }} />
                         <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} tickFormatter={(value) => formatHashrate(Number(value))} width={70} />
                         <Tooltip formatter={(value) => formatHashrate(Number(value))} />
-                        <Line type="monotone" dataKey="hashrate" stroke="#a78bfa" strokeWidth={2} dot={false} name="Estimated Hash Rate" />
+                        <Line type="monotone" dataKey="hashrate" stroke="#a78bfa" strokeWidth={2} dot={false} name="Estimated Pool Hash Rate" />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
