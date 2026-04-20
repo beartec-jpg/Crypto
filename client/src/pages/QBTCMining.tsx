@@ -105,9 +105,13 @@ export default function QBTCMiningPage() {
         const workers = Number(data.authorized_workers ?? 0);
         const pending = Number(data.pending_payouts ?? 0);
         const previous = prev[prev.length - 1];
-        const elapsedSeconds = previous ? Math.max((now - previous.timestamp) / 1000, 1) : 15;
-        const sharesDelta = previous ? Math.max(shares - previous.shares, 0) : 0;
-        const hashrate = sharesDelta > 0 ? (sharesDelta * 4294967296) / elapsedSeconds : 0;
+        const windowStart = prev.length > 6 ? prev[prev.length - 6] : previous;
+        const elapsedSeconds = windowStart ? Math.max((now - windowStart.timestamp) / 1000, 1) : 15;
+        const sharesDelta = windowStart ? Math.max(shares - windowStart.shares, 0) : 0;
+        const rawHashrate = sharesDelta > 0 ? (sharesDelta * 4294967296) / elapsedSeconds : 0;
+        const hashrate = rawHashrate > 0
+          ? previous?.hashrate ? (previous.hashrate * 0.4) + (rawHashrate * 0.6) : rawHashrate
+          : previous?.hashrate ? previous.hashrate * 0.94 : 0;
 
         const next = [
           ...prev,
@@ -212,10 +216,9 @@ export default function QBTCMiningPage() {
   };
 
   const currentPoolHashrate = useMemo(() => {
-    for (let i = history.length - 1; i >= 0; i -= 1) {
-      if (history[i].hashrate > 0) return history[i].hashrate;
-    }
-    return 0;
+    const recent = history.slice(-8).map((point) => point.hashrate).filter((value) => value > 0);
+    if (recent.length === 0) return 0;
+    return recent.reduce((sum, value) => sum + value, 0) / recent.length;
   }, [history]);
 
   const currentNetworkHashrate = useMemo(() => Number(stats?.networkHashPs ?? 0), [stats]);
@@ -291,7 +294,7 @@ export default function QBTCMiningPage() {
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
               <p className="text-slate-400">Pool Hash Rate</p>
               <p className="font-semibold text-violet-300">{formatHashrate(currentPoolHashrate)}</p>
-              <p className="text-[10px] text-slate-500 mt-1">Estimated from live share flow</p>
+              <p className="text-[10px] text-slate-500 mt-1">Smoothed from recent share flow</p>
             </div>
             <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-4">
               <p className="text-slate-400">Network Hash Rate</p>
