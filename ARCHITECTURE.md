@@ -83,7 +83,10 @@ beartec-jpg/Crypto
 │       └── pages/
 │           ├── CryptoApp.tsx        # Main trading dashboard
 │           ├── QBTCHomePage.tsx      # QBTC marketing / roadmap page
-│           └── QBTCSwapPage.tsx      # Atomic swap interface
+│           ├── QBTCMining.tsx         # QBTC mining pool + lane stats + browser miner
+│           └── QBTCSwapPage.tsx       # Atomic swap interface
+│   └── public/
+│       └── qbtc-browser-miner-worker.js  # Canonical browser mining worker asset
 │
 ├── server/                          # Express.js backend
 │   ├── routes.ts                    # All API endpoints (~360KB)
@@ -110,6 +113,15 @@ beartec-jpg/Crypto
 ├── shared/                          # Shared types between client/server
 └── migrations/                      # DB schema migrations (Drizzle)
 ```
+
+---
+
+### QBTC Mining UI Metrics Binding Notes
+
+- Lane tabs (`Home CPU`, `Open GPU`, `Pro / ASIC`) display lane-bound metrics and labels, not pooled/global round totals.
+- Round cards in lane tabs bind to lane-filtered round contributors for accepted shares, weighted shares, and reward estimate.
+- `Pool round status` remains global and is labeled explicitly as pool-wide status.
+- Browser miner worker asset has a single canonical source: `client/public/qbtc-browser-miner-worker.js`.
 
 ---
 

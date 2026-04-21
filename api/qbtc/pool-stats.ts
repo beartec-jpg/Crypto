@@ -1,18 +1,64 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const POOL_STATS_URL = process.env.QBTC_POOL_STATS_URL || 'http://89.167.109.241:8088/stats';
+const POOL_STATS_URL = process.env.QBTC_POOL_STATS_URL || '';
+const CORS_ALLOWED_ORIGINS = String(process.env.QBTC_MINING_CORS_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const ALLOW_ORIGINLESS = String(process.env.QBTC_MINING_ALLOW_ORIGINLESS || 'false').toLowerCase() === 'true';
 
-function setCors(res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+function getOrigin(req: VercelRequest): string {
+  return String(req.headers.origin || '').trim();
+}
+
+function isAllowedOrigin(origin: string): boolean {
+  if (!origin) return ALLOW_ORIGINLESS;
+  if (CORS_ALLOWED_ORIGINS.length === 0) return false;
+  return CORS_ALLOWED_ORIGINS.includes(origin);
+}
+
+function setCors(req: VercelRequest, res: VercelResponse) {
+  const origin = getOrigin(req);
+  if (origin && isAllowedOrigin(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
 }
 
+function getSecurePoolStatsUrl(): string {
+  if (!POOL_STATS_URL) {
+    throw new Error('QBTC_POOL_STATS_URL is not configured');
+  }
+  const url = new URL(POOL_STATS_URL);
+  const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
+  if (url.protocol !== 'https:' && !(isLocalhost && url.protocol === 'http:')) {
+    throw new Error('QBTC_POOL_STATS_URL must use https:// (http:// allowed for localhost only)');
+  }
+  return url.toString();
+}
+
+async function readProxyResponse(response: Response) {
+  const contentType = String(response.headers.get('content-type') || '');
+  if (contentType.toLowerCase().includes('application/json')) {
+    return response.json();
+  }
+  const text = await response.text();
+  return { error: text || 'Upstream error' };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCors(res);
+  setCors(req, res);
 
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    return isAllowedOrigin(getOrigin(req))
+      ? res.status(204).end()
+      : res.status(403).json({ error: 'Origin not allowed' });
+  }
+
+  if (!isAllowedOrigin(getOrigin(req))) {
+    return res.status(403).json({ error: 'Origin not allowed' });
   }
 
   if (req.method !== 'GET') {
@@ -20,29 +66,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const response = await fetch(POOL_STATS_URL, {
+    const response = await fetch(getSecurePoolStatsUrl(), {
       headers: { Accept: 'application/json' },
       signal: AbortSignal.timeout(8000),
     });
-
-    if (!response.ok) {
-      throw new Error(`Pool stats endpoint returned ${response.status}`);
-    }
-
-    const data = await response.json();
-    return res.status(200).json(data);
+    const data = await readProxyResponse(response);
+    return res.status(response.status).json(data);
   } catch (error: any) {
-    return res.status(200).json({
-      pool_name: 'BearTec',
-      running: false,
-      connected_miners: 0,
-      authorized_workers: 0,
-      accepted_shares: 0,
-      invalid_shares: 0,
-      pending_payouts: 0,
-      total_paid: 0,
-      workers: [],
-      error: error?.message || 'Pool stats unavailable',
-    });
+    const message = String(error?.message || 'Pool stats unavailable');
+    const timeout = message.toLowerCase().includes('timed out') || error?.name === 'TimeoutError';
+    const isConfigError = message.includes('QBTC_POOL_STATS_URL');
+    return res.status(isConfigError ? 500 : timeout ? 504 : 502).json({ error: message });
   }
 }

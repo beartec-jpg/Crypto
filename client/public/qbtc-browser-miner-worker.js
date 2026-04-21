@@ -5,6 +5,7 @@ let attemptsSinceReport = 0;
 let lastReportAt = Date.now();
 
 const DIFF1_TARGET = BigInt('0x00000000FFFF0000000000000000000000000000000000000000000000000000');
+const DIFFICULTY_SCALE = 1_000_000_000n;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -49,7 +50,8 @@ async function sha256d(bytes) {
 
 function difficultyToTarget(difficulty) {
   const safeDifficulty = Math.max(Number(difficulty || 0.000001), 0.000001);
-  return DIFF1_TARGET / BigInt(Math.max(1, Math.round(safeDifficulty * 1_000_000_000))) * BigInt(1_000_000_000);
+  const scaledDifficulty = BigInt(Math.max(1, Math.round(safeDifficulty * Number(DIFFICULTY_SCALE))));
+  return (DIFF1_TARGET * DIFFICULTY_SCALE) / scaledDifficulty;
 }
 
 function hashBytesToBigIntLE(bytes) {
@@ -73,12 +75,13 @@ async function mineLoop() {
     }
 
     const { worker_name, job, extranonce1, extranonce2_size, share_difficulty } = currentConfig;
+    const shareDifficulty = Math.max(Number(share_difficulty || 0.000001), 0.000001);
     const extranonce2 = randomHex(Number(extranonce2_size || 4));
     const merkleRoot = await buildMerkleRoot(job, extranonce1, extranonce2);
     const headerPrefix = hexToBytes(
       `${job.version || ''}${job.prevhash || ''}${bytesToHex(Uint8Array.from(merkleRoot).reverse())}${job.ntime || ''}${job.nbits || ''}`
     );
-    const target = difficultyToTarget(share_difficulty);
+    const target = difficultyToTarget(shareDifficulty);
 
     for (let i = 0; i < 256 && running; i += 1) {
       const nonce = randomHex(4);
@@ -95,6 +98,7 @@ async function mineLoop() {
             extranonce2,
             ntime: job.ntime,
             nonce,
+            share_difficulty: shareDifficulty,
           },
         });
       }
