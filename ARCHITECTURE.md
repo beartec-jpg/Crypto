@@ -123,6 +123,27 @@ beartec-jpg/Crypto
 - `Pool round status` remains global and is labeled explicitly as pool-wide status.
 - Browser miner worker asset has a single canonical source: `client/public/qbtc-browser-miner-worker.js`.
 
+### QBTC Mining Infrastructure (Implemented in this repository)
+
+- Frontend mining surface: `client/src/pages/QBTCMining.tsx`
+  - Gateway + lane tabs, setup instructions, lane metrics, fairness table, active worker views.
+  - Browser CPU miner controls (address, alias, threads, throttle, live hashrate, accepted/rejected/weighted shares).
+- Browser mining runtime worker: `client/public/qbtc-browser-miner-worker.js`
+  - SHA-256d hashing loop, target comparison from share difficulty, job refresh support, per-second hashrate telemetry.
+- Mining proxy APIs:
+  - `api/qbtc/pool-stats.ts` (stats proxy with CORS allowlist and secure upstream checks)
+  - `api/qbtc/browser-miner.ts` (job fetch + share submit with payload validation and per-IP rate limits)
+  - `api/qbtc/miner/binding.ts` (authenticated payout/worker alias binding persisted in Postgres)
+- Environment controls for mining are defined in `.env.example`:
+  - `QBTC_POOL_STATS_URL`
+  - `QBTC_POOL_HTTP_BASE_URL`
+  - `QBTC_MINING_CORS_ORIGINS`
+  - `QBTC_MINING_ALLOW_ORIGINLESS`
+  - `QBTC_BROWSER_MINER_SUBMIT_RATE_LIMIT_PER_MINUTE`
+
+> This repository implements the mining integration layer (UI + browser worker + secure proxies).
+> Pool core/stratum internals are external, and node consensus/mining internals are in `beartec-jpg/QuantBTC`.
+
 ---
 
 ## 3. QuantBTC Node — Detailed Tree
