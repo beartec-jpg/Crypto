@@ -131,6 +131,9 @@ Two automated workflows:
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Deployment and configuration
 - **[METRICS.md](METRICS.md)** - Performance and quality metrics
 - **[PHASE_3A_SUMMARY.md](PHASE_3A_SUMMARY.md)** - Phase 3A optimization details
+- **[QBTC_MINING_IMPLEMENTATION_REPORT.md](QBTC_MINING_IMPLEMENTATION_REPORT.md)** - Implemented mining infrastructure status
+- **[QBTC_TESTNET_STATUS_REPORT.md](QBTC_TESTNET_STATUS_REPORT.md)** - QBTC testnet operations status
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture and QBTC integration details
 
 ## Tech Stack
 
