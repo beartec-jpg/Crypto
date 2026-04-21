@@ -49,6 +49,7 @@ interface PoolStats {
   connected_miners?: number;
   authorized_workers?: number;
   networkHashPs?: number;
+  lastBlockTime?: number | null;
   pool_earnings_24h?: number;
   last_template_height?: number;
   pool_router_mode?: string;
@@ -125,7 +126,7 @@ export default function QBTCMiningPage() {
       if (!poolRes.ok) return;
       const poolData = await poolRes.json();
       const networkData = networkRes?.ok ? await networkRes.json() : null;
-      const data: PoolStats = { ...poolData, networkHashPs: Number(networkData?.networkHashPs ?? 0) };
+      const data: PoolStats = { ...poolData, networkHashPs: Number(networkData?.networkHashPs ?? 0), lastBlockTime: networkData?.lastBlockTime ?? null };
       setStats(data);
       // Sum tier estimated_hashrate values — accurate, difficulty-adjusted figures
       const tierHash = Object.values(data.pool_tiers ?? {}).reduce(
@@ -260,7 +261,12 @@ export default function QBTCMiningPage() {
 
   // ── Derived data ───────────────────────────────────────────────────────────
 
-  const networkHashPs = Number(stats?.networkHashPs ?? 0);
+  const networkHashPs = useMemo(() => {
+    const raw = Number(stats?.networkHashPs ?? 0);
+    if (!stats?.lastBlockTime) return raw;
+    const secondsSinceBlock = Math.floor(Date.now() / 1000) - stats.lastBlockTime;
+    return secondsSinceBlock > 60 ? 0 : raw;
+  }, [stats?.networkHashPs, stats?.lastBlockTime]);
   const currentTabMeta = TABS.find((t) => t.key === tab)!;
   const tierKey = currentTabMeta.tierKey;
 
