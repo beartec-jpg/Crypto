@@ -64,13 +64,13 @@ interface PoolStats {
   history_24h?: { timestamp?: number; hashrate?: number; shares?: number }[];
 }
 
-type Tab = 'gateway' | 'home' | 'standard' | 'pro';
+type Tab = 'gateway' | 'browser' | 'hobby' | 'pro';
 
 const TABS: { key: Tab; label: string; tierKey?: string; lane: string; password: string }[] = [
-  { key: 'gateway',  label: 'Gateway',   tierKey: undefined,    lane: 'auto-routed', password: 'x' },
-  { key: 'home',     label: 'Home CPU',  tierKey: 'home',       lane: 'home',        password: 'home' },
-  { key: 'standard', label: 'Open GPU',  tierKey: 'standard',   lane: 'gpu',         password: 'gpu' },
-  { key: 'pro',      label: 'Pro / ASIC',tierKey: 'pro',        lane: 'pro',         password: 'pro' },
+  { key: 'gateway', label: 'Gateway',      tierKey: undefined,  lane: 'auto-routed', password: 'x' },
+  { key: 'browser', label: 'Browser',      tierKey: 'browser',  lane: 'browser',     password: 'browser' },
+  { key: 'hobby',   label: 'Hobby',        tierKey: 'hobby',    lane: 'hobby',       password: 'hobby' },
+  { key: 'pro',     label: 'Pro / ASIC',   tierKey: 'pro',      lane: 'pro',         password: 'pro' },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -273,7 +273,7 @@ export default function QBTCMiningPage() {
   // Per-tier workers
   const tierWorkers = useMemo(() => {
     if (!tierKey) return [];
-    return (stats?.workers ?? []).filter((w) => (w.pool_tier || 'home') === tierKey);
+    return (stats?.workers ?? []).filter((w) => (w.pool_tier || 'hobby') === tierKey);
   }, [tierKey, stats]);
 
   // Per-tier round contributors
@@ -351,9 +351,9 @@ export default function QBTCMiningPage() {
         </div>
         {tab === 'gateway' && (
           <div className="text-xs text-slate-400 space-y-1">
-            <p>• <span className="text-slate-300">Home CPU</span> — low-power CPUs and browser miners. Password: <code className="text-amber-300">home</code></p>
-            <p>• <span className="text-slate-300">Open GPU</span> — consumer GPUs. Password: <code className="text-amber-300">gpu</code></p>
-            <p>• <span className="text-slate-300">Pro / ASIC</span> — high-performance hardware. Password: <code className="text-amber-300">pro</code></p>
+            <p>• <span className="text-slate-300">Browser</span> — in-browser WebAssembly miner (auto-assigned). Password: <code className="text-amber-300">browser</code></p>
+            <p>• <span className="text-slate-300">Hobby</span> — CPUs &amp; GPUs up to 5 TH/s. Password: <code className="text-amber-300">hobby</code></p>
+            <p>• <span className="text-slate-300">Pro / ASIC</span> — high-performance hardware &gt;5 TH/s. Password: <code className="text-amber-300">pro</code></p>
             <p>• Leave password as <code className="text-amber-300">x</code> to auto-route by observed hash rate.</p>
           </div>
         )}
@@ -594,7 +594,7 @@ export default function QBTCMiningPage() {
             </div>
           )}
 
-          {/* ── POOL LANE TABS (Home CPU / Open GPU / Pro/ASIC) ─────────── */}
+          {/* ── POOL LANE TABS (Browser / Hobby / Pro/ASIC) ─────────── */}
           {tab !== 'gateway' && (
             <div className="space-y-6">
               {/* Lane stats */}
