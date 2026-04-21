@@ -1,31 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const POOL_STATS_URL = process.env.QBTC_POOL_STATS_URL || '';
-const CORS_ALLOWED_ORIGINS = String(process.env.QBTC_MINING_CORS_ORIGINS || '')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-const ALLOW_ORIGINLESS = String(process.env.QBTC_MINING_ALLOW_ORIGINLESS || 'false').toLowerCase() === 'true';
-
-function getOrigin(req: VercelRequest): string {
-  return String(req.headers.origin || '').trim();
-}
-
-function isAllowedOrigin(origin: string): boolean {
-  if (!origin) return ALLOW_ORIGINLESS;
-  if (CORS_ALLOWED_ORIGINS.length === 0) return false;
-  return CORS_ALLOWED_ORIGINS.includes(origin);
-}
-
-function setCors(req: VercelRequest, res: VercelResponse) {
-  const origin = getOrigin(req);
-  if (origin && isAllowedOrigin(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Vary', 'Origin');
-  }
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-}
 
 function getSecurePoolStatsUrl(): string {
   if (!POOL_STATS_URL) {
@@ -49,21 +24,12 @@ async function readProxyResponse(response: Response) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCors(req, res);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return isAllowedOrigin(getOrigin(req))
-      ? res.status(204).end()
-      : res.status(403).json({ error: 'Origin not allowed' });
-  }
-
-  if (!isAllowedOrigin(getOrigin(req))) {
-    return res.status(403).json({ error: 'Origin not allowed' });
-  }
-
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
     const response = await fetch(getSecurePoolStatsUrl(), {

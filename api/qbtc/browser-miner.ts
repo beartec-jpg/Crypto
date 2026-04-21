@@ -1,11 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const POOL_BASE_URL = process.env.QBTC_POOL_HTTP_BASE_URL || '';
-const CORS_ALLOWED_ORIGINS = String(process.env.QBTC_MINING_CORS_ORIGINS || '')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-const ALLOW_ORIGINLESS = String(process.env.QBTC_MINING_ALLOW_ORIGINLESS || 'false').toLowerCase() === 'true';
 const SUBMIT_RATE_LIMIT_PER_MINUTE = Math.max(
   1,
   Number(process.env.QBTC_BROWSER_MINER_SUBMIT_RATE_LIMIT_PER_MINUTE || 120),
@@ -16,33 +11,13 @@ let lastRateCleanupAt = Date.now();
 const WORKER_ALIAS_MAX_LEN = 32;
 const DEFAULT_WORKER_ALIAS = 'browser';
 
-function getOrigin(req: VercelRequest): string {
-  return String(req.headers.origin || '').trim();
-}
-
-function isAllowedOrigin(origin: string): boolean {
-  if (!origin) return ALLOW_ORIGINLESS;
-  if (CORS_ALLOWED_ORIGINS.length === 0) return false;
-  return CORS_ALLOWED_ORIGINS.includes(origin);
-}
-
-function setCors(req: VercelRequest, res: VercelResponse) {
-  const origin = getOrigin(req);
-  if (origin && isAllowedOrigin(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Vary', 'Origin');
-  }
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-}
 
 function getSecurePoolBaseUrl(): URL {
   if (!POOL_BASE_URL) {
     throw new Error('QBTC_POOL_HTTP_BASE_URL is not configured');
   }
   const url = new URL(POOL_BASE_URL);
-  const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
-  if (url.protocol !== 'https:' && !(isLocalhost && url.protocol === 'http:')) {
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
     throw new Error('QBTC_POOL_HTTP_BASE_URL must use http:// or https://');
   }
   return url;
@@ -119,17 +94,11 @@ async function readProxyResponse(response: Response) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCors(req, res);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return isAllowedOrigin(getOrigin(req))
-      ? res.status(204).end()
-      : res.status(403).json({ ok: false, error: 'Origin not allowed' });
-  }
-
-  if (!isAllowedOrigin(getOrigin(req))) {
-    return res.status(403).json({ ok: false, error: 'Origin not allowed' });
-  }
+  if (req.method === 'OPTIONS') return res.status(204).end();
 
   const action = String(req.query.action || '').toLowerCase();
 
