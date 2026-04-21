@@ -32,9 +32,9 @@ function getSecurePoolStatsUrl(): string {
     throw new Error('QBTC_POOL_STATS_URL is not configured');
   }
   const url = new URL(POOL_STATS_URL);
-  const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
-  if (url.protocol !== 'https:' && !(isLocalhost && url.protocol === 'http:')) {
-    throw new Error('QBTC_POOL_STATS_URL must use https:// (http:// allowed for localhost only)');
+  // URL is from env var (admin-controlled), not user input — http is acceptable for server-to-server
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new Error('QBTC_POOL_STATS_URL must use http:// or https://');
   }
   return url.toString();
 }

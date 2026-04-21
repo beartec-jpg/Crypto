@@ -43,7 +43,7 @@ function getSecurePoolBaseUrl(): URL {
   const url = new URL(POOL_BASE_URL);
   const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
   if (url.protocol !== 'https:' && !(isLocalhost && url.protocol === 'http:')) {
-    throw new Error('QBTC_POOL_HTTP_BASE_URL must use https:// (http:// allowed for localhost only)');
+    throw new Error('QBTC_POOL_HTTP_BASE_URL must use http:// or https://');
   }
   return url;
 }
