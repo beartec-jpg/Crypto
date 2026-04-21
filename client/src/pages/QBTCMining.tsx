@@ -110,6 +110,7 @@ export default function QBTCMiningPage() {
   const [browserRejectedShares, setBrowserRejectedShares] = useState(0);
   const browserShareDifficultyRef = useRef(0.00025);
   const browserWorkersRef = useRef<Worker[]>([]);
+  const browserWorkerHashratesRef = useRef<Record<number, number>>({});
   const browserJobTimerRef = useRef<number | null>(null);
 
   // ── Data fetching ──────────────────────────────────────────────────────────
@@ -152,6 +153,7 @@ export default function QBTCMiningPage() {
     if (browserJobTimerRef.current) { window.clearInterval(browserJobTimerRef.current); browserJobTimerRef.current = null; }
     browserWorkersRef.current.forEach((w) => { w.postMessage({ type: 'stop' }); w.terminate(); });
     browserWorkersRef.current = [];
+    browserWorkerHashratesRef.current = {};
     setBrowserMining(false);
     setBrowserStatus('Stopped');
   }, []);
@@ -178,20 +180,21 @@ export default function QBTCMiningPage() {
     };
   }, [browserMinerAddress, browserMinerAlias]);
 
-  const submitBrowserShare = useCallback(async (payload: Record<string, string>) => {
+  const submitBrowserShare = useCallback(async (payload: Record<string, string | number>) => {
     try {
       const res = await fetch(`${POOL_API.replace('pool-stats', 'browser-miner')}?action=submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (data?.ok) {
-        setBrowserAcceptedShares((v) => v + 1);
-        setBrowserWeightedShares((v) => v + browserShareDifficultyRef.current);
-        setBrowserStatus(`Mining in ${data.pool_tier || 'home'} lane`);
-        fetchStats();
-      } else {
+        const data = await res.json();
+        if (data?.ok) {
+          setBrowserAcceptedShares((v) => v + 1);
+          const shareDifficulty = Number(payload?.share_difficulty ?? browserShareDifficultyRef.current);
+          setBrowserWeightedShares((v) => v + shareDifficulty);
+          setBrowserStatus(`Mining in ${data.pool_tier || 'home'} lane`);
+          fetchStats();
+        } else {
         setBrowserRejectedShares((v) => v + 1);
         setBrowserStatus(`Share ${data?.reason || 'rejected'}`);
       }
@@ -211,14 +214,19 @@ export default function QBTCMiningPage() {
       setBrowserWeightedShares(0);
       setBrowserRejectedShares(0);
       setBrowserHashrate(0);
+      browserWorkerHashratesRef.current = {};
       const config = await fetchBrowserJob();
       browserShareDifficultyRef.current = (config as any)._diff ?? 0.00025;
       const count = Math.max(1, Math.min(browserThreads, browserThreadCap));
       const nextWorkers = Array.from({ length: count }, () => new Worker('/qbtc-browser-miner-worker.js'));
-      nextWorkers.forEach((w) => {
+      nextWorkers.forEach((w, idx) => {
         w.onmessage = (e) => {
           const { type, payload } = e.data || {};
-          if (type === 'stats') setBrowserHashrate((v) => v > 0 ? v * 0.6 + Number(payload?.hashrate ?? 0) * 0.4 : Number(payload?.hashrate ?? 0));
+          if (type === 'stats') {
+            browserWorkerHashratesRef.current[idx] = Number(payload?.hashrate ?? 0);
+            const totalHashrate = Object.values(browserWorkerHashratesRef.current).reduce((sum, value) => sum + (value || 0), 0);
+            setBrowserHashrate(totalHashrate);
+          }
           if (type === 'share') void submitBrowserShare(payload);
         };
         w.postMessage({ type: 'start', payload: { ...config, throttleMs: browserThrottle } });
@@ -227,6 +235,7 @@ export default function QBTCMiningPage() {
       browserJobTimerRef.current = window.setInterval(async () => {
         try {
           const nextJob = await fetchBrowserJob();
+          browserShareDifficultyRef.current = (nextJob as any)._diff ?? browserShareDifficultyRef.current;
           browserWorkersRef.current.forEach((w) => w.postMessage({ type: 'job', payload: { ...nextJob, throttleMs: browserThrottle } }));
         } catch { setBrowserStatus('Waiting for the next job…'); }
       }, 15000);
