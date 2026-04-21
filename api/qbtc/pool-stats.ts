@@ -5,13 +5,14 @@ const CORS_ALLOWED_ORIGINS = String(process.env.QBTC_MINING_CORS_ORIGINS || '')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+const ALLOW_ORIGINLESS = String(process.env.QBTC_MINING_ALLOW_ORIGINLESS || 'false').toLowerCase() === 'true';
 
 function getOrigin(req: VercelRequest): string {
   return String(req.headers.origin || '').trim();
 }
 
 function isAllowedOrigin(origin: string): boolean {
-  if (!origin) return true;
+  if (!origin) return ALLOW_ORIGINLESS;
   if (CORS_ALLOWED_ORIGINS.length === 0) return false;
   return CORS_ALLOWED_ORIGINS.includes(origin);
 }

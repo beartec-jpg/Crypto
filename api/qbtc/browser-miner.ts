@@ -5,19 +5,23 @@ const CORS_ALLOWED_ORIGINS = String(process.env.QBTC_MINING_CORS_ORIGINS || '')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
+const ALLOW_ORIGINLESS = String(process.env.QBTC_MINING_ALLOW_ORIGINLESS || 'false').toLowerCase() === 'true';
 const SUBMIT_RATE_LIMIT_PER_MINUTE = Math.max(
   1,
   Number(process.env.QBTC_BROWSER_MINER_SUBMIT_RATE_LIMIT_PER_MINUTE || 120),
 );
 const RATE_WINDOW_MS = 60_000;
 const submitRateLimit = new Map<string, { windowStart: number; count: number }>();
+let lastRateCleanupAt = Date.now();
+const WORKER_ALIAS_MAX_LEN = 32;
+const DEFAULT_WORKER_ALIAS = 'browser';
 
 function getOrigin(req: VercelRequest): string {
   return String(req.headers.origin || '').trim();
 }
 
 function isAllowedOrigin(origin: string): boolean {
-  if (!origin) return true;
+  if (!origin) return ALLOW_ORIGINLESS;
   if (CORS_ALLOWED_ORIGINS.length === 0) return false;
   return CORS_ALLOWED_ORIGINS.includes(origin);
 }
@@ -52,10 +56,13 @@ function getClientIp(req: VercelRequest): string {
 }
 
 function isRateLimited(clientIp: string, now: number): boolean {
-  for (const [ip, entry] of submitRateLimit.entries()) {
-    if (now - entry.windowStart > RATE_WINDOW_MS) {
-      submitRateLimit.delete(ip);
+  if (now - lastRateCleanupAt >= RATE_WINDOW_MS) {
+    for (const [ip, entry] of submitRateLimit.entries()) {
+      if (now - entry.windowStart > RATE_WINDOW_MS) {
+        submitRateLimit.delete(ip);
+      }
     }
+    lastRateCleanupAt = now;
   }
   const current = submitRateLimit.get(clientIp);
   if (!current || now - current.windowStart > RATE_WINDOW_MS) {
@@ -63,16 +70,20 @@ function isRateLimited(clientIp: string, now: number): boolean {
     return false;
   }
   current.count += 1;
-  submitRateLimit.set(clientIp, current);
   return current.count > SUBMIT_RATE_LIMIT_PER_MINUTE;
 }
 
 function isValidQbtcAddress(address: string): boolean {
-  return /^qbtc(t|r)?1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{20,}$/i.test(address.trim());
+  // QBTC bech32-style addresses:
+  // prefix: qbtc1/qbtct1/qbtcr1 + charset [qpzry9x8gf2tvdw0s3jn54khce6mua7l], min payload length 20.
+  const value = address.trim();
+  const isUniformCase = value === value.toLowerCase() || value === value.toUpperCase();
+  if (!isUniformCase) return false;
+  return /^qbtc(t|r)?1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{20,}$/.test(value.toLowerCase());
 }
 
 function sanitizeWorker(worker: string): string {
-  return worker.replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 32) || 'browser';
+  return worker.replace(/[^a-zA-Z0-9._-]/g, '').slice(0, WORKER_ALIAS_MAX_LEN) || DEFAULT_WORKER_ALIAS;
 }
 
 function isHex(value: string, expectedBytes?: number): boolean {
