@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { Copy, Pickaxe, ShieldCheck, Users } from 'lucide-react';
 import QBTCNavigation from '../components/QBTCNavigation';
+import { getLaneRoundMetrics, resolveLaneWorkerMetrics } from '../lib/qbtcMiningMetrics';
 
 const POOL_API = '/api/qbtc/pool-stats';
 
@@ -190,8 +191,8 @@ export default function QBTCMiningPage() {
         const data = await res.json();
         if (data?.ok) {
           setBrowserAcceptedShares((v) => v + 1);
-          const shareDifficulty = Number(payload?.share_difficulty ?? browserShareDifficultyRef.current);
-          setBrowserWeightedShares((v) => v + shareDifficulty);
+          const submittedShareDifficulty = Number(payload?.share_difficulty ?? browserShareDifficultyRef.current);
+          setBrowserWeightedShares((v) => v + submittedShareDifficulty);
           setBrowserStatus(`Mining in ${data.pool_tier || 'home'} lane`);
           fetchStats();
         } else {
@@ -283,6 +284,12 @@ export default function QBTCMiningPage() {
     return contributors.filter((c) => tierWorkerNames.has(c.worker_name));
   }, [tierKey, tierWorkers, stats]);
 
+  const laneRoundMetrics = useMemo(() => getLaneRoundMetrics(tierRoundContributors), [tierRoundContributors]);
+  const laneWorkerMetrics = useMemo(
+    () => resolveLaneWorkerMetrics(tierStats.worker_count, tierStats.connected_miners, tierWorkers.length),
+    [tierStats.worker_count, tierStats.connected_miners, tierWorkers.length],
+  );
+
   const stratumUrl = 'stratum+tcp://89.167.109.241:3333';
   const cpuminerCommand = `minerd -a sha256d -o ${stratumUrl} -u YOUR_QBTC_ADDRESS.worker1 -p ${currentTabMeta.password}`;
 
@@ -362,10 +369,10 @@ export default function QBTCMiningPage() {
           Round fairness — {currentTabMeta.label}
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-          <StatCard label="Round status" value={stats?.current_round_status || '—'} />
-          <StatCard label="Round shares" value={stats?.current_round_shares ?? 0} color="text-emerald-300" />
-          <StatCard label="Weighted shares" value={Number(stats?.current_round_weighted_shares ?? 0).toFixed(4)} color="text-cyan-300" />
-          <StatCard label="Reward est." value={`${Number(stats?.current_round_total_rewards ?? 0).toFixed(6)} QBTC`} color="text-amber-300" />
+          <StatCard label="Pool round status" value={stats?.current_round_status || '—'} />
+          <StatCard label={`${currentTabMeta.label} shares`} value={laneRoundMetrics.acceptedShares} color="text-emerald-300" />
+          <StatCard label={`${currentTabMeta.label} weighted`} value={laneRoundMetrics.weightedShares.toFixed(4)} color="text-cyan-300" />
+          <StatCard label={`${currentTabMeta.label} reward est.`} value={`${laneRoundMetrics.rewardEstimate.toFixed(6)} QBTC`} color="text-amber-300" />
         </div>
         {tierRoundContributors.length > 0 ? (
           <div className="overflow-x-auto rounded-lg border border-slate-700">
@@ -592,13 +599,13 @@ export default function QBTCMiningPage() {
             <div className="space-y-6">
               {/* Lane stats */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                <StatCard label="Pool hash rate" value={formatHashrate(Number(tierStats.estimated_hashrate ?? 0))} color="text-violet-300" />
-                <StatCard label="Workers" value={Number(tierStats.worker_count ?? 0)} color="text-cyan-300" />
+                <StatCard label={`${currentTabMeta.label} hash rate`} value={formatHashrate(Number(tierStats.estimated_hashrate ?? 0))} color="text-violet-300" />
+                <StatCard label={`${currentTabMeta.label} workers`} value={laneWorkerMetrics.workerCount} color="text-cyan-300" />
                 <StatCard label="Weighted contribution" value={Number(tierStats.weighted_shares ?? 0).toFixed(4)} color="text-emerald-300" sub={`${Number(tierStats.accepted_shares ?? 0).toLocaleString()} raw shares`} />
                 <StatCard label="Rejected shares" value={Number(tierStats.invalid_shares ?? 0)} color="text-rose-300" sub="raw count" />
                 <StatCard label="Pending payouts" value={`${Number(tierStats.pending_payouts ?? 0).toFixed(4)} QBTC`} color="text-amber-300" />
                 <StatCard label="Total paid" value={`${Number(tierStats.total_paid ?? 0).toFixed(4)} QBTC`} color="text-emerald-300" />
-                <StatCard label="Connected" value={Number(tierStats.connected_miners ?? 0)} />
+                <StatCard label={`${currentTabMeta.label} connected`} value={laneWorkerMetrics.connectedMiners} />
                 <StatCard label="Network hash rate" value={formatHashrate(networkHashPs)} color="text-cyan-300" />
               </div>
 
