@@ -128,9 +128,43 @@ async function probeAndPickBest(
     throw new Error(`All QBTC RPC nodes failed: ${errors}`);
   }
 
-  // For getblockchaininfo pick the node with the most blocks (most up-to-date).
+  // For getblockchaininfo, pick the node that agrees with the majority on bestblockhash
+  // at a common height, falling back to highest-block if no consensus can be found.
+  // This prevents a forked/solo-mined node from being selected just because it has more blocks.
   if (method === 'getblockchaininfo') {
-    return fulfilled.reduce((best, cur) =>
+    if (fulfilled.length === 1) return fulfilled[0];
+
+    // Find the minimum block height across all healthy nodes (safe common ground)
+    const minBlocks = Math.min(...fulfilled.map((f) => f.result?.blocks ?? 0));
+
+    // Group nodes by their bestblockhash at the common height.
+    // We can't do a second RPC call here easily, so use bestblockhash directly
+    // but only trust nodes whose block count is within 500 blocks of the minimum.
+    // Nodes more than 500 blocks ahead of others are likely on a fork.
+    const maxBlocks = Math.max(...fulfilled.map((f) => f.result?.blocks ?? 0));
+    const maxAllowedDelta = 500;
+
+    const sane = fulfilled.filter(
+      (f) => (f.result?.blocks ?? 0) >= minBlocks && (maxBlocks - (f.result?.blocks ?? 0)) <= maxAllowedDelta,
+    );
+
+    // If all nodes diverge wildly (>500 block spread), use the majority by bestblockhash
+    const hashGroups = new Map<string, typeof fulfilled>();
+    for (const f of fulfilled) {
+      const h = f.result?.bestblockhash ?? '';
+      if (!hashGroups.has(h)) hashGroups.set(h, []);
+      hashGroups.get(h)!.push(f);
+    }
+
+    // Find the largest group of agreeing nodes
+    let bestGroup: typeof fulfilled = [];
+    for (const group of hashGroups.values()) {
+      if (group.length > bestGroup.length) bestGroup = group;
+    }
+
+    // From the majority group (or sane nodes), pick highest blocks
+    const candidates = bestGroup.length > 1 ? bestGroup : (sane.length ? sane : fulfilled);
+    return candidates.reduce((best, cur) =>
       (cur.result?.blocks ?? 0) > (best.result?.blocks ?? 0) ? cur : best,
     );
   }
