@@ -6,8 +6,6 @@ import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 
 interface ToolsMenuProps {
-  showHighLowIndicator: boolean;
-  onToggleHighLowIndicator: (enabled: boolean) => void;
   divergenceScannerEnabled: boolean;
   onToggleDivergenceScanner: (enabled: boolean) => void;
   onOpenDivergenceSettings?: () => void;
@@ -24,8 +22,6 @@ interface ToolsMenuProps {
   rewindEnabled: boolean;
   onToggleRewind: (enabled: boolean) => void;
   onOpenRewindSettings: () => void;
-  showHighLowIndicator: boolean;
-  onToggleHighLowIndicator: (enabled: boolean) => void;
   className?: string;
 }
 
@@ -254,22 +250,6 @@ export function ToolsMenu({
                 <Settings className="h-3.5 w-3.5" />
               </Button>
             </div>
-          </div>
-
-          <div className="flex items-center justify-between py-1.5 px-1">
-            <div className="min-w-0 mr-3">
-              <div className="text-sm font-medium text-slate-100 leading-tight">
-                High/Low Indicator
-              </div>
-              <div className="text-xs text-slate-400 leading-tight">
-                Visible range high/low + % to current
-              </div>
-            </div>
-            <Switch
-              checked={showHighLowIndicator}
-              onCheckedChange={onToggleHighLowIndicator}
-              className="shrink-0 data-[state=checked]:bg-blue-600"
-            />
           </div>
         </div>
       </PopoverContent>
