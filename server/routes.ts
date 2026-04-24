@@ -8823,9 +8823,14 @@ CRITICAL DATA RULES:
         qbtcRpcCall('getnetworkinfo', [], '', network).catch(() => null),
       ]);
 
-      const latestBlock = blockchainInfo?.bestblockhash
-        ? await qbtcRpcCall('getblock', [blockchainInfo.bestblockhash, 2], '', network).catch(() => null)
-        : null;
+      const [latestBlock, blockStats] = await Promise.all([
+        blockchainInfo?.bestblockhash
+          ? qbtcRpcCall('getblock', [blockchainInfo.bestblockhash, 2], '', network).catch(() => null)
+          : Promise.resolve(null),
+        blockchainInfo?.bestblockhash
+          ? qbtcRpcCall('getblockstats', [blockchainInfo.bestblockhash, ['avgfeerate', 'feerate_percentiles', 'minfeerate', 'maxfeerate']], '', network).catch(() => null)
+          : Promise.resolve(null),
+      ]);
 
       const warnings = normalizeBlockchainWarnings(blockchainInfo?.warnings);
       const avgBlockTime = chainTxStats?.window_block_count
@@ -8840,9 +8845,12 @@ CRITICAL DATA RULES:
       const paymentsPerSec = latestBlockOutputCount != null && avgBlockTime && avgBlockTime > 0
         ? latestBlockOutputCount / avgBlockTime
         : chainTxStats?.txrate ?? null;
-      const avgFee = mempoolInfo?.mempoolminfee != null
-        ? Number(((Number(mempoolInfo.mempoolminfee) * 1e8) / 1000).toFixed(2))
-        : null;
+      // Use actual block fee rate from getblockstats; fall back to mempoolminfee
+      const avgFee = blockStats?.avgfeerate != null
+        ? Number(Number(blockStats.avgfeerate).toFixed(2))
+        : mempoolInfo?.mempoolminfee != null
+          ? Number(((Number(mempoolInfo.mempoolminfee) * 1e8) / 1000).toFixed(2))
+          : null;
 
       return res.json({
         selectedNetwork: network,
