@@ -9034,6 +9034,59 @@ CRITICAL DATA RULES:
     }
   });
 
+  app.get('/api/qbtc-scan/dag-health', async (req: Request, res: Response) => {
+    try {
+      const network = ((req.query.network as string) || 'testnet') as QbtcNetwork;
+      const WINDOW = 100;
+
+      const [chainTips, blockchainInfo] = await Promise.all([
+        qbtcRpcCall('getchaintips', [], '', network),
+        qbtcRpcCall('getblockchaininfo', [], '', network),
+      ]);
+
+      const activeHeight: number = blockchainInfo?.blocks ?? 0;
+      const allTips: any[] = Array.isArray(chainTips) ? chainTips : [];
+
+      const validHeaders = allTips.filter((t: any) => t.status === 'valid-headers');
+      const validForks = allTips.filter((t: any) => t.status === 'valid-fork');
+      const recentSiblings = validHeaders.filter((t: any) => t.height > activeHeight - WINDOW);
+
+      const parallelPct = WINDOW > 0 ? parseFloat((recentSiblings.length / WINDOW * 100).toFixed(2)) : 0;
+
+      // Height-bucketed distribution for recent siblings
+      const heightMap: Record<number, number> = {};
+      for (const t of recentSiblings) {
+        heightMap[t.height] = (heightMap[t.height] || 0) + 1;
+      }
+      const heightDist = Object.entries(heightMap)
+        .map(([h, count]) => ({ height: parseInt(h, 10), count }))
+        .sort((a, b) => b.height - a.height)
+        .slice(0, 30);
+
+      return res.json({
+        activeHeight,
+        window: WINDOW,
+        parallelPct,
+        recentSiblingCount: recentSiblings.length,
+        totalTips: allTips.length,
+        validHeadersCount: validHeaders.length,
+        validForksCount: validForks.length,
+        currentDagTips: blockchainInfo?.dag_tips ?? null,
+        ghostdagK: blockchainInfo?.ghostdag_k ?? null,
+        recentSiblings: recentSiblings
+          .sort((a: any, b: any) => b.height - a.height)
+          .slice(0, 20)
+          .map((t: any) => ({ height: t.height, hash: t.hash, branchlen: t.branchlen })),
+        heightDist,
+      });
+    } catch (error: any) {
+      if (error?.code === 'MAINNET_NOT_ACTIVE') {
+        return res.status(503).json({ selectedNetwork: 'mainnet', mainnetActive: false, error: error.message });
+      }
+      return res.status(500).json({ error: error?.message || 'Failed to fetch DAG health' });
+    }
+  });
+
   app.get('/api/qbtc/miner/binding', requireCryptoAuth, async (req: Request, res: Response) => {
     try {
       const userId = req.cryptoUser?.id;

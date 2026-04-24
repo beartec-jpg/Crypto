@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
-import { Search, Activity, Blocks, Gauge, Clock3, AlertTriangle, ExternalLink, Wifi, GitFork, Zap, Timer, Coins, Hash, HardDrive, Database, Shield, Network, Server, BarChart2, ArrowLeftRight, TrendingUp, DollarSign, ShoppingCart, XCircle, Lock, CheckCircle } from 'lucide-react';
-import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Search, Activity, Blocks, Gauge, Clock3, AlertTriangle, ExternalLink, Wifi, GitFork, Zap, Timer, Coins, Hash, HardDrive, Database, Shield, Network, Server, BarChart2, ArrowLeftRight, TrendingUp, DollarSign, ShoppingCart, XCircle, Lock, CheckCircle, Share2 } from 'lucide-react';
+import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import MetricChartModal from '../components/MetricChartModal';
 import QBTCNavigation from '../components/QBTCNavigation';
 
@@ -160,6 +160,185 @@ interface SwapStats {
 }
 
 const SWAP_API = import.meta.env.VITE_SWAP_API_URL || '';
+
+// ─── DAG Health Tab ──────────────────────────────────────────────────────────
+
+interface DagHealthData {
+  activeHeight: number;
+  window: number;
+  parallelPct: number;
+  recentSiblingCount: number;
+  totalTips: number;
+  validHeadersCount: number;
+  validForksCount: number;
+  currentDagTips: number | null;
+  ghostdagK: number | null;
+  recentSiblings: Array<{ height: number; hash: string; branchlen: number }>;
+  heightDist: Array<{ height: number; count: number }>;
+}
+
+function DagHealthTab() {
+  const [data, setData] = useState<DagHealthData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetch_ = async () => {
+      try {
+        const res = await fetch('/api/qbtc-scan/dag-health');
+        if (!res.ok) return;
+        setData(await res.json());
+      } catch { /* silently fail */ }
+      setLoading(false);
+    };
+    fetch_();
+    const id = setInterval(fetch_, 10000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-400" />
+      </div>
+    );
+  }
+
+  if (!data) {
+    return <p className="text-slate-400 text-center py-10">Unable to load DAG health data.</p>;
+  }
+
+  // Colour the parallel % badge
+  const pctColor =
+    data.parallelPct === 0 ? 'text-slate-300' :
+    data.parallelPct < 5 ? 'text-emerald-300' :
+    data.parallelPct < 15 ? 'text-amber-300' : 'text-rose-300';
+
+  const pctBorder =
+    data.parallelPct === 0 ? 'border-slate-600' :
+    data.parallelPct < 5 ? 'border-emerald-500/40' :
+    data.parallelPct < 15 ? 'border-amber-500/40' : 'border-rose-500/40';
+
+  return (
+    <div className="space-y-6">
+      {/* Hero metric */}
+      <div className={`rounded-xl border ${pctBorder} bg-gradient-to-r from-slate-950/80 to-cyan-950/20 p-6`}>
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <p className="text-xs text-slate-400 uppercase tracking-wider mb-1">DAG Parallel Block Rate</p>
+            <p className={`text-5xl font-bold tabular-nums ${pctColor}`}>{data.parallelPct.toFixed(2)}%</p>
+            <p className="text-xs text-slate-500 mt-2">Sibling blocks in last {data.window} confirmed heights</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60 text-center">
+              <p className="text-slate-400 text-xs">Live DAG Tips</p>
+              <p className="text-2xl font-bold text-cyan-300">{data.currentDagTips ?? '?'}</p>
+            </div>
+            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60 text-center">
+              <p className="text-slate-400 text-xs">GHOSTDAG K</p>
+              <p className="text-2xl font-bold text-cyan-300">{data.ghostdagK ?? '?'}</p>
+            </div>
+            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60 text-center">
+              <p className="text-slate-400 text-xs">Siblings (window)</p>
+              <p className="text-2xl font-bold">{data.recentSiblingCount}</p>
+            </div>
+            <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60 text-center">
+              <p className="text-slate-400 text-xs">All-time siblings</p>
+              <p className="text-2xl font-bold">{data.validHeadersCount + data.validForksCount}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Explanation */}
+      <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-4 text-sm text-slate-400 space-y-1">
+        <p><span className="text-cyan-300 font-medium">What is parallel %?</span> In GHOSTDAG BlockDAG mode, multiple miners can find valid blocks at the same height simultaneously. These "sibling" blocks are all included in the DAG (none are orphaned). A higher parallel % means more concurrent block production — ideal for high-throughput networks.</p>
+        <p className="text-xs">GHOSTDAG K={data.ghostdagK ?? '?'} means the protocol can handle up to {data.ghostdagK ?? '?'} concurrent blocks per round while maintaining security. Parallel % &lt; K/(K+1)×100 is the safe operating range.</p>
+      </div>
+
+      {/* Height distribution chart */}
+      {data.heightDist.length > 0 && (
+        <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-4">
+          <h3 className="text-sm font-semibold text-cyan-300 mb-3 flex items-center gap-2">
+            <BarChart2 className="w-4 h-4" /> Sibling Block Distribution (last {data.window} heights)
+          </h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={[...data.heightDist].sort((a, b) => a.height - b.height)} margin={{ top: 4, right: 10, bottom: 4, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+              <XAxis dataKey="height" tick={{ fill: '#94a3b8', fontSize: 9 }} tickFormatter={(v) => `#${v}`} />
+              <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} allowDecimals={false} />
+              <Tooltip
+                contentStyle={{ background: '#0f172a', border: '1px solid #334155', borderRadius: '8px' }}
+                formatter={(v: number) => [v, 'Siblings']}
+                labelFormatter={(h) => `Height #${h}`}
+              />
+              <Bar dataKey="count" radius={[3, 3, 0, 0]}>
+                {data.heightDist.map((entry, i) => (
+                  <Cell key={i} fill={entry.count >= 3 ? '#f87171' : entry.count === 2 ? '#fbbf24' : '#22d3ee'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+          <p className="text-xs text-slate-500 mt-2">Cyan = 1 sibling · Amber = 2 siblings · Red = 3+ siblings at same height</p>
+        </div>
+      )}
+
+      {/* Tip breakdown table */}
+      <div className="grid grid-cols-3 gap-3 text-sm">
+        <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+          <p className="text-slate-400 text-xs">All chain tips</p>
+          <p className="text-2xl font-bold">{data.totalTips}</p>
+        </div>
+        <div className="rounded-lg border border-cyan-500/30 p-3 bg-cyan-950/20">
+          <p className="text-cyan-400 text-xs">Valid-headers (siblings)</p>
+          <p className="text-2xl font-bold text-cyan-300">{data.validHeadersCount}</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">Full DAG participants</p>
+        </div>
+        <div className="rounded-lg border border-amber-500/30 p-3 bg-amber-950/20">
+          <p className="text-amber-400 text-xs">Valid-fork</p>
+          <p className="text-2xl font-bold text-amber-300">{data.validForksCount}</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">Pre-fix era (heights 84-239)</p>
+        </div>
+      </div>
+
+      {/* Recent siblings list */}
+      {data.recentSiblings.length > 0 && (
+        <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-4">
+          <h3 className="text-sm font-semibold text-cyan-300 mb-3 flex items-center gap-2">
+            <Share2 className="w-4 h-4" /> Recent Sibling Blocks (last {data.window} heights)
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-slate-400 border-b border-slate-800">
+                  <th className="text-left py-2 px-3">Height</th>
+                  <th className="text-left py-2 px-3">Hash</th>
+                  <th className="text-right py-2 px-3">Branch Len</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.recentSiblings.map((s) => (
+                  <tr key={s.hash} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+                    <td className="py-1.5 px-3 text-cyan-300">#{s.height}</td>
+                    <td className="py-1.5 px-3 font-mono text-slate-400 truncate max-w-xs">{s.hash}</td>
+                    <td className="py-1.5 px-3 text-right">{s.branchlen}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {data.recentSiblings.length === 0 && (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-6 text-center">
+          <CheckCircle className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+          <p className="text-emerald-300 font-medium">0% parallel rate</p>
+          <p className="text-slate-400 text-sm mt-1">No sibling blocks in the last {data.window} heights — chain progressing linearly.</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function TxDataTab() {
   const [stats, setStats] = useState<SwapStats | null>(null);
@@ -520,7 +699,7 @@ const METRIC_CONFIGS: Record<MetricKey, MetricConfig> = {
 };
 
 export default function QBTCScanPage() {
-  const [activeTab, setActiveTab] = useState<'chain' | 'tx'>('chain');
+  const [activeTab, setActiveTab] = useState<'chain' | 'tx' | 'dag'>('chain');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -686,10 +865,18 @@ export default function QBTCScanPage() {
             >
               <span className="flex items-center gap-1.5"><ArrowLeftRight className="w-3.5 h-3.5" /> Market Data</span>
             </button>
+            <button
+              onClick={() => setActiveTab('dag')}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${activeTab === 'dag' ? 'bg-slate-800 text-cyan-300 border border-slate-700 border-b-transparent -mb-px' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              <span className="flex items-center gap-1.5"><Share2 className="w-3.5 h-3.5" /> DAG Parallel %</span>
+            </button>
           </div>
 
           {activeTab === 'tx' ? (
             <TxDataTab />
+          ) : activeTab === 'dag' ? (
+            <DagHealthTab />
           ) : (
           <>
 
