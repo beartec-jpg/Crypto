@@ -55,6 +55,8 @@ interface FullscreenChartActionToolbarProps {
   onAutoFibToggle: (enabled: boolean) => void;
   onOpenAutoFib: () => void;
 
+  highLowEnabled: boolean;
+  onToggleHighLow: (enabled: boolean) => void;
   divergenceScannerEnabled: boolean;
   onToggleDivergenceScanner: (enabled: boolean) => void;
   onOpenDivergenceSettings: () => void;
@@ -129,6 +131,8 @@ export function FullscreenChartActionToolbar({
   autoFibSettings,
   onAutoFibToggle,
   onOpenAutoFib,
+  highLowEnabled,
+  onToggleHighLow,
   divergenceScannerEnabled,
   onToggleDivergenceScanner,
   onOpenDivergenceSettings,
@@ -201,7 +205,9 @@ export function FullscreenChartActionToolbar({
         onAutoFibToggle={onAutoFibToggle}
         onOpenAutoFib={onOpenAutoFib}
       />
-            <ToolsMenu
+      <ToolsMenu
+        highLowEnabled={highLowEnabled}
+        onToggleHighLow={onToggleHighLow}
         divergenceScannerEnabled={divergenceScannerEnabled}
         onToggleDivergenceScanner={onToggleDivergenceScanner}
         onOpenDivergenceSettings={onOpenDivergenceSettings}

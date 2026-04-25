@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import type { IChartApi, ISeriesApi, SeriesMarker } from 'lightweight-charts';
+import { useEffect, useRef } from 'react';
+import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 
 interface HighLowRendererProps {
   chart: IChartApi;
@@ -10,7 +10,6 @@ interface HighLowRendererProps {
 
 export function HighLowRenderer({ chart, candleSeries, candles, enabled }: HighLowRendererProps) {
   const highLowRef = useRef<{ highLine: any; lowLine: any; highLabel: any; lowLabel: any } | null>(null);
-  const [currentHighLow, setCurrentHighLow] = useState<{ high: number; low: number; highPct: string; lowPct: string } | null>(null);
 
   useEffect(() => {
     if (!enabled || !chart || candles.length === 0) {
@@ -44,8 +43,6 @@ export function HighLowRenderer({ chart, candleSeries, candles, enabled }: HighL
       const highPct = ((visibleHigh - currentPrice) / currentPrice * 100).toFixed(2) + '%';
       const lowPct = ((currentPrice - visibleLow) / currentPrice * 100).toFixed(2) + '%';
 
-      setCurrentHighLow({ high: visibleHigh, low: visibleLow, highPct, lowPct });
-
       // Remove old
       if (highLowRef.current) {
         const { highLine, lowLine, highLabel, lowLabel } = highLowRef.current;
@@ -63,7 +60,6 @@ export function HighLowRenderer({ chart, candleSeries, candles, enabled }: HighL
         lineStyle: 2,
         title: `High: $${visibleHigh.toFixed(4)} (+${highPct})`,
         axisLabelColor: 'rgba(255, 152, 0, 0.9)',
-        axisLabelSize: 10,
       });
 
       // Low line & label
@@ -74,7 +70,6 @@ export function HighLowRenderer({ chart, candleSeries, candles, enabled }: HighL
         lineStyle: 2,
         title: `Low: $${visibleLow.toFixed(4)} (${lowPct} to go)`,
         axisLabelColor: 'rgba(0, 230, 118, 0.9)',
-        axisLabelSize: 10,
       });
 
       highLowRef.current = { highLine, lowLine, highLabel: null, lowLabel: null };
@@ -84,10 +79,10 @@ export function HighLowRenderer({ chart, candleSeries, candles, enabled }: HighL
     handleVisibleRangeChange();
 
     // Subscribe
-    const handle = timeScale.subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+    timeScale.subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
 
     return () => {
-      timeScale.unsubscribeVisibleLogicalRangeChange(handle);
+      timeScale.unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
       if (highLowRef.current) {
         const { highLine, lowLine } = highLowRef.current;
         highLine?.remove();
