@@ -235,6 +235,7 @@ export function ChartFullscreenPage({
   const [selectedWaveLabel, setSelectedWaveLabel] = useState('1');
   const [selectedWavePatternType, setSelectedWavePatternType] = useState('impulse');
 
+  const [highLowEnabled, setHighLowEnabled] = useState(false);
   const [divergenceScannerEnabled, setDivergenceScannerEnabled] = useState(false);
   const [selectedDivergencePoint, setSelectedDivergencePoint] = useState<DivergencePoint | null>(null);
   const [showDivergenceSettings, setShowDivergenceSettings] = useState(false);
@@ -2112,6 +2113,7 @@ export function ChartFullscreenPage({
         oscillatorPanel: {
           selected: Array.from(oscillatorPanel.selectedOscillators),
         },
+        highLowEnabled,
         divergenceScannerEnabled,
       };
       localStorage.setItem(key, JSON.stringify(data));
@@ -2136,6 +2138,7 @@ export function ChartFullscreenPage({
     indicators.cci.show, indicators.cci.period,
     indicators.adx.show, indicators.adx.period,
     oscillatorPanel.selectedOscillators,
+    highLowEnabled,
     divergenceScannerEnabled,
   ]);
 
@@ -2244,6 +2247,7 @@ export function ChartFullscreenPage({
       }
 
       // Divergence scanner
+      if (data.highLowEnabled !== undefined) setHighLowEnabled(data.highLowEnabled);
       if (data.divergenceScannerEnabled !== undefined) setDivergenceScannerEnabled(data.divergenceScannerEnabled);
 
       console.log(`📂 Loaded indicator defaults for ${symbol}_${timeframe}`);
@@ -2314,6 +2318,8 @@ export function ChartFullscreenPage({
           autoFibSettings={autoFibSettings.settings}
           onAutoFibToggle={(enabled) => autoFibSettings.updateSettings({ enabled })}
           onOpenAutoFib={() => setShowAutoFibModal(true)}
+          highLowEnabled={highLowEnabled}
+          onToggleHighLow={setHighLowEnabled}
           divergenceScannerEnabled={divergenceScannerEnabled}
           onToggleDivergenceScanner={setDivergenceScannerEnabled}
           onOpenDivergenceSettings={() => setShowDivergenceSettings(true)}
@@ -2473,6 +2479,7 @@ export function ChartFullscreenPage({
           liquidityPivotAnalysis={liquidityPivotAnalysis}
           superTrendData={superTrendData}
           superTrendSettings={superTrendSettings.settings}
+          highLowEnabled={highLowEnabled}
           divergenceScannerEnabled={divergenceScannerEnabled}
           filteredDivergencePoints={filteredDivergencePoints}
           onSelectDivergencePoint={setSelectedDivergencePoint}

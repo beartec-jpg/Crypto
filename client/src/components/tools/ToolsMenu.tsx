@@ -6,6 +6,8 @@ import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 
 interface ToolsMenuProps {
+  highLowEnabled: boolean;
+  onToggleHighLow: (enabled: boolean) => void;
   divergenceScannerEnabled: boolean;
   onToggleDivergenceScanner: (enabled: boolean) => void;
   onOpenDivergenceSettings?: () => void;
@@ -26,6 +28,8 @@ interface ToolsMenuProps {
 }
 
 export function ToolsMenu({
+  highLowEnabled,
+  onToggleHighLow,
   divergenceScannerEnabled,
   onToggleDivergenceScanner,
   onOpenDivergenceSettings,
@@ -47,6 +51,7 @@ export function ToolsMenu({
   const [open, setOpen] = useState(false);
 
   const hasActiveTools =
+    highLowEnabled ||
     divergenceScannerEnabled ||
     htfBiasEnabled ||
     vpEnabled ||
@@ -94,6 +99,22 @@ export function ToolsMenu({
           <div className="text-xs text-slate-400 font-medium uppercase tracking-wide px-1 mb-1">
             Tools
           </div>
+          <div className="flex items-center justify-between py-1.5 px-1">
+            <div className="min-w-0 mr-3">
+              <div className="text-sm font-medium text-slate-100 leading-tight">
+                High/Low
+              </div>
+              <div className="text-xs text-slate-400 leading-tight">
+                Visible range high and low levels
+              </div>
+            </div>
+            <Switch
+              checked={highLowEnabled}
+              onCheckedChange={onToggleHighLow}
+              className="shrink-0 data-[state=checked]:bg-blue-600"
+            />
+          </div>
+
           <div className="flex items-center justify-between py-1.5 px-1">
             <div className="min-w-0 mr-3">
               <div className="text-sm font-medium text-slate-100 leading-tight">
