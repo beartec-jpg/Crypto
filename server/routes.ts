@@ -9061,7 +9061,7 @@ CRITICAL DATA RULES:
       const heightDist = Object.entries(heightMap)
         .map(([h, count]) => ({ height: parseInt(h, 10), count }))
         .sort((a, b) => b.height - a.height)
-        .slice(0, 30);
+        .slice(0, 50);
 
       return res.json({
         activeHeight,
@@ -9075,7 +9075,7 @@ CRITICAL DATA RULES:
         ghostdagK: blockchainInfo?.ghostdag_k ?? null,
         recentSiblings: recentSiblings
           .sort((a: any, b: any) => b.height - a.height)
-          .slice(0, 20)
+          .slice(0, 50)
           .map((t: any) => ({ height: t.height, hash: t.hash, branchlen: t.branchlen })),
         heightDist,
       });

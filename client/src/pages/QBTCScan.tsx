@@ -115,6 +115,14 @@ function formatFee(satPerVb?: number | null): string {
   return `${satPerVb} sat/vB`;
 }
 
+function dagParallelColor(pct: number | null): string {
+  if (pct == null) return '';
+  if (pct === 0) return 'text-emerald-300';
+  if (pct < 5) return 'text-cyan-300';
+  if (pct < 15) return 'text-amber-300';
+  return 'text-rose-300';
+}
+
 // ─── Swap / Marketplace stats types ─────────────────────────────────────────
 
 interface SwapStats {
@@ -185,7 +193,7 @@ function DagHealthTab() {
     const fetch_ = async () => {
       try {
         const res = await fetch('/api/qbtc-scan/dag-health');
-        if (!res.ok) return;
+        if (!res.ok) { setLoading(false); return; }
         setData(await res.json());
       } catch { /* silently fail */ }
       setLoading(false);
@@ -336,6 +344,235 @@ function DagHealthTab() {
           <p className="text-slate-400 text-sm mt-1">No sibling blocks in the last {data.window} heights — chain progressing linearly.</p>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Chain Tree colours ───────────────────────────────────────────────────────
+const TREE_LANE_COLORS = ['#f59e0b', '#f87171', '#a78bfa', '#34d399', '#fb923c', '#60a5fa', '#f472b6', '#4ade80'];
+
+function DagChainTreeTab() {
+  const [data, setData] = useState<DagHealthData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetch_ = async () => {
+      try {
+        const res = await fetch('/api/qbtc-scan/dag-health');
+        if (!res.ok) { setLoading(false); return; }
+        setData(await res.json());
+      } catch { /* silently fail */ }
+      setLoading(false);
+    };
+    fetch_();
+    const id = setInterval(fetch_, 15000);
+    return () => clearInterval(id);
+  }, []);
+
+  const treeLayout = useMemo(() => {
+    if (!data) return null;
+
+    const DISPLAY = 32;
+    const maxH = data.activeHeight;
+    const minH = Math.max(1, maxH - DISPLAY + 1);
+
+    interface Branch {
+      startHeight: number;
+      endHeight: number;
+      hash: string;
+      laneIndex: number;
+    }
+
+    // Build branches from recentSiblings
+    const rawBranches: Branch[] = data.recentSiblings
+      .filter(s => s.height >= minH && s.height <= maxH)
+      .map(s => ({
+        startHeight: Math.max(minH, s.height - Math.max(s.branchlen - 1, 0)),
+        endHeight: s.height,
+        hash: s.hash,
+        laneIndex: 0,
+      }))
+      .sort((a, b) => a.startHeight - b.startHeight);
+
+    // Assign non-overlapping lanes (≥1) to each branch
+    const laneEndH: Record<number, number> = {};
+    for (const br of rawBranches) {
+      let lane = 1;
+      while (laneEndH[lane] !== undefined && laneEndH[lane] >= br.startHeight) {
+        lane++;
+      }
+      br.laneIndex = lane;
+      laneEndH[lane] = br.endHeight;
+    }
+
+    const maxLane = rawBranches.length > 0 ? Math.max(...rawBranches.map(b => b.laneIndex)) : 0;
+    return { minH, maxH, branches: rawBranches, maxLane };
+  }, [data]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-400" />
+      </div>
+    );
+  }
+
+  if (!data || !treeLayout) {
+    return <p className="text-slate-400 text-center py-10">Unable to load chain tree.</p>;
+  }
+
+  const { minH, maxH, branches, maxLane } = treeLayout;
+  const numHeights = maxH - minH + 1;
+
+  // SVG layout constants
+  const BLOCK_W = 64;
+  const LANE_H = 54;
+  const PAD_L = 36;
+  const PAD_R = 36;
+  const PAD_T = 36;
+  const PAD_B = 24;
+  const NODE_R = 6;
+  const MAIN_COLOR = '#22d3ee';
+
+  const numLanes = maxLane + 1;
+  const svgW = PAD_L + numHeights * BLOCK_W + PAD_R;
+  const svgH = PAD_T + numLanes * LANE_H + PAD_B;
+
+  const xAt = (h: number) => PAD_L + (h - minH) * BLOCK_W + BLOCK_W / 2;
+  const yAt = (lane: number) => PAD_T + lane * LANE_H + LANE_H / 2;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-4">
+        <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+          <h3 className="text-sm font-semibold text-cyan-300 flex items-center gap-2">
+            <Share2 className="w-4 h-4" /> Block DAG Chain Tree — last 32 heights
+          </h3>
+          <div className="flex items-center gap-4 text-xs text-slate-400">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-3 h-3 rounded-full bg-cyan-400" /> Main chain
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-3 h-3 rounded-full bg-amber-400" /> Parallel block
+            </span>
+          </div>
+        </div>
+        <div className="overflow-x-auto pb-2">
+          <svg width={svgW} height={Math.max(svgH, 80)} style={{ minWidth: svgW }}>
+            {/* Main chain background track */}
+            <line
+              x1={xAt(minH) - BLOCK_W / 2}
+              y1={yAt(0)}
+              x2={xAt(maxH) + BLOCK_W / 2}
+              y2={yAt(0)}
+              stroke={MAIN_COLOR}
+              strokeWidth={2}
+              strokeOpacity={0.25}
+            />
+
+            {/* Main chain nodes */}
+            {Array.from({ length: numHeights }, (_, i) => {
+              const h = minH + i;
+              return (
+                <g key={h}>
+                  <circle cx={xAt(h)} cy={yAt(0)} r={NODE_R} fill={MAIN_COLOR} />
+                  <text x={xAt(h)} y={yAt(0) - NODE_R - 5} textAnchor="middle" fill="#94a3b8" fontSize={9}>
+                    #{h}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Parallel branches */}
+            {branches.map((br, idx) => {
+              const color = TREE_LANE_COLORS[(br.laneIndex - 1) % TREE_LANE_COLORS.length];
+              const y = yAt(br.laneIndex);
+              const y0 = yAt(0);
+              const xS = xAt(br.startHeight);
+              const xE = xAt(br.endHeight);
+
+              return (
+                <g key={idx}>
+                  {/* Horizontal branch line */}
+                  {br.startHeight <= br.endHeight && (
+                    <line x1={xS} y1={y} x2={xE} y2={y} stroke={color} strokeWidth={2} strokeOpacity={0.45} />
+                  )}
+
+                  {/* Split diagonal from main chain */}
+                  {br.startHeight - 1 >= minH && (
+                    <line
+                      x1={xAt(br.startHeight - 1)} y1={y0}
+                      x2={xS} y2={y}
+                      stroke={color} strokeWidth={1.5} strokeDasharray="4,3"
+                    />
+                  )}
+
+                  {/* Merge diagonal back to main chain */}
+                  {br.endHeight + 1 <= maxH && (
+                    <line
+                      x1={xE} y1={y}
+                      x2={xAt(br.endHeight + 1)} y2={y0}
+                      stroke={color} strokeWidth={1.5} strokeDasharray="4,3"
+                    />
+                  )}
+
+                  {/* Branch block nodes */}
+                  {Array.from({ length: br.endHeight - br.startHeight + 1 }, (_, k) => {
+                    const h = br.startHeight + k;
+                    return (
+                      <g key={k}>
+                        <circle cx={xAt(h)} cy={y} r={NODE_R} fill={color} />
+                        {k === 0 && (
+                          <text
+                            x={xAt(h)} y={y + NODE_R + 12}
+                            textAnchor="middle" fill={color} fontSize={9} fontFamily="monospace"
+                          >
+                            {br.hash.slice(0, 6)}…
+                          </text>
+                        )}
+                      </g>
+                    );
+                  })}
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+
+        {branches.length === 0 && (
+          <div className="text-center py-4 text-slate-400 text-sm flex items-center justify-center gap-2">
+            <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+            No parallel blocks in the last 32 heights — chain progressing linearly.
+          </div>
+        )}
+
+        <p className="text-xs text-slate-500 mt-2">
+          Heights #{minH}–#{maxH} · GHOSTDAG K={data.ghostdagK ?? '?'} · {data.parallelPct.toFixed(2)}% parallel rate
+          {branches.length > 0 && ` · ${branches.length} parallel block${branches.length === 1 ? '' : 's'} shown`}
+        </p>
+      </div>
+
+      {/* Summary stats below the tree */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+        <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+          <p className="text-slate-400 text-xs">Active Height</p>
+          <p className="text-xl font-bold text-cyan-300">#{data.activeHeight}</p>
+        </div>
+        <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+          <p className="text-slate-400 text-xs">Parallel Blocks (32 heights)</p>
+          <p className="text-xl font-bold text-amber-300">{branches.length}</p>
+        </div>
+        <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+          <p className="text-slate-400 text-xs">Max Parallel Lanes</p>
+          <p className="text-xl font-bold">{maxLane}</p>
+        </div>
+        <div className="rounded-lg border border-slate-700 p-3 bg-slate-950/60">
+          <p className="text-slate-400 text-xs">DAG Parallel %</p>
+          <p className={`text-xl font-bold ${dagParallelColor(data.parallelPct)}`}>
+            {data.parallelPct.toFixed(2)}%
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -699,7 +936,7 @@ const METRIC_CONFIGS: Record<MetricKey, MetricConfig> = {
 };
 
 export default function QBTCScanPage() {
-  const [activeTab, setActiveTab] = useState<'chain' | 'tx' | 'dag'>('chain');
+  const [activeTab, setActiveTab] = useState<'chain' | 'tx' | 'dag' | 'tree'>('chain');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -707,6 +944,7 @@ export default function QBTCScanPage() {
   const [stats, setStats] = useState<ScanStats>({});
   const [overview, setOverview] = useState<ScanOverview>({});
   const [selectedMetric, setSelectedMetric] = useState<MetricKey | null>(null);
+  const [dagParallelPct, setDagParallelPct] = useState<number | null>(null);
   const isRefreshingRef = useRef(false);
 
   const hasQuery = useMemo(() => query.trim().length > 0, [query]);
@@ -808,6 +1046,21 @@ export default function QBTCScanPage() {
     }
   };
 
+  // Lightweight parallel % poll for the stat card (every 30s)
+  useEffect(() => {
+    const fetchPct = async () => {
+      try {
+        const res = await fetch('/api/qbtc-scan/dag-health');
+        if (!res.ok) return;
+        const d = await res.json();
+        setDagParallelPct(typeof d.parallelPct === 'number' ? d.parallelPct : null);
+      } catch { /* non-critical */ }
+    };
+    fetchPct();
+    const id = setInterval(fetchPct, 30000);
+    return () => clearInterval(id);
+  }, []);
+
   useEffect(() => {
     const refreshLiveData = async () => {
       if (isRefreshingRef.current) return;
@@ -852,24 +1105,30 @@ export default function QBTCScanPage() {
           <p className="text-slate-300 mb-4">Search transactions, addresses, blocks, and monitor live QBTC chain, DAG, and PQC status.</p>
 
           {/* Tabs */}
-          <div className="flex gap-1 mb-6 border-b border-slate-700 pb-0">
+          <div className="flex gap-1 mb-6 border-b border-slate-700 pb-0 overflow-x-auto">
             <button
               onClick={() => setActiveTab('chain')}
-              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${activeTab === 'chain' ? 'bg-slate-800 text-cyan-300 border border-slate-700 border-b-transparent -mb-px' : 'text-slate-400 hover:text-slate-200'}`}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap ${activeTab === 'chain' ? 'bg-slate-800 text-cyan-300 border border-slate-700 border-b-transparent -mb-px' : 'text-slate-400 hover:text-slate-200'}`}
             >
               <span className="flex items-center gap-1.5"><Blocks className="w-3.5 h-3.5" /> Chain Data</span>
             </button>
             <button
               onClick={() => setActiveTab('tx')}
-              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${activeTab === 'tx' ? 'bg-slate-800 text-cyan-300 border border-slate-700 border-b-transparent -mb-px' : 'text-slate-400 hover:text-slate-200'}`}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap ${activeTab === 'tx' ? 'bg-slate-800 text-cyan-300 border border-slate-700 border-b-transparent -mb-px' : 'text-slate-400 hover:text-slate-200'}`}
             >
               <span className="flex items-center gap-1.5"><ArrowLeftRight className="w-3.5 h-3.5" /> Market Data</span>
             </button>
             <button
               onClick={() => setActiveTab('dag')}
-              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${activeTab === 'dag' ? 'bg-slate-800 text-cyan-300 border border-slate-700 border-b-transparent -mb-px' : 'text-slate-400 hover:text-slate-200'}`}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap ${activeTab === 'dag' ? 'bg-slate-800 text-cyan-300 border border-slate-700 border-b-transparent -mb-px' : 'text-slate-400 hover:text-slate-200'}`}
             >
               <span className="flex items-center gap-1.5"><Share2 className="w-3.5 h-3.5" /> DAG Parallel %</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('tree')}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors whitespace-nowrap ${activeTab === 'tree' ? 'bg-slate-800 text-cyan-300 border border-slate-700 border-b-transparent -mb-px' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              <span className="flex items-center gap-1.5"><GitFork className="w-3.5 h-3.5" /> Chain Tree</span>
             </button>
           </div>
 
@@ -877,6 +1136,8 @@ export default function QBTCScanPage() {
             <TxDataTab />
           ) : activeTab === 'dag' ? (
             <DagHealthTab />
+          ) : activeTab === 'tree' ? (
+            <DagChainTreeTab />
           ) : (
           <>
 
@@ -912,7 +1173,7 @@ export default function QBTCScanPage() {
           </div>
 
           {/* Network Health */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-3 text-sm">
             <button
               onClick={() => openChart('peers')}
               aria-label="View peer count history chart"
@@ -942,6 +1203,20 @@ export default function QBTCScanPage() {
               <p className="text-slate-400 flex items-center gap-1"><Timer className="w-3.5 h-3.5" aria-hidden="true" /> Uptime</p>
               <p className="font-semibold">{formatUptime(stats.uptime)}</p>
             </div>
+            <button
+              onClick={() => setActiveTab('tree')}
+              aria-label="View DAG chain tree"
+              className="rounded-lg border border-cyan-500/30 p-3 bg-slate-950/60 text-left cursor-pointer hover:border-cyan-400 transition-colors group"
+            >
+              <p className="text-slate-400 flex items-center gap-1">
+                <Share2 className="w-3.5 h-3.5 text-cyan-500" aria-hidden="true" /> DAG Parallel %
+                <ExternalLink className="w-3 h-3 ml-auto opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" aria-hidden="true" />
+              </p>
+              <p className={`font-semibold ${dagParallelColor(dagParallelPct)}`}>
+                {dagParallelPct != null ? `${dagParallelPct.toFixed(2)}%` : '...'}
+              </p>
+              <p className="text-[10px] text-slate-500 mt-0.5">↗ View chain tree</p>
+            </button>
           </div>
 
           {/* Oscillating Metrics Row */}
