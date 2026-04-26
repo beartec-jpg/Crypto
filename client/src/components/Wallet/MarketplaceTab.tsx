@@ -228,9 +228,8 @@ function SellerLockPanel({
     try {
       setStep('unlocking');
       const wallet = await unlockWallet(walletId, password);
-      const qbtcPrivateKey = wallet.privateKeys.qbtc;
-      if (!qbtcPrivateKey) throw new Error('QBTC private key not found');
-      const keyPair = await QBTCKeyPair.fromECDSAPrivateKey(qbtcPrivateKey);
+      if (!wallet.mnemonic) throw new Error('Wallet mnemonic not available. Please ensure your wallet is properly initialized.');
+      const keyPair = await QBTCKeyPair.fromMnemonic(wallet.mnemonic);
 
       setStep('building');
       const htlcParams: QBTCHtlcParams = {
@@ -1058,9 +1057,8 @@ export default function MarketplaceTab({
       // 2. Unlock wallet
       setPostStep('Unlocking wallet…');
       const wallet = await unlockWallet(walletId, postPassword);
-      const qbtcPrivateKey = wallet.privateKeys.qbtc;
-      if (!qbtcPrivateKey) throw new Error('QBTC private key not found');
-      const keyPair = await QBTCKeyPair.fromECDSAPrivateKey(qbtcPrivateKey);
+      if (!wallet.mnemonic) throw new Error('Wallet mnemonic not available. Please ensure your wallet is properly initialized.');
+      const keyPair = await QBTCKeyPair.fromMnemonic(wallet.mnemonic);
 
       // 3. Build hash-only HTLC (no buyer needed)
       setPostStep('Building HTLC…');
