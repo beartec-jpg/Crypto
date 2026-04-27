@@ -505,6 +505,161 @@ export async function checkSufficientBalance(
 }
 
 /**
+ * Check native balance covers gas fee for an ERC-20 token transfer.
+ * The token amount itself is NOT checked here — call-site must verify
+ * token balance >= amount separately.
+ */
+export async function checkNativeBalanceForTokenGas(
+  chain: Chain,
+  address: string,
+  estimatedFee: string
+): Promise<BalanceCheck> {
+  try {
+    const provider = getProvider(chain);
+    const balance = await provider.getBalance(address);
+    const balanceEth = ethers.formatEther(balance);
+
+    const feeNum = parseFloat(estimatedFee);
+    const balanceNum = parseFloat(balanceEth);
+    const sufficient = balanceNum >= feeNum;
+
+    return {
+      sufficient,
+      balance: balanceEth,
+      required: feeNum.toFixed(6),
+      shortfall: sufficient ? undefined : (feeNum - balanceNum).toFixed(6),
+    };
+  } catch (error) {
+    console.error('Balance check error:', error);
+    throw new Error('Unable to check balance. Please try again.');
+  }
+}
+
+// Minimal ERC-20 ABI for transfer + balanceOf
+const ERC20_TRANSFER_ABI = [
+  'function transfer(address to, uint256 amount) returns (bool)',
+  'function balanceOf(address account) view returns (uint256)',
+  'function decimals() view returns (uint8)',
+];
+
+/**
+ * Estimate gas for an ERC-20 token transfer.
+ * Returns a GasEstimate with the fee denominated in the chain's native token.
+ */
+export async function estimateERC20Gas(
+  chain: Chain,
+  from: string,
+  contractAddress: string,
+  to: string,
+  amount: string,
+  decimals: number
+): Promise<GasEstimate> {
+  console.log(`🔍 Estimating ERC-20 gas for ${chain}:`);
+
+  await findHealthyRpc(chain);
+
+  const maxRetries = RPC_ENDPOINTS[chain]?.length || 1;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const provider = getProvider(chain);
+      const iface = new ethers.Interface(ERC20_TRANSFER_ABI);
+      const rawAmount = ethers.parseUnits(amount, decimals);
+      const data = iface.encodeFunctionData('transfer', [to, rawAmount]);
+
+      const gasLimit = await provider.estimateGas({ to: contractAddress, data, from });
+      const gasLimitWithBuffer = (gasLimit * GAS_LIMIT_BUFFER) / 100n;
+
+      const gasPrices = await getGasPrices(chain);
+
+      let estimatedFeeWei: bigint;
+      if (gasPrices.maxFeePerGas) {
+        estimatedFeeWei = gasLimitWithBuffer * gasPrices.maxFeePerGas;
+      } else if (gasPrices.gasPrice) {
+        estimatedFeeWei = gasLimitWithBuffer * gasPrices.gasPrice;
+      } else {
+        throw new Error('Unable to calculate gas fee');
+      }
+
+      const estimatedFee = ethers.formatEther(estimatedFeeWei);
+      const tokenPrice = await getTokenPrice(chain);
+      const estimatedFeeUsd = parseFloat(estimatedFee) * tokenPrice;
+
+      console.log(`✅ ERC-20 gas estimate: gasLimit=${gasLimitWithBuffer}, fee=${estimatedFee}`);
+
+      return {
+        gasLimit: gasLimitWithBuffer,
+        gasPrice: gasPrices.gasPrice,
+        maxFeePerGas: gasPrices.maxFeePerGas,
+        maxPriorityFeePerGas: gasPrices.maxPriorityFeePerGas,
+        estimatedFee,
+        estimatedFeeUsd,
+      };
+    } catch (error: any) {
+      console.warn(`⚠️ ERC-20 gas estimation attempt ${attempt + 1} failed:`, error);
+      rotateRpc(chain);
+
+      if (attempt === maxRetries - 1) {
+        throw new Error('Unable to estimate token transfer fees. Please check your connection and try again.');
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+
+  throw new Error('Unable to estimate fees. Please check your connection and try again.');
+}
+
+/**
+ * Build an ERC-20 token transfer transaction object ready for signing.
+ */
+export async function buildERC20Transaction(
+  chain: Chain,
+  from: string,
+  contractAddress: string,
+  to: string,
+  amount: string,
+  decimals: number,
+  gasEstimate: GasEstimate
+): Promise<ethers.TransactionRequest> {
+  console.log(`🔨 Building ERC-20 transaction for ${chain}:`);
+
+  const provider = getProvider(chain);
+  const nonce = await provider.getTransactionCount(from, 'pending');
+
+  const iface = new ethers.Interface(ERC20_TRANSFER_ABI);
+  const rawAmount = ethers.parseUnits(amount, decimals);
+  const data = iface.encodeFunctionData('transfer', [to, rawAmount]);
+
+  console.log(`  - Nonce: ${nonce}`);
+  console.log(`  - Contract: ${contractAddress}`);
+  console.log(`  - Amount: ${amount} (${rawAmount.toString()} raw)`);
+
+  const tx: ethers.TransactionRequest = {
+    to: contractAddress,
+    value: 0n,           // No native value for ERC-20 transfers
+    data,
+    nonce,
+    gasLimit: gasEstimate.gasLimit,
+    chainId: CHAIN_IDS[chain],
+  };
+
+  if (gasEstimate.maxFeePerGas && gasEstimate.maxPriorityFeePerGas) {
+    tx.maxFeePerGas = gasEstimate.maxFeePerGas;
+    tx.maxPriorityFeePerGas = gasEstimate.maxPriorityFeePerGas;
+    tx.type = 2;
+  } else if (gasEstimate.gasPrice) {
+    tx.gasPrice = gasEstimate.gasPrice;
+    tx.type = 0;
+  }
+
+  console.log(`  - Gas Limit: ${gasEstimate.gasLimit.toString()}`);
+  console.log(`  - Chain ID: ${tx.chainId}`);
+
+  return tx;
+}
+
+/**
  * Build transaction object ready for signing
  */
 export async function buildTransaction(

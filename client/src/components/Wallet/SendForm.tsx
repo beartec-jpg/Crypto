@@ -12,20 +12,24 @@ import {
 import { authenticateWithPasskey } from '@/lib/passkeyService';
 import { 
   estimateGas, 
-  checkSufficientBalance, 
+  checkSufficientBalance,
+  checkNativeBalanceForTokenGas,
   buildTransaction, 
+  estimateERC20Gas,
+  buildERC20Transaction,
   broadcastTransaction,
   getChainSymbol as getSendChainSymbol,
   validateAddress,
   SUPPORTED_SEND_CHAINS,
 } from '@/lib/sendService';
-import { signTransaction } from '@/lib/walletService';
+import { signTransaction, isBackupVerified } from '@/lib/walletService';
 import { getPrice, formatUsd } from '@/lib/priceService';
 import { fetchChainBalance } from '@/lib/balanceService';
 import { 
   getXrpAccountInfo,
   checkDestinationExists,
   buildXrpTransaction,
+  buildXrpTokenTransaction,
   signXrpTransaction,
   broadcastXrpTransaction,
   estimateXrpFee,
@@ -252,7 +256,7 @@ export default function SendForm({
               setXrpReserved(accountInfo.reserves.total.toString());
               setXrpAvailable(accountInfo.available);
               
-              const fee = await estimateXrpFee();
+              const fee = await estimateXrpFee(tokenNetwork);
               setEstimatedFee(fee);
             } catch (err) {
               console.warn('Failed to fetch XRP account info:', err);
@@ -342,7 +346,7 @@ export default function SendForm({
     // For XRP, check destination exists
     if (selectedChain === 'xrp' && selectedToken.isNative) {
       try {
-        const exists = await checkDestinationExists(recipient);
+        const exists = await checkDestinationExists(recipient, tokenNetwork);
         if (!exists && parseFloat(amount) < XRP_ACTIVATION_AMOUNT) {
           setError(`New XRP addresses require a minimum of ${XRP_ACTIVATION_AMOUNT} XRP to activate`);
           return;
@@ -443,6 +447,20 @@ export default function SendForm({
       setShowColdSignerPassword(true);
       setColdSignerPassword('');
       return;
+    }
+
+    // Pre-check: For EVM chains, sending requires the backup to be verified.
+    // Surface this as a clear top-level error rather than letting it appear
+    // inside the password modal after the user has already entered their password.
+    if (SUPPORTED_SEND_CHAINS.includes(selectedChain as any) && !selectedToken?.isNative) {
+      const walletId = localStorage.getItem(`wallet_id_${userId}`);
+      if (walletId) {
+        const backupOk = await isBackupVerified(walletId);
+        if (!backupOk) {
+          setError('Please verify your recovery phrase backup before sending transactions. Go to Settings → Backup.');
+          return;
+        }
+      }
     }
     
     const requirements = getSecurityRequirements(userId, 'send');
@@ -581,10 +599,10 @@ export default function SendForm({
         return;
       }
 
-      // Handle XRP
+      // Handle XRP native
       if (selectedChain === 'xrp' && selectedToken.isNative) {
         setTransactionStep('estimating');
-        const fee = await estimateXrpFee();
+        const fee = await estimateXrpFee(tokenNetwork);
         setEstimatedFee(fee);
         
         const price = await getPrice('xrp');
@@ -592,7 +610,7 @@ export default function SendForm({
         
         setTransactionStep('signing');
         const destinationTagNum = destinationTag ? parseInt(destinationTag) : undefined;
-        const tx = await buildXrpTransaction(fromAddress, recipient, amount, destinationTagNum);
+        const tx = await buildXrpTransaction(fromAddress, recipient, amount, destinationTagNum, tokenNetwork);
         
         const walletId = localStorage.getItem(`wallet_id_${userId}`);
         if (!walletId) {
@@ -610,7 +628,7 @@ export default function SendForm({
         const signedTx = signXrpTransaction(tx, xrpSeed);
         
         setTransactionStep('broadcasting');
-        const result = await broadcastXrpTransaction(signedTx);
+        const result = await broadcastXrpTransaction(signedTx, tokenNetwork);
         
         setShowPasswordModal(false);
         setSuccessData({
@@ -633,38 +651,147 @@ export default function SendForm({
         return;
       }
 
+      // Handle XRP token (XRPL IOU / trust-line)
+      if (selectedChain === 'xrp' && !selectedToken.isNative) {
+        setTransactionStep('estimating');
+        const fee = await estimateXrpFee(tokenNetwork);
+        setEstimatedFee(fee);
+
+        setTransactionStep('signing');
+        const destinationTagNum = destinationTag ? parseInt(destinationTag) : undefined;
+        const tx = await buildXrpTokenTransaction(
+          fromAddress,
+          recipient,
+          selectedToken.currencyCode || selectedToken.symbol,
+          selectedToken.issuer || '',
+          amount,
+          destinationTagNum,
+          tokenNetwork
+        );
+
+        const walletId = localStorage.getItem(`wallet_id_${userId}`);
+        if (!walletId) throw new Error('Wallet ID not found. Please try again.');
+
+        const { unlockWallet } = await import('@/lib/walletService');
+        const wallet = await unlockWallet(walletId, password);
+        const xrpSeed = wallet.privateKeys.xrp;
+        if (!xrpSeed) throw new Error('XRP private key not found in wallet');
+
+        const signedTx = signXrpTransaction(tx, xrpSeed);
+
+        setTransactionStep('broadcasting');
+        const result = await broadcastXrpTransaction(signedTx, tokenNetwork);
+
+        setShowPasswordModal(false);
+        setSuccessData({
+          hash: result.hash,
+          amount,
+          to: recipient,
+          fee,
+          feeUsd: 0,
+          explorerUrl: result.explorerUrl,
+        });
+        setShowSuccessModal(true);
+
+        setRecipient('');
+        setAmount('');
+        setDestinationTag('');
+        setError(null);
+
+        setIsProcessing(false);
+        setTransactionStep(null);
+        return;
+      }
+
       // ETH/BSC flow
       if (!SUPPORTED_SEND_CHAINS.includes(selectedChain as any)) {
         throw new Error(`Chain not supported for EVM-based transactions: ${selectedChain}`);
       }
 
       setTransactionStep('estimating');
-      const gasEstimate = await estimateGas(selectedChain as any, fromAddress, recipient, amount);
-      setEstimatedFee(gasEstimate.estimatedFee);
-      setEstimatedFeeUsd(gasEstimate.estimatedFeeUsd);
-      
-      const balanceCheck = await checkSufficientBalance(
-        selectedChain as any,
-        fromAddress,
-        amount,
-        gasEstimate.estimatedFee
-      );
-      
-      if (!balanceCheck.sufficient) {
-        const symbol = getSendChainSymbol(selectedChain as any);
-        throw new Error(
-          `Insufficient balance. You need ${balanceCheck.required} ${symbol} but only have ${balanceCheck.balance} ${symbol}.`
-        );
-      }
-      
-      setTransactionStep('signing');
-            const tx = await buildTransaction(selectedChain as any, fromAddress, recipient, amount, gasEstimate);
-      
+
       const walletId = localStorage.getItem(`wallet_id_${userId}`);
       if (!walletId) {
         throw new Error('Wallet ID not found. Please try again.');
       }
 
+      let tx: any;
+      let gasEstimate: any;
+
+      if (selectedToken.isNative) {
+        // Native ETH / BNB transfer
+        gasEstimate = await estimateGas(selectedChain as any, fromAddress, recipient, amount);
+        setEstimatedFee(gasEstimate.estimatedFee);
+        setEstimatedFeeUsd(gasEstimate.estimatedFeeUsd);
+
+        const balanceCheck = await checkSufficientBalance(
+          selectedChain as any,
+          fromAddress,
+          amount,
+          gasEstimate.estimatedFee
+        );
+
+        if (!balanceCheck.sufficient) {
+          const symbol = getSendChainSymbol(selectedChain as any);
+          throw new Error(
+            `Insufficient balance. You need ${balanceCheck.required} ${symbol} but only have ${balanceCheck.balance} ${symbol}.`
+          );
+        }
+
+        setTransactionStep('signing');
+        tx = await buildTransaction(selectedChain as any, fromAddress, recipient, amount, gasEstimate);
+      } else {
+        // ERC-20 / BEP-20 token transfer
+        if (!selectedToken.contractAddress) {
+          throw new Error(`Token ${selectedToken.symbol} is missing a contract address`);
+        }
+
+        gasEstimate = await estimateERC20Gas(
+          selectedChain as any,
+          fromAddress,
+          selectedToken.contractAddress,
+          recipient,
+          amount,
+          selectedToken.decimals
+        );
+        setEstimatedFee(gasEstimate.estimatedFee);
+        setEstimatedFeeUsd(gasEstimate.estimatedFeeUsd);
+
+        // Check native balance covers gas
+        const feeCheck = await checkNativeBalanceForTokenGas(
+          selectedChain as any,
+          fromAddress,
+          gasEstimate.estimatedFee
+        );
+
+        if (!feeCheck.sufficient) {
+          const symbol = getSendChainSymbol(selectedChain as any);
+          throw new Error(
+            `Insufficient ${symbol} for gas. Need ${feeCheck.required} ${symbol} but only have ${feeCheck.balance} ${symbol}.`
+          );
+        }
+
+        // Check token balance
+        const tokenBalanceNum = parseFloat(selectedToken.balance || '0');
+        const amountNum = parseFloat(amount);
+        if (amountNum > tokenBalanceNum) {
+          throw new Error(
+            `Insufficient ${selectedToken.symbol} balance. You have ${selectedToken.balance} but are trying to send ${amount}.`
+          );
+        }
+
+        setTransactionStep('signing');
+        tx = await buildERC20Transaction(
+          selectedChain as any,
+          fromAddress,
+          selectedToken.contractAddress,
+          recipient,
+          amount,
+          selectedToken.decimals,
+          gasEstimate
+        );
+      }
+      
       const signedTx = await signTransaction(
         walletId,
         password,
