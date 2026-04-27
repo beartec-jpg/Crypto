@@ -89,13 +89,14 @@ export default function RecoveryTool({ walletId, onClose, onSuccess }: RecoveryT
       setLegacyPrivateKey(result.legacyPrivateKey);
 
       // Fetch balance from old address
-      const balance = await fetchEthereumBalance(result.legacyAddress);
+      const recoveryNetwork = import.meta.env.VITE_SWAP_NETWORK === 'testnet' ? 'testnet' : 'mainnet';
+      const balance = await fetchEthereumBalance(result.legacyAddress, recoveryNetwork);
       setLegacyBalance(balance);
 
       console.log('💰 Legacy address balance:', balance, 'ETH');
 
       if (parseFloat(balance) === 0) {
-        setError('No ETH found on legacy address. Your funds may already be recovered. Note: This only checks ETH mainnet - BSC funds use the same address.');
+        setError('No ETH found on legacy address. Your funds may already be recovered. Note: This only checks ETH - BSC funds use the same address.');
         return;
       }
 
