@@ -400,6 +400,36 @@ function deriveSolanaAddress(privateKeyBytes: Uint8Array): string {
 }
 
 /**
+ * Derive Bitcoin address from a compressed public key (hex) — no private key needed.
+ * Used for auto-repair of stored addresses without requiring wallet unlock.
+ */
+function deriveBitcoinAddressFromPubKeyHex(compressedPubKeyHex: string, network: 'mainnet' | 'testnet'): string {
+  const publicKeyBytes = Buffer.from(compressedPubKeyHex, 'hex');
+  const sha256Hash = sha256(new Uint8Array(publicKeyBytes));
+  const ripemd160Hash = ripemd160(sha256Hash);
+
+  const versionedHash = new Uint8Array(21);
+  versionedHash[0] = network === 'testnet' ? 0x6f : 0x00;
+  versionedHash.set(ripemd160Hash, 1);
+
+  const checksum = sha256(sha256(versionedHash)).slice(0, 4);
+  const addressBytes = new Uint8Array(25);
+  addressBytes.set(versionedHash);
+  addressBytes.set(checksum, 21);
+
+  return base58Encode(addressBytes);
+}
+
+/**
+ * Validate that a Bitcoin address prefix matches the expected network.
+ * Mainnet P2PKH starts with '1', testnet P2PKH starts with 'm' or 'n'.
+ */
+function isBitcoinAddressCorrectNetwork(address: string, network: 'mainnet' | 'testnet'): boolean {
+  if (!address) return false;
+  return network === 'mainnet' ? address.startsWith('1') : /^[mn]/.test(address);
+}
+
+/**
  * Base58 encoding (Bitcoin alphabet)
  */
 function base58Encode(bytes: Uint8Array): string {
@@ -947,12 +977,22 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     const vaultKeyPair = await QBTCKeyPair.fromMasterSeed(seed, 1);
     privateKeys.qbtcVault = vaultKeyPair.ecdsaPrivateKeyHex;
 
-    // No auto-repair - wallets must be created fresh with correct derivation
-
+    // Auto-repair: wallets created by an earlier build may have Bitcoin addresses
+    // encoded with the wrong version byte (mainnet stored as testnet-format 'm...'
+    // and testnet stored as mainnet-format '1...').  Re-derive using the private
+    // keys we just unlocked so the correct Base58Check encoding is stored.
     const mergedAddresses = {
       ethereum: wallet.addresses.ethereum,
-      bitcoin: wallet.addresses.bitcoin,
-      bitcoinTestnet: wallet.addresses.bitcoinTestnet || deriveBitcoinAddress(btcTestnetNode.privateKey!, 'testnet'),
+      bitcoin: isBitcoinAddressCorrectNetwork(wallet.addresses.bitcoin, 'mainnet')
+        ? wallet.addresses.bitcoin
+        : deriveBitcoinAddress(btcNode.privateKey!, 'mainnet'),
+      bitcoinTestnet: (() => {
+        const stored = wallet.addresses.bitcoinTestnet;
+        if (!stored) return deriveBitcoinAddress(btcTestnetNode.privateKey!, 'testnet');
+        return isBitcoinAddressCorrectNetwork(stored, 'testnet')
+          ? stored
+          : deriveBitcoinAddress(btcTestnetNode.privateKey!, 'testnet');
+      })(),
       bsc: wallet.addresses.bsc,
       xrp: wallet.addresses.xrp,
       xrpTestnet: wallet.addresses.xrpTestnet || deriveXRPAddress(xrpTestnetNode.privateKey!),
@@ -964,14 +1004,17 @@ export async function unlockWallet(walletId: string, password: string): Promise<
       qbtcVaultMainnet: wallet.addresses.qbtcVaultMainnet || vaultKeyPair.getAddress('mainnet'),
     };
 
-    // Auto-upgrade older wallet records that were created before QBTC/vault support.
-    if (
+    // Persist any repaired / newly-derived addresses back to IndexedDB.
+    const needsUpdate =
       !wallet.addresses.qbtc ||
       !wallet.addresses.qbtcVault ||
       !wallet.addresses.bitcoinTestnet ||
       !wallet.addresses.xrpTestnet ||
-      !wallet.addresses.solanaTestnet
-    ) {
+      !wallet.addresses.solanaTestnet ||
+      wallet.addresses.bitcoin !== mergedAddresses.bitcoin ||
+      wallet.addresses.bitcoinTestnet !== mergedAddresses.bitcoinTestnet;
+
+    if (needsUpdate) {
       wallet.addresses = mergedAddresses;
       wallet.publicKeys = {
         ...wallet.publicKeys,
@@ -1053,9 +1096,28 @@ export async function getCurrentWallet(userId: string): Promise<Wallet | null> {
       }
     }
 
+    // Auto-repair Bitcoin mainnet address if it was stored with the wrong (testnet) version byte.
+    // This can happen with wallets created by an earlier build that had the encoding reversed.
+    // We only need the stored public key — no password / private key required.
+    let bitcoinAddress = wallet.addresses.bitcoin;
+    if (!isBitcoinAddressCorrectNetwork(bitcoinAddress, 'mainnet')) {
+      const btcPubKey = wallet.publicKeys?.bitcoin;
+      if (btcPubKey) {
+        try {
+          const repaired = deriveBitcoinAddressFromPubKeyHex(btcPubKey, 'mainnet');
+          console.log('🔧 Auto-repaired Bitcoin mainnet address:', repaired);
+          bitcoinAddress = repaired;
+          wallet.addresses = { ...wallet.addresses, bitcoin: repaired };
+          await db.put('wallets', wallet);
+        } catch (err) {
+          console.warn('Failed to auto-repair Bitcoin mainnet address:', err);
+        }
+      }
+    }
+
     const addresses = {
       ethereum: wallet.addresses.ethereum,
-      bitcoin: wallet.addresses.bitcoin,
+      bitcoin: bitcoinAddress,
       bitcoinTestnet: wallet.addresses.bitcoinTestnet || '',
       bsc: wallet.addresses.bsc,
       xrp: wallet.addresses.xrp,

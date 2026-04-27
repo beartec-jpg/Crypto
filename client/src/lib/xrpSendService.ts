@@ -66,9 +66,9 @@ export async function getXrpAccountInfo(address: string, network: TokenNetwork =
 /**
  * Check if destination XRP address exists
  */
-export async function checkDestinationExists(address: string): Promise<boolean> {
+export async function checkDestinationExists(address: string, network: TokenNetwork = 'mainnet'): Promise<boolean> {
   try {
-    const client = await xrplService.getClient(true);
+    const client = await xrplService.getClient(network === 'mainnet');
     
     const response = await client.request({
       command: 'account_info',
@@ -108,10 +108,11 @@ export async function buildXrpTransaction(
   from: string,
   to: string,
   amount: string,
-  destinationTag?: number
+  destinationTag?: number,
+  network: TokenNetwork = 'mainnet'
 ): Promise<xrpl.Payment> {
   try {
-    const client = await xrplService.getClient(true);
+    const client = await xrplService.getClient(network === 'mainnet');
     
     const payment: xrpl.Payment = {
       TransactionType: 'Payment',
@@ -130,6 +131,44 @@ export async function buildXrpTransaction(
     return prepared;
   } catch (error: any) {
     console.error('Failed to build XRP transaction:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Build an XRPL token (IOU / trust-line) payment transaction.
+ */
+export async function buildXrpTokenTransaction(
+  from: string,
+  to: string,
+  currencyCode: string,
+  issuer: string,
+  amount: string,
+  destinationTag?: number,
+  network: TokenNetwork = 'mainnet'
+): Promise<xrpl.Payment> {
+  try {
+    const client = await xrplService.getClient(network === 'mainnet');
+
+    const payment: xrpl.Payment = {
+      TransactionType: 'Payment',
+      Account: from,
+      Destination: to,
+      Amount: {
+        currency: currencyCode,
+        issuer,
+        value: amount,
+      },
+    };
+
+    if (destinationTag !== undefined) {
+      payment.DestinationTag = destinationTag;
+    }
+
+    const prepared = await client.autofill(payment);
+    return prepared;
+  } catch (error: any) {
+    console.error('Failed to build XRP token transaction:', error.message);
     throw error;
   }
 }
@@ -188,10 +227,11 @@ export function signXrpTransaction(
  * Broadcast signed XRP transaction
  */
 export async function broadcastXrpTransaction(
-  signedTxBlob: string
+  signedTxBlob: string,
+  network: TokenNetwork = 'mainnet'
 ): Promise<XRPTransactionBroadcastResult> {
   try {
-    const client = await xrplService.getClient(true);
+    const client = await xrplService.getClient(network === 'mainnet');
     
     // Use submit instead of submitAndWait to avoid timeout on slow connections
     const result = await client.submit(signedTxBlob);
@@ -205,9 +245,13 @@ export async function broadcastXrpTransaction(
     // tx_json.hash is available on submit result
     const hash = (result.result as any).tx_json?.hash || signedTxBlob.slice(0, 64);
     
+    const explorerBase = network === 'mainnet'
+      ? 'https://livenet.xrpl.org'
+      : 'https://testnet.xrpl.org';
+
     return {
       hash,
-      explorerUrl: `https://livenet.xrpl.org/transactions/${hash}`,
+      explorerUrl: `${explorerBase}/transactions/${hash}`,
     };
   } catch (error: any) {
     console.error('Failed to broadcast XRP transaction:', error.message);
@@ -219,9 +263,9 @@ export async function broadcastXrpTransaction(
  * Estimate XRP transaction fee
  * Returns the current network fee in XRP
  */
-export async function estimateXrpFee(): Promise<string> {
+export async function estimateXrpFee(network: TokenNetwork = 'mainnet'): Promise<string> {
   try {
-    const client = await xrplService.getClient(true);
+    const client = await xrplService.getClient(network === 'mainnet');
     
     // Get current fee from the network
     const response = await client.request({
