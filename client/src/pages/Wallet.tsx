@@ -44,7 +44,7 @@ export default function WalletPage() {
   const [isPasskeyAuthenticated, setIsPasskeyAuthenticated] = useState(false);
   const [selectedChain, setSelectedChain] = useState<Chain>('ethereum');
   const [tokenNetwork, setTokenNetwork] = useState<TokenNetwork>(
-    (import.meta.env.VITE_SWAP_NETWORK === 'testnet' ? 'testnet' : 'mainnet') as TokenNetwork
+    ((import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet' ? 'testnet' : 'mainnet') as TokenNetwork
   );
   const [sovereignWallet, setSovereignWallet] = useState<any>(null);
   const [autoLockTime, setAutoLockTime] = useState(600);

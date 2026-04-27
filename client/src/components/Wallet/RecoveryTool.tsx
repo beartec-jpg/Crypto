@@ -89,7 +89,7 @@ export default function RecoveryTool({ walletId, onClose, onSuccess }: RecoveryT
       setLegacyPrivateKey(result.legacyPrivateKey);
 
       // Fetch balance from old address
-      const recoveryNetwork = import.meta.env.VITE_SWAP_NETWORK === 'testnet' ? 'testnet' : 'mainnet';
+      const recoveryNetwork = (import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet' ? 'testnet' : 'mainnet';
       const balance = await fetchEthereumBalance(result.legacyAddress, recoveryNetwork);
       setLegacyBalance(balance);
 

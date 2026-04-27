@@ -37,7 +37,7 @@ export interface TransactionStatus {
   blockNumber?: number;
 }
 
-const IS_TESTNET = import.meta.env.VITE_SWAP_NETWORK === 'testnet';
+const IS_TESTNET = (import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet';
 
 // Primary and backup RPC endpoints
 const RPC_ENDPOINTS = IS_TESTNET ? {

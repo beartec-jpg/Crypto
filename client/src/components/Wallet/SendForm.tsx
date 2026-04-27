@@ -416,7 +416,7 @@ export default function SendForm({
         amount,
         fee: estimatedFee,
         nonce: undefined,
-        chainId: selectedChain === 'ethereum' ? (import.meta.env.VITE_SWAP_NETWORK === 'testnet' ? 11155111 : 1) : selectedChain === 'bsc' ? (import.meta.env.VITE_SWAP_NETWORK === 'testnet' ? 97 : 56) : undefined,
+        chainId: selectedChain === 'ethereum' ? ((import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet' ? 11155111 : 1) : selectedChain === 'bsc' ? ((import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet' ? 97 : 56) : undefined,
         destination: selectedChain === 'xrp' ? recipient : undefined,
         destinationTag: selectedChain === 'xrp' && destinationTag ? parseInt(destinationTag) : undefined,
         utxos,
