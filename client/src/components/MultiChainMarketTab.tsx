@@ -342,10 +342,10 @@ function CreateOfferForm({
   const [createdSecret, setCreatedSecret] = useState('');
 
   useEffect(() => {
-    if (base === 'QBTC') setMakerAddress(walletAddress);
-    else if (['ETH', 'BNB', 'USDC'].includes(base)) setMakerAddress(walletEvmAddress);
+    if (quote === 'QBTC') setMakerAddress(walletAddress);
+    else if (['ETH', 'BNB', 'USDC'].includes(quote)) setMakerAddress(walletEvmAddress);
     else setMakerAddress('');
-  }, [base, walletAddress, walletEvmAddress]);
+  }, [quote, walletAddress, walletEvmAddress]);
 
   const busy = status === 'signing' || status === 'submitting';
 
@@ -428,8 +428,8 @@ function CreateOfferForm({
           </div>
 
           <div>
-            <label className="block text-xs text-slate-400 mb-1">Your {base} receive address</label>
-            <input type="text" placeholder={`${base} address`} value={makerAddress}
+            <label className="block text-xs text-slate-400 mb-1">Your {quote} receive address</label>
+            <input type="text" placeholder={`${quote} address`} value={makerAddress}
               onChange={e => setMakerAddress(e.target.value)}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none font-mono" />
           </div>
