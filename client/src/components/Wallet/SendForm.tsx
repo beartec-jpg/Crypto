@@ -670,7 +670,7 @@ export default function SendForm({
         password,
         selectedChain,
         tx,
-        isPasskeyAuthenticated
+        isPasskeyAuthenticated || passkeyAuthenticatedThisSession
       );
       
       setTransactionStep('broadcasting');

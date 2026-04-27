@@ -74,8 +74,9 @@ export default function PasswordModal({
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={isLoading}
-                placeholder="Enter your password"
+                placeholder="Enter your wallet password"
                 autoFocus
+                autoComplete="current-password"
                 className="w-full px-4 py-3 rounded-xl bg-gray-900 border border-gray-700 focus:border-emerald-500 focus:outline-none pr-12 disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <button
@@ -97,7 +98,10 @@ export default function PasswordModal({
           {/* Error Message */}
           {error && (
             <div className="p-3 rounded-lg bg-red-900/20 border border-red-700/50 text-red-400 text-sm">
-              {error}
+              <p>{error}</p>
+              {(error.toLowerCase().includes('invalid password') || error.toLowerCase().includes('attempts')) && (
+                <p className="mt-1 text-red-300/80 text-xs">This is your wallet encryption password — the one you set when creating or importing your wallet.</p>
+              )}
             </div>
           )}
 
