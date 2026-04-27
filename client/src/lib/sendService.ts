@@ -37,27 +37,38 @@ export interface TransactionStatus {
   blockNumber?: number;
 }
 
+const IS_TESTNET = import.meta.env.VITE_SWAP_NETWORK === 'testnet';
+
 // Primary and backup RPC endpoints
-const RPC_ENDPOINTS = {
+const RPC_ENDPOINTS = IS_TESTNET ? {
   ethereum: [
-    // Primary - most reliable free endpoints
+    'https://ethereum-sepolia-rpc.publicnode.com',
+    'https://rpc.ankr.com/eth_sepolia',
+    'https://sepolia.drpc.org',
+    'https://1rpc.io/sepolia',
+  ],
+  bsc: [
+    'https://data-seed-prebsc-1-s1.bnbchain.org:8545',
+    'https://data-seed-prebsc-2-s1.bnbchain.org:8545',
+    'https://bsc-testnet-rpc.publicnode.com',
+  ],
+  xrp: [],
+} : {
+  ethereum: [
     'https://eth.drpc.org',
     'https://rpc.ankr.com/eth',
     'https://ethereum-rpc.publicnode.com',
     'https://1rpc.io/eth',
     'https://eth.meowrpc.com',
-    // Backup
     'https://eth.llamarpc.com',
     'https://cloudflare-eth.com',
   ],
   bsc: [
-    // Primary
     'https://bsc-dataseed.binance.org',
     'https://bsc-dataseed1.binance.org',
     'https://bsc-dataseed2.binance.org',
     'https://bsc.drpc.org',
     'https://bsc-rpc.publicnode.com',
-    // Backup
     'https://bsc-dataseed1.defibit.io',
     'https://bsc.meowrpc.com',
   ],
@@ -65,14 +76,22 @@ const RPC_ENDPOINTS = {
 };
 
 // Block explorer URLs
-const EXPLORER_URLS = {
+const EXPLORER_URLS = IS_TESTNET ? {
+  ethereum: 'https://sepolia.etherscan.io',
+  bsc: 'https://testnet.bscscan.com',
+  xrp: 'https://testnet.xrpl.org',
+} : {
   ethereum: 'https://etherscan.io',
   bsc: 'https://bscscan.com',
   xrp: 'https://livenet.xrpl.org',
 };
 
-// Chain IDs for mainnet
-const CHAIN_IDS = {
+// Chain IDs
+const CHAIN_IDS = IS_TESTNET ? {
+  ethereum: 11155111, // Sepolia
+  bsc: 97,           // BSC Testnet
+  xrp: 0,
+} : {
   ethereum: 1,
   bsc: 56,
   xrp: 0,
