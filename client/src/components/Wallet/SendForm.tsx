@@ -2,6 +2,7 @@
 // Secure send form with native + token support, transaction preview and passkey confirmation
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { ethers } from 'ethers';
 import { Send, AlertCircle, ChevronDown, Shield, Lock } from 'lucide-react';
 import { 
   securityManager, 
@@ -21,6 +22,7 @@ import {
   getChainSymbol as getSendChainSymbol,
   validateAddress,
   SUPPORTED_SEND_CHAINS,
+  type GasEstimate,
 } from '@/lib/sendService';
 import { signTransaction, isBackupVerified } from '@/lib/walletService';
 import { getPrice, formatUsd } from '@/lib/priceService';
@@ -449,10 +451,10 @@ export default function SendForm({
       return;
     }
 
-    // Pre-check: For EVM chains, sending requires the backup to be verified.
+    // Pre-check: EVM send (both native and token) requires the backup to be verified.
     // Surface this as a clear top-level error rather than letting it appear
     // inside the password modal after the user has already entered their password.
-    if (SUPPORTED_SEND_CHAINS.includes(selectedChain as any) && !selectedToken?.isNative) {
+    if (SUPPORTED_SEND_CHAINS.includes(selectedChain as any)) {
       const walletId = localStorage.getItem(`wallet_id_${userId}`);
       if (walletId) {
         const backupOk = await isBackupVerified(walletId);
@@ -715,8 +717,8 @@ export default function SendForm({
         throw new Error('Wallet ID not found. Please try again.');
       }
 
-      let tx: any;
-      let gasEstimate: any;
+      let tx: ethers.TransactionRequest;
+      let gasEstimate: GasEstimate;
 
       if (selectedToken.isNative) {
         // Native ETH / BNB transfer
