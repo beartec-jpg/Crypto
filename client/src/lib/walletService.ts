@@ -1255,6 +1255,55 @@ export async function exportMnemonic(
 }
 
 /**
+ * Reset wallet password using the seed phrase (re-encrypts the wallet with a new password)
+ */
+export async function resetWalletPassword(
+  userId: string,
+  mnemonic: string,
+  newPassword: string
+): Promise<void> {
+  // Validate mnemonic
+  const cleaned = mnemonic.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!bip39.validateMnemonic(cleaned)) {
+    throw new Error('Invalid seed phrase. Please check every word and try again.');
+  }
+
+  // Validate new password
+  const passwordValidation = validatePassword(newPassword);
+  if (!passwordValidation.isValid) {
+    throw new Error(`Weak password: ${passwordValidation.errors.join(', ')}`);
+  }
+
+  const walletId = localStorage.getItem(getUserStorageKey(userId, 'wallet_id'));
+  if (!walletId) {
+    throw new Error('No wallet found for this account.');
+  }
+
+  const db = await getDB();
+  const wallet = await db.get('wallets', walletId);
+  if (!wallet) {
+    throw new Error('Wallet record not found in database.');
+  }
+
+  // Verify the mnemonic matches the stored wallet by comparing derived addresses
+  const { addresses } = await deriveAddressesFromMnemonic(cleaned);
+  if (addresses.ethereum.toLowerCase() !== wallet.addresses.ethereum.toLowerCase()) {
+    throw new Error('Seed phrase does not match this wallet. Please use the correct seed phrase.');
+  }
+
+  // Re-encrypt with new password and new salt
+  const newSalt = randomBytes(32);
+  const encryptedMnemonic = await encryptData(cleaned, newPassword, newSalt);
+
+  wallet.encryptedMnemonic = encryptedMnemonic;
+  wallet.salt = Buffer.from(newSalt).toString('hex');
+  await db.put('wallets', wallet);
+
+  // Clear any rate-limit counters
+  unlockAttempts.delete(walletId);
+}
+
+/**
  * Delete wallet securely (for specific user) + clear all associated data
  */
 export async function deleteWallet(walletId: string, userId: string): Promise<void> {

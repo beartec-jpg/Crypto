@@ -12,7 +12,7 @@ import {
   type SecurityTier,
 } from '@/lib/securityService';
 import { registerPasskey, isPasskeyRegistered } from '@/lib/passkeyService';
-import { unlockWallet } from '@/lib/walletService';
+import { unlockWallet, resetWalletPassword } from '@/lib/walletService';
 import { isColdSignerConfigured } from '@/lib/coldSignerService';
 import { runSecurityScan, getSecurityLevel, type SecurityScanResult } from '@/lib/securityScanner';
 import SecurityWarningModal from './SecurityWarningModal';
@@ -44,6 +44,12 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
   const [pendingDowngradeTier, setPendingDowngradeTier] = useState<SecurityTier | null>(null);
   const [pendingColdActivation, setPendingColdActivation] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [changePwSeedPhrase, setChangePwSeedPhrase] = useState('');
+  const [changePwNew, setChangePwNew] = useState('');
+  const [changePwConfirm, setChangePwConfirm] = useState('');
+  const [changePwError, setChangePwError] = useState<string | null>(null);
+  const [changePwSuccess, setChangePwSuccess] = useState(false);
   const [scanResult, setScanResult] = useState<SecurityScanResult | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [showScanModal, setShowScanModal] = useState(false);
@@ -278,6 +284,34 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
   const cancelDowngrade = () => {
     setShowDowngradeConfirm(false);
     setPendingDowngradeTier(null);
+  };
+
+  const handleChangePassword = async () => {
+    setChangePwError(null);
+    if (!changePwSeedPhrase.trim()) {
+      setChangePwError('Please enter your seed phrase.');
+      return;
+    }
+    if (!changePwNew) {
+      setChangePwError('Please enter a new password.');
+      return;
+    }
+    if (changePwNew !== changePwConfirm) {
+      setChangePwError('Passwords do not match.');
+      return;
+    }
+    setIsProcessing(true);
+    try {
+      await resetWalletPassword(userId, changePwSeedPhrase, changePwNew);
+      setChangePwSuccess(true);
+      setChangePwSeedPhrase('');
+      setChangePwNew('');
+      setChangePwConfirm('');
+    } catch (err: any) {
+      setChangePwError(err.message || 'Failed to reset password.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleEmergencyReset = async () => {
@@ -626,6 +660,22 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
         </div>
       </div>
 
+      {/* Change Wallet Password */}
+      <div className="pt-6 border-t border-gray-700">
+        <h3 className="text-lg font-medium mb-4">🔑 Change Wallet Password</h3>
+        <div className="p-4 rounded-xl bg-blue-900/20 border border-blue-700/50">
+          <p className="text-sm text-gray-400 mb-3">
+            Forgot your wallet password? Reset it using your 12 or 24-word seed phrase.
+          </p>
+          <button
+            onClick={() => { setShowChangePassword(true); setChangePwError(null); setChangePwSuccess(false); }}
+            className="px-4 py-2 rounded-lg bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 transition-colors text-sm"
+          >
+            Reset Wallet Password
+          </button>
+        </div>
+      </div>
+
       {/* Emergency Reset */}
       <div className="pt-6 border-t border-gray-700">
         <ShamirRecoveryPanel userId={userId} />
@@ -874,6 +924,102 @@ export default function SecuritySettings({ userId, onSecurityChange }: SecurityS
           action="use this wallet"
           allowProceedWithWarnings={true}
         />
+      )}
+
+      {/* Change Wallet Password Modal */}
+      {showChangePassword && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center">
+                <Lock className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold">Reset Wallet Password</h2>
+                <p className="text-sm text-gray-400">Use your seed phrase to set a new password</p>
+              </div>
+            </div>
+
+            {changePwSuccess ? (
+              <div className="space-y-4">
+                <div className="p-4 rounded-lg bg-emerald-900/20 border border-emerald-700/50">
+                  <p className="text-emerald-400 font-medium">✅ Password updated successfully!</p>
+                  <p className="text-sm text-gray-400 mt-1">You can now use your new password to sign transactions.</p>
+                </div>
+                <button
+                  onClick={() => setShowChangePassword(false)}
+                  className="w-full px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition-colors font-medium"
+                >
+                  Done
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="p-3 rounded-lg bg-amber-900/20 border border-amber-700/50 text-amber-300 text-sm">
+                  Enter your 12 or 24-word seed phrase and choose a new password.
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Seed Phrase</label>
+                  <textarea
+                    value={changePwSeedPhrase}
+                    onChange={(e) => setChangePwSeedPhrase(e.target.value)}
+                    placeholder="word1 word2 word3 ..."
+                    rows={3}
+                    className="w-full px-4 py-3 rounded-xl bg-gray-900 border border-gray-700 focus:border-blue-500 focus:outline-none resize-none text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">New Password</label>
+                  <input
+                    type="password"
+                    value={changePwNew}
+                    onChange={(e) => setChangePwNew(e.target.value)}
+                    autoComplete="new-password"
+                    placeholder="At least 8 characters"
+                    className="w-full px-4 py-3 rounded-xl bg-gray-900 border border-gray-700 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Confirm New Password</label>
+                  <input
+                    type="password"
+                    value={changePwConfirm}
+                    onChange={(e) => setChangePwConfirm(e.target.value)}
+                    autoComplete="new-password"
+                    placeholder="Re-enter new password"
+                    className="w-full px-4 py-3 rounded-xl bg-gray-900 border border-gray-700 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+
+                {changePwError && (
+                  <div className="p-3 rounded-lg bg-red-900/20 border border-red-700/50 text-red-400 text-sm">
+                    {changePwError}
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => { setShowChangePassword(false); setChangePwSeedPhrase(''); setChangePwNew(''); setChangePwConfirm(''); setChangePwError(null); }}
+                    disabled={isProcessing}
+                    className="flex-1 px-4 py-3 rounded-xl bg-gray-700 hover:bg-gray-600 transition-colors font-medium disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleChangePassword}
+                    disabled={isProcessing || !changePwSeedPhrase.trim() || !changePwNew || !changePwConfirm}
+                    className="flex-1 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                  >
+                    {isProcessing ? 'Updating...' : 'Update Password'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
