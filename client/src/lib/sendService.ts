@@ -377,9 +377,10 @@ export async function estimateGas(
       const provider = getProvider(chain);
       const valueInWei = ethers.parseEther(value);
       
-      // Estimate gas limit
+      // Estimate gas limit — omit 'from' so the node doesn't simulate a
+      // balance check (which fails when maxFeePerGas spike pushes worst-case
+      // cost above balance). Balance is verified separately after estimation.
       const gasLimit = await provider.estimateGas({
-        from,
         to,
         value: valueInWei,
       });
