@@ -1,0 +1,57 @@
+{
+  "canonical_node": "N2",
+  "chain": "qbtctestnet",
+  "leader_lag_threshold_blocks": 20,
+  "degraded_after_checks": 4,
+  "interval_seconds": 30,
+  "require_min_peers": 2,
+  "utxo_consolidation_threshold": 500,
+  "stop_canonical_during_recopy": true,
+  "restart_wait_seconds": 20,
+  "recopy_wait_seconds": 30,
+  "nodes": {
+    "N2": {
+      "host": "46.62.156.169",
+      "ssh_password": "pihCLrE3Xqk9",
+      "rpc_user": "qbtcseed",
+      "rpc_password": "seednode1_rpc_2026",
+      "rpc_port": 28332,
+      "bitcoind_path": "/root/QuantBTC/src/bitcoind",
+      "bitcoin_cli_path": "/root/QuantBTC/src/bitcoin-cli",
+      "bitcoin_conf": "/root/.bitcoin/bitcoin.conf",
+      "data_dir": "/root/.bitcoin/qbtctestnet",
+      "service": "bitcoin-qbtctestnet",
+      "funding_wallet": "miner"
+    },
+    "N3": {
+      "host": "37.27.47.236",
+      "ssh_password": "qvC7dKXNeLa7",
+      "rpc_user": "qbtcseed",
+      "rpc_password": "seednode2_rpc_2026",
+      "rpc_port": 28332,
+      "bitcoind_path": "/root/QuantBTC/src/bitcoind",
+      "bitcoin_cli_path": "/root/QuantBTC/src/bitcoin-cli",
+      "bitcoin_conf": "/root/.bitcoin/bitcoin.conf",
+      "data_dir": "/root/.bitcoin/qbtctestnet",
+      "service": "bitcoin-qbtctestnet"
+    },
+    "N4": {
+      "host": "46.224.0.140",
+      "ssh_password": "tRhAFdr4agaH",
+      "rpc_user": "qbtcseed",
+      "rpc_password": "seednode3_rpc_2026",
+      "rpc_port": 28332,
+      "bitcoind_path": "/root/QuantBTC/src/bitcoind",
+      "bitcoin_cli_path": "/root/QuantBTC/src/bitcoin-cli",
+      "bitcoin_conf": "/root/.bitcoin/bitcoin.conf",
+      "data_dir": "/root/.bitcoin/qbtctestnet",
+      "service": "bitcoin-qbtctestnet"
+    }
+  },
+  "fixed_peers": [
+    "89.167.109.241:28333",
+    "46.62.156.169:28333",
+    "37.27.47.236:28333",
+    "46.224.0.140:28333"
+  ]
+}
