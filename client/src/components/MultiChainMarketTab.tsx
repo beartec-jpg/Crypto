@@ -29,10 +29,8 @@ import {
   type ChainId,
   type V2Offer,
   type V2Stats,
-  type V2PairInfo,
   buildV2Message,
   generateSecret,
-  fetchV2Pairs,
   fetchV2Offers,
   fetchV2Stats,
   postV2Offer,
@@ -51,13 +49,7 @@ interface MultiChainMarketTabProps {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SUPPORTED_PAIRS: [ChainId, ChainId][] = [
-  ['QBTC', 'USDC'], ['QBTC', 'ETH'], ['QBTC', 'BNB'], ['QBTC', 'BTC'], ['QBTC', 'XRP'],
-  ['ETH',  'USDC'], ['ETH',  'BNB'], ['ETH',  'BTC'],  ['ETH', 'XRP'],
-  ['BNB',  'USDC'], ['BNB',  'BTC'], ['BNB',  'XRP'],
-  ['USDC', 'BTC'],  ['USDC', 'XRP'],
-  ['BTC',  'XRP'],
-];
+const ALL_CHAINS: ChainId[] = ['QBTC', 'BTC', 'ETH', 'BNB', 'USDC', 'XRP'];
 
 const CHAIN_COLORS: Record<ChainId, string> = {
   QBTC: 'text-cyan-400 bg-cyan-400/10 border-cyan-500/30',
@@ -139,43 +131,70 @@ function CopyButton({ text }: { text: string }) {
 // ─── Pair Selector ────────────────────────────────────────────────────────────
 
 function PairSelector({
-  selected, pairDepth, onChange,
+  selected, onChange,
 }: {
   selected: [ChainId, ChainId];
-  pairDepth: V2PairInfo[];
   onChange: (pair: [ChainId, ChainId]) => void;
 }) {
-  const getDepth = (base: ChainId, quote: ChainId) =>
-    pairDepth.find(p => p.baseChain === base && p.quoteChain === quote);
+  const [sell, buy] = selected;
+
+  const handleSell = (chain: ChainId) => {
+    const newBuy = chain === buy
+      ? ALL_CHAINS.find(c => c !== chain) ?? ALL_CHAINS.filter(c => c !== chain)[0]
+      : buy;
+    onChange([chain, newBuy]);
+  };
+
+  const handleBuy = (chain: ChainId) => {
+    const newSell = chain === sell
+      ? ALL_CHAINS.find(c => c !== chain) ?? ALL_CHAINS.filter(c => c !== chain)[0]
+      : sell;
+    onChange([newSell, chain]);
+  };
+
+  const chainSelectClass = (active: boolean) =>
+    `px-3 py-2 rounded-lg border text-sm font-semibold transition-all ${
+      active
+        ? 'border-cyan-500 bg-cyan-500/15 text-white'
+        : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-500 hover:text-slate-200'
+    }`;
 
   return (
-    <div className="space-y-2">
-      <div className="text-xs text-slate-400 font-medium uppercase tracking-wider px-1">Trading Pairs</div>
-      <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-1.5">
-        {SUPPORTED_PAIRS.map(([base, quote]) => {
-          const isActive = selected[0] === base && selected[1] === quote;
-          const depth = getDepth(base, quote);
-          return (
-            <button
-              key={`${base}/${quote}`}
-              onClick={() => onChange([base, quote])}
-              className={`relative flex flex-col items-center py-2 px-1 rounded-lg border text-xs transition-all ${
-                isActive
-                  ? 'border-cyan-500 bg-cyan-500/10 text-white'
-                  : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-500 hover:text-slate-200'
-              }`}
-            >
-              <span className="font-semibold">{base}</span>
-              <span className="text-[10px] text-slate-500 mt-0.5">/</span>
-              <span className="font-semibold">{quote}</span>
-              {depth && depth.openOffers > 0 && (
-                <span className="absolute -top-1 -right-1 bg-cyan-500 text-slate-900 text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                  {depth.openOffers > 9 ? '9+' : depth.openOffers}
-                </span>
-              )}
-            </button>
-          );
-        })}
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        {/* Sell side */}
+        <div className="space-y-1.5">
+          <div className="text-xs text-slate-400 font-medium uppercase tracking-wider px-1">Sell</div>
+          <div className="flex flex-col gap-1">
+            {ALL_CHAINS.map(chain => (
+              <button
+                key={chain}
+                onClick={() => handleSell(chain)}
+                disabled={chain === buy}
+                className={`${chainSelectClass(sell === chain)} disabled:opacity-30 disabled:cursor-not-allowed`}
+              >
+                {chain}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Buy side */}
+        <div className="space-y-1.5">
+          <div className="text-xs text-slate-400 font-medium uppercase tracking-wider px-1">Buy</div>
+          <div className="flex flex-col gap-1">
+            {ALL_CHAINS.map(chain => (
+              <button
+                key={chain}
+                onClick={() => handleBuy(chain)}
+                disabled={chain === sell}
+                className={`${chainSelectClass(buy === chain)} disabled:opacity-30 disabled:cursor-not-allowed`}
+              >
+                {chain}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -605,7 +624,6 @@ export default function MultiChainMarketTab({
   walletId, userId: _userId, walletEvmAddress, walletAddress, walletPubKey: _walletPubKey,
 }: MultiChainMarketTabProps) {
   const [selectedPair, setSelectedPair] = useState<[ChainId, ChainId]>(['QBTC', 'USDC']);
-  const [pairDepth, setPairDepth]       = useState<V2PairInfo[]>([]);
   const [offers, setOffers]             = useState<V2Offer[]>([]);
   const [stats, setStats]               = useState<V2Stats | null>(null);
   const [loadingOffers, setLoadingOffers] = useState(false);
@@ -613,10 +631,6 @@ export default function MultiChainMarketTab({
   const [lastRefresh, setLastRefresh]   = useState<Date | null>(null);
 
   const [base, quote] = selectedPair;
-
-  const loadPairs = useCallback(async () => {
-    try { setPairDepth(await fetchV2Pairs()); } catch { /* optional */ }
-  }, []);
 
   const loadOffers = useCallback(async () => {
     try {
@@ -641,15 +655,9 @@ export default function MultiChainMarketTab({
     return () => clearInterval(t);
   }, [loadOffers]);
 
-  useEffect(() => {
-    loadPairs();
-    const t = setInterval(loadPairs, 60_000);
-    return () => clearInterval(t);
-  }, [loadPairs]);
-
   return (
     <div className="space-y-6">
-      <PairSelector selected={selectedPair} pairDepth={pairDepth} onChange={setSelectedPair} />
+      <PairSelector selected={selectedPair} onChange={setSelectedPair} />
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
