@@ -174,6 +174,199 @@ function decimalToBaseUnits(value: string, decimals: number): bigint {
   return BigInt(whole) * 10n ** BigInt(decimals) + BigInt(fracPadded || '0');
 }
 
+// ─── Phase 3: Multi-chain pair support ───────────────────────────────────────
+
+const V2_SUPPORTED_CHAINS = ['QBTC', 'BTC', 'ETH', 'BNB', 'USDC', 'XRP'] as const;
+type V2ChainId = typeof V2_SUPPORTED_CHAINS[number];
+
+/**
+ * Validate that base and quote are distinct, supported chains.
+ * Throws 400 if invalid.
+ */
+function validatePair(base: unknown, quote: unknown): asserts base is V2ChainId {
+  if (typeof base !== 'string' || !V2_SUPPORTED_CHAINS.includes(base as V2ChainId)) {
+    throw Object.assign(new Error(`Unsupported base chain: ${base}`), { statusCode: 400 });
+  }
+  if (typeof quote !== 'string' || !V2_SUPPORTED_CHAINS.includes(quote as V2ChainId)) {
+    throw Object.assign(new Error(`Unsupported quote chain: ${quote}`), { statusCode: 400 });
+  }
+  if (base === quote) {
+    throw Object.assign(new Error('base and quote chains must differ'), { statusCode: 400 });
+  }
+}
+
+// ─── v2 canonical message builders ───────────────────────────────────────────
+
+/** v2 canonical messages include the pair so they can't be replayed across pairs. */
+function buildV2Message(
+  action: string,
+  baseChain: string,
+  quoteChain: string,
+  ...parts: (string | number)[]
+): string {
+  return `QBTC_SWAP_V2:${action}:${baseChain}:${quoteChain}:${parts.join(':')}`;
+}
+
+// ─── Chain lock verification helper ──────────────────────────────────────────
+
+/**
+ * Verify a lock on any supported chain.
+ *
+ * For EVM chains (USDC/ETH/BNB): queries the HTLC contract via ethers.
+ * For QBTC: queries the QBTC node RPC.
+ * For BTC: queries Blockstream Esplora.
+ * For XRP: checks the escrow object exists on the ledger.
+ *
+ * Returns { valid: true } if confirmed, { valid: false, reason } otherwise.
+ */
+async function verifyLockOnChain(
+  chain: string,
+  lockId: string,
+  expectedAmount: string,
+  expectedSecretHash: string,
+): Promise<{ valid: boolean; reason?: string }> {
+  try {
+    switch (chain) {
+      case 'USDC':
+      case 'ETH':
+      case 'BNB':
+        return await _verifyEvmLock(chain, lockId, expectedAmount, expectedSecretHash);
+      case 'QBTC':
+        return await _verifyQbtcLock(lockId, expectedAmount);
+      case 'BTC':
+        return await _verifyBtcLock(lockId, expectedAmount);
+      case 'XRP':
+        return await _verifyXrpLock(lockId, expectedAmount, expectedSecretHash);
+      default:
+        return { valid: false, reason: `Unknown chain: ${chain}` };
+    }
+  } catch (err: any) {
+    return { valid: false, reason: err.message };
+  }
+}
+
+async function _verifyEvmLock(
+  chain: string,
+  lockId: string,
+  expectedAmount: string,
+  expectedSecretHash: string,
+): Promise<{ valid: boolean; reason?: string }> {
+  const rpcUrl      = chain === 'ETH'  ? (process.env.ETH_RPC_URL  || process.env.EVM_RPC_URL || '')
+                    : chain === 'BNB'  ? (process.env.BNB_RPC_URL  || '')
+                    : (process.env.EVM_RPC_URL || '');
+  const htlcAddr    = chain === 'ETH'  ? (process.env.ETH_HTLC_CONTRACT || '')
+                    : chain === 'BNB'  ? (process.env.BNB_HTLC_CONTRACT || '')
+                    : (process.env.EVM_HTLC_CONTRACT || '');
+  const isNative    = chain !== 'USDC';
+
+  if (!rpcUrl || !htlcAddr) return { valid: false, reason: `${chain} RPC not configured` };
+
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  const htlcAbi = isNative
+    ? ['function getContract(bytes32 contractId) view returns (address sender, address receiver, uint256 amount, bytes32 hashlock, uint256 timelock, bool withdrawn, bool refunded, bytes32 preimage)']
+    : ['function getContract(bytes32 contractId) view returns (address sender, address receiver, address tokenContract, uint256 amount, bytes32 hashlock, uint256 timelock, bool withdrawn, bool refunded, bytes32 preimage)'];
+
+  const htlc = new ethers.Contract(htlcAddr, htlcAbi, provider);
+  const id   = lockId.startsWith('0x') ? lockId : `0x${lockId}`;
+  const d    = await htlc.getContract(id);
+
+  const amountIdx   = isNative ? 2 : 3;
+  const hashlockIdx = isNative ? 3 : 4;
+  const withdrawnIdx = isNative ? 5 : 6;
+  const refundedIdx  = isNative ? 6 : 7;
+
+  if (d[withdrawnIdx]) return { valid: false, reason: 'Already withdrawn' };
+  if (d[refundedIdx])  return { valid: false, reason: 'Already refunded' };
+
+  const expectedHash = normalizeHex32(expectedSecretHash).toLowerCase();
+  const actualHash   = String(d[hashlockIdx]).toLowerCase();
+  if (expectedHash !== actualHash) return { valid: false, reason: 'Hashlock mismatch' };
+
+  const decimals = isNative ? 18 : 6;
+  const expectedUnits = decimalToBaseUnits(expectedAmount, decimals);
+  const actualAmount: bigint = BigInt(d[amountIdx]);
+  if (actualAmount < expectedUnits) return { valid: false, reason: `Amount too low: got ${actualAmount}, need ${expectedUnits}` };
+
+  return { valid: true };
+}
+
+async function _verifyQbtcLock(
+  lockId: string,
+  expectedAmount: string,
+): Promise<{ valid: boolean; reason?: string }> {
+  // lockId format: "txid:vout" or just "txid" (vout defaults to 0)
+  const [txid, voutStr] = lockId.split(':');
+  const vout = parseInt(voutStr || '0', 10);
+
+  let tx: any;
+  try {
+    tx = await qbtcRpcCall('getrawtransaction', [txid, true]);
+  } catch (err: any) {
+    return { valid: false, reason: `QBTC RPC error: ${err.message}` };
+  }
+  if (!tx) return { valid: false, reason: 'Transaction not found' };
+  if (!tx.confirmations || tx.confirmations < 1) return { valid: false, reason: 'Needs at least 1 confirmation' };
+
+  const expectedSats = qbtcToSats(expectedAmount);
+  const voutData = tx.vout?.[vout];
+  if (!voutData) return { valid: false, reason: `vout ${vout} not found in tx` };
+
+  const val = typeof voutData.value === 'number' ? voutData.value.toFixed(8) : String(voutData.value ?? '0');
+  if (qbtcToSats(val) < expectedSats) return { valid: false, reason: 'Amount too low' };
+
+  return { valid: true };
+}
+
+async function _verifyBtcLock(
+  lockId: string,
+  expectedAmount: string,
+): Promise<{ valid: boolean; reason?: string }> {
+  const [txid, voutStr] = lockId.split(':');
+  const vout = parseInt(voutStr || '0', 10);
+  const esploraBase = process.env.BTC_ESPLORA_URL || 'https://blockstream.info/testnet';
+
+  const resp = await fetch(`${esploraBase}/api/tx/${txid}`, { signal: AbortSignal.timeout(10_000) });
+  if (!resp.ok) return { valid: false, reason: `Esplora returned ${resp.status}` };
+
+  const tx = await resp.json() as any;
+  if (!tx.status?.confirmed) return { valid: false, reason: 'Transaction not confirmed' };
+
+  const output = tx.vout?.[vout];
+  if (!output) return { valid: false, reason: `vout ${vout} not found` };
+
+  // BTC amounts in satoshis from Esplora
+  const expectedSats = qbtcToSats(expectedAmount); // same 8-decimal unit
+  if (BigInt(output.value) < expectedSats) return { valid: false, reason: 'Amount too low' };
+
+  return { valid: true };
+}
+
+async function _verifyXrpLock(
+  lockId: string,
+  _expectedAmount: string,
+  _expectedSecretHash: string,
+): Promise<{ valid: boolean; reason?: string }> {
+  const wsUrl = process.env.XRPL_WS_URL;
+  if (!wsUrl) return { valid: false, reason: 'XRPL_WS_URL not configured' };
+
+  const [account, seqStr] = lockId.split(':');
+  if (!account || !seqStr) return { valid: false, reason: 'Invalid XRP lockId (expected account:sequence)' };
+
+  const { Client } = await import('xrpl') as any;
+  const client = new Client(wsUrl);
+  await client.connect();
+  try {
+    const resp = await client.request({ command: 'account_objects', account, type: 'escrow' });
+    const objects: any[] = resp.result?.account_objects || [];
+    const seq = parseInt(seqStr, 10);
+    const exists = objects.some((o: any) => o.LedgerEntryType === 'Escrow' && o.Sequence === seq);
+    if (!exists) return { valid: false, reason: 'Escrow not found on ledger' };
+    return { valid: true };
+  } finally {
+    await client.disconnect();
+  }
+}
+
 // ─── Express app ────────────────────────────────────────────────────────────
 
 const app = express();
@@ -1032,6 +1225,461 @@ app.post('/api/swap/claim/qbtc', async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ── PHASE 3 — V2 MULTI-CHAIN ENDPOINTS ────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// All v2 endpoints live under /api/swap/v2/ and are pair-agnostic.
+// Legacy QBTC/USDC endpoints remain unchanged under /api/swap/.
+//
+// V2 State machine:
+//   PENDING_SIDE_A → SIDE_A_LOCKED → SIDE_B_LOCKED → COMPLETE
+//                 ↘ EXPIRED / REFUNDED
+//
+// ─── POST /api/swap/v2/offer ────────────────────────────────────────────────
+// Maker posts a new offer to sell base chain asset for quote chain asset.
+//
+// Body:
+//   baseChain, quoteChain       — pair identifiers
+//   baseAmount                  — amount of base asset maker is selling
+//   quoteAmount                 — amount of quote asset maker wants in return
+//   secretHash                  — SHA-256(secret), 32-byte hex (client-generated)
+//   makerLocktime               — Unix timestamp for base chain HTLC expiry
+//   makerChainAddress           — maker's address on the base chain
+//   authEvmAddress              — EVM address used to sign this request
+//   signature, timestamp        — EVM personal_sign authentication
+//
+// Returns the created offer row (camelCase).
+
+app.post('/api/swap/v2/offer', writeLimiter, async (req, res) => {
+  try {
+    const {
+      baseChain, quoteChain,
+      baseAmount, quoteAmount,
+      secretHash, makerLocktime,
+      makerChainAddress, makerPubKeyHex,
+      authEvmAddress,
+      signature, timestamp,
+    } = req.body || {};
+
+    // ── Input validation ────────────────────────────────────────────────────
+    validatePair(baseChain, quoteChain);
+    if (!baseAmount  || typeof baseAmount  !== 'string') return res.status(400).json({ error: 'baseAmount is required' });
+    if (!quoteAmount || typeof quoteAmount !== 'string') return res.status(400).json({ error: 'quoteAmount is required' });
+    if (!secretHash  || !/^[0-9a-fA-F]{64}$/.test(secretHash)) return res.status(400).json({ error: 'secretHash must be 64 hex chars' });
+    if (!makerLocktime || !Number.isFinite(Number(makerLocktime)) || Number(makerLocktime) <= Math.floor(Date.now() / 1000)) {
+      return res.status(400).json({ error: 'makerLocktime must be a future Unix timestamp' });
+    }
+    if (!makerChainAddress || typeof makerChainAddress !== 'string') return res.status(400).json({ error: 'makerChainAddress is required' });
+    if (!authEvmAddress    || typeof authEvmAddress    !== 'string') return res.status(400).json({ error: 'authEvmAddress is required' });
+    if (!signature || typeof signature !== 'string') return res.status(400).json({ error: 'signature is required' });
+
+    const tsErr = checkTimestamp(timestamp);
+    if (tsErr) return res.status(400).json({ error: tsErr });
+
+    // ── Auth (EVM personal_sign) ─────────────────────────────────────────────
+    const canonicalMsg = buildV2Message(
+      'CREATE_OFFER', baseChain, quoteChain,
+      authEvmAddress.toLowerCase(), baseAmount, quoteAmount,
+      secretHash.toLowerCase(), Number(makerLocktime), Number(timestamp),
+    );
+    try {
+      assertEvmSignature(canonicalMsg, signature, authEvmAddress);
+    } catch (authErr: any) {
+      return res.status(authErr.statusCode || 403).json({ error: authErr.message });
+    }
+
+    // ── Insert ───────────────────────────────────────────────────────────────
+    const result = await pool.query(`
+      INSERT INTO swap_offers (
+        base_chain, quote_chain,
+        base_amount, quote_amount,
+        secret_hash, qbtc_locktime,
+        maker_chain_address, maker_pub_key_hex,
+        auth_evm_address,
+        offer_type, status, created_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'ASK','OPEN',NOW())
+      RETURNING *
+    `, [
+      baseChain, quoteChain,
+      baseAmount, quoteAmount,
+      secretHash.toLowerCase(), Number(makerLocktime),
+      makerChainAddress, makerPubKeyHex || null,
+      authEvmAddress.toLowerCase(),
+    ]);
+
+    const offer = result.rows[0];
+    return res.status(201).json(toCamelCase(offer));
+  } catch (err: any) {
+    if (err.statusCode === 400) return res.status(400).json({ error: err.message });
+    console.error('POST /api/swap/v2/offer:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to create offer' });
+  }
+});
+
+// ─── GET /api/swap/v2/offers ─────────────────────────────────────────────────
+// List open offers for a specific pair.
+// Query params: base (required), quote (required), limit (default 50)
+
+app.get('/api/swap/v2/offers', readLimiter, async (req, res) => {
+  try {
+    const base  = String(req.query.base  || '');
+    const quote = String(req.query.quote || '');
+    const limit = Math.min(Number(req.query.limit || 50), 200);
+
+    validatePair(base, quote);
+
+    const result = await pool.query(`
+      SELECT * FROM swap_offers
+      WHERE base_chain = $1 AND quote_chain = $2
+        AND status IN ('OPEN','LOCKED')
+        AND offer_type = 'ASK'
+      ORDER BY created_at ASC
+      LIMIT $3
+    `, [base, quote, limit]);
+
+    return res.json(result.rows.map(toCamelCase));
+  } catch (err: any) {
+    if (err.statusCode === 400) return res.status(400).json({ error: err.message });
+    console.error('GET /api/swap/v2/offers:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to fetch offers' });
+  }
+});
+
+// ─── POST /api/swap/v2/accept/:offerId ───────────────────────────────────────
+// Taker accepts an open offer.  Creates an atomic_swap record.
+//
+// Body:
+//   takerChainAddress   — taker's address on the quote chain (where they lock)
+//   authEvmAddress      — EVM address used to sign
+//   signature, timestamp
+
+app.post('/api/swap/v2/accept/:offerId', writeLimiter, async (req, res) => {
+  try {
+    const { offerId } = req.params;
+    const { takerChainAddress, authEvmAddress, signature, timestamp } = req.body || {};
+
+    if (!takerChainAddress || typeof takerChainAddress !== 'string') {
+      return res.status(400).json({ error: 'takerChainAddress is required' });
+    }
+    if (!authEvmAddress || typeof authEvmAddress !== 'string') {
+      return res.status(400).json({ error: 'authEvmAddress is required' });
+    }
+    if (!signature || typeof signature !== 'string') return res.status(400).json({ error: 'signature is required' });
+
+    const tsErr = checkTimestamp(timestamp);
+    if (tsErr) return res.status(400).json({ error: tsErr });
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const offerResult = await client.query(
+        'SELECT * FROM swap_offers WHERE id = $1 FOR UPDATE',
+        [offerId],
+      );
+      const offer = offerResult.rows[0];
+      if (!offer)                  { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Offer not found' }); }
+      if (offer.status !== 'OPEN' && offer.status !== 'LOCKED') {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'Offer is no longer open' });
+      }
+
+      // Auth — taker signs with their EVM key
+      const canonicalMsg = buildV2Message(
+        'ACCEPT_OFFER', offer.base_chain, offer.quote_chain,
+        offerId, authEvmAddress.toLowerCase(), Number(timestamp),
+      );
+      try {
+        assertEvmSignature(canonicalMsg, signature, authEvmAddress);
+      } catch (authErr: any) {
+        await client.query('ROLLBACK');
+        return res.status(authErr.statusCode || 403).json({ error: authErr.message });
+      }
+
+      const now           = Math.floor(Date.now() / 1000);
+      const sideALocktime = Number(offer.qbtc_locktime) || (now + SWAP_QBTC_TIMELOCK_SECS);
+      const sideBLocktime = now + SWAP_EVM_TIMELOCK_SECS;
+
+      const swapResult = await client.query(`
+        INSERT INTO atomic_swaps (
+          offer_id, base_chain, quote_chain,
+          side_a_amount, side_b_amount,
+          side_a_chain_address, side_b_chain_address,
+          auth_evm_address_a, auth_evm_address_b,
+          secret_hash,
+          side_a_locktime, side_b_locktime,
+          status, created_at, updated_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'PENDING_SIDE_A',NOW(),NOW())
+        RETURNING *
+      `, [
+        offerId, offer.base_chain, offer.quote_chain,
+        offer.base_amount, offer.quote_amount,
+        offer.maker_chain_address, takerChainAddress,
+        String(offer.auth_evm_address || '').toLowerCase(),
+        authEvmAddress.toLowerCase(),
+        offer.secret_hash,
+        sideALocktime, sideBLocktime,
+      ]);
+      const swap = swapResult.rows[0];
+
+      await client.query("UPDATE swap_offers SET status = 'MATCHED' WHERE id = $1", [offerId]);
+      await client.query('COMMIT');
+
+      return res.json({
+        ...toCamelCase(swap),
+        swapId:       swap.public_id,
+        secretHash:   offer.secret_hash,
+        sideALocktime,
+        sideBLocktime,
+        baseChain:    offer.base_chain,
+        quoteChain:   offer.quote_chain,
+        baseAmount:   offer.base_amount,
+        quoteAmount:  offer.quote_amount,
+      });
+    } catch (txErr: any) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw txErr;
+    } finally {
+      client.release();
+    }
+  } catch (err: any) {
+    if (err.statusCode === 400) return res.status(400).json({ error: err.message });
+    console.error('POST /api/swap/v2/accept:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to accept offer' });
+  }
+});
+
+// ─── POST /api/swap/v2/lock/side-a ───────────────────────────────────────────
+// Maker records their on-chain lock (HTLC / escrow) for the base asset.
+// This is the first lock in the swap — maker locks first.
+//
+// Body:
+//   swapId          — swap public_id (UUID)
+//   lockId          — chain-specific lock identifier:
+//                     Bitcoin/QBTC: "txid:vout"
+//                     EVM:          "0x<contractId bytes32>"
+//                     XRP:          "account:offerSequence"
+//   lockAddress     — HTLC address (P2WSH for BTC/QBTC; optional for others)
+//   authEvmAddress  — maker's EVM address for signing
+//   signature, timestamp
+
+app.post('/api/swap/v2/lock/side-a', writeLimiter, async (req, res) => {
+  try {
+    const { swapId, lockId, lockAddress, authEvmAddress, signature, timestamp } = req.body || {};
+
+    if (!swapId   || typeof swapId   !== 'string') return res.status(400).json({ error: 'swapId is required' });
+    if (!lockId   || typeof lockId   !== 'string') return res.status(400).json({ error: 'lockId is required' });
+    if (!authEvmAddress || typeof authEvmAddress !== 'string') return res.status(400).json({ error: 'authEvmAddress is required' });
+    if (!signature || typeof signature !== 'string') return res.status(400).json({ error: 'signature is required' });
+
+    const tsErr = checkTimestamp(timestamp);
+    if (tsErr) return res.status(400).json({ error: tsErr });
+
+    const swapResult = await pool.query('SELECT * FROM atomic_swaps WHERE public_id = $1::uuid', [swapId]);
+    const swap = swapResult.rows[0];
+    if (!swap) return res.status(404).json({ error: 'Swap not found' });
+    if (swap.status !== 'PENDING_SIDE_A') {
+      return res.status(409).json({ error: `Cannot lock side-A in status: ${swap.status}` });
+    }
+
+    // Auth — maker signs
+    const canonicalMsg = buildV2Message(
+      'LOCK_SIDE_A', swap.base_chain, swap.quote_chain,
+      swapId, lockId, Number(timestamp),
+    );
+    try {
+      assertEvmSignature(canonicalMsg, signature, authEvmAddress);
+    } catch (authErr: any) {
+      return res.status(authErr.statusCode || 403).json({ error: authErr.message });
+    }
+    if (authEvmAddress.toLowerCase() !== String(swap.auth_evm_address_a || '').toLowerCase()) {
+      return res.status(403).json({ error: 'Signer does not match maker for this swap' });
+    }
+
+    // Verify lock on-chain
+    const verification = await verifyLockOnChain(
+      swap.base_chain, lockId,
+      swap.side_a_amount || swap.qbtc_amount || '0',
+      swap.secret_hash,
+    );
+    if (!verification.valid) {
+      return res.status(422).json({ error: `Lock verification failed: ${verification.reason}` });
+    }
+
+    await pool.query(`
+      UPDATE atomic_swaps
+      SET side_a_lock_id = $1, side_a_lock_address = $2, status = 'SIDE_A_LOCKED', updated_at = NOW()
+      WHERE public_id = $3::uuid
+    `, [lockId, lockAddress || null, swapId]);
+
+    return res.json({ status: 'SIDE_A_LOCKED', swapId, lockId });
+  } catch (err: any) {
+    if (err.statusCode === 400) return res.status(400).json({ error: err.message });
+    console.error('POST /api/swap/v2/lock/side-a:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to record side-A lock' });
+  }
+});
+
+// ─── POST /api/swap/v2/lock/side-b ───────────────────────────────────────────
+// Taker records their on-chain lock for the quote asset.
+// The second lock — taker locks after maker's lock is confirmed.
+
+app.post('/api/swap/v2/lock/side-b', writeLimiter, async (req, res) => {
+  try {
+    const { swapId, lockId, authEvmAddress, signature, timestamp } = req.body || {};
+
+    if (!swapId   || typeof swapId   !== 'string') return res.status(400).json({ error: 'swapId is required' });
+    if (!lockId   || typeof lockId   !== 'string') return res.status(400).json({ error: 'lockId is required' });
+    if (!authEvmAddress || typeof authEvmAddress !== 'string') return res.status(400).json({ error: 'authEvmAddress is required' });
+    if (!signature || typeof signature !== 'string') return res.status(400).json({ error: 'signature is required' });
+
+    const tsErr = checkTimestamp(timestamp);
+    if (tsErr) return res.status(400).json({ error: tsErr });
+
+    const swapResult = await pool.query('SELECT * FROM atomic_swaps WHERE public_id = $1::uuid', [swapId]);
+    const swap = swapResult.rows[0];
+    if (!swap) return res.status(404).json({ error: 'Swap not found' });
+    if (swap.status !== 'SIDE_A_LOCKED') {
+      return res.status(409).json({ error: `Cannot lock side-B in status: ${swap.status}` });
+    }
+
+    // Auth — taker signs
+    const canonicalMsg = buildV2Message(
+      'LOCK_SIDE_B', swap.base_chain, swap.quote_chain,
+      swapId, lockId, Number(timestamp),
+    );
+    try {
+      assertEvmSignature(canonicalMsg, signature, authEvmAddress);
+    } catch (authErr: any) {
+      return res.status(authErr.statusCode || 403).json({ error: authErr.message });
+    }
+    if (authEvmAddress.toLowerCase() !== String(swap.auth_evm_address_b || '').toLowerCase()) {
+      return res.status(403).json({ error: 'Signer does not match taker for this swap' });
+    }
+
+    // Verify lock on-chain
+    const verification = await verifyLockOnChain(
+      swap.quote_chain, lockId,
+      swap.side_b_amount || swap.usdc_amount || '0',
+      swap.secret_hash,
+    );
+    if (!verification.valid) {
+      return res.status(422).json({ error: `Lock verification failed: ${verification.reason}` });
+    }
+
+    await pool.query(`
+      UPDATE atomic_swaps
+      SET side_b_lock_id = $1, status = 'SIDE_B_LOCKED', updated_at = NOW()
+      WHERE public_id = $2::uuid
+    `, [lockId, swapId]);
+
+    return res.json({ status: 'SIDE_B_LOCKED', swapId, lockId });
+  } catch (err: any) {
+    if (err.statusCode === 400) return res.status(400).json({ error: err.message });
+    console.error('POST /api/swap/v2/lock/side-b:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to record side-B lock' });
+  }
+});
+
+// ─── GET /api/swap/v2/stats ───────────────────────────────────────────────────
+// Aggregate stats filtered by pair (optional).
+// Query params: base, quote (both optional; if omitted, aggregates all pairs)
+
+app.get('/api/swap/v2/stats', readLimiter, async (req, res) => {
+  try {
+    const base  = String(req.query.base  || '').trim() || null;
+    const quote = String(req.query.quote || '').trim() || null;
+
+    if (base || quote) {
+      if (!base || !quote) return res.status(400).json({ error: 'Provide both base and quote, or neither' });
+      validatePair(base, quote);
+    }
+
+    const pairFilter = base
+      ? `AND base_chain = '${base.replace(/'/g, '')}' AND quote_chain = '${quote!.replace(/'/g, '')}'`
+      : '';
+
+    const swapStats = await pool.query(`
+      SELECT
+        base_chain, quote_chain,
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE status = 'COMPLETE')::int  AS completed,
+        COUNT(*) FILTER (WHERE status = 'EXPIRED')::int   AS expired,
+        COUNT(*) FILTER (WHERE status IN ('PENDING_SIDE_A','SIDE_A_LOCKED','SIDE_B_LOCKED'))::int AS active
+      FROM atomic_swaps
+      WHERE base_chain IS NOT NULL ${pairFilter}
+      GROUP BY base_chain, quote_chain
+      ORDER BY completed DESC
+    `);
+
+    const offerStats = await pool.query(`
+      SELECT
+        base_chain, quote_chain,
+        COUNT(*) FILTER (WHERE status = 'OPEN')::int    AS open,
+        COUNT(*) FILTER (WHERE status = 'MATCHED')::int AS matched
+      FROM swap_offers
+      WHERE base_chain IS NOT NULL ${pairFilter}
+      GROUP BY base_chain, quote_chain
+      ORDER BY open DESC
+    `);
+
+    return res.json({
+      swaps:  swapStats.rows.map(toCamelCase),
+      offers: offerStats.rows.map(toCamelCase),
+    });
+  } catch (err: any) {
+    if (err.statusCode === 400) return res.status(400).json({ error: err.message });
+    console.error('GET /api/swap/v2/stats:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to fetch stats' });
+  }
+});
+
+// ─── GET /api/swap/v2/pairs ───────────────────────────────────────────────────
+// List all supported chain pairs with active order book depth.
+
+app.get('/api/swap/v2/pairs', readLimiter, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        base_chain, quote_chain,
+        COUNT(*) FILTER (WHERE status = 'OPEN')::int AS open_offers,
+        MIN(CASE WHEN status = 'OPEN' THEN (quote_amount::numeric / NULLIF(base_amount::numeric, 0)) END) AS best_ask,
+        MAX(CASE WHEN status = 'OPEN' THEN (quote_amount::numeric / NULLIF(base_amount::numeric, 0)) END) AS best_bid
+      FROM swap_offers
+      WHERE base_chain IS NOT NULL AND base_amount IS NOT NULL AND quote_amount IS NOT NULL
+      GROUP BY base_chain, quote_chain
+      ORDER BY open_offers DESC
+    `);
+    return res.json(result.rows.map(toCamelCase));
+  } catch (err: any) {
+    console.error('GET /api/swap/v2/pairs:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to fetch pairs' });
+  }
+});
+
+// ─── GET /api/swap/v2/:swapId ────────────────────────────────────────────────
+// Fetch a v2 swap by public_id.  Returns secret only when COMPLETE.
+// NOTE: Must be registered AFTER all static /api/swap/v2/<name> routes.
+
+app.get('/api/swap/v2/:swapId', readLimiter, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM atomic_swaps WHERE public_id = $1::uuid',
+      [req.params.swapId],
+    );
+    const swap = result.rows[0];
+    if (!swap) return res.status(404).json({ error: 'Swap not found' });
+
+    const mapped: any = toCamelCase(swap);
+    if (swap.status !== 'COMPLETE') delete mapped.secret;
+    return res.json(mapped);
+  } catch (err: any) {
+    console.error('GET /api/swap/v2/:swapId:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to fetch swap' });
+  }
+});
+
 // ─── EVM Withdraw Monitor ───────────────────────────────────────────────────
 
 async function pollEvmLocked() {
@@ -1098,7 +1746,19 @@ app.listen(PORT, '0.0.0.0', async () => {
   console.log(`[swap-server] Listening on 0.0.0.0:${PORT}`);
   console.log(`[swap-server] Health check: http://localhost:${PORT}/api/swap/health`);
 
-  // Start EVM withdraw monitor
+  // Legacy QBTC/USDC EVM monitor — kept running until Phase 3 migration is complete
   setInterval(pollEvmLocked, MONITOR_POLL_MS);
   console.log(`[swap-server] EVM withdraw monitor started (${MONITOR_POLL_MS / 1000}s interval)`);
+
+  // Multi-chain monitors (Phase 2) — started for any chains that have env vars configured
+  const { startAllMonitors, stopAllMonitors } = await import('./adapters/index.ts');
+  const monitors = startAllMonitors(pool, MONITOR_POLL_MS);
+
+  // Graceful shutdown
+  const shutdown = () => {
+    stopAllMonitors(monitors);
+    process.exit(0);
+  };
+  process.once('SIGTERM', shutdown);
+  process.once('SIGINT',  shutdown);
 });

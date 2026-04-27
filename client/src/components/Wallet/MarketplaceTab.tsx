@@ -35,6 +35,7 @@ import { getSecurityRequirements, type AuthMethod } from '@/lib/securityService'
 import { authenticateWithPasskey, isPasskeyAuthenticated } from '@/lib/passkeyService';
 import PinEntryModal from './PinEntryModal';
 import { ethers } from 'ethers';
+import MultiChainMarketTab from '@/components/MultiChainMarketTab';
 
 const SWAP_API = (import.meta.env.VITE_SWAP_API_URL || '').replace(/\/$/, '');
 
@@ -962,8 +963,8 @@ export default function MarketplaceTab({
   const [selectedOffer, setSelectedOffer] = useState<SwapOffer | null>(null);
   const [selectedBuyOffer, setSelectedBuyOffer] = useState<SwapOffer | null>(null);
 
-  // Market mode: sell QBTC or buy QBTC
-  const [marketMode, setMarketMode] = useState<'sell' | 'buy' | 'active'>('sell');
+  // Market mode: sell QBTC or buy QBTC or multi-chain
+  const [marketMode, setMarketMode] = useState<'sell' | 'buy' | 'active' | 'multichain'>('sell');
 
   // Create offer form
   const [qbtcAmount, setQbtcAmount] = useState('');
@@ -1366,6 +1367,12 @@ export default function MarketplaceTab({
             </span>
           )}
         </button>
+        <button
+          onClick={() => setMarketMode('multichain')}
+          className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${marketMode === 'multichain' ? 'bg-cyan-500/20 text-cyan-300 border-b-2 border-cyan-400' : 'text-slate-400 hover:text-slate-200'}`}
+        >
+          Multi-Chain
+        </button>
       </div>
 
       {/* ─── Post & Lock Offer (Sell) ─── */}
@@ -1673,6 +1680,17 @@ export default function MarketplaceTab({
           </div>
         )}
       </div>
+      )}
+
+      {/* ─── Multi-Chain v2 Marketplace ─── */}
+      {marketMode === 'multichain' && (
+        <MultiChainMarketTab
+          walletId={walletId}
+          userId={userId}
+          walletEvmAddress={walletEvmAddress}
+          walletAddress={walletAddress}
+          walletPubKey={walletPubKey}
+        />
       )}
 
       {/* ─── Accept Offer Modal ─── */}
