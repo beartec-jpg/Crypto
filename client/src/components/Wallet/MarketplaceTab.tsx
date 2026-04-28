@@ -1187,7 +1187,12 @@ function V2SwapActions({
       setPassword('');
       onRefresh();
     } catch (e: unknown) {
-      setErrorMsg(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/insufficient.funds|INSUFFICIENT_FUNDS/i.test(msg)) {
+        setErrorMsg('Insufficient Sepolia ETH. Get test ETH at: https://cloud.google.com/application/web3/faucet/ethereum/sepolia');
+      } else {
+        setErrorMsg(msg);
+      }
       setActionStatus('error');
     }
   };
