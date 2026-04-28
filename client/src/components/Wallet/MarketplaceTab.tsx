@@ -1,7 +1,7 @@
 // client/src/components/Wallet/MarketplaceTab.tsx
 // QBTC ↔ USDC atomic swap marketplace — integrated into the wallet tab
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Link } from 'wouter';
 import axios from 'axios';
 import {
@@ -991,6 +991,27 @@ function V2SwapActions({
   const [errorMsg, setErrorMsg] = useState('');
   const [xrpNotFunded, setXrpNotFunded] = useState(false);
   const [faucetStatus, setFaucetStatus] = useState<'idle' | 'busy' | 'done' | 'error'>('idle');
+  const prevSwapStatus = useRef(swap.status);
+
+  // Auto-poll after a lock/claim until the swap status changes (max 30s)
+  useEffect(() => {
+    if (actionStatus !== 'done') return;
+    let tries = 0;
+    const id = setInterval(() => {
+      tries++;
+      onRefresh();
+      if (tries >= 10) clearInterval(id); // 10 × 3s = 30s max
+    }, 3000);
+    return () => clearInterval(id);
+  }, [actionStatus]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset actionStatus once the swap status actually changes
+  useEffect(() => {
+    if (swap.status !== prevSwapStatus.current) {
+      prevSwapStatus.current = swap.status;
+      setActionStatus('idle');
+    }
+  }, [swap.status]);
 
   // Track XRP claims in localStorage so button doesn't reappear after claiming
   const xrpClaimedKey = `v2_xrp_claimed_${swap.publicId}`;
@@ -1310,7 +1331,8 @@ function V2SwapActions({
     const waitMsg =
       (isMaker && swap.status === 'SIDE_A_LOCKED') ? 'Waiting for taker to lock their side…' :
       (isTaker && swap.status === 'PENDING_SIDE_A') ? 'Waiting for maker to lock first…' :
-      (swap.status === 'SIDE_B_LOCKED') ? 'Waiting for counterparty to claim…' : 'Waiting…';
+      (isTaker && swap.status === 'SIDE_B_LOCKED') ? 'Waiting for maker to claim first — they reveal the secret which unlocks your claim…' :
+      (isMaker && swap.status === 'SIDE_B_LOCKED') ? 'Waiting for counterparty to claim…' : 'Waiting…';
     return (
       <div className="pt-2 border-t border-slate-700/50">
         <p className="text-xs text-slate-500 flex items-center gap-1.5">
@@ -1404,7 +1426,8 @@ function V2SwapActions({
       )}
       {actionStatus === 'done' && (
         <p className="text-xs text-emerald-400 flex items-center gap-1">
-          <CheckCircle2 size={12} /> {canClaimEth || canClaimXrp ? 'Claimed!' : 'Locked on-chain!'} Status updating…
+          <CheckCircle2 size={12} /> {canClaimEth || canClaimXrp ? 'Claimed!' : 'Locked on-chain!'}
+          <Loader2 size={10} className="animate-spin ml-1" /> Waiting for confirmation…
         </p>
       )}
     </div>
