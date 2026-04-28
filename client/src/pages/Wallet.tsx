@@ -1250,7 +1250,11 @@ function SettingsSection({
       )}
 
       {activeSettingsTab === 'security' && (
-        <SecuritySettings userId={userId} />
+        <SecuritySettings
+          userId={userId}
+          walletId={sovereignWallet?.id}
+          walletEvmAddress={sovereignWallet?.addresses?.ethereum || ''}
+        />
       )}
     </div>
   );
