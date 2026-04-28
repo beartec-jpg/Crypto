@@ -103,6 +103,26 @@ export function encodeCondition(preimage: Buffer): string {
 }
 
 /**
+ * Encode a PREIMAGE-SHA-256 condition when you already have the SHA-256 fingerprint
+ * (i.e. the secretHash).  Used by the swap taker who knows H(secret) but not the secret.
+ */
+export function encodeConditionFromHash(secretHashHex: string): string {
+  const fingerprint = Buffer.from(secretHashHex.replace(/^0x/, ''), 'hex');
+  const preimageLen = 32; // all swap secrets are 32 bytes
+  const costBytes   = derUint(preimageLen);
+
+  const fingerprintField = Buffer.concat([
+    Buffer.from([0x80]), derLength(fingerprint.length), fingerprint,
+  ]);
+  const costField = Buffer.concat([
+    Buffer.from([0x81]), derLength(costBytes.length), costBytes,
+  ]);
+  const inner = Buffer.concat([fingerprintField, costField]);
+  const outer = Buffer.concat([Buffer.from([0xa0]), derLength(inner.length), inner]);
+  return outer.toString('hex').toUpperCase();
+}
+
+/**
  * Decode the 32-byte preimage from a PREIMAGE-SHA-256 fulfillment hex string.
  * Returns null if the encoding is unrecognised or the data is malformed.
  */
@@ -169,14 +189,17 @@ export class XrplAdapter implements IChainAdapter {
    * amount is in XRP (e.g. "10.5").
    * counterpartyAddress is the XRPL address of the party who will claim with the secret.
    */
-  async lockFunds(params: LockParams): Promise<LockResult> {
+  async lockFunds(params: LockParams & { conditionHex?: string }): Promise<LockResult> {
     const wallet = params.signerKey as Wallet;
     if (!wallet || !wallet.classicAddress) {
       throw new Error('XrplAdapter.lockFunds: signerKey must be an xrpl.Wallet');
     }
 
-    const preimage = Buffer.from(params.secretHash, 'hex');
-    const condition = encodeCondition(preimage);
+    // If caller already computed the condition (e.g. taker who only knows secretHash),
+    // use it directly; otherwise derive from preimage.
+    const condition = params.conditionHex
+      ? params.conditionHex
+      : encodeCondition(Buffer.from(params.secretHash, 'hex'));
     const cancelAfterRipple = rippleEpochNow() + params.timelockSecs;
     const amountDrops = String(Math.round(parseFloat(params.amount) * 1_000_000));
 

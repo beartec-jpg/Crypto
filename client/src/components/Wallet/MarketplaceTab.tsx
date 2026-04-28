@@ -37,7 +37,7 @@ import PinEntryModal from './PinEntryModal';
 import { ethers } from 'ethers';
 import MultiChainMarketTab from '@/components/MultiChainMarketTab';
 import { fetchV2SwapsByAddress, buildV2Message, postV2LockSideA, postV2LockSideB, postV2ClaimSideB, type V2Swap, type ChainId } from '@/lib/swapV2Api';
-import { XrplAdapter } from '@/lib/adapters/XrplAdapter';
+import { XrplAdapter, encodeConditionFromHash } from '@/lib/adapters/XrplAdapter';
 import { EvmAdapter, getEvmAdapterConfig } from '@/lib/adapters/EvmAdapter';
 import { getXRPSeed, getXRPTestnetSeed } from '@/lib/walletService';
 import { Wallet as XRPLWallet } from 'xrpl';
@@ -997,21 +997,43 @@ function V2SwapActions({
   const [xrpAlreadyClaimed, setXrpAlreadyClaimed] = useState(
     () => !!localStorage.getItem(xrpClaimedKey)
   );
+  const ethClaimedKey = `v2_eth_claimed_${swap.publicId}`;
+  const [ethAlreadyClaimed, setEthAlreadyClaimed] = useState(
+    () => !!localStorage.getItem(ethClaimedKey)
+  );
 
   const isTestnet = (import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet';
   const isMaker = swap.authEvmAddressA?.toLowerCase() === walletEvmAddress.toLowerCase();
   const isTaker = swap.authEvmAddressB?.toLowerCase() === walletEvmAddress.toLowerCase();
 
-  const canLockXrp = isMaker && swap.status === 'PENDING_SIDE_A' && swap.baseChain === 'XRP';
-  const canLockEth = isTaker && swap.status === 'SIDE_A_LOCKED' && swap.quoteChain === 'ETH';
-  // Claim conditions
-  const canClaimEth = isMaker && swap.status === 'SIDE_B_LOCKED' && swap.quoteChain === 'ETH';
-  const canClaimXrp = isTaker && swap.status === 'COMPLETE' && swap.baseChain === 'XRP' && !!swap.secret && !xrpAlreadyClaimed;
+  // Lock conditions — handle both XRP/ETH and ETH/XRP directions
+  // canLockXrp: maker locking XRP (XRP/ETH) OR taker locking XRP (ETH/XRP)
+  const canLockXrp =
+    (isMaker && swap.status === 'PENDING_SIDE_A' && swap.baseChain === 'XRP') ||
+    (isTaker && swap.status === 'SIDE_A_LOCKED'  && swap.quoteChain === 'XRP');
+  // canLockEth: taker locking ETH (XRP/ETH) OR maker locking ETH (ETH/XRP)
+  const canLockEth =
+    (isTaker && swap.status === 'SIDE_A_LOCKED'  && swap.quoteChain === 'ETH') ||
+    (isMaker && swap.status === 'PENDING_SIDE_A' && swap.baseChain === 'ETH');
 
-  // Taker's XRP address: stored in sideBChainAddress if it starts with 'r' (XRP classic address)
-  const storedTakerXrp = swap.sideBChainAddress?.startsWith('r') ? swap.sideBChainAddress : null;
-  const needsXrpAddrInput = canLockXrp && !storedTakerXrp;
-  const takerXrpAddr = storedTakerXrp || xrpAddrInput.trim();
+  // Claim conditions
+  // canClaimEth: XRP/ETH maker claims ETH (SIDE_B_LOCKED) OR ETH/XRP taker claims ETH (COMPLETE + secret revealed)
+  const canClaimEth =
+    (isMaker && swap.status === 'SIDE_B_LOCKED' && swap.quoteChain === 'ETH') ||
+    (isTaker && swap.status === 'COMPLETE' && swap.baseChain === 'ETH' && !!swap.secret && !ethAlreadyClaimed);
+  // canClaimXrp: XRP/ETH taker claims XRP (COMPLETE + secret) OR ETH/XRP maker claims XRP (SIDE_B_LOCKED)
+  const canClaimXrp =
+    (isTaker && swap.status === 'COMPLETE' && swap.baseChain === 'XRP' && !!swap.secret && !xrpAlreadyClaimed) ||
+    (isMaker && swap.status === 'SIDE_B_LOCKED' && swap.quoteChain === 'XRP');
+
+  // For XRP locking: if maker locking (XRP/ETH) counterparty = taker's XRP address (sideBChainAddress)
+  //                  if taker locking (ETH/XRP) counterparty = maker's XRP address (sideAChainAddress)
+  const makerLockingXrp = isMaker && swap.baseChain === 'XRP';
+  const storedXrpCounterparty = makerLockingXrp
+    ? (swap.sideBChainAddress?.startsWith('r') ? swap.sideBChainAddress : null)
+    : (swap.sideAChainAddress?.startsWith('r') ? swap.sideAChainAddress : null);
+  const needsXrpAddrInput = canLockXrp && !storedXrpCounterparty;
+  const takerXrpAddr = storedXrpCounterparty || xrpAddrInput.trim();
 
   const handleFundFromFaucet = async () => {
     try {
@@ -1041,41 +1063,79 @@ function V2SwapActions({
       setActionStatus('busy');
 
       if (!password.trim()) throw new Error('Password required');
-      if (!takerXrpAddr) throw new Error("Enter the taker's XRP address");
+      if (!takerXrpAddr) throw new Error('XRP address required');
 
-      // Retrieve secret from localStorage
-      const secrets = JSON.parse(localStorage.getItem('v2_secrets') || '{}');
-      const secretEntry = secrets[swap.secretHash];
-      if (!secretEntry) throw new Error('Secret not found — was this offer created on this device?');
-      const secret: string = typeof secretEntry === 'string' ? secretEntry : secretEntry.secret;
-      if (!secret) throw new Error('Stored secret has unexpected format');
+      const makerIsLocking = isMaker && swap.baseChain === 'XRP'; // XRP/ETH
+      // Amount + locktime depend on which side is locking
+      const lockAmount = makerIsLocking ? swap.sideAAmount : swap.sideBAmount;
+      const locktimeUnix = makerIsLocking ? Number(swap.sideALocktime) : Number(swap.sideBLocktime);
+      const timelockSecs = locktimeUnix - Math.floor(Date.now() / 1000);
+      if (timelockSecs <= 60) throw new Error('Locktime has expired or is too close to expiry');
 
-      // Build XRPL wallet from the correct derivation path for the active network
       const seed = isTestnet
         ? await getXRPTestnetSeed(walletId, password)
         : await getXRPSeed(walletId, password);
       const xrplWallet = XRPLWallet.fromSeed(seed);
 
-      const timelockSecs = Number(swap.sideALocktime) - Math.floor(Date.now() / 1000);
-      if (timelockSecs <= 60) throw new Error('Maker locktime has expired or is too close to expiry');
-
       const xrplAdapter = new XrplAdapter({
         wsUrl: isTestnet ? 'wss://s.altnet.rippletest.net:51233' : undefined,
       });
-      const { lockId } = await xrplAdapter.lockFunds({
-        signerKey: xrplWallet,
-        amount: swap.sideAAmount,
-        secretHash: secret,   // raw preimage hex — XrplAdapter sha256s this internally for Condition
-        timelockSecs,
-        counterpartyAddress: takerXrpAddr,
-      });
 
-      // Sign with EVM key and record on server
-      const ts = Math.floor(Date.now() / 1000);
-      const msg = buildV2Message('LOCK_SIDE_A', swap.baseChain as ChainId, swap.quoteChain as ChainId, swap.publicId, lockId, ts);
+      let lockId: string;
+      if (makerIsLocking) {
+        // Maker knows the secret — pass it as preimage; XrplAdapter sha256s internally
+        const secrets = JSON.parse(localStorage.getItem('v2_secrets') || '{}');
+        const secretEntry = secrets[swap.secretHash];
+        if (!secretEntry) throw new Error('Secret not found — was this offer created on this device?');
+        const secret: string = typeof secretEntry === 'string' ? secretEntry : secretEntry.secret;
+        ({ lockId } = await xrplAdapter.lockFunds({
+          signerKey: xrplWallet,
+          amount: lockAmount,
+          secretHash: secret,
+          timelockSecs,
+          counterpartyAddress: takerXrpAddr,
+        }));
+      } else {
+        // Taker only knows secretHash — build Condition directly from hash
+        const conditionHex = encodeConditionFromHash(swap.secretHash);
+        ({ lockId } = await xrplAdapter.lockFunds({
+          signerKey: xrplWallet,
+          amount: lockAmount,
+          secretHash: swap.secretHash, // not used for condition when conditionHex provided
+          timelockSecs,
+          counterpartyAddress: takerXrpAddr,
+          conditionHex,
+        }));
+      }
+
       const unlockedWallet = await unlockWallet(walletId, password);
       const ethSigner = new ethers.Wallet('0x' + unlockedWallet.privateKeys.ethereum);
-      const sig = await ethSigner.signMessage(msg);
+      const ts = Math.floor(Date.now() / 1000);
+      if (makerIsLocking) {
+        const msg = buildV2Message('LOCK_SIDE_A', swap.baseChain as ChainId, swap.quoteChain as ChainId, swap.publicId, lockId, ts);
+        const sig = await ethSigner.signMessage(msg);
+        await postV2LockSideA({ swapId: swap.publicId, lockId, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+      } else {
+        const msg = buildV2Message('LOCK_SIDE_B', swap.baseChain as ChainId, swap.quoteChain as ChainId, swap.publicId, lockId, ts);
+        const sig = await ethSigner.signMessage(msg);
+        await postV2LockSideB({ swapId: swap.publicId, lockId, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+      }
+
+      setActionStatus('done');
+      setPassword('');
+      onRefresh();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const isNotFunded = /account not found|actnotfound|account.*not.*exist/i.test(msg);
+      if (isNotFunded && isTestnet) {
+        setXrpNotFunded(true);
+        setErrorMsg('Your XRP testnet account is not activated — it needs test XRP to exist on the ledger.');
+      } else {
+        setErrorMsg(msg);
+      }
+      setActionStatus('error');
+    }
+  };
 
       await postV2LockSideA({ swapId: swap.publicId, lockId, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
 
@@ -1102,10 +1162,17 @@ function V2SwapActions({
 
       if (!password.trim()) throw new Error('Password required');
 
-      const timelockSecs = Number(swap.sideBLocktime) - Math.floor(Date.now() / 1000);
-      if (timelockSecs <= 60) throw new Error('Taker locktime has expired or is too close to expiry');
+      const takerIsLocking = isTaker && swap.quoteChain === 'ETH'; // XRP/ETH: taker locks side B
+      // Amount + locktime + counterparty depend on which side is locking
+      const lockAmount    = takerIsLocking ? swap.sideBAmount    : swap.sideAAmount;
+      const locktimeUnix  = takerIsLocking ? Number(swap.sideBLocktime) : Number(swap.sideALocktime);
+      // Counterparty: who will claim this ETH?
+      //   XRP/ETH: taker locks → maker claims → counterparty = sideAChainAddress (maker's ETH)
+      //   ETH/XRP: maker locks → taker claims → counterparty = sideBChainAddress (taker's ETH)
+      const counterpartyEth = takerIsLocking ? swap.sideAChainAddress : swap.sideBChainAddress;
+      const timelockSecs  = locktimeUnix - Math.floor(Date.now() / 1000);
+      if (timelockSecs <= 60) throw new Error('Locktime has expired or is too close to expiry');
 
-      // Build ETH signer with Sepolia provider
       const unlockedWallet = await unlockWallet(walletId, password);
       const ethPrivKey = unlockedWallet.privateKeys.ethereum;
       const rpcUrl = import.meta.env.VITE_ETH_RPC_URL || (isTestnet ? 'https://ethereum-sepolia-rpc.publicnode.com' : 'https://ethereum-rpc.publicnode.com');
@@ -1113,25 +1180,26 @@ function V2SwapActions({
       const provider = new ethers.JsonRpcProvider(rpcUrl, chainId);
       const ethSigner = new ethers.Wallet('0x' + ethPrivKey, provider);
 
-      // Lock ETH in HTLC — receiver = maker's ETH receive address
       const adapterCfg = getEvmAdapterConfig('ETH');
       const evmAdapter = new EvmAdapter(adapterCfg);
-      const makerEthAddr = swap.sideAChainAddress;
-
       const { lockId } = await evmAdapter.lockFunds({
         signerKey: ethSigner,
-        amount: swap.sideBAmount,
-        secretHash: swap.secretHash,   // sha256 hash (as expected by EvmAdapter)
+        amount: lockAmount,
+        secretHash: swap.secretHash,
         timelockSecs,
-        counterpartyAddress: makerEthAddr,
+        counterpartyAddress: counterpartyEth!,
       });
 
-      // Sign with EVM key and record on server
       const ts = Math.floor(Date.now() / 1000);
-      const msg = buildV2Message('LOCK_SIDE_B', swap.baseChain as ChainId, swap.quoteChain as ChainId, swap.publicId, lockId, ts);
-      const sig = await ethSigner.signMessage(msg);
-
-      await postV2LockSideB({ swapId: swap.publicId, lockId, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+      if (takerIsLocking) {
+        const msg = buildV2Message('LOCK_SIDE_B', swap.baseChain as ChainId, swap.quoteChain as ChainId, swap.publicId, lockId, ts);
+        const sig = await ethSigner.signMessage(msg);
+        await postV2LockSideB({ swapId: swap.publicId, lockId, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+      } else {
+        const msg = buildV2Message('LOCK_SIDE_A', swap.baseChain as ChainId, swap.quoteChain as ChainId, swap.publicId, lockId, ts);
+        const sig = await ethSigner.signMessage(msg);
+        await postV2LockSideA({ swapId: swap.publicId, lockId, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+      }
 
       setActionStatus('done');
       setPassword('');
@@ -1148,34 +1216,38 @@ function V2SwapActions({
       setActionStatus('busy');
       if (!password.trim()) throw new Error('Password required');
 
-      // Get secret from localStorage
-      const secrets = JSON.parse(localStorage.getItem('v2_secrets') || '{}');
-      const secretEntry = secrets[swap.secretHash];
-      if (!secretEntry) throw new Error('Secret not found — was this offer created on this device?');
-      const secret: string = typeof secretEntry === 'string' ? secretEntry : secretEntry.secret;
-
-      // Build ETH signer
       const unlockedWallet = await unlockWallet(walletId, password);
       const ethPrivKey = unlockedWallet.privateKeys.ethereum;
       const rpcUrl = import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
       const chainId = Number(import.meta.env.VITE_ETH_CHAIN_ID || 11155111);
       const provider = new ethers.JsonRpcProvider(rpcUrl, chainId);
       const ethSigner = new ethers.Wallet('0x' + ethPrivKey, provider);
-
-      // Claim ETH from HTLC (withdraws ETH to maker's wallet)
       const adapterCfg = getEvmAdapterConfig('ETH');
       const evmAdapter = new EvmAdapter(adapterCfg);
-      const claimTxHash = await evmAdapter.claimFunds({
-        signerKey: ethSigner,
-        lockId: swap.sideBLockId!,
-        secret,
-      });
 
-      // Report claim to server — stores secret and sets COMPLETE
-      const ts = Math.floor(Date.now() / 1000);
-      const msg = `QBTC_SWAP_V2:CLAIM_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${claimTxHash}:${ts}`;
-      const sig = await ethSigner.signMessage(msg);
-      await postV2ClaimSideB({ swapId: swap.publicId, secret, claimTxHash, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+      const makerClaimingEth = isMaker && swap.quoteChain === 'ETH'; // XRP/ETH maker claims sideBLockId
+      const ethLockId = makerClaimingEth ? swap.sideBLockId! : swap.sideALockId!;
+
+      if (makerClaimingEth) {
+        // Maker knows the secret from localStorage
+        const secrets = JSON.parse(localStorage.getItem('v2_secrets') || '{}');
+        const secretEntry = secrets[swap.secretHash];
+        if (!secretEntry) throw new Error('Secret not found — was this offer created on this device?');
+        const secret: string = typeof secretEntry === 'string' ? secretEntry : secretEntry.secret;
+
+        const claimTxHash = await evmAdapter.claimFunds({ signerKey: ethSigner, lockId: ethLockId, secret });
+        // Report to server — stores secret and sets COMPLETE
+        const ts = Math.floor(Date.now() / 1000);
+        const msg = `QBTC_SWAP_V2:CLAIM_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${claimTxHash}:${ts}`;
+        const sig = await ethSigner.signMessage(msg);
+        await postV2ClaimSideB({ swapId: swap.publicId, secret, claimTxHash, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+      } else {
+        // Taker claims ETH (ETH/XRP) — secret was revealed by maker on XRP chain, now in swap.secret
+        if (!swap.secret) throw new Error('Secret not yet available — maker must claim XRP first');
+        await evmAdapter.claimFunds({ signerKey: ethSigner, lockId: ethLockId, secret: swap.secret });
+        localStorage.setItem(ethClaimedKey, '1');
+        setEthAlreadyClaimed(true);
+      }
 
       setActionStatus('done');
       setPassword('');
@@ -1192,22 +1264,33 @@ function V2SwapActions({
       setXrpNotFunded(false);
       setActionStatus('busy');
       if (!password.trim()) throw new Error('Password required');
-      if (!swap.secret) throw new Error('Secret not yet available — maker must claim ETH first');
-      if (!swap.sideALockId) throw new Error('XRP lock ID not found');
 
       const seed = isTestnet
         ? await getXRPTestnetSeed(walletId, password)
         : await getXRPSeed(walletId, password);
       const xrplWallet = XRPLWallet.fromSeed(seed);
-
       const xrplAdapter = new XrplAdapter({
         wsUrl: isTestnet ? 'wss://s.altnet.rippletest.net:51233' : undefined,
       });
-      await xrplAdapter.claimFunds({
-        signerKey: xrplWallet,
-        lockId: swap.sideALockId,
-        secret: swap.secret,
-      });
+
+      const makerClaimingXrp = isMaker && swap.quoteChain === 'XRP'; // ETH/XRP maker claims sideBLockId
+      const xrpLockId = makerClaimingXrp ? swap.sideBLockId! : swap.sideALockId!;
+
+      if (makerClaimingXrp) {
+        // Maker knows the secret from localStorage
+        if (!xrpLockId) throw new Error('XRP lock ID not found');
+        const secrets = JSON.parse(localStorage.getItem('v2_secrets') || '{}');
+        const secretEntry = secrets[swap.secretHash];
+        if (!secretEntry) throw new Error('Secret not found — was this offer created on this device?');
+        const secret: string = typeof secretEntry === 'string' ? secretEntry : secretEntry.secret;
+        await xrplAdapter.claimFunds({ signerKey: xrplWallet, lockId: xrpLockId, secret });
+        // XrplMonitor will detect the EscrowFinish and store secret → COMPLETE
+      } else {
+        // Taker claims XRP (XRP/ETH) — secret revealed by maker via ETH withdraw
+        if (!swap.secret) throw new Error('Secret not yet available — maker must claim ETH first');
+        if (!xrpLockId) throw new Error('XRP lock ID not found');
+        await xrplAdapter.claimFunds({ signerKey: xrplWallet, lockId: xrpLockId, secret: swap.secret });
+      }
 
       localStorage.setItem(xrpClaimedKey, '1');
       setXrpAlreadyClaimed(true);
@@ -1216,7 +1299,6 @@ function V2SwapActions({
       onRefresh();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      // tecNO_TARGET means the escrow is already gone (already claimed)
       if (/tecNO_TARGET/i.test(msg)) {
         localStorage.setItem(xrpClaimedKey, '1');
         setXrpAlreadyClaimed(true);
@@ -1283,7 +1365,7 @@ function V2SwapActions({
         >
           {actionStatus === 'busy'
             ? <><Loader2 size={14} className="animate-spin" /> Locking XRP…</>
-            : <><Lock size={14} /> Lock {swap.sideAAmount} XRP</>}
+            : <><Lock size={14} /> Lock {makerLockingXrp ? swap.sideAAmount : swap.sideBAmount} XRP</>}
         </button>
       )}
       {canLockEth && (
@@ -1294,7 +1376,7 @@ function V2SwapActions({
         >
           {actionStatus === 'busy'
             ? <><Loader2 size={14} className="animate-spin" /> Locking ETH…</>
-            : <><Lock size={14} /> Lock {swap.sideBAmount} ETH</>}
+            : <><Lock size={14} /> Lock {(isTaker && swap.quoteChain === 'ETH') ? swap.sideBAmount : swap.sideAAmount} ETH</>}
         </button>
       )}
       {canClaimEth && (
