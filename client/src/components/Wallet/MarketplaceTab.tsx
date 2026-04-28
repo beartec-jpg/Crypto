@@ -36,13 +36,13 @@ import { authenticateWithPasskey, isPasskeyAuthenticated } from '@/lib/passkeySe
 import PinEntryModal from './PinEntryModal';
 import { ethers } from 'ethers';
 import MultiChainMarketTab from '@/components/MultiChainMarketTab';
-import { fetchV2SwapsByAddress, buildV2Message, postV2LockSideA, postV2LockSideB, type V2Swap, type ChainId } from '@/lib/swapV2Api';
+import { fetchV2SwapsByAddress, buildV2Message, postV2LockSideA, postV2LockSideB, postV2ClaimSideB, type V2Swap, type ChainId } from '@/lib/swapV2Api';
 import { XrplAdapter } from '@/lib/adapters/XrplAdapter';
 import { EvmAdapter, getEvmAdapterConfig } from '@/lib/adapters/EvmAdapter';
 import { getXRPSeed, getXRPTestnetSeed } from '@/lib/walletService';
 import { Wallet as XRPLWallet } from 'xrpl';
 
-const V2_ACTIVE_STATUSES = new Set(['PENDING_SIDE_A', 'SIDE_A_LOCKED', 'SIDE_B_LOCKED']);
+const V2_ACTIVE_STATUSES = new Set(['PENDING_SIDE_A', 'SIDE_A_LOCKED', 'SIDE_B_LOCKED', 'COMPLETE']);
 
 function V2SwapStatusBadge({ status }: { status: string }) {
   const cls =
@@ -998,6 +998,9 @@ function V2SwapActions({
 
   const canLockXrp = isMaker && swap.status === 'PENDING_SIDE_A' && swap.baseChain === 'XRP';
   const canLockEth = isTaker && swap.status === 'SIDE_A_LOCKED' && swap.quoteChain === 'ETH';
+  // Claim conditions
+  const canClaimEth = isMaker && swap.status === 'SIDE_B_LOCKED' && swap.quoteChain === 'ETH';
+  const canClaimXrp = isTaker && swap.status === 'COMPLETE' && swap.baseChain === 'XRP' && !!swap.secret;
 
   // Taker's XRP address: stored in sideBChainAddress if it starts with 'r' (XRP classic address)
   const storedTakerXrp = swap.sideBChainAddress?.startsWith('r') ? swap.sideBChainAddress : null;
@@ -1133,7 +1136,90 @@ function V2SwapActions({
     }
   };
 
-  if (!canLockXrp && !canLockEth) return null;
+  const handleClaimEth = async () => {
+    try {
+      setErrorMsg('');
+      setActionStatus('busy');
+      if (!password.trim()) throw new Error('Password required');
+
+      // Get secret from localStorage
+      const secrets = JSON.parse(localStorage.getItem('v2_secrets') || '{}');
+      const secretEntry = secrets[swap.secretHash];
+      if (!secretEntry) throw new Error('Secret not found — was this offer created on this device?');
+      const secret: string = typeof secretEntry === 'string' ? secretEntry : secretEntry.secret;
+
+      // Build ETH signer
+      const unlockedWallet = await unlockWallet(walletId, password);
+      const ethPrivKey = unlockedWallet.privateKeys.ethereum;
+      const rpcUrl = import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
+      const chainId = Number(import.meta.env.VITE_ETH_CHAIN_ID || 11155111);
+      const provider = new ethers.JsonRpcProvider(rpcUrl, chainId);
+      const ethSigner = new ethers.Wallet('0x' + ethPrivKey, provider);
+
+      // Claim ETH from HTLC (withdraws ETH to maker's wallet)
+      const adapterCfg = getEvmAdapterConfig('ETH');
+      const evmAdapter = new EvmAdapter(adapterCfg);
+      const claimTxHash = await evmAdapter.claimFunds({
+        signerKey: ethSigner,
+        lockId: swap.sideBLockId!,
+        secret,
+      });
+
+      // Report claim to server — stores secret and sets COMPLETE
+      const ts = Math.floor(Date.now() / 1000);
+      const msg = `QBTC_SWAP_V2:CLAIM_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${claimTxHash}:${ts}`;
+      const sig = await ethSigner.signMessage(msg);
+      await postV2ClaimSideB({ swapId: swap.publicId, secret, claimTxHash, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+
+      setActionStatus('done');
+      setPassword('');
+      onRefresh();
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+      setActionStatus('error');
+    }
+  };
+
+  const handleClaimXrp = async () => {
+    try {
+      setErrorMsg('');
+      setXrpNotFunded(false);
+      setActionStatus('busy');
+      if (!password.trim()) throw new Error('Password required');
+      if (!swap.secret) throw new Error('Secret not yet available — maker must claim ETH first');
+      if (!swap.sideALockId) throw new Error('XRP lock ID not found');
+
+      const seed = isTestnet
+        ? await getXRPTestnetSeed(walletId, password)
+        : await getXRPSeed(walletId, password);
+      const xrplWallet = XRPLWallet.fromSeed(seed);
+
+      const xrplAdapter = new XrplAdapter({
+        wsUrl: isTestnet ? 'wss://s.altnet.rippletest.net:51233' : undefined,
+      });
+      await xrplAdapter.claimFunds({
+        signerKey: xrplWallet,
+        lockId: swap.sideALockId,
+        secret: swap.secret,
+      });
+
+      setActionStatus('done');
+      setPassword('');
+      onRefresh();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const isNotFunded = /account not found|actnotfound|account.*not.*exist/i.test(msg);
+      if (isNotFunded && isTestnet) {
+        setXrpNotFunded(true);
+        setErrorMsg('Your XRP testnet account is not activated.');
+      } else {
+        setErrorMsg(msg);
+      }
+      setActionStatus('error');
+    }
+  };
+
+  if (!canLockXrp && !canLockEth && !canClaimEth && !canClaimXrp) return null;
 
   return (
     <div className="pt-2 border-t border-slate-700/50 space-y-2">
@@ -1195,9 +1281,31 @@ function V2SwapActions({
             : <><Lock size={14} /> Lock {swap.sideBAmount} ETH</>}
         </button>
       )}
+      {canClaimEth && (
+        <button
+          onClick={handleClaimEth}
+          disabled={actionStatus === 'busy' || !password.trim()}
+          className="w-full py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+        >
+          {actionStatus === 'busy'
+            ? <><Loader2 size={14} className="animate-spin" /> Claiming ETH…</>
+            : <><CheckCircle2 size={14} /> Claim {swap.sideBAmount} ETH</>}
+        </button>
+      )}
+      {canClaimXrp && (
+        <button
+          onClick={handleClaimXrp}
+          disabled={actionStatus === 'busy' || !password.trim()}
+          className="w-full py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+        >
+          {actionStatus === 'busy'
+            ? <><Loader2 size={14} className="animate-spin" /> Claiming XRP…</>
+            : <><CheckCircle2 size={14} /> Claim {swap.sideAAmount} XRP</>}
+        </button>
+      )}
       {actionStatus === 'done' && (
         <p className="text-xs text-emerald-400 flex items-center gap-1">
-          <CheckCircle2 size={12} /> Locked on-chain! Status updating…
+          <CheckCircle2 size={12} /> {canClaimEth || canClaimXrp ? 'Claimed!' : 'Locked on-chain!'} Status updating…
         </p>
       )}
     </div>

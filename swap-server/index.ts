@@ -1709,6 +1709,53 @@ app.get('/api/swap/v2/:swapId', readLimiter, async (req, res) => {
   }
 });
 
+// ─── POST /api/swap/v2/claim/side-b ─────────────────────────────────────────
+// Maker reports they withdrew ETH from the HTLC, revealing the secret.
+// Server verifies SHA-256(secret) === secretHash, stores the secret, sets COMPLETE.
+// The taker can then fetch the swap (secret is returned when COMPLETE) and claim XRP.
+
+app.post('/api/swap/v2/claim/side-b', writeLimiter, async (req, res) => {
+  try {
+    const { swapId, secret, claimTxHash, authEvmAddress, signature, timestamp } = req.body || {};
+    if (!swapId || !secret || !authEvmAddress || !signature || !timestamp) {
+      return res.status(400).json({ error: 'swapId, secret, authEvmAddress, signature, timestamp required' });
+    }
+    if (!/^[0-9a-fA-F]{64}$/.test(secret)) return res.status(400).json({ error: 'secret must be 64 hex chars' });
+
+    const result = await pool.query('SELECT * FROM atomic_swaps WHERE public_id = $1::uuid', [swapId]);
+    const swap = result.rows[0];
+    if (!swap) return res.status(404).json({ error: 'Swap not found' });
+    if (swap.status !== 'SIDE_B_LOCKED') return res.status(409).json({ error: `Cannot claim in status: ${swap.status}` });
+    if (authEvmAddress.toLowerCase() !== String(swap.auth_evm_address_a || '').toLowerCase()) {
+      return res.status(403).json({ error: 'Only the maker (side-A) can claim side-B' });
+    }
+
+    // Verify secret matches secretHash
+    const revealedHash = crypto.createHash('sha256').update(Buffer.from(secret, 'hex')).digest('hex');
+    if (revealedHash.toLowerCase() !== String(swap.secret_hash || '').toLowerCase()) {
+      return res.status(422).json({ error: 'Secret does not match secretHash for this swap' });
+    }
+
+    // Verify signature
+    const canonicalMsg = `QBTC_SWAP_V2:CLAIM_SIDE_B:${swap.base_chain}:${swap.quote_chain}:${swapId}:${claimTxHash || ''}:${Number(timestamp)}`;
+    try {
+      assertEvmSignature(canonicalMsg, signature, authEvmAddress);
+    } catch (authErr: any) {
+      return res.status(authErr.statusCode || 403).json({ error: authErr.message });
+    }
+
+    await pool.query(
+      `UPDATE atomic_swaps SET secret = $1, status = 'COMPLETE', updated_at = NOW() WHERE public_id = $2::uuid`,
+      [secret, swapId],
+    );
+
+    return res.json({ status: 'COMPLETE', swapId });
+  } catch (err: any) {
+    console.error('POST /api/swap/v2/claim/side-b:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to record claim' });
+  }
+});
+
 // ─── EVM Withdraw Monitor ───────────────────────────────────────────────────
 
 async function pollEvmLocked() {

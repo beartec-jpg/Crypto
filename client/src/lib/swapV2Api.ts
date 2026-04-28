@@ -48,6 +48,7 @@ export interface V2Swap {
   sideALockId?: string;
   sideALockAddress?: string;
   sideBLockId?: string;
+  secret?: string;
   status: 'PENDING_SIDE_A' | 'SIDE_A_LOCKED' | 'SIDE_B_LOCKED' | 'COMPLETE' | 'EXPIRED';
   createdAt: string;
   updatedAt: string;
@@ -115,7 +116,8 @@ export type V2Action =
   | 'CREATE_OFFER'
   | 'ACCEPT_OFFER'
   | 'LOCK_SIDE_A'
-  | 'LOCK_SIDE_B';
+  | 'LOCK_SIDE_B'
+  | 'CLAIM_SIDE_B';
 
 /**
  * Build a canonical message string for EVM personal_sign.
@@ -284,6 +286,28 @@ export async function postV2LockSideA(params: RecordLockParams): Promise<{ statu
 
 export async function postV2LockSideB(params: RecordLockParams): Promise<{ status: string; swapId: string; lockId: string }> {
   const res = await fetch(`${SWAP_API}/api/swap/v2/lock/side-b`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export interface ClaimSideBParams {
+  swapId: string;
+  secret: string;
+  claimTxHash?: string;
+  authEvmAddress: string;
+  signature: string;
+  timestamp: number;
+}
+
+export async function postV2ClaimSideB(params: ClaimSideBParams): Promise<{ status: string; swapId: string }> {
+  const res = await fetch(`${SWAP_API}/api/swap/v2/claim/side-b`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
