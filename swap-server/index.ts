@@ -1658,6 +1658,35 @@ app.get('/api/swap/v2/pairs', readLimiter, async (req, res) => {
   }
 });
 
+// ─── GET /api/swap/v2/by-address ─────────────────────────────────────────────
+// Return active + recent v2 swaps for a given EVM address (maker or taker).
+// Query param: evmAddress
+
+app.get('/api/swap/v2/by-address', readLimiter, async (req, res) => {
+  try {
+    const evmAddress = String(req.query.evmAddress || '').trim().toLowerCase();
+    if (!evmAddress) return res.status(400).json({ error: 'evmAddress query param is required' });
+
+    const result = await pool.query(
+      `SELECT * FROM atomic_swaps
+       WHERE LOWER(auth_evm_address_a) = $1 OR LOWER(auth_evm_address_b) = $1
+       ORDER BY created_at DESC
+       LIMIT 50`,
+      [evmAddress],
+    );
+
+    const swaps = result.rows.map((row: any) => {
+      const mapped: any = toCamelCase(row);
+      if (row.status !== 'COMPLETE') delete mapped.secret;
+      return mapped;
+    });
+    return res.json(swaps);
+  } catch (err: any) {
+    console.error('GET /api/swap/v2/by-address:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to fetch swaps' });
+  }
+});
+
 // ─── GET /api/swap/v2/:swapId ────────────────────────────────────────────────
 // Fetch a v2 swap by public_id.  Returns secret only when COMPLETE.
 // NOTE: Must be registered AFTER all static /api/swap/v2/<name> routes.

@@ -227,6 +227,12 @@ export async function fetchV2Swap(swapId: string): Promise<V2Swap> {
   return res.json();
 }
 
+export async function fetchV2SwapsByAddress(evmAddress: string): Promise<V2Swap[]> {
+  const res = await fetch(`${SWAP_API}/api/swap/v2/by-address?evmAddress=${encodeURIComponent(evmAddress)}`);
+  if (!res.ok) throw new Error(`Failed to fetch swaps: ${res.statusText}`);
+  return res.json();
+}
+
 export async function postV2Offer(params: CreateOfferParams): Promise<V2Offer> {
   const res = await fetch(`${SWAP_API}/api/swap/v2/offer`, {
     method: 'POST',

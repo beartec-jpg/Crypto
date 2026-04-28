@@ -29,10 +29,12 @@ import {
   type ChainId,
   type V2Offer,
   type V2Stats,
+  type V2Swap,
   buildV2Message,
   generateSecret,
   fetchV2Offers,
   fetchV2Stats,
+  fetchV2SwapsByAddress,
   postV2Offer,
   postV2Accept,
 } from '@/lib/swapV2Api';
@@ -636,6 +638,25 @@ function AcceptOfferModal({
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
+const ACTIVE_STATUSES = new Set(['PENDING_SIDE_A', 'SIDE_A_LOCKED', 'SIDE_B_LOCKED']);
+const TERMINAL_STATUSES = new Set(['COMPLETE', 'EXPIRED']);
+
+function SwapStatusBadge({ status }: { status: string }) {
+  const cls =
+    status === 'COMPLETE'      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
+    status === 'EXPIRED'       ? 'bg-slate-500/20 text-slate-400 border-slate-500/30' :
+    status === 'SIDE_B_LOCKED' ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' :
+    status === 'SIDE_A_LOCKED' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' :
+                                 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30';
+  const label =
+    status === 'PENDING_SIDE_A' ? 'Awaiting Maker Lock' :
+    status === 'SIDE_A_LOCKED'  ? 'Maker Locked — Lock Yours' :
+    status === 'SIDE_B_LOCKED'  ? 'Both Locked — Claim' :
+    status === 'COMPLETE'       ? 'Complete' :
+    status === 'EXPIRED'        ? 'Expired' : status;
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${cls}`}>{label}</span>;
+}
+
 export default function MultiChainMarketTab({
   walletId, userId: _userId, walletEvmAddress, walletAddress, walletPubKey: _walletPubKey,
 }: MultiChainMarketTabProps) {
@@ -645,19 +666,19 @@ export default function MultiChainMarketTab({
   const [loadingOffers, setLoadingOffers] = useState(false);
   const [acceptTarget, setAcceptTarget] = useState<V2Offer | null>(null);
   const [lastRefresh, setLastRefresh]   = useState<Date | null>(null);
+  const [mySwaps, setMySwaps]           = useState<V2Swap[]>([]);
+  const [loadingSwaps, setLoadingSwaps] = useState(false);
 
   const [base, quote] = selectedPair;
 
   const loadOffers = useCallback(async () => {
     try {
       setLoadingOffers(true);
-      // Fetch both directions: base/quote AND quote/base (inverted)
       const [offersData, invertedData, statsData] = await Promise.all([
         fetchV2Offers(base, quote),
         fetchV2Offers(quote, base),
         fetchV2Stats(base, quote),
       ]);
-      // Merge: normal offers first, then inverted (so selling ETH shows as a BUY opportunity)
       setOffers([...offersData, ...invertedData]);
       setStats(statsData);
       setLastRefresh(new Date());
@@ -668,11 +689,30 @@ export default function MultiChainMarketTab({
     }
   }, [base, quote]);
 
+  const loadMySwaps = useCallback(async () => {
+    if (!walletEvmAddress) return;
+    setLoadingSwaps(true);
+    try {
+      const data = await fetchV2SwapsByAddress(walletEvmAddress);
+      setMySwaps(data);
+    } catch { /* non-fatal */ }
+    finally { setLoadingSwaps(false); }
+  }, [walletEvmAddress]);
+
   useEffect(() => {
     loadOffers();
     const t = setInterval(loadOffers, 15_000);
     return () => clearInterval(t);
   }, [loadOffers]);
+
+  useEffect(() => {
+    loadMySwaps();
+    const t = setInterval(loadMySwaps, 15_000);
+    return () => clearInterval(t);
+  }, [loadMySwaps]);
+
+  const activeSwaps = mySwaps.filter(s => ACTIVE_STATUSES.has(s.status));
+  const recentSwaps = mySwaps.filter(s => TERMINAL_STATUSES.has(s.status)).slice(0, 5);
 
   return (
     <div className="space-y-6">
@@ -722,6 +762,59 @@ export default function MultiChainMarketTab({
         walletId={walletId} walletEvmAddress={walletEvmAddress} walletAddress={walletAddress}
         onCreated={loadOffers}
       />
+
+      {/* ─── Active Swaps ──────────────────────────────────────────────── */}
+      <div className="bg-slate-900/50 border border-slate-700 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-xs font-medium text-slate-400 uppercase tracking-wider flex items-center gap-2">
+            <Clock size={12} /> My Swaps
+            {activeSwaps.length > 0 && (
+              <span className="bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs px-1.5 py-0.5 rounded font-semibold">{activeSwaps.length}</span>
+            )}
+          </div>
+          <button onClick={loadMySwaps} disabled={loadingSwaps}
+            className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300 transition-colors disabled:opacity-50">
+            <RefreshCw size={11} className={loadingSwaps ? 'animate-spin' : ''} /> Refresh
+          </button>
+        </div>
+
+        {mySwaps.length === 0 ? (
+          <p className="text-sm text-slate-600 py-4 text-center">No swaps yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {[...activeSwaps, ...recentSwaps].map(swap => {
+              const isMaker = swap.authEvmAddressA?.toLowerCase() === walletEvmAddress.toLowerCase();
+              return (
+                <div key={swap.publicId} className="bg-slate-800/50 border border-slate-700 rounded-lg p-3 space-y-2 text-xs">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <ChainBadge chain={swap.baseChain as ChainId} />
+                      <ArrowLeftRight size={11} className="text-slate-500" />
+                      <ChainBadge chain={swap.quoteChain as ChainId} />
+                      <span className="text-slate-500">{isMaker ? 'Maker' : 'Taker'}</span>
+                    </div>
+                    <SwapStatusBadge status={swap.status} />
+                  </div>
+                  <div className="flex items-center gap-4 text-slate-400 font-mono">
+                    <span>{parseFloat(swap.sideAAmount ?? '0').toLocaleString(undefined, { maximumFractionDigits: 8 })} {swap.baseChain}</span>
+                    <span className="text-slate-600">↔</span>
+                    <span>{parseFloat(swap.sideBAmount ?? '0').toLocaleString(undefined, { maximumFractionDigits: 8 })} {swap.quoteChain}</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-slate-600">
+                    <span className="font-mono text-slate-500 truncate max-w-[160px]">{swap.publicId}</span>
+                    <CopyButton text={swap.publicId} />
+                    {swap.sideALocktime && ACTIVE_STATUSES.has(swap.status) && (
+                      <span className="ml-auto text-slate-500">
+                        Expires {new Date(swap.sideALocktime * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       <div className="bg-slate-800/30 border border-slate-700/50 rounded-xl p-4 text-xs text-slate-500 space-y-1">
         <p className="font-medium text-slate-400 mb-2 flex items-center gap-1.5">
