@@ -263,16 +263,17 @@ export function getEvmAdapterConfig(chain: 'USDC' | 'ETH' | 'BNB'): EvmAdapterCo
       };
     }
     case 'ETH': {
-      const htlcContractAddress = import.meta.env.VITE_ETH_HTLC_CONTRACT || '';
-      const rpcUrl = import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-rpc.publicnode.com';
-      if (!htlcContractAddress) {
-        throw new Error('VITE_ETH_HTLC_CONTRACT is not set — deploy HashedTimelockETH first (Phase 4)');
-      }
+      const htlcContractAddress =
+        import.meta.env.VITE_ETH_HTLC_CONTRACT ||
+        '0x66fB849eb255E3e7bCfcD439dd0521acF2458B64'; // Sepolia testnet fallback
+      const rpcUrl =
+        import.meta.env.VITE_ETH_RPC_URL ||
+        'https://ethereum-sepolia-rpc.publicnode.com'; // Sepolia testnet fallback
       return {
         chain: 'ETH',
         htlcContractAddress,
         rpcUrl,
-        chainId: Number(import.meta.env.VITE_ETH_CHAIN_ID || 1),
+        chainId: Number(import.meta.env.VITE_ETH_CHAIN_ID || 11155111), // Sepolia
         tokenDecimals: 18,
       };
     }
