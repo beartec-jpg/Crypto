@@ -42,7 +42,7 @@ import { EvmAdapter, getEvmAdapterConfig } from '@/lib/adapters/EvmAdapter';
 import { getXRPSeed, getXRPTestnetSeed } from '@/lib/walletService';
 import { Wallet as XRPLWallet } from 'xrpl';
 
-const V2_ACTIVE_STATUSES = new Set(['PENDING_SIDE_A', 'SIDE_A_LOCKED', 'SIDE_B_LOCKED', 'COMPLETE']);
+const V2_ACTIVE_STATUSES = new Set(['PENDING_SIDE_A', 'SIDE_A_LOCKED', 'SIDE_B_LOCKED']);
 
 function V2SwapStatusBadge({ status }: { status: string }) {
   const cls =

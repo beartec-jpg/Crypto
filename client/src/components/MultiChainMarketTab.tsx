@@ -451,8 +451,8 @@ function CreateOfferForm({
           <div>
             <label className="block text-xs text-slate-400 mb-1">Your {quote} receive address</label>
             <input type="text" placeholder={`${quote} address`} value={makerAddress}
-              onChange={e => setMakerAddress(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none font-mono" />
+              readOnly autoComplete="off"
+              className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 font-mono cursor-default select-all" />
           </div>
 
           <div>
@@ -613,8 +613,8 @@ function AcceptOfferModal({
               <div>
                 <label className="block text-xs text-slate-400 mb-1">Your {offer.baseChain} receive address</label>
                 <input type="text" placeholder={`Your ${offer.baseChain} address`} value={takerAddress}
-                  onChange={e => setTakerAddress(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none font-mono" />
+                  readOnly autoComplete="off"
+                  className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 font-mono cursor-default select-all" />
               </div>
 
               <PasswordField value={password} onChange={setPassword} disabled={busy} />
