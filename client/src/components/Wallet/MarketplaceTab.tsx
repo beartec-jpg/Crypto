@@ -1085,6 +1085,10 @@ function V2SwapActions({
       setActionStatus('error');
     }
   };
+
+  const handleLockEth = async () => {
+    try {
+      setErrorMsg('');
       setActionStatus('busy');
 
       if (!password.trim()) throw new Error('Password required');
