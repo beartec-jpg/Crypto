@@ -483,6 +483,11 @@ function CreateOfferForm({
                 <CheckCircle2 size={14} /> Offer created!
               </div>
               <p className="text-xs text-slate-400">Your secret has been saved securely on this device. You won't need to save it manually.</p>
+            </div>
+          )}
+
+          {status !== 'done' && (
+            <button onClick={submitOffer} disabled={busy || !password.trim()}
               className="w-full py-2.5 rounded-lg font-medium text-sm bg-cyan-600 hover:bg-cyan-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
               {busy ? <><Loader2 size={14} className="animate-spin" />{status === 'signing' ? 'Signing…' : 'Submitting…'}</> : 'Create Offer'}
             </button>
