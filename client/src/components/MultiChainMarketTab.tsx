@@ -45,6 +45,7 @@ interface MultiChainMarketTabProps {
   walletEvmAddress: string;
   walletAddress: string;
   walletPubKey: string;
+  walletXrpAddress?: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -501,10 +502,10 @@ function CreateOfferForm({
 // ─── Accept Offer Modal ───────────────────────────────────────────────────────
 
 function AcceptOfferModal({
-  offer, walletId, walletEvmAddress, walletAddress, onClose, onAccepted,
+  offer, walletId, walletEvmAddress, walletAddress, walletXrpAddress, onClose, onAccepted,
 }: {
   offer: V2Offer | null;
-  walletId: string; walletEvmAddress: string; walletAddress: string;
+  walletId: string; walletEvmAddress: string; walletAddress: string; walletXrpAddress: string;
   onClose: () => void; onAccepted: () => void;
 }) {
   const [takerAddress, setTakerAddress] = useState('');
@@ -518,10 +519,12 @@ function AcceptOfferModal({
 
   useEffect(() => {
     if (!offer) return;
-    if (offer.quoteChain === 'QBTC') setTakerAddress(walletAddress);
-    else if (['ETH', 'BNB', 'USDC'].includes(offer.quoteChain)) setTakerAddress(walletEvmAddress);
+    // takerAddress = where taker RECEIVES the base asset
+    if (offer.baseChain === 'XRP') setTakerAddress(walletXrpAddress || '');
+    else if (offer.baseChain === 'QBTC') setTakerAddress(walletAddress);
+    else if (['ETH', 'BNB', 'USDC'].includes(offer.baseChain)) setTakerAddress(walletEvmAddress);
     else setTakerAddress('');
-  }, [offer, walletAddress, walletEvmAddress]);
+  }, [offer, walletAddress, walletEvmAddress, walletXrpAddress]);
 
   if (!offer) return null;
   const busy = status === 'signing' || status === 'submitting';
@@ -608,8 +611,8 @@ function AcceptOfferModal({
               </div>
 
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Your {offer.quoteChain} lock address</label>
-                <input type="text" placeholder={`Your ${offer.quoteChain} address`} value={takerAddress}
+                <label className="block text-xs text-slate-400 mb-1">Your {offer.baseChain} receive address</label>
+                <input type="text" placeholder={`Your ${offer.baseChain} address`} value={takerAddress}
                   onChange={e => setTakerAddress(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none font-mono" />
               </div>
@@ -637,7 +640,7 @@ function AcceptOfferModal({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function MultiChainMarketTab({
-  walletId, userId: _userId, walletEvmAddress, walletAddress, walletPubKey: _walletPubKey,
+  walletId, userId: _userId, walletEvmAddress, walletAddress, walletPubKey: _walletPubKey, walletXrpAddress = '',
 }: MultiChainMarketTabProps) {
   const [selectedPair, setSelectedPair] = useState<[ChainId, ChainId]>(['QBTC', 'USDC']);
   const [offers, setOffers]             = useState<V2Offer[]>([]);
@@ -735,6 +738,7 @@ export default function MultiChainMarketTab({
         <AcceptOfferModal
           offer={acceptTarget}
           walletId={walletId} walletEvmAddress={walletEvmAddress} walletAddress={walletAddress}
+          walletXrpAddress={walletXrpAddress}
           onClose={() => setAcceptTarget(null)}
           onAccepted={loadOffers}
         />

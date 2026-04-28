@@ -36,7 +36,11 @@ import { authenticateWithPasskey, isPasskeyAuthenticated } from '@/lib/passkeySe
 import PinEntryModal from './PinEntryModal';
 import { ethers } from 'ethers';
 import MultiChainMarketTab from '@/components/MultiChainMarketTab';
-import { fetchV2SwapsByAddress, type V2Swap } from '@/lib/swapV2Api';
+import { fetchV2SwapsByAddress, buildV2Message, postV2LockSideA, postV2LockSideB, type V2Swap, type ChainId } from '@/lib/swapV2Api';
+import { XrplAdapter } from '@/lib/adapters/XrplAdapter';
+import { EvmAdapter, getEvmAdapterConfig } from '@/lib/adapters/EvmAdapter';
+import { getXRPSeed } from '@/lib/walletService';
+import { Wallet as XRPLWallet } from 'xrpl';
 
 const V2_ACTIVE_STATUSES = new Set(['PENDING_SIDE_A', 'SIDE_A_LOCKED', 'SIDE_B_LOCKED']);
 
@@ -132,6 +136,7 @@ interface MarketplaceTabProps {
   walletAddress: string;    // QBTC address
   walletPubKey: string;     // ECDSA pubkey hex (66 chars)
   walletEvmAddress: string; // EVM/Ethereum address
+  walletXrpAddress?: string; // XRP testnet address
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -965,6 +970,191 @@ function SwapCard({
   );
 }
 
+// ─── V2 Swap Action Buttons ──────────────────────────────────────────────────
+
+function V2SwapActions({
+  swap,
+  walletId,
+  walletEvmAddress,
+  walletXrpAddress,
+  onRefresh,
+}: {
+  swap: V2Swap;
+  walletId: string;
+  walletEvmAddress: string;
+  walletXrpAddress: string;
+  onRefresh: () => void;
+}) {
+  const [password, setPassword] = useState('');
+  const [xrpAddrInput, setXrpAddrInput] = useState('');
+  const [actionStatus, setActionStatus] = useState<'idle' | 'busy' | 'done' | 'error'>('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const isTestnet = (import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet';
+  const isMaker = swap.authEvmAddressA?.toLowerCase() === walletEvmAddress.toLowerCase();
+  const isTaker = swap.authEvmAddressB?.toLowerCase() === walletEvmAddress.toLowerCase();
+
+  const canLockXrp = isMaker && swap.status === 'PENDING_SIDE_A' && swap.baseChain === 'XRP';
+  const canLockEth = isTaker && swap.status === 'SIDE_A_LOCKED' && swap.quoteChain === 'ETH';
+
+  // Taker's XRP address: stored in sideBChainAddress if it starts with 'r' (XRP classic address)
+  const storedTakerXrp = swap.sideBChainAddress?.startsWith('r') ? swap.sideBChainAddress : null;
+  const needsXrpAddrInput = canLockXrp && !storedTakerXrp;
+  const takerXrpAddr = storedTakerXrp || xrpAddrInput.trim();
+
+  const handleLockXrp = async () => {
+    try {
+      setErrorMsg('');
+      setActionStatus('busy');
+
+      if (!password.trim()) throw new Error('Password required');
+      if (!takerXrpAddr) throw new Error("Enter the taker's XRP address");
+
+      // Retrieve secret from localStorage
+      const secrets = JSON.parse(localStorage.getItem('v2_secrets') || '{}');
+      const secretEntry = secrets[swap.secretHash];
+      if (!secretEntry) throw new Error('Secret not found — was this offer created on this device?');
+      const secret: string = typeof secretEntry === 'string' ? secretEntry : secretEntry.secret;
+      if (!secret) throw new Error('Stored secret has unexpected format');
+
+      // Build XRPL wallet
+      const seed = await getXRPSeed(walletId, password);
+      const xrplWallet = XRPLWallet.fromSeed(seed);
+
+      const timelockSecs = Number(swap.sideALocktime) - Math.floor(Date.now() / 1000);
+      if (timelockSecs <= 60) throw new Error('Maker locktime has expired or is too close to expiry');
+
+      const xrplAdapter = new XrplAdapter({
+        wsUrl: isTestnet ? 'wss://s.altnet.rippletest.net:51233' : undefined,
+      });
+      const { lockId } = await xrplAdapter.lockFunds({
+        signerKey: xrplWallet,
+        amount: swap.sideAAmount,
+        secretHash: secret,   // raw preimage hex — XrplAdapter sha256s this internally for Condition
+        timelockSecs,
+        counterpartyAddress: takerXrpAddr,
+      });
+
+      // Sign with EVM key and record on server
+      const ts = Math.floor(Date.now() / 1000);
+      const msg = buildV2Message('LOCK_SIDE_A', swap.baseChain as ChainId, swap.quoteChain as ChainId, swap.publicId, lockId, ts);
+      const unlockedWallet = await unlockWallet(walletId, password);
+      const ethSigner = new ethers.Wallet('0x' + unlockedWallet.privateKeys.ethereum);
+      const sig = await ethSigner.signMessage(msg);
+
+      await postV2LockSideA({ swapId: swap.publicId, lockId, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+
+      setActionStatus('done');
+      setPassword('');
+      onRefresh();
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+      setActionStatus('error');
+    }
+  };
+
+  const handleLockEth = async () => {
+    try {
+      setErrorMsg('');
+      setActionStatus('busy');
+
+      if (!password.trim()) throw new Error('Password required');
+
+      const timelockSecs = Number(swap.sideBLocktime) - Math.floor(Date.now() / 1000);
+      if (timelockSecs <= 60) throw new Error('Taker locktime has expired or is too close to expiry');
+
+      // Build ETH signer with Sepolia provider
+      const unlockedWallet = await unlockWallet(walletId, password);
+      const ethPrivKey = unlockedWallet.privateKeys.ethereum;
+      const rpcUrl = import.meta.env.VITE_ETH_RPC_URL || (isTestnet ? 'https://ethereum-sepolia-rpc.publicnode.com' : 'https://ethereum-rpc.publicnode.com');
+      const chainId = Number(import.meta.env.VITE_ETH_CHAIN_ID || (isTestnet ? 11155111 : 1));
+      const provider = new ethers.JsonRpcProvider(rpcUrl, chainId);
+      const ethSigner = new ethers.Wallet('0x' + ethPrivKey, provider);
+
+      // Lock ETH in HTLC — receiver = maker's ETH receive address
+      const adapterCfg = getEvmAdapterConfig('ETH');
+      const evmAdapter = new EvmAdapter(adapterCfg);
+      const makerEthAddr = swap.sideAChainAddress;
+
+      const { lockId } = await evmAdapter.lockFunds({
+        signerKey: ethSigner,
+        amount: swap.sideBAmount,
+        secretHash: swap.secretHash,   // sha256 hash (as expected by EvmAdapter)
+        timelockSecs,
+        counterpartyAddress: makerEthAddr,
+      });
+
+      // Sign with EVM key and record on server
+      const ts = Math.floor(Date.now() / 1000);
+      const msg = buildV2Message('LOCK_SIDE_B', swap.baseChain as ChainId, swap.quoteChain as ChainId, swap.publicId, lockId, ts);
+      const sig = await ethSigner.signMessage(msg);
+
+      await postV2LockSideB({ swapId: swap.publicId, lockId, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+
+      setActionStatus('done');
+      setPassword('');
+      onRefresh();
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+      setActionStatus('error');
+    }
+  };
+
+  if (!canLockXrp && !canLockEth) return null;
+
+  return (
+    <div className="pt-2 border-t border-slate-700/50 space-y-2">
+      {needsXrpAddrInput && (
+        <div>
+          <label className="block text-xs text-slate-500 mb-1">Taker's XRP address</label>
+          <input
+            type="text"
+            value={xrpAddrInput}
+            onChange={e => setXrpAddrInput(e.target.value)}
+            placeholder="rXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none font-mono"
+          />
+        </div>
+      )}
+      <input
+        type="password"
+        value={password}
+        onChange={e => setPassword(e.target.value)}
+        placeholder="Wallet password"
+        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none"
+      />
+      {errorMsg && <p className="text-xs text-red-300">{errorMsg}</p>}
+      {canLockXrp && (
+        <button
+          onClick={handleLockXrp}
+          disabled={actionStatus === 'busy' || !password.trim() || (needsXrpAddrInput && !xrpAddrInput.trim())}
+          className="w-full py-2 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+        >
+          {actionStatus === 'busy'
+            ? <><Loader2 size={14} className="animate-spin" /> Locking XRP…</>
+            : <><Lock size={14} /> Lock {swap.sideAAmount} XRP</>}
+        </button>
+      )}
+      {canLockEth && (
+        <button
+          onClick={handleLockEth}
+          disabled={actionStatus === 'busy' || !password.trim()}
+          className="w-full py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+        >
+          {actionStatus === 'busy'
+            ? <><Loader2 size={14} className="animate-spin" /> Locking ETH…</>
+            : <><Lock size={14} /> Lock {swap.sideBAmount} ETH</>}
+        </button>
+      )}
+      {actionStatus === 'done' && (
+        <p className="text-xs text-emerald-400 flex items-center gap-1">
+          <CheckCircle2 size={12} /> Locked on-chain! Status updating…
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function MarketplaceTab({
@@ -973,6 +1163,7 @@ export default function MarketplaceTab({
   walletAddress,
   walletPubKey,
   walletEvmAddress,
+  walletXrpAddress = '',
 }: MarketplaceTabProps) {
   const [offers, setOffers] = useState<SwapOffer[]>([]);
   const [buyOffers, setBuyOffers] = useState<SwapOffer[]>([]);
@@ -1728,6 +1919,13 @@ export default function MarketplaceTab({
                   <span className="ml-auto">Expires {new Date(swap.sideALocktime * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 )}
               </div>
+              <V2SwapActions
+                swap={swap}
+                walletId={walletId}
+                walletEvmAddress={walletEvmAddress}
+                walletXrpAddress={walletXrpAddress}
+                onRefresh={fetchV2Swaps}
+              />
             </div>
           );
         })}
@@ -1768,6 +1966,7 @@ export default function MarketplaceTab({
           walletEvmAddress={walletEvmAddress}
           walletAddress={walletAddress}
           walletPubKey={walletPubKey}
+          walletXrpAddress={walletXrpAddress}
         />
       )}
 
