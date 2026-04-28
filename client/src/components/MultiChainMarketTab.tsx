@@ -8,7 +8,7 @@
  * exactly the same as the rest of the wallet. No MetaMask required.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ethers } from 'ethers';
 import {
   ArrowLeftRight,
@@ -87,6 +87,69 @@ function formatRate(base: string, quote: string): string {
   const q = parseFloat(quote);
   if (!b || !q) return '—';
   return (q / b).toFixed(6);
+}
+
+// ─── Price & balance helpers ──────────────────────────────────────────────────
+
+const COINGECKO_CHAIN_IDS: Partial<Record<ChainId, string>> = {
+  ETH:  'ethereum',
+  XRP:  'ripple',
+  BNB:  'binancecoin',
+  BTC:  'bitcoin',
+  USDC: 'usd-coin',
+};
+
+const _priceCache: Record<string, { price: number; ts: number }> = {};
+
+async function fetchCoinPrice(chain: ChainId): Promise<number | null> {
+  const id = COINGECKO_CHAIN_IDS[chain];
+  if (!id) return null;
+  const cached = _priceCache[id];
+  if (cached && Date.now() - cached.ts < 60_000) return cached.price;
+  try {
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd`,
+      { signal: AbortSignal.timeout(6000) },
+    );
+    if (!res.ok) return cached?.price ?? null;
+    const data = await res.json() as Record<string, { usd?: number }>;
+    const price = data[id]?.usd ?? null;
+    if (price) _priceCache[id] = { price, ts: Date.now() };
+    return price;
+  } catch {
+    return cached?.price ?? null;
+  }
+}
+
+async function fetchChainBalance(
+  chain: ChainId,
+  evmAddress: string,
+  xrpAddress: string,
+): Promise<string | null> {
+  try {
+    if (chain === 'ETH' || chain === 'BNB') {
+      const rpcUrl = chain === 'ETH'
+        ? (import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com')
+        : (import.meta.env.VITE_BNB_RPC_URL || 'https://bsc-testnet.publicnode.com');
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const bal = await provider.getBalance(evmAddress);
+      return parseFloat(ethers.formatEther(bal)).toFixed(6);
+    }
+    if (chain === 'XRP' && xrpAddress) {
+      const httpUrl = (import.meta.env.VITE_XRPL_HTTP_URL || 'https://s.altnet.rippletest.net:51234');
+      const res = await fetch(httpUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method: 'account_info', params: [{ account: xrpAddress, ledger_index: 'current' }] }),
+        signal: AbortSignal.timeout(6000),
+      });
+      const data = await res.json() as { result?: { account_data?: { Balance?: string } } };
+      const drops = data?.result?.account_data?.Balance;
+      if (!drops) return null;
+      return (Number(drops) / 1_000_000).toFixed(6);
+    }
+  } catch { /* network failure — caller handles null */ }
+  return null;
 }
 
 function ChainBadge({ chain }: { chain: ChainId }) {
@@ -343,10 +406,10 @@ function PasswordField({ value, onChange, disabled = false }: {
 // ─── Create Offer Form ────────────────────────────────────────────────────────
 
 function CreateOfferForm({
-  base, quote, walletId, walletEvmAddress, walletAddress, onCreated,
+  base, quote, walletId, walletEvmAddress, walletAddress, walletXrpAddress, onCreated,
 }: {
   base: ChainId; quote: ChainId;
-  walletId: string; walletEvmAddress: string; walletAddress: string;
+  walletId: string; walletEvmAddress: string; walletAddress: string; walletXrpAddress: string;
   onCreated: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -358,11 +421,55 @@ function CreateOfferForm({
   const [status, setStatus] = useState<'idle' | 'signing' | 'submitting' | 'done' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Balance & price state
+  const [balance, setBalance]         = useState<string | null>(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [basePrice, setBasePrice]     = useState<number | null>(null);
+  const [quotePrice, setQuotePrice]   = useState<number | null>(null);
+  // Track whether user manually edited the quote amount
+  const quoteEditedRef = useRef(false);
+
   useEffect(() => {
     if (quote === 'QBTC') setMakerAddress(walletAddress);
     else if (['ETH', 'BNB', 'USDC'].includes(quote)) setMakerAddress(walletEvmAddress);
+    else if (quote === 'XRP') setMakerAddress(walletXrpAddress);
     else setMakerAddress('');
-  }, [quote, walletAddress, walletEvmAddress]);
+  }, [quote, walletAddress, walletEvmAddress, walletXrpAddress]);
+
+  // Reset quote-edited flag and re-fetch prices when pair changes
+  useEffect(() => {
+    quoteEditedRef.current = false;
+    setQuoteAmount('');
+    setBasePrice(null);
+    setQuotePrice(null);
+    if (!expanded) return;
+    fetchCoinPrice(base).then(setBasePrice);
+    fetchCoinPrice(quote).then(setQuotePrice);
+  }, [base, quote, expanded]);
+
+  // Fetch maker's balance of the base asset when form opens
+  useEffect(() => {
+    if (!expanded) return;
+    setBalance(null);
+    setBalanceLoading(true);
+    fetchChainBalance(base, walletEvmAddress, walletXrpAddress)
+      .then(b => setBalance(b))
+      .finally(() => setBalanceLoading(false));
+  }, [expanded, base, walletEvmAddress, walletXrpAddress]);
+
+  // Auto-populate quote amount from market rate (unless user manually typed)
+  useEffect(() => {
+    if (quoteEditedRef.current) return;
+    if (!basePrice || !quotePrice || !baseAmount) { setQuoteAmount(''); return; }
+    const qty = parseFloat(baseAmount);
+    if (isNaN(qty) || qty <= 0) { setQuoteAmount(''); return; }
+    setQuoteAmount((qty * basePrice / quotePrice).toFixed(6));
+  }, [baseAmount, basePrice, quotePrice]);
+
+  const balanceNum   = balance   ? parseFloat(balance)   : null;
+  const baseAmountNum = baseAmount ? parseFloat(baseAmount) : null;
+  const insufficientBalance = balanceNum !== null && baseAmountNum !== null && baseAmountNum > balanceNum;
+  const marketRate = basePrice && quotePrice ? basePrice / quotePrice : null;
 
   const busy = status === 'signing' || status === 'submitting';
 
@@ -370,6 +477,7 @@ function CreateOfferForm({
     try {
       setErrorMsg('');
       if (!baseAmount || !quoteAmount || !makerAddress) { setErrorMsg('Fill in all fields'); return; }
+      if (insufficientBalance) { setErrorMsg(`Insufficient ${base} balance (have ${balance}, need ${baseAmount})`); return; }
       if (!password.trim()) { setErrorMsg('Enter your wallet password'); return; }
 
       setStatus('signing');
@@ -400,6 +508,7 @@ function CreateOfferForm({
       } catch { /* storage full — silently ignore */ }
       setStatus('done');
       setBaseAmount(''); setQuoteAmount(''); setPassword('');
+      quoteEditedRef.current = false;
       onCreated();
     } catch (e: unknown) {
       setErrorMsg(e instanceof Error ? e.message : String(e));
@@ -435,18 +544,63 @@ function CreateOfferForm({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-slate-400 mb-1">Sell ({base})</label>
+              <label className="block text-xs mb-1">
+                <span className="flex items-center justify-between">
+                  <span className="text-slate-400">Sell ({base})</span>
+                  {balanceLoading
+                    ? <span className="text-slate-600 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> checking…</span>
+                    : balance !== null
+                      ? <span className={insufficientBalance ? 'text-red-400 font-medium' : 'text-slate-500'}>
+                          Bal: {balance} {base}
+                        </span>
+                      : null}
+                </span>
+              </label>
               <input type="number" min="0" step="any" placeholder="0.00" value={baseAmount}
                 onChange={e => setBaseAmount(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none" />
+                className={`w-full bg-slate-900 border rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none ${insufficientBalance ? 'border-red-500/60 focus:border-red-500' : 'border-slate-700 focus:border-cyan-500'}`} />
+              {insufficientBalance && (
+                <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
+                  <AlertCircle size={11} /> Insufficient {base} balance
+                </p>
+              )}
             </div>
             <div>
-              <label className="block text-xs text-slate-400 mb-1">Receive ({quote})</label>
+              <label className="block text-xs mb-1">
+                <span className="flex items-center justify-between">
+                  <span className="text-slate-400">Receive ({quote})</span>
+                  {marketRate && !quoteEditedRef.current && (
+                    <span className="text-slate-600">at market rate</span>
+                  )}
+                </span>
+              </label>
               <input type="number" min="0" step="any" placeholder="0.00" value={quoteAmount}
-                onChange={e => setQuoteAmount(e.target.value)}
+                onChange={e => { quoteEditedRef.current = true; setQuoteAmount(e.target.value); }}
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none" />
+              {marketRate && quoteEditedRef.current && (
+                <p className="text-xs text-slate-600 mt-1">
+                  Market: 1 {base} ≈ {marketRate.toFixed(6)} {quote}
+                </p>
+              )}
             </div>
           </div>
+
+          {baseAmount && quoteAmount && (
+            <div className="text-xs text-slate-400 bg-slate-800/50 rounded-lg p-2 border border-slate-700 flex items-center justify-between">
+              <span>Rate: 1 {base} = {formatRate(baseAmount, quoteAmount)} {quote}</span>
+              {marketRate && (
+                <span className="text-slate-600 ml-3">
+                  Market: {marketRate.toFixed(6)} {quote}
+                  {(() => {
+                    const yourRate = parseFloat(formatRate(baseAmount, quoteAmount));
+                    const pct = ((yourRate - marketRate) / marketRate) * 100;
+                    if (isNaN(pct) || Math.abs(pct) < 0.01) return null;
+                    return <span className={pct > 0 ? 'text-emerald-400 ml-1' : 'text-amber-400 ml-1'}>({pct > 0 ? '+' : ''}{pct.toFixed(1)}%)</span>;
+                  })()}
+                </span>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="block text-xs text-slate-400 mb-1">Your {quote} receive address</label>
@@ -463,12 +617,6 @@ function CreateOfferForm({
               <span className="text-sm text-slate-300 w-16 text-right">{locktimeHours}h</span>
             </div>
           </div>
-
-          {baseAmount && quoteAmount && (
-            <div className="text-xs text-slate-400 bg-slate-800/50 rounded-lg p-2 border border-slate-700">
-              Rate: 1 {base} = {formatRate(baseAmount, quoteAmount)} {quote}
-            </div>
-          )}
 
           <PasswordField value={password} onChange={setPassword} disabled={busy} />
 
@@ -488,7 +636,7 @@ function CreateOfferForm({
           )}
 
           {status !== 'done' && (
-            <button onClick={submitOffer} disabled={busy || !password.trim()}
+            <button onClick={submitOffer} disabled={busy || !password.trim() || insufficientBalance}
               className="w-full py-2.5 rounded-lg font-medium text-sm bg-cyan-600 hover:bg-cyan-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
               {busy ? <><Loader2 size={14} className="animate-spin" />{status === 'signing' ? 'Signing…' : 'Submitting…'}</> : 'Create Offer'}
             </button>
@@ -721,6 +869,7 @@ export default function MultiChainMarketTab({
       <CreateOfferForm
         base={base} quote={quote}
         walletId={walletId} walletEvmAddress={walletEvmAddress} walletAddress={walletAddress}
+        walletXrpAddress={walletXrpAddress}
         onCreated={loadOffers}
       />
 
