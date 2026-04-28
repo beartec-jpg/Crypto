@@ -992,6 +992,12 @@ function V2SwapActions({
   const [xrpNotFunded, setXrpNotFunded] = useState(false);
   const [faucetStatus, setFaucetStatus] = useState<'idle' | 'busy' | 'done' | 'error'>('idle');
 
+  // Track XRP claims in localStorage so button doesn't reappear after claiming
+  const xrpClaimedKey = `v2_xrp_claimed_${swap.publicId}`;
+  const [xrpAlreadyClaimed, setXrpAlreadyClaimed] = useState(
+    () => !!localStorage.getItem(xrpClaimedKey)
+  );
+
   const isTestnet = (import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet';
   const isMaker = swap.authEvmAddressA?.toLowerCase() === walletEvmAddress.toLowerCase();
   const isTaker = swap.authEvmAddressB?.toLowerCase() === walletEvmAddress.toLowerCase();
@@ -1000,7 +1006,7 @@ function V2SwapActions({
   const canLockEth = isTaker && swap.status === 'SIDE_A_LOCKED' && swap.quoteChain === 'ETH';
   // Claim conditions
   const canClaimEth = isMaker && swap.status === 'SIDE_B_LOCKED' && swap.quoteChain === 'ETH';
-  const canClaimXrp = isTaker && swap.status === 'COMPLETE' && swap.baseChain === 'XRP' && !!swap.secret;
+  const canClaimXrp = isTaker && swap.status === 'COMPLETE' && swap.baseChain === 'XRP' && !!swap.secret && !xrpAlreadyClaimed;
 
   // Taker's XRP address: stored in sideBChainAddress if it starts with 'r' (XRP classic address)
   const storedTakerXrp = swap.sideBChainAddress?.startsWith('r') ? swap.sideBChainAddress : null;
@@ -1203,11 +1209,21 @@ function V2SwapActions({
         secret: swap.secret,
       });
 
+      localStorage.setItem(xrpClaimedKey, '1');
+      setXrpAlreadyClaimed(true);
       setActionStatus('done');
       setPassword('');
       onRefresh();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
+      // tecNO_TARGET means the escrow is already gone (already claimed)
+      if (/tecNO_TARGET/i.test(msg)) {
+        localStorage.setItem(xrpClaimedKey, '1');
+        setXrpAlreadyClaimed(true);
+        setActionStatus('done');
+        setPassword('');
+        return;
+      }
       const isNotFunded = /account not found|actnotfound|account.*not.*exist/i.test(msg);
       if (isNotFunded && isTestnet) {
         setXrpNotFunded(true);
