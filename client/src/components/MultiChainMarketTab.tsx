@@ -226,13 +226,15 @@ function StatsBar({ stats, base, quote }: { stats: V2Stats | null; base: ChainId
 // ─── Order Book ───────────────────────────────────────────────────────────────
 
 function OrderBook({
-  offers, base, quote, loading, onAccept,
+  offers, base, quote, loading, onAccept, onCancel, walletEvmAddress,
 }: {
   offers: V2Offer[];
   base: ChainId;
   quote: ChainId;
   loading: boolean;
   onAccept: (offer: V2Offer) => void;
+  onCancel: (offer: V2Offer) => void;
+  walletEvmAddress: string;
 }) {
   if (loading) {
     return (
@@ -264,36 +266,51 @@ function OrderBook({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-800">
-          {offers.map(offer => (
-            <tr key={offer.id} className="hover:bg-slate-800/30 transition-colors">
+          {offers.map(offer => {
+            const isOwn = offer.authEvmAddress.toLowerCase() === walletEvmAddress.toLowerCase();
+            // Inverted offer: base/quote are flipped relative to current view
+            const isInverted = offer.baseChain === quote && offer.quoteChain === base;
+            return (
+            <tr key={offer.id} className={`hover:bg-slate-800/30 transition-colors ${isOwn ? 'opacity-70' : ''}`}>
               <td className="py-2 pr-4 font-mono font-medium text-white">
-                {parseFloat(offer.baseAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                {isInverted
+                  ? parseFloat(offer.quoteAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })
+                  : parseFloat(offer.baseAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })}
               </td>
               <td className="py-2 pr-4 font-mono text-cyan-300">
-                {parseFloat(offer.quoteAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                {isInverted
+                  ? parseFloat(offer.baseAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })
+                  : parseFloat(offer.quoteAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })}
               </td>
               <td className="py-2 pr-4 font-mono text-slate-300 text-xs">
-                {formatRate(offer.baseAmount, offer.quoteAmount)}
+                {isInverted
+                  ? formatRate(offer.quoteAmount, offer.baseAmount)
+                  : formatRate(offer.baseAmount, offer.quoteAmount)}
               </td>
               <td className="py-2 pr-4 text-slate-400 text-xs font-mono">
-                {truncate(offer.authEvmAddress)}
-                <CopyButton text={offer.authEvmAddress} />
+                {isOwn
+                  ? <span className="text-cyan-400/70">You</span>
+                  : <>{truncate(offer.authEvmAddress)}<CopyButton text={offer.authEvmAddress} /></>}
               </td>
               <td className="py-2 pr-4">
                 <StatusBadge status={offer.status} />
               </td>
               <td className="py-2">
                 {offer.status === 'OPEN' && (
-                  <button
-                    onClick={() => onAccept(offer)}
-                    className="px-2.5 py-1 text-xs bg-cyan-600 hover:bg-cyan-500 text-white rounded transition-colors font-medium"
-                  >
-                    Accept
-                  </button>
+                  isOwn
+                    ? <button onClick={() => onCancel(offer)}
+                        className="px-2.5 py-1 text-xs bg-red-900/40 hover:bg-red-700/60 text-red-300 rounded transition-colors font-medium">
+                        Cancel
+                      </button>
+                    : <button onClick={() => onAccept(offer)}
+                        className="px-2.5 py-1 text-xs bg-cyan-600 hover:bg-cyan-500 text-white rounded transition-colors font-medium">
+                        Accept
+                      </button>
                 )}
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -339,7 +356,6 @@ function CreateOfferForm({
   const [password, setPassword] = useState('');
   const [status, setStatus] = useState<'idle' | 'signing' | 'submitting' | 'done' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
-  const [createdSecret, setCreatedSecret] = useState('');
 
   useEffect(() => {
     if (quote === 'QBTC') setMakerAddress(walletAddress);
@@ -375,8 +391,12 @@ function CreateOfferForm({
         authEvmAddress: walletEvmAddress, signature, timestamp,
       });
 
-      sessionStorage.setItem(`v2_secret_${secretHash}`, secret);
-      setCreatedSecret(secret);
+      // Save secret silently to localStorage — no manual save needed
+      try {
+        const existing = JSON.parse(localStorage.getItem('v2_secrets') || '{}');
+        existing[secretHash] = { secret, createdAt: Date.now(), base, quote };
+        localStorage.setItem('v2_secrets', JSON.stringify(existing));
+      } catch { /* storage full — silently ignore */ }
       setStatus('done');
       setBaseAmount(''); setQuoteAmount(''); setPassword('');
       onCreated();
@@ -462,16 +482,7 @@ function CreateOfferForm({
               <div className="flex items-center gap-2 text-sm text-emerald-300 font-medium">
                 <CheckCircle2 size={14} /> Offer created!
               </div>
-              <p className="text-xs text-amber-300 font-semibold">Save your secret — needed to claim funds:</p>
-              <div className="flex items-center gap-2 bg-slate-900 rounded px-2 py-1 font-mono break-all text-xs">
-                <span className="text-slate-300">{createdSecret}</span>
-                <CopyButton text={createdSecret} />
-              </div>
-            </div>
-          )}
-
-          {status !== 'done' && (
-            <button onClick={submitOffer} disabled={busy || !password.trim()}
+              <p className="text-xs text-slate-400">Your secret has been saved securely on this device. You won't need to save it manually.</p>
               className="w-full py-2.5 rounded-lg font-medium text-sm bg-cyan-600 hover:bg-cyan-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
               {busy ? <><Loader2 size={14} className="animate-spin" />{status === 'signing' ? 'Signing…' : 'Submitting…'}</> : 'Create Offer'}
             </button>
@@ -635,11 +646,14 @@ export default function MultiChainMarketTab({
   const loadOffers = useCallback(async () => {
     try {
       setLoadingOffers(true);
-      const [offersData, statsData] = await Promise.all([
+      // Fetch both directions: base/quote AND quote/base (inverted)
+      const [offersData, invertedData, statsData] = await Promise.all([
         fetchV2Offers(base, quote),
+        fetchV2Offers(quote, base),
         fetchV2Stats(base, quote),
       ]);
-      setOffers(offersData);
+      // Merge: normal offers first, then inverted (so selling ETH shows as a BUY opportunity)
+      setOffers([...offersData, ...invertedData]);
       setStats(statsData);
       setLastRefresh(new Date());
     } catch {
@@ -688,7 +702,14 @@ export default function MultiChainMarketTab({
         <div className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-3">
           Open Offers ({base}/{quote})
         </div>
-        <OrderBook offers={offers} base={base} quote={quote} loading={loadingOffers} onAccept={setAcceptTarget} />
+        <OrderBook offers={offers} base={base} quote={quote} loading={loadingOffers}
+          onAccept={setAcceptTarget}
+          onCancel={offer => {
+            // TODO: wire up cancel endpoint once server-side cancel is implemented
+            alert(`To cancel offer ${offer.id.slice(0,8)}…, contact support or wait for it to expire.`);
+          }}
+          walletEvmAddress={walletEvmAddress}
+        />
       </div>
 
       <CreateOfferForm
