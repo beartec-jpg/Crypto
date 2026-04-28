@@ -36,6 +36,25 @@ import { authenticateWithPasskey, isPasskeyAuthenticated } from '@/lib/passkeySe
 import PinEntryModal from './PinEntryModal';
 import { ethers } from 'ethers';
 import MultiChainMarketTab from '@/components/MultiChainMarketTab';
+import { fetchV2SwapsByAddress, type V2Swap } from '@/lib/swapV2Api';
+
+const V2_ACTIVE_STATUSES = new Set(['PENDING_SIDE_A', 'SIDE_A_LOCKED', 'SIDE_B_LOCKED']);
+
+function V2SwapStatusBadge({ status }: { status: string }) {
+  const cls =
+    status === 'COMPLETE'      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
+    status === 'EXPIRED'       ? 'bg-slate-500/20 text-slate-400 border-slate-500/30' :
+    status === 'SIDE_B_LOCKED' ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' :
+    status === 'SIDE_A_LOCKED' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' :
+                                 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30';
+  const label =
+    status === 'PENDING_SIDE_A' ? 'Awaiting Maker Lock' :
+    status === 'SIDE_A_LOCKED'  ? 'Maker Locked — Lock Yours' :
+    status === 'SIDE_B_LOCKED'  ? 'Both Locked — Claim' :
+    status === 'COMPLETE'       ? 'Complete' :
+    status === 'EXPIRED'        ? 'Expired' : status;
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${cls}`}>{label}</span>;
+}
 
 const SWAP_API = (import.meta.env.VITE_SWAP_API_URL || '').replace(/\/$/, '');
 
@@ -958,6 +977,7 @@ export default function MarketplaceTab({
   const [offers, setOffers] = useState<SwapOffer[]>([]);
   const [buyOffers, setBuyOffers] = useState<SwapOffer[]>([]);
   const [mySwaps, setMySwaps] = useState<AtomicSwap[]>([]);
+  const [v2Swaps, setV2Swaps] = useState<V2Swap[]>([]);
   const [loadingOffers, setLoadingOffers] = useState(false);
   const [loadingSwaps, setLoadingSwaps] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState<SwapOffer | null>(null);
@@ -1027,12 +1047,25 @@ export default function MarketplaceTab({
     finally { setLoadingSwaps(false); }
   }, [walletAddress]);
 
+  const fetchV2Swaps = useCallback(async () => {
+    if (!walletEvmAddress) return;
+    try {
+      const data = await fetchV2SwapsByAddress(walletEvmAddress);
+      setV2Swaps(data);
+    } catch { /* non-fatal */ }
+  }, [walletEvmAddress]);
+
   useEffect(() => { fetchOffers(); }, [fetchOffers]);
   useEffect(() => {
     fetchMySwaps();
     const id = setInterval(fetchMySwaps, 15_000);
     return () => clearInterval(id);
   }, [fetchMySwaps]);
+  useEffect(() => {
+    fetchV2Swaps();
+    const id = setInterval(fetchV2Swaps, 15_000);
+    return () => clearInterval(id);
+  }, [fetchV2Swaps]);
 
   // ─── Post offer + lock QBTC in one step ───
   const canPost = qbtcAmount.trim() !== '' && usdcAmount.trim() !== '' && postPassword.trim() !== '' && walletAddress && walletPubKey && walletEvmAddress;
@@ -1232,6 +1265,9 @@ export default function MarketplaceTab({
   // ─── Render ───
   const activeSwaps = mySwaps.filter(s => !['COMPLETE', 'EXPIRED', 'REFUNDED'].includes(s.status));
   const pastSwaps = mySwaps.filter(s => ['COMPLETE', 'EXPIRED', 'REFUNDED'].includes(s.status));
+  const v2ActiveSwaps = v2Swaps.filter(s => V2_ACTIVE_STATUSES.has(s.status));
+  const v2PastSwaps   = v2Swaps.filter(s => !V2_ACTIVE_STATUSES.has(s.status)).slice(0, 5);
+  const totalActiveCount = activeSwaps.length + v2ActiveSwaps.length;
   const claimableCount = activeSwaps.filter(s => {
     const isSeller = s.sellerQbtcAddress?.toLowerCase() === walletAddress.toLowerCase();
     return (isSeller && s.status === 'EVM_LOCKED') ||
@@ -1361,9 +1397,9 @@ export default function MarketplaceTab({
               {claimableCount}
             </span>
           )}
-          {claimableCount === 0 && activeSwaps.length > 0 && (
+          {claimableCount === 0 && totalActiveCount > 0 && (
             <span className="ml-1.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-600 text-slate-300 text-[10px] font-bold">
-              {activeSwaps.length}
+              {totalActiveCount}
             </span>
           )}
         </button>
@@ -1653,30 +1689,72 @@ export default function MarketplaceTab({
         <div className="flex items-center justify-between">
           <h3 className="text-base font-bold flex items-center gap-2">
             <Lock className="w-4 h-4 text-purple-400" /> Active Swaps
-            {activeSwaps.length > 0 && (
-              <span className="text-xs font-normal text-slate-500">{activeSwaps.length}</span>
+            {totalActiveCount > 0 && (
+              <span className="text-xs font-normal text-slate-500">{totalActiveCount}</span>
             )}
           </h3>
-          <button onClick={fetchMySwaps} disabled={loadingSwaps} className="p-1.5 rounded-md hover:bg-slate-800">
+          <button onClick={() => { fetchMySwaps(); fetchV2Swaps(); }} disabled={loadingSwaps} className="p-1.5 rounded-md hover:bg-slate-800">
             <RefreshCw className={`w-3.5 h-3.5 text-slate-400 ${loadingSwaps ? 'animate-spin' : ''}`} />
           </button>
         </div>
 
-        {activeSwaps.length === 0 ? (
+        {/* QBTC/USDC active swaps */}
+        {activeSwaps.map(swap => (
+          <SwapCard key={swap.id} swap={swap} walletAddress={walletAddress} walletId={walletId} userId={userId} onRefresh={fetchMySwaps} />
+        ))}
+
+        {/* Multi-chain v2 active swaps */}
+        {v2ActiveSwaps.map(swap => {
+          const isMaker = swap.authEvmAddressA?.toLowerCase() === walletEvmAddress.toLowerCase();
+          return (
+            <div key={swap.publicId} className="rounded-xl border border-slate-700 bg-slate-950/60 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <span className="text-slate-300">{swap.baseChain}</span>
+                  <ArrowLeftRight className="w-3.5 h-3.5 text-slate-500" />
+                  <span className="text-slate-300">{swap.quoteChain}</span>
+                  <span className="text-xs font-normal text-slate-500">{isMaker ? 'Maker' : 'Taker'}</span>
+                </div>
+                <V2SwapStatusBadge status={swap.status} />
+              </div>
+              <div className="flex items-center gap-3 text-sm font-mono text-slate-400">
+                <span>{parseFloat(swap.sideAAmount ?? '0').toLocaleString(undefined, { maximumFractionDigits: 8 })} {swap.baseChain}</span>
+                <span className="text-slate-600">↔</span>
+                <span>{parseFloat(swap.sideBAmount ?? '0').toLocaleString(undefined, { maximumFractionDigits: 8 })} {swap.quoteChain}</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span className="font-mono truncate max-w-[200px]">{swap.publicId}</span>
+                {swap.sideALocktime && (
+                  <span className="ml-auto">Expires {new Date(swap.sideALocktime * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {totalActiveCount === 0 && (
           <div className="text-center py-10 text-slate-500 text-sm">No active swaps.</div>
-        ) : (
-          activeSwaps.map(swap => (
-            <SwapCard key={swap.id} swap={swap} walletAddress={walletAddress} walletId={walletId} userId={userId} onRefresh={fetchMySwaps} />
-          ))
         )}
 
         {/* Past Swaps */}
-        {pastSwaps.length > 0 && (
+        {(pastSwaps.length > 0 || v2PastSwaps.length > 0) && (
           <div className="space-y-3 pt-4 border-t border-slate-800">
             <h3 className="text-sm font-semibold text-slate-400">Completed / Expired</h3>
             {pastSwaps.map(swap => (
               <SwapCard key={swap.id} swap={swap} walletAddress={walletAddress} walletId={walletId} userId={userId} onRefresh={fetchMySwaps} />
             ))}
+            {v2PastSwaps.map(swap => {
+              const isMaker = swap.authEvmAddressA?.toLowerCase() === walletEvmAddress.toLowerCase();
+              return (
+                <div key={swap.publicId} className="rounded-xl border border-slate-700/50 bg-slate-950/40 p-3 space-y-1 opacity-60">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm text-slate-400">{swap.baseChain} ↔ {swap.quoteChain} <span className="text-xs text-slate-600">{isMaker ? 'Maker' : 'Taker'}</span></span>
+                    <V2SwapStatusBadge status={swap.status} />
+                  </div>
+                  <p className="text-xs font-mono text-slate-600 truncate">{swap.publicId}</p>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
