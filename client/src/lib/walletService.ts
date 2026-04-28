@@ -91,6 +91,7 @@ interface UnlockedWallet extends Wallet {
     bitcoin: string;
     bsc: string;
     xrp: string;
+    xrpTestnet: string;
     solana: string;
     qbtc: string;
     qbtcVault: string;
@@ -948,6 +949,7 @@ export async function unlockWallet(walletId: string, password: string): Promise<
       bitcoin: '',
       bsc: '',
       xrp: '',
+      xrpTestnet: '',
       solana: '',
       qbtc: '',
       qbtcVault: '',
@@ -965,6 +967,7 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     const xrpNode = derivePath(root, DERIVATION_PATHS.xrp);
     privateKeys.xrp = xrpNode.privateKey ? Buffer.from(xrpNode.privateKey).toString('hex') : '';
     const xrpTestnetNode = derivePath(root, DERIVATION_PATHS.xrpTestnet);
+    privateKeys.xrpTestnet = xrpTestnetNode.privateKey ? Buffer.from(xrpTestnetNode.privateKey).toString('hex') : '';
 
     const solNode = derivePath(root, DERIVATION_PATHS.solana);
     privateKeys.solana = solNode.privateKey ? Buffer.from(solNode.privateKey).toString('hex') : '';
@@ -1513,6 +1516,29 @@ export async function getXRPSeed(walletId: string, password: string): Promise<st
     return seed;
   } catch (error) {
     console.error('Failed to get XRP seed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get XRP seed for the testnet derivation path (m/44'/144'/1'/0/0).
+ * Use this when operating on XRPL testnet.
+ */
+export async function getXRPTestnetSeed(walletId: string, password: string): Promise<string> {
+  try {
+    const wallet = await unlockWallet(walletId, password);
+    const xrpPrivateKey = wallet.privateKeys.xrpTestnet;
+    
+    if (!xrpPrivateKey) {
+      throw new Error('XRP testnet private key not found');
+    }
+    
+    const entropy = Buffer.from(Buffer.from(xrpPrivateKey, 'hex').slice(0, 16));
+    const seed = generateSeed({ entropy, algorithm: 'ecdsa-secp256k1' });
+    
+    return seed;
+  } catch (error) {
+    console.error('Failed to get XRP testnet seed:', error);
     throw error;
   }
 }

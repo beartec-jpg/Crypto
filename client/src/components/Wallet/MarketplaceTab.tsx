@@ -39,7 +39,7 @@ import MultiChainMarketTab from '@/components/MultiChainMarketTab';
 import { fetchV2SwapsByAddress, buildV2Message, postV2LockSideA, postV2LockSideB, type V2Swap, type ChainId } from '@/lib/swapV2Api';
 import { XrplAdapter } from '@/lib/adapters/XrplAdapter';
 import { EvmAdapter, getEvmAdapterConfig } from '@/lib/adapters/EvmAdapter';
-import { getXRPSeed } from '@/lib/walletService';
+import { getXRPSeed, getXRPTestnetSeed } from '@/lib/walletService';
 import { Wallet as XRPLWallet } from 'xrpl';
 
 const V2_ACTIVE_STATUSES = new Set(['PENDING_SIDE_A', 'SIDE_A_LOCKED', 'SIDE_B_LOCKED']);
@@ -989,6 +989,8 @@ function V2SwapActions({
   const [xrpAddrInput, setXrpAddrInput] = useState('');
   const [actionStatus, setActionStatus] = useState<'idle' | 'busy' | 'done' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
+  const [xrpNotFunded, setXrpNotFunded] = useState(false);
+  const [faucetStatus, setFaucetStatus] = useState<'idle' | 'busy' | 'done' | 'error'>('idle');
 
   const isTestnet = (import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet';
   const isMaker = swap.authEvmAddressA?.toLowerCase() === walletEvmAddress.toLowerCase();
@@ -1002,9 +1004,31 @@ function V2SwapActions({
   const needsXrpAddrInput = canLockXrp && !storedTakerXrp;
   const takerXrpAddr = storedTakerXrp || xrpAddrInput.trim();
 
+  const handleFundFromFaucet = async () => {
+    try {
+      setFaucetStatus('busy');
+      const addr = walletXrpAddress;
+      if (!addr) throw new Error('XRP address not available');
+      const res = await fetch('https://faucet.altnet.rippletest.net/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ destination: addr }),
+      });
+      if (!res.ok) throw new Error(`Faucet returned ${res.status}`);
+      setFaucetStatus('done');
+      setXrpNotFunded(false);
+      setErrorMsg('');
+      setActionStatus('idle');
+    } catch (e: unknown) {
+      setFaucetStatus('error');
+      setErrorMsg(`Faucet failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
   const handleLockXrp = async () => {
     try {
       setErrorMsg('');
+      setXrpNotFunded(false);
       setActionStatus('busy');
 
       if (!password.trim()) throw new Error('Password required');
@@ -1017,8 +1041,10 @@ function V2SwapActions({
       const secret: string = typeof secretEntry === 'string' ? secretEntry : secretEntry.secret;
       if (!secret) throw new Error('Stored secret has unexpected format');
 
-      // Build XRPL wallet
-      const seed = await getXRPSeed(walletId, password);
+      // Build XRPL wallet from the correct derivation path for the active network
+      const seed = isTestnet
+        ? await getXRPTestnetSeed(walletId, password)
+        : await getXRPSeed(walletId, password);
       const xrplWallet = XRPLWallet.fromSeed(seed);
 
       const timelockSecs = Number(swap.sideALocktime) - Math.floor(Date.now() / 1000);
@@ -1048,14 +1074,17 @@ function V2SwapActions({
       setPassword('');
       onRefresh();
     } catch (e: unknown) {
-      setErrorMsg(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      const isNotFunded = /account not found|actnotfound|account.*not.*exist/i.test(msg);
+      if (isNotFunded && isTestnet) {
+        setXrpNotFunded(true);
+        setErrorMsg('Your XRP testnet account is not activated — it needs test XRP to exist on the ledger.');
+      } else {
+        setErrorMsg(msg);
+      }
       setActionStatus('error');
     }
   };
-
-  const handleLockEth = async () => {
-    try {
-      setErrorMsg('');
       setActionStatus('busy');
 
       if (!password.trim()) throw new Error('Password required');
@@ -1124,6 +1153,22 @@ function V2SwapActions({
         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none"
       />
       {errorMsg && <p className="text-xs text-red-300">{errorMsg}</p>}
+      {xrpNotFunded && isTestnet && walletXrpAddress && (
+        <div className="rounded-lg border border-amber-700/40 bg-amber-900/20 p-2.5 space-y-1.5">
+          <p className="text-xs text-amber-300 font-mono break-all">Your XRP address: {walletXrpAddress}</p>
+          <button
+            onClick={handleFundFromFaucet}
+            disabled={faucetStatus === 'busy'}
+            className="w-full py-1.5 rounded-md text-xs font-medium bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
+          >
+            {faucetStatus === 'busy'
+              ? <><Loader2 size={12} className="animate-spin" /> Requesting testnet XRP…</>
+              : faucetStatus === 'done'
+              ? <><CheckCircle2 size={12} /> Funded! Now try locking again</>
+              : '⚡ Fund from Testnet Faucet (free)'}
+          </button>
+        </div>
+      )}
       {canLockXrp && (
         <button
           onClick={handleLockXrp}
