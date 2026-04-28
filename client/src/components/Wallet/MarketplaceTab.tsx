@@ -1137,24 +1137,6 @@ function V2SwapActions({
     }
   };
 
-      await postV2LockSideA({ swapId: swap.publicId, lockId, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
-
-      setActionStatus('done');
-      setPassword('');
-      onRefresh();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      const isNotFunded = /account not found|actnotfound|account.*not.*exist/i.test(msg);
-      if (isNotFunded && isTestnet) {
-        setXrpNotFunded(true);
-        setErrorMsg('Your XRP testnet account is not activated — it needs test XRP to exist on the ledger.');
-      } else {
-        setErrorMsg(msg);
-      }
-      setActionStatus('error');
-    }
-  };
-
   const handleLockEth = async () => {
     try {
       setErrorMsg('');
