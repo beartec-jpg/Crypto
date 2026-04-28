@@ -1725,6 +1725,8 @@ app.post('/api/swap/v2/claim/side-b', writeLimiter, async (req, res) => {
     const result = await pool.query('SELECT * FROM atomic_swaps WHERE public_id = $1::uuid', [swapId]);
     const swap = result.rows[0];
     if (!swap) return res.status(404).json({ error: 'Swap not found' });
+    // Idempotent: if already COMPLETE, return success (EvmMonitor may have beaten the client)
+    if (swap.status === 'COMPLETE') return res.json({ status: 'COMPLETE', swapId });
     if (swap.status !== 'SIDE_B_LOCKED') return res.status(409).json({ error: `Cannot claim in status: ${swap.status}` });
     if (authEvmAddress.toLowerCase() !== String(swap.auth_evm_address_a || '').toLowerCase()) {
       return res.status(403).json({ error: 'Only the maker (side-A) can claim side-B' });
