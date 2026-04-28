@@ -44,7 +44,7 @@ import { Wallet as XRPLWallet } from 'xrpl';
 
 const V2_ACTIVE_STATUSES = new Set(['PENDING_SIDE_A', 'SIDE_A_LOCKED', 'SIDE_B_LOCKED']);
 
-function V2SwapStatusBadge({ status }: { status: string }) {
+function V2SwapStatusBadge({ status, isMaker }: { status: string; isMaker?: boolean }) {
   const cls =
     status === 'COMPLETE'      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
     status === 'EXPIRED'       ? 'bg-slate-500/20 text-slate-400 border-slate-500/30' :
@@ -52,8 +52,8 @@ function V2SwapStatusBadge({ status }: { status: string }) {
     status === 'SIDE_A_LOCKED' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' :
                                  'bg-cyan-500/20 text-cyan-300 border-cyan-500/30';
   const label =
-    status === 'PENDING_SIDE_A' ? 'Awaiting Maker Lock' :
-    status === 'SIDE_A_LOCKED'  ? 'Maker Locked — Lock Yours' :
+    status === 'PENDING_SIDE_A' ? (isMaker ? 'Create Your Lock' : 'Awaiting Maker Lock') :
+    status === 'SIDE_A_LOCKED'  ? (isMaker ? 'Your Lock Confirmed — Awaiting Taker' : 'Maker Locked — Lock Yours Now') :
     status === 'SIDE_B_LOCKED'  ? 'Both Locked — Claim' :
     status === 'COMPLETE'       ? 'Complete' :
     status === 'EXPIRED'        ? 'Expired' : status;
@@ -1304,7 +1304,21 @@ function V2SwapActions({
     }
   };
 
-  if (!canLockXrp && !canLockEth && !canClaimEth && !canClaimXrp) return null;
+  if (!canLockXrp && !canLockEth && !canClaimEth && !canClaimXrp) {
+    if (!isMaker && !isTaker) return null; // not our swap
+    // User is a participant but has no immediate action — show waiting state
+    const waitMsg =
+      (isMaker && swap.status === 'SIDE_A_LOCKED') ? 'Waiting for taker to lock their side…' :
+      (isTaker && swap.status === 'PENDING_SIDE_A') ? 'Waiting for maker to lock first…' :
+      (swap.status === 'SIDE_B_LOCKED') ? 'Waiting for counterparty to claim…' : 'Waiting…';
+    return (
+      <div className="pt-2 border-t border-slate-700/50">
+        <p className="text-xs text-slate-500 flex items-center gap-1.5">
+          <Loader2 size={11} className="animate-spin" /> {waitMsg}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="pt-2 border-t border-slate-700/50 space-y-2">
@@ -2148,7 +2162,7 @@ export default function MarketplaceTab({
                   <span className="text-slate-300">{swap.quoteChain}</span>
                   <span className="text-xs font-normal text-slate-500">{isMaker ? 'Maker' : 'Taker'}</span>
                 </div>
-                <V2SwapStatusBadge status={swap.status} />
+                <V2SwapStatusBadge status={swap.status} isMaker={isMaker} />
               </div>
               <div className="flex items-center gap-3 text-sm font-mono text-slate-400">
                 <span>{parseFloat(swap.sideAAmount ?? '0').toLocaleString(undefined, { maximumFractionDigits: 8 })} {swap.baseChain}</span>
@@ -2189,7 +2203,7 @@ export default function MarketplaceTab({
                 <div key={swap.publicId} className="rounded-xl border border-slate-700/50 bg-slate-950/40 p-3 space-y-1 opacity-60">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm text-slate-400">{swap.baseChain} ↔ {swap.quoteChain} <span className="text-xs text-slate-600">{isMaker ? 'Maker' : 'Taker'}</span></span>
-                    <V2SwapStatusBadge status={swap.status} />
+                    <V2SwapStatusBadge status={swap.status} isMaker={isMaker} />
                   </div>
                   <p className="text-xs font-mono text-slate-600 truncate">{swap.publicId}</p>
                 </div>
