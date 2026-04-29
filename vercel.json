@@ -37,6 +37,10 @@
   "rewrites": [
     { "source": "/api/swap/v2/lock/side-a", "destination": "http://204.168.175.194:3099/api/swap/v2/lock/side-a" },
     { "source": "/api/swap/v2/lock/side-b", "destination": "http://204.168.175.194:3099/api/swap/v2/lock/side-b" },
+    { "source": "/api/swap/v2/claim/side-b", "destination": "http://204.168.175.194:3099/api/swap/v2/claim/side-b" },
+    { "source": "/api/swap/v2/swap/:swapId/cancel", "destination": "http://204.168.175.194:3099/api/swap/v2/swap/:swapId/cancel" },
+    { "source": "/api/swap/v2/offer/:offerId/cancel", "destination": "http://204.168.175.194:3099/api/swap/v2/offer/:offerId/cancel" },
+    { "source": "/api/swap/v2/by-address", "destination": "http://204.168.175.194:3099/api/swap/v2/by-address" },
     { "source": "/api/swap/v2/accept/:offerId", "destination": "http://204.168.175.194:3099/api/swap/v2/accept/:offerId" },
     { "source": "/api/swap/v2/offer", "destination": "http://204.168.175.194:3099/api/swap/v2/offer" },
     { "source": "/api/swap/v2/offers", "destination": "http://204.168.175.194:3099/api/swap/v2/offers" },

@@ -1135,7 +1135,7 @@ function V2SwapActions({
       const timestamp = Math.floor(Date.now() / 1000);
       const msg = `QBTC_SWAP_V2:CANCEL_SWAP:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${walletEvmAddress.toLowerCase()}:${timestamp}`;
       const sig = await ethSigner.signMessage(msg);
-      const res = await fetch(`${import.meta.env.VITE_SWAP_API_URL || 'https://swap.beartec.uk'}/api/swap/v2/swap/${swap.publicId}/cancel`, {
+      const res = await fetch(`/api/swap/v2/swap/${swap.publicId}/cancel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ authEvmAddress: walletEvmAddress, signature: sig, timestamp }),
