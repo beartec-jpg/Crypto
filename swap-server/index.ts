@@ -1520,6 +1520,44 @@ app.post('/api/swap/v2/accept/:offerId', writeLimiter, async (req, res) => {
   }
 });
 
+// ─── POST /api/swap/v2/swap/:swapId/cancel ───────────────────────────────────
+// Maker aborts a swap that is still in PENDING_SIDE_A (nothing locked yet).
+// Body: authEvmAddress, signature, timestamp
+
+app.post('/api/swap/v2/swap/:swapId/cancel', writeLimiter, async (req, res) => {
+  try {
+    const { swapId } = req.params;
+    const { authEvmAddress, signature, timestamp } = req.body || {};
+
+    if (!authEvmAddress || typeof authEvmAddress !== 'string') return res.status(400).json({ error: 'authEvmAddress is required' });
+    if (!signature      || typeof signature      !== 'string') return res.status(400).json({ error: 'signature is required' });
+    const tsErr = checkTimestamp(timestamp);
+    if (tsErr) return res.status(400).json({ error: tsErr });
+
+    const swapResult = await pool.query('SELECT * FROM atomic_swaps WHERE public_id = $1', [swapId]);
+    const swap = swapResult.rows[0];
+    if (!swap) return res.status(404).json({ error: 'Swap not found' });
+    if (swap.status !== 'PENDING_SIDE_A') return res.status(409).json({ error: `Cannot cancel swap in status: ${swap.status}` });
+
+    if (swap.auth_evm_address_a.toLowerCase() !== authEvmAddress.toLowerCase()) {
+      return res.status(403).json({ error: 'Not the swap maker' });
+    }
+
+    const canonicalMsg = buildV2Message('CANCEL_SWAP', swap.base_chain, swap.quote_chain, swapId, authEvmAddress.toLowerCase(), Number(timestamp));
+    try {
+      assertEvmSignature(canonicalMsg, signature, authEvmAddress);
+    } catch (authErr: any) {
+      return res.status(authErr.statusCode || 403).json({ error: authErr.message });
+    }
+
+    await pool.query("DELETE FROM atomic_swaps WHERE public_id = $1", [swapId]);
+    return res.json({ status: 'CANCELLED' });
+  } catch (err: any) {
+    console.error('POST /api/swap/v2/swap/cancel:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to cancel swap' });
+  }
+});
+
 // ─── POST /api/swap/v2/lock/side-a ───────────────────────────────────────────
 // Maker records their on-chain lock (HTLC / escrow) for the base asset.
 // This is the first lock in the swap — maker locks first.
