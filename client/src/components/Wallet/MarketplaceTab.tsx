@@ -1675,7 +1675,7 @@ function V2SwapActions({
       if (!password.trim()) throw new Error('Password required');
 
       const btcNetwork: 'testnet' | 'mainnet' = isTestnet ? 'testnet' : 'mainnet';
-      const esploraUrl = isTestnet ? 'https://blockstream.info/testnet/api' : 'https://blockstream.info/api';
+      const esploraUrl = isTestnet ? 'https://blockstream.info/testnet' : 'https://blockstream.info';
 
       const unlockedWallet = await unlockWallet(walletId, password);
       const btcPrivKeyHex = unlockedWallet.privateKeys.bitcoin;
@@ -1750,7 +1750,7 @@ function V2SwapActions({
       if (!password.trim()) throw new Error('Password required');
 
       const btcNetwork: 'testnet' | 'mainnet' = isTestnet ? 'testnet' : 'mainnet';
-      const esploraUrl = isTestnet ? 'https://blockstream.info/testnet/api' : 'https://blockstream.info/api';
+      const esploraUrl = isTestnet ? 'https://blockstream.info/testnet' : 'https://blockstream.info';
 
       const unlockedWallet = await unlockWallet(walletId, password);
       const btcPrivKeyHex = unlockedWallet.privateKeys.bitcoin;
