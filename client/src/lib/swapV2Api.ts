@@ -223,8 +223,8 @@ export async function fetchV2Stats(base?: ChainId, quote?: ChainId): Promise<V2S
   return res.json();
 }
 
-export async function fetchV2AllOffers(limit = 200): Promise<V2Offer[]> {
-  const res = await fetch(`${SWAP_API}/api/swap/v2/offers/all?limit=${limit}`);
+export async function fetchV2AllOffers(): Promise<V2Offer[]> {
+  const res = await fetch(`${SWAP_API}/api/swap/v2/offers/all`);
   if (!res.ok) throw new Error(`Failed to fetch all offers: ${res.statusText}`);
   return res.json();
 }
