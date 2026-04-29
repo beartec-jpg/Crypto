@@ -1292,7 +1292,22 @@ function V2SwapActions({
         if (!secretEntry) throw new Error('Secret not found — was this offer created on this device?');
         const secret: string = typeof secretEntry === 'string' ? secretEntry : secretEntry.secret;
         await xrplAdapter.claimFunds({ signerKey: xrplWallet, lockId: xrpLockId, secret });
-        // XrplMonitor will detect the EscrowFinish and store secret → COMPLETE
+        // Report to server so it stores the secret and marks COMPLETE immediately
+        // (XrplMonitor also polls but this is faster)
+        try {
+          const unlockedWallet = await unlockWallet(walletId, password);
+          const ethPrivKey = unlockedWallet.privateKeys.ethereum;
+          const rpcUrl = import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
+          const chainId = Number(import.meta.env.VITE_ETH_CHAIN_ID || 11155111);
+          const provider = new ethers.JsonRpcProvider(rpcUrl, chainId);
+          const ethSigner = new ethers.Wallet('0x' + ethPrivKey, provider);
+          const ts = Math.floor(Date.now() / 1000);
+          const msg = `QBTC_SWAP_V2:CLAIM_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${xrpLockId}:${ts}`;
+          const sig = await ethSigner.signMessage(msg);
+          await postV2ClaimSideB({ swapId: swap.publicId, secret, claimTxHash: xrpLockId, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+        } catch {
+          // Non-fatal: XrplMonitor will catch up on next poll
+        }
       } else {
         // Taker claims XRP (XRP/ETH) — secret revealed by maker via ETH withdraw
         if (!swap.secret) throw new Error('Secret not yet available — maker must claim ETH first');

@@ -39,16 +39,13 @@ export function decodeFulfillmentPreimage(fulfillmentHex: string): string | null
       ? fulfillmentHex.slice(2)
       : fulfillmentHex;
     const buf = Buffer.from(normalized, 'hex');
-    // Walk DER structure: A0 [len] A0 [len] 04 [len] [preimage]
+    // PREIMAGE-SHA-256 crypto-condition fulfillment: A0 [len] 80 [len] [preimage]
     let offset = 0;
     // Outer PREIMAGE-SHA-256 type (0xA0)
     if (buf[offset++] !== 0xa0) return null;
     offset = skipDerLen(buf, offset);
-    // Inner PREIMAGE-SHA-256 (0xA0)
-    if (buf[offset++] !== 0xa0) return null;
-    offset = skipDerLen(buf, offset);
-    // OCTET STRING (0x04)
-    if (buf[offset++] !== 0x04) return null;
+    // Inner preimage bytes field (0x80, primitive context-specific 0)
+    if (buf[offset++] !== 0x80) return null;
     const preimageLen = buf[offset++];
     if (preimageLen !== 32) return null;
     return buf.slice(offset, offset + 32).toString('hex');
