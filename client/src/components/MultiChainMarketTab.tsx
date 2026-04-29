@@ -252,11 +252,11 @@ function PasswordField({ value, onChange, disabled = false }: {
 // ─── Accept Offer Modal ───────────────────────────────────────────────────────
 
 function AcceptOfferModal({
-  offer, walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletBtcPubKey, onClose, onAccepted,
+  offer, walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletBtcPubKey, walletBtcAddress, onClose, onAccepted,
 }: {
   offer: V2Offer | null;
   walletId: string; walletEvmAddress: string; walletAddress: string; walletXrpAddress: string;
-  walletBtcPubKey?: string;
+  walletBtcPubKey?: string; walletBtcAddress?: string;
   onClose: () => void; onAccepted: () => void;
 }) {
   const [takerAddress, setTakerAddress] = useState('');
@@ -272,9 +272,10 @@ function AcceptOfferModal({
     if (!offer) return;
     if (offer.baseChain === 'XRP') setTakerAddress(walletXrpAddress || '');
     else if (offer.baseChain === 'QBTC') setTakerAddress(walletAddress);
+    else if (offer.baseChain === 'BTC') setTakerAddress(walletBtcAddress || '');
     else if (['ETH', 'BNB', 'USDC'].includes(offer.baseChain)) setTakerAddress(walletEvmAddress);
     else setTakerAddress('');
-  }, [offer, walletAddress, walletEvmAddress, walletXrpAddress]);
+  }, [offer, walletAddress, walletEvmAddress, walletXrpAddress, walletBtcAddress]);
 
   if (!offer) return null;
   const busy = status === 'signing' || status === 'submitting';
@@ -434,10 +435,10 @@ type SortMode = 'amount_desc' | 'chain_asc';
 type ChainFilter = ChainId | 'All';
 
 function BuyView({
-  walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletBtcPubKey, onBack,
+  walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletBtcPubKey, walletBtcAddress, onBack,
 }: {
   walletId: string; walletEvmAddress: string; walletAddress: string; walletXrpAddress: string;
-  walletBtcPubKey?: string;
+  walletBtcPubKey?: string; walletBtcAddress?: string;
   onBack: () => void;
 }) {
   const [allOffers, setAllOffers] = useState<V2Offer[]>([]);
@@ -613,6 +614,7 @@ function BuyView({
           walletId={walletId} walletEvmAddress={walletEvmAddress} walletAddress={walletAddress}
           walletXrpAddress={walletXrpAddress}
           walletBtcPubKey={walletBtcPubKey}
+          walletBtcAddress={walletBtcAddress}
           onClose={() => setAcceptTarget(null)}
           onAccepted={loadOffers}
         />
@@ -1037,6 +1039,7 @@ export default function MultiChainMarketTab({
         walletAddress={walletAddress}
         walletXrpAddress={walletXrpAddress}
         walletBtcPubKey={walletBtcPubKey}
+        walletBtcAddress={walletBtcAddress}
         onBack={() => setView('entry')}
       />
     );
