@@ -1950,8 +1950,22 @@ export default function MarketplaceTab({
   // ─── Render ───
   const activeSwaps = mySwaps.filter(s => !['COMPLETE', 'EXPIRED', 'REFUNDED'].includes(s.status));
   const pastSwaps = mySwaps.filter(s => ['COMPLETE', 'EXPIRED', 'REFUNDED'].includes(s.status));
-  const v2ActiveSwaps = v2Swaps.filter(s => V2_ACTIVE_STATUSES.has(s.status));
-  const v2PastSwaps   = v2Swaps.filter(s => !V2_ACTIVE_STATUSES.has(s.status)).slice(0, 5);
+  const v2ActiveSwaps = v2Swaps.filter(s => {
+    if (V2_ACTIVE_STATUSES.has(s.status)) return true;
+    // Keep COMPLETE swaps in the active list if either party still needs to claim
+    if (s.status === 'COMPLETE' && s.secret) {
+      const isMaker = s.authEvmAddressA?.toLowerCase() === walletEvmAddress.toLowerCase();
+      const isTaker = s.authEvmAddressB?.toLowerCase() === walletEvmAddress.toLowerCase();
+      const xrpClaimedKey = `v2_xrp_claimed_${s.publicId}`;
+      const ethClaimedKey = `v2_eth_claimed_${s.publicId}`;
+      const btcClaimedKey = `v2_btc_claimed_${s.publicId}`;
+      if ((isTaker || isMaker) && s.baseChain === 'XRP' && !localStorage.getItem(xrpClaimedKey)) return true;
+      if (isTaker && s.baseChain === 'ETH' && !localStorage.getItem(ethClaimedKey)) return true;
+      if (isTaker && s.baseChain === 'BTC' && !localStorage.getItem(btcClaimedKey)) return true;
+    }
+    return false;
+  });
+  const v2PastSwaps   = v2Swaps.filter(s => !v2ActiveSwaps.includes(s)).slice(0, 5);
   const totalActiveCount = activeSwaps.length + v2ActiveSwaps.length;
   const claimableCount = activeSwaps.filter(s => {
     const isSeller = s.sellerQbtcAddress?.toLowerCase() === walletAddress.toLowerCase();

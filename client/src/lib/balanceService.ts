@@ -67,35 +67,36 @@ export async function fetchEthereumBalance(address: string, network: TokenNetwor
   const networkLabel = network === 'testnet' ? 'TESTNET (Sepolia)' : 'MAINNET';
   console.log(`🔍 Fetching ETH balance from ${networkLabel} for:`, address);
 
-  // ─── Primary: Etherscan API v2 ───────────────────────────────────────────
-  try {
-    const response = await axios.get('https://api.etherscan.io/v2/api', {
-      params: {
-        chainid: chainId,
-        module: 'account',
-        action: 'balance',
-        address,
-        tag: 'latest',
-        apikey: import.meta.env.VITE_ETHERSCAN_API_KEY || '',
-      },
-      timeout: 10000,
-    });
+  // ─── Primary: Etherscan API v2 (only if API key is configured) ──────────
+  const etherscanKey = import.meta.env.VITE_ETHERSCAN_API_KEY || '';
+  if (etherscanKey) {
+    try {
+      const response = await axios.get('https://api.etherscan.io/v2/api', {
+        params: {
+          chainid: chainId,
+          module: 'account',
+          action: 'balance',
+          address,
+          tag: 'latest',
+          apikey: etherscanKey,
+        },
+        timeout: 8000,
+      });
 
-    console.log('📦 ETH API Response:', response.data);
+      if (response.data.status === '1' && response.data.result) {
+        const balanceWei = response.data.result;
+        const balanceEth = parseFloat(balanceWei) / 1e18;
+        console.log(`✅ ETH Balance via Etherscan (${networkLabel}):`, balanceEth, 'ETH');
+        return balanceEth.toFixed(6);
+      }
 
-    if (response.data.status === '1' && response.data.result) {
-      const balanceWei = response.data.result;
-      const balanceEth = parseFloat(balanceWei) / 1e18;
-      console.log(`✅ ETH Balance (${networkLabel}):`, balanceEth, 'ETH');
-      return balanceEth.toFixed(6);
+      console.warn('⚠️ Etherscan returned no balance, trying RPC fallback');
+    } catch (error: any) {
+      console.warn('⚠️ Etherscan failed, trying RPC fallback:', error.message);
     }
-
-    console.warn('⚠️ Etherscan returned no balance, trying RPC fallback');
-  } catch (error: any) {
-    console.warn('⚠️ Etherscan failed, trying RPC fallback:', error.message);
   }
 
-  // ─── Fallback: direct eth_getBalance via public RPC ─────────────────────
+  // ─── Direct eth_getBalance via public RPC ────────────────────────────────
   const rpcUrls = network === 'testnet'
     ? [
         'https://ethereum-sepolia-rpc.publicnode.com',
