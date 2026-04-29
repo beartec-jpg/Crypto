@@ -1,8 +1,7 @@
 /**
  * MultiChainMarketTab.tsx
  *
- * Multi-chain atomic swap marketplace — v2 order book, offer creation,
- * and swap acceptance UI. Integrated into the wallet MarketplaceTab.
+ * Multi-chain atomic swap marketplace — redesigned with entry / buy / sell views.
  *
  * Signing uses the internal wallet (password → unlockWallet → ethers.Wallet),
  * exactly the same as the rest of the wallet. No MetaMask required.
@@ -13,9 +12,7 @@ import { ethers } from 'ethers';
 import {
   ArrowLeftRight,
   RefreshCw,
-  Plus,
-  ChevronDown,
-  ChevronUp,
+  ChevronLeft,
   Clock,
   CheckCircle2,
   AlertCircle,
@@ -23,16 +20,17 @@ import {
   Copy,
   Info,
   KeyRound,
+  ArrowUpDown,
+  ShoppingCart,
+  Tag,
 } from 'lucide-react';
 import { unlockWallet } from '@/lib/walletService';
 import {
   type ChainId,
   type V2Offer,
-  type V2Stats,
   buildV2Message,
   generateSecret,
-  fetchV2Offers,
-  fetchV2Stats,
+  fetchV2AllOffers,
   postV2Offer,
   postV2Accept,
 } from '@/lib/swapV2Api';
@@ -87,6 +85,16 @@ function formatRate(base: string, quote: string): string {
   const q = parseFloat(quote);
   if (!b || !q) return '—';
   return (q / b).toFixed(6);
+}
+
+function formatAge(createdAt: string): string {
+  const diffMs = Date.now() - new Date(createdAt).getTime();
+  const diffMins = Math.floor(diffMs / 60_000);
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins}m`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h`;
+  return `${Math.floor(diffHours / 24)}d`;
 }
 
 // ─── Price & balance helpers ──────────────────────────────────────────────────
@@ -152,6 +160,8 @@ async function fetchChainBalance(
   return null;
 }
 
+// ─── Shared sub-components ────────────────────────────────────────────────────
+
 function ChainBadge({ chain }: { chain: ChainId }) {
   return (
     <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold border ${CHAIN_COLORS[chain]}`}>
@@ -192,197 +202,6 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-// ─── Pair Selector ────────────────────────────────────────────────────────────
-
-function PairSelector({
-  selected, onChange,
-}: {
-  selected: [ChainId, ChainId];
-  onChange: (pair: [ChainId, ChainId]) => void;
-}) {
-  const [sell, buy] = selected;
-
-  const handleSell = (chain: ChainId) => {
-    const newBuy = chain === buy
-      ? ALL_CHAINS.find(c => c !== chain) ?? ALL_CHAINS.filter(c => c !== chain)[0]
-      : buy;
-    onChange([chain, newBuy]);
-  };
-
-  const handleBuy = (chain: ChainId) => {
-    const newSell = chain === sell
-      ? ALL_CHAINS.find(c => c !== chain) ?? ALL_CHAINS.filter(c => c !== chain)[0]
-      : sell;
-    onChange([newSell, chain]);
-  };
-
-  const chainSelectClass = (active: boolean) =>
-    `px-3 py-2 rounded-lg border text-sm font-semibold transition-all ${
-      active
-        ? 'border-cyan-500 bg-cyan-500/15 text-white'
-        : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-500 hover:text-slate-200'
-    }`;
-
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        {/* Sell side */}
-        <div className="space-y-1.5">
-          <div className="text-xs text-slate-400 font-medium uppercase tracking-wider px-1">Sell</div>
-          <div className="flex flex-col gap-1">
-            {ALL_CHAINS.map(chain => (
-              <button
-                key={chain}
-                onClick={() => handleSell(chain)}
-                disabled={chain === buy}
-                className={`${chainSelectClass(sell === chain)} disabled:opacity-30 disabled:cursor-not-allowed`}
-              >
-                {chain}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Buy side */}
-        <div className="space-y-1.5">
-          <div className="text-xs text-slate-400 font-medium uppercase tracking-wider px-1">Buy</div>
-          <div className="flex flex-col gap-1">
-            {ALL_CHAINS.map(chain => (
-              <button
-                key={chain}
-                onClick={() => handleBuy(chain)}
-                disabled={chain === sell}
-                className={`${chainSelectClass(buy === chain)} disabled:opacity-30 disabled:cursor-not-allowed`}
-              >
-                {chain}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Stats Bar ────────────────────────────────────────────────────────────────
-
-function StatsBar({ stats, base, quote }: { stats: V2Stats | null; base: ChainId; quote: ChainId }) {
-  if (!stats) return null;
-  const swapRow  = stats.swaps.find(s => s.baseChain === base && s.quoteChain === quote);
-  const offerRow = stats.offers.find(o => o.baseChain === base && o.quoteChain === quote);
-  return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-      {[
-        { label: 'Open Offers',  value: offerRow?.open     ?? 0, color: 'text-cyan-400' },
-        { label: 'Active Swaps', value: swapRow?.active    ?? 0, color: 'text-blue-400' },
-        { label: 'Completed',    value: swapRow?.completed ?? 0, color: 'text-emerald-400' },
-        { label: 'Total',        value: swapRow?.total     ?? 0, color: 'text-purple-400' },
-      ].map(stat => (
-        <div key={stat.label} className="bg-slate-800/50 border border-slate-700 rounded-lg p-3">
-          <div className={`text-xl font-bold ${stat.color}`}>{stat.value}</div>
-          <div className="text-xs text-slate-500 mt-0.5">{stat.label}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Order Book ───────────────────────────────────────────────────────────────
-
-function OrderBook({
-  offers, base, quote, loading, onAccept, onCancel, walletEvmAddress,
-}: {
-  offers: V2Offer[];
-  base: ChainId;
-  quote: ChainId;
-  loading: boolean;
-  onAccept: (offer: V2Offer) => void;
-  onCancel: (offer: V2Offer) => void;
-  walletEvmAddress: string;
-}) {
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12 text-slate-500">
-        <Loader2 size={18} className="animate-spin mr-2" /> Loading...
-      </div>
-    );
-  }
-  if (offers.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-slate-500 space-y-2">
-        <ArrowLeftRight size={32} className="opacity-30" />
-        <p className="text-sm">No open offers for {base}/{quote}</p>
-        <p className="text-xs text-slate-600">Create one below</p>
-      </div>
-    );
-  }
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-xs text-slate-500 uppercase tracking-wider">
-            <th className="text-left pb-2 pr-4">Sell ({CHAIN_SYMBOLS[base]})</th>
-            <th className="text-left pb-2 pr-4">Buy ({CHAIN_SYMBOLS[quote]})</th>
-            <th className="text-left pb-2 pr-4">Rate</th>
-            <th className="text-left pb-2 pr-4">Maker</th>
-            <th className="text-left pb-2">Status</th>
-            <th className="pb-2" />
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-800">
-          {offers.map(offer => {
-            const isOwn = offer.authEvmAddress.toLowerCase() === walletEvmAddress.toLowerCase();
-            // Inverted offer: base/quote are flipped relative to current view
-            const isInverted = offer.baseChain === quote && offer.quoteChain === base;
-            return (
-            <tr key={offer.id} className={`hover:bg-slate-800/30 transition-colors ${isOwn ? 'opacity-70' : ''}`}>
-              <td className="py-2 pr-4 font-mono font-medium text-white">
-                {isInverted
-                  ? parseFloat(offer.quoteAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })
-                  : parseFloat(offer.baseAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })}
-              </td>
-              <td className="py-2 pr-4 font-mono text-cyan-300">
-                {isInverted
-                  ? parseFloat(offer.baseAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })
-                  : parseFloat(offer.quoteAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })}
-              </td>
-              <td className="py-2 pr-4 font-mono text-slate-300 text-xs">
-                {isInverted
-                  ? formatRate(offer.quoteAmount, offer.baseAmount)
-                  : formatRate(offer.baseAmount, offer.quoteAmount)}
-              </td>
-              <td className="py-2 pr-4 text-slate-400 text-xs font-mono">
-                {isOwn
-                  ? <span className="text-cyan-400/70">You</span>
-                  : <>{truncate(offer.authEvmAddress)}<CopyButton text={offer.authEvmAddress} /></>}
-              </td>
-              <td className="py-2 pr-4">
-                <StatusBadge status={offer.status} />
-              </td>
-              <td className="py-2">
-                {offer.status === 'OPEN' && (
-                  isOwn
-                    ? <button onClick={() => onCancel(offer)}
-                        className="px-2.5 py-1 text-xs bg-red-900/40 hover:bg-red-700/60 text-red-300 rounded transition-colors font-medium">
-                        Cancel
-                      </button>
-                    : <button onClick={() => onAccept(offer)}
-                        className="px-2.5 py-1 text-xs bg-cyan-600 hover:bg-cyan-500 text-white rounded transition-colors font-medium">
-                        Accept
-                      </button>
-                )}
-              </td>
-            </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-// ─── Password field ───────────────────────────────────────────────────────────
-
 function PasswordField({ value, onChange, disabled = false }: {
   value: string; onChange: (v: string) => void; disabled?: boolean;
 }) {
@@ -399,250 +218,6 @@ function PasswordField({ value, onChange, disabled = false }: {
         placeholder="Your wallet password"
         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none disabled:opacity-50"
       />
-    </div>
-  );
-}
-
-// ─── Create Offer Form ────────────────────────────────────────────────────────
-
-function CreateOfferForm({
-  base, quote, walletId, walletEvmAddress, walletAddress, walletXrpAddress, onCreated,
-}: {
-  base: ChainId; quote: ChainId;
-  walletId: string; walletEvmAddress: string; walletAddress: string; walletXrpAddress: string;
-  onCreated: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [baseAmount, setBaseAmount] = useState('');
-  const [quoteAmount, setQuoteAmount] = useState('');
-  const [makerAddress, setMakerAddress] = useState('');
-  const [locktimeHours, setLocktimeHours] = useState(48);
-  const [password, setPassword] = useState('');
-  const [status, setStatus] = useState<'idle' | 'signing' | 'submitting' | 'done' | 'error'>('idle');
-  const [errorMsg, setErrorMsg] = useState('');
-
-  // Balance & price state
-  const [balance, setBalance]         = useState<string | null>(null);
-  const [balanceLoading, setBalanceLoading] = useState(false);
-  const [basePrice, setBasePrice]     = useState<number | null>(null);
-  const [quotePrice, setQuotePrice]   = useState<number | null>(null);
-  // Track whether user manually edited the quote amount
-  const quoteEditedRef = useRef(false);
-
-  useEffect(() => {
-    if (quote === 'QBTC') setMakerAddress(walletAddress);
-    else if (['ETH', 'BNB', 'USDC'].includes(quote)) setMakerAddress(walletEvmAddress);
-    else if (quote === 'XRP') setMakerAddress(walletXrpAddress);
-    else setMakerAddress('');
-  }, [quote, walletAddress, walletEvmAddress, walletXrpAddress]);
-
-  // Reset quote-edited flag and re-fetch prices when pair changes
-  useEffect(() => {
-    quoteEditedRef.current = false;
-    setQuoteAmount('');
-    setBasePrice(null);
-    setQuotePrice(null);
-    if (!expanded) return;
-    fetchCoinPrice(base).then(setBasePrice);
-    fetchCoinPrice(quote).then(setQuotePrice);
-  }, [base, quote, expanded]);
-
-  // Fetch maker's balance of the base asset when form opens
-  useEffect(() => {
-    if (!expanded) return;
-    setBalance(null);
-    setBalanceLoading(true);
-    fetchChainBalance(base, walletEvmAddress, walletXrpAddress)
-      .then(b => setBalance(b))
-      .finally(() => setBalanceLoading(false));
-  }, [expanded, base, walletEvmAddress, walletXrpAddress]);
-
-  // Auto-populate quote amount from market rate (unless user manually typed)
-  useEffect(() => {
-    if (quoteEditedRef.current) return;
-    if (!basePrice || !quotePrice || !baseAmount) { setQuoteAmount(''); return; }
-    const qty = parseFloat(baseAmount);
-    if (isNaN(qty) || qty <= 0) { setQuoteAmount(''); return; }
-    setQuoteAmount((qty * basePrice / quotePrice).toFixed(6));
-  }, [baseAmount, basePrice, quotePrice]);
-
-  const balanceNum   = balance   ? parseFloat(balance)   : null;
-  const baseAmountNum = baseAmount ? parseFloat(baseAmount) : null;
-  const insufficientBalance = balanceNum !== null && baseAmountNum !== null && baseAmountNum > balanceNum;
-  const marketRate = basePrice && quotePrice ? basePrice / quotePrice : null;
-
-  const busy = status === 'signing' || status === 'submitting';
-
-  const submitOffer = async () => {
-    try {
-      setErrorMsg('');
-      if (!baseAmount || !quoteAmount || !makerAddress) { setErrorMsg('Fill in all fields'); return; }
-      if (insufficientBalance) { setErrorMsg(`Insufficient ${base} balance (have ${balance}, need ${baseAmount})`); return; }
-      if (!password.trim()) { setErrorMsg('Enter your wallet password'); return; }
-
-      setStatus('signing');
-      const { secret, secretHash } = await generateSecret();
-      const timestamp = Math.floor(Date.now() / 1000);
-      const makerLocktime = timestamp + locktimeHours * 3600;
-
-      const message = buildV2Message(
-        'CREATE_OFFER', base, quote,
-        walletEvmAddress.toLowerCase(), baseAmount, quoteAmount,
-        secretHash, makerLocktime, timestamp,
-      );
-      const signature = await signWithWallet(walletId, password, message);
-
-      setStatus('submitting');
-      await postV2Offer({
-        baseChain: base, quoteChain: quote,
-        baseAmount, quoteAmount, secretHash, makerLocktime,
-        makerChainAddress: makerAddress,
-        authEvmAddress: walletEvmAddress, signature, timestamp,
-      });
-
-      // Save secret silently to localStorage — no manual save needed
-      try {
-        const existing = JSON.parse(localStorage.getItem('v2_secrets') || '{}');
-        existing[secretHash] = { secret, createdAt: Date.now(), base, quote };
-        localStorage.setItem('v2_secrets', JSON.stringify(existing));
-      } catch { /* storage full — silently ignore */ }
-      setStatus('done');
-      setBaseAmount(''); setQuoteAmount(''); setPassword('');
-      quoteEditedRef.current = false;
-      onCreated();
-    } catch (e: unknown) {
-      setErrorMsg(e instanceof Error ? e.message : String(e));
-      setStatus('error');
-    }
-  };
-
-  return (
-    <div className="border border-slate-700 rounded-xl overflow-hidden">
-      <button
-        onClick={() => setExpanded(v => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-200 hover:bg-slate-800/50 transition-colors"
-      >
-        <span className="flex items-center gap-2">
-          <Plus size={16} className="text-cyan-400" />
-          Create Offer — Sell {CHAIN_SYMBOLS[base]} for {CHAIN_SYMBOLS[quote]}
-        </span>
-        {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-      </button>
-
-      {expanded && (
-        <div className="px-4 pb-4 space-y-4 bg-slate-800/20">
-          <div className="pt-3 text-xs text-slate-500 flex items-start gap-2 bg-slate-800/50 rounded-lg p-3 border border-slate-700">
-            <Info size={14} className="text-blue-400 mt-0.5 shrink-0" />
-            Signed with your wallet's EVM key — no external wallet needed. Secret generated locally; server never sees the preimage.
-          </div>
-
-          <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2">
-            <KeyRound size={12} className="text-cyan-400" />
-            <span className="font-mono">{truncate(walletEvmAddress, 10)}</span>
-            <span className="text-slate-600 ml-auto">EVM signing key</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs mb-1">
-                <span className="flex items-center justify-between">
-                  <span className="text-slate-400">Sell ({base})</span>
-                  {balanceLoading
-                    ? <span className="text-slate-600 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> checking…</span>
-                    : balance !== null
-                      ? <span className={insufficientBalance ? 'text-red-400 font-medium' : 'text-slate-500'}>
-                          Bal: {balance} {base}
-                        </span>
-                      : null}
-                </span>
-              </label>
-              <input type="number" min="0" step="any" placeholder="0.00" value={baseAmount}
-                onChange={e => setBaseAmount(e.target.value)}
-                className={`w-full bg-slate-900 border rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none ${insufficientBalance ? 'border-red-500/60 focus:border-red-500' : 'border-slate-700 focus:border-cyan-500'}`} />
-              {insufficientBalance && (
-                <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
-                  <AlertCircle size={11} /> Insufficient {base} balance
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="block text-xs mb-1">
-                <span className="flex items-center justify-between">
-                  <span className="text-slate-400">Receive ({quote})</span>
-                  {marketRate && !quoteEditedRef.current && (
-                    <span className="text-slate-600">at market rate</span>
-                  )}
-                </span>
-              </label>
-              <input type="number" min="0" step="any" placeholder="0.00" value={quoteAmount}
-                onChange={e => { quoteEditedRef.current = true; setQuoteAmount(e.target.value); }}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none" />
-              {marketRate && quoteEditedRef.current && (
-                <p className="text-xs text-slate-600 mt-1">
-                  Market: 1 {base} ≈ {marketRate.toFixed(6)} {quote}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {baseAmount && quoteAmount && (
-            <div className="text-xs text-slate-400 bg-slate-800/50 rounded-lg p-2 border border-slate-700 flex items-center justify-between">
-              <span>Rate: 1 {base} = {formatRate(baseAmount, quoteAmount)} {quote}</span>
-              {marketRate && (
-                <span className="text-slate-600 ml-3">
-                  Market: {marketRate.toFixed(6)} {quote}
-                  {(() => {
-                    const yourRate = parseFloat(formatRate(baseAmount, quoteAmount));
-                    const pct = ((yourRate - marketRate) / marketRate) * 100;
-                    if (isNaN(pct) || Math.abs(pct) < 0.01) return null;
-                    return <span className={pct > 0 ? 'text-emerald-400 ml-1' : 'text-amber-400 ml-1'}>({pct > 0 ? '+' : ''}{pct.toFixed(1)}%)</span>;
-                  })()}
-                </span>
-              )}
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Your {quote} receive address</label>
-            <input type="text" placeholder={`${quote} address`} value={makerAddress}
-              readOnly autoComplete="off"
-              className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 font-mono cursor-default select-all" />
-          </div>
-
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Locktime</label>
-            <div className="flex items-center gap-2">
-              <input type="range" min="12" max="168" step="12" value={locktimeHours}
-                onChange={e => setLocktimeHours(Number(e.target.value))} className="flex-1 accent-cyan-500" />
-              <span className="text-sm text-slate-300 w-16 text-right">{locktimeHours}h</span>
-            </div>
-          </div>
-
-          <PasswordField value={password} onChange={setPassword} disabled={busy} />
-
-          {errorMsg && (
-            <div className="flex items-start gap-2 text-xs text-red-300 bg-red-900/20 border border-red-800/40 rounded-lg p-3">
-              <AlertCircle size={14} className="shrink-0 mt-0.5" />{errorMsg}
-            </div>
-          )}
-
-          {status === 'done' && (
-            <div className="space-y-2 bg-emerald-900/20 border border-emerald-700/40 rounded-lg p-3">
-              <div className="flex items-center gap-2 text-sm text-emerald-300 font-medium">
-                <CheckCircle2 size={14} /> Offer created!
-              </div>
-              <p className="text-xs text-slate-400">Your secret has been saved securely on this device. You won't need to save it manually.</p>
-            </div>
-          )}
-
-          {status !== 'done' && (
-            <button onClick={submitOffer} disabled={busy || !password.trim() || insufficientBalance}
-              className="w-full py-2.5 rounded-lg font-medium text-sm bg-cyan-600 hover:bg-cyan-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
-              {busy ? <><Loader2 size={14} className="animate-spin" />{status === 'signing' ? 'Signing…' : 'Submitting…'}</> : 'Create Offer'}
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -667,7 +242,6 @@ function AcceptOfferModal({
 
   useEffect(() => {
     if (!offer) return;
-    // takerAddress = where taker RECEIVES the base asset
     if (offer.baseChain === 'XRP') setTakerAddress(walletXrpAddress || '');
     else if (offer.baseChain === 'QBTC') setTakerAddress(walletAddress);
     else if (['ETH', 'BNB', 'USDC'].includes(offer.baseChain)) setTakerAddress(walletEvmAddress);
@@ -785,37 +359,72 @@ function AcceptOfferModal({
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── Entry Screen ─────────────────────────────────────────────────────────────
 
-export default function MultiChainMarketTab({
-  walletId, userId: _userId, walletEvmAddress, walletAddress, walletPubKey: _walletPubKey, walletXrpAddress = '',
-}: MultiChainMarketTabProps) {
-  const [selectedPair, setSelectedPair] = useState<[ChainId, ChainId]>(['QBTC', 'USDC']);
-  const [offers, setOffers]             = useState<V2Offer[]>([]);
-  const [stats, setStats]               = useState<V2Stats | null>(null);
-  const [loadingOffers, setLoadingOffers] = useState(false);
+function EntryScreen({ onBuy, onSell }: { onBuy: () => void; onSell: () => void }) {
+  return (
+    <div className="space-y-4 py-2">
+      <div className="text-center space-y-1 mb-6">
+        <h2 className="text-lg font-bold text-white">Multi-Chain Marketplace</h2>
+        <p className="text-sm text-slate-400">Atomic swaps across QBTC, BTC, ETH, BNB, USDC and XRP</p>
+      </div>
+
+      <button
+        onClick={onBuy}
+        className="w-full flex flex-col items-center gap-2 py-6 px-5 rounded-2xl border-2 border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 hover:border-cyan-400/60 transition-all group"
+      >
+        <div className="flex items-center gap-3">
+          <ShoppingCart size={28} className="text-cyan-400 group-hover:scale-110 transition-transform" />
+          <span className="text-xl font-bold text-cyan-300">Buy</span>
+        </div>
+        <span className="text-sm text-slate-400 text-center">Browse all offers and accept one</span>
+      </button>
+
+      <button
+        onClick={onSell}
+        className="w-full flex flex-col items-center gap-2 py-6 px-5 rounded-2xl border-2 border-purple-500/40 bg-purple-500/10 hover:bg-purple-500/20 hover:border-purple-400/60 transition-all group"
+      >
+        <div className="flex items-center gap-3">
+          <Tag size={28} className="text-purple-400 group-hover:scale-110 transition-transform" />
+          <span className="text-xl font-bold text-purple-300">Sell</span>
+        </div>
+        <span className="text-sm text-slate-400 text-center">List your crypto for sale</span>
+      </button>
+    </div>
+  );
+}
+
+// ─── Buy View ────────────────────────────────────────────────────────────────
+
+type SortMode = 'amount_desc' | 'chain_asc';
+type ChainFilter = ChainId | 'All';
+
+function BuyView({
+  walletId, walletEvmAddress, walletAddress, walletXrpAddress, onBack,
+}: {
+  walletId: string; walletEvmAddress: string; walletAddress: string; walletXrpAddress: string;
+  onBack: () => void;
+}) {
+  const [allOffers, setAllOffers] = useState<V2Offer[]>([]);
+  const [loading, setLoading]       = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [filterSelling, setFilterSelling] = useState<ChainFilter>('All');
+  const [filterPayWith, setFilterPayWith] = useState<ChainFilter>('All');
+  const [sortMode, setSortMode]     = useState<SortMode>('amount_desc');
   const [acceptTarget, setAcceptTarget] = useState<V2Offer | null>(null);
-  const [lastRefresh, setLastRefresh]   = useState<Date | null>(null);
-
-  const [base, quote] = selectedPair;
 
   const loadOffers = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoadingOffers(true);
-      const [offersData, invertedData, statsData] = await Promise.all([
-        fetchV2Offers(base, quote),
-        fetchV2Offers(quote, base),
-        fetchV2Stats(base, quote),
-      ]);
-      setOffers([...offersData, ...invertedData]);
-      setStats(statsData);
+      const offers = await fetchV2AllOffers();
+      setAllOffers(offers);
       setLastRefresh(new Date());
     } catch {
-      setOffers([]);
+      setAllOffers([]);
     } finally {
-      setLoadingOffers(false);
+      setLoading(false);
     }
-  }, [base, quote]);
+  }, []);
 
   useEffect(() => {
     loadOffers();
@@ -823,63 +432,143 @@ export default function MultiChainMarketTab({
     return () => clearInterval(t);
   }, [loadOffers]);
 
-  return (
-    <div className="space-y-6">
-      <PairSelector selected={selectedPair} onChange={setSelectedPair} />
+  const filtered = allOffers
+    .filter(o => filterSelling === 'All' || o.baseChain === filterSelling)
+    .filter(o => filterPayWith === 'All' || o.quoteChain === filterPayWith)
+    .sort((a, b) => {
+      if (sortMode === 'amount_desc') return parseFloat(b.baseAmount) - parseFloat(a.baseAmount);
+      return a.baseChain.localeCompare(b.baseChain);
+    });
 
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <ChainBadge chain={base} />
-            <ArrowLeftRight size={14} className="text-slate-500" />
-            <ChainBadge chain={quote} />
-          </div>
-          <span className="text-sm font-semibold text-white">{base}/{quote}</span>
-        </div>
-        <div className="flex items-center gap-3">
+  const selectClass = 'bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:border-cyan-500 focus:outline-none';
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <button onClick={onBack} className="flex items-center gap-1 text-sm text-slate-400 hover:text-slate-200 transition-colors">
+          <ChevronLeft size={16} /> Back
+        </button>
+        <h2 className="text-base font-semibold text-white">Browse Offers</h2>
+        <div className="ml-auto flex items-center gap-2">
           {lastRefresh && (
-            <span className="text-xs text-slate-600 hidden sm:block">
-              <Clock size={10} className="inline mr-1" />
-              {lastRefresh.toLocaleTimeString()}
+            <span className="text-xs text-slate-600 hidden sm:flex items-center gap-1">
+              <Clock size={10} /> {lastRefresh.toLocaleTimeString()}
             </span>
           )}
-          <button onClick={loadOffers} disabled={loadingOffers}
+          <button onClick={loadOffers} disabled={loading}
             className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors disabled:opacity-50">
-            <RefreshCw size={13} className={loadingOffers ? 'animate-spin' : ''} /> Refresh
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
         </div>
       </div>
 
-      <StatsBar stats={stats} base={base} quote={quote} />
-
-      <div className="bg-slate-900/50 border border-slate-700 rounded-xl p-4">
-        <div className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-3">
-          Open Offers ({base}/{quote})
+      {/* Filters bar */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-slate-500">Selling</span>
+          <select value={filterSelling} onChange={e => setFilterSelling(e.target.value as ChainFilter)} className={selectClass}>
+            <option value="All">All</option>
+            {ALL_CHAINS.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
         </div>
-        <OrderBook offers={offers} base={base} quote={quote} loading={loadingOffers}
-          onAccept={setAcceptTarget}
-          onCancel={offer => {
-            // TODO: wire up cancel endpoint once server-side cancel is implemented
-            alert(`To cancel offer ${offer.id.slice(0,8)}…, contact support or wait for it to expire.`);
-          }}
-          walletEvmAddress={walletEvmAddress}
-        />
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-slate-500">Pay with</span>
+          <select value={filterPayWith} onChange={e => setFilterPayWith(e.target.value as ChainFilter)} className={selectClass}>
+            <option value="All">All</option>
+            {ALL_CHAINS.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <button
+          onClick={() => setSortMode(m => m === 'amount_desc' ? 'chain_asc' : 'amount_desc')}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 text-xs text-slate-300 hover:border-slate-500 transition-colors"
+        >
+          <ArrowUpDown size={12} />
+          {sortMode === 'amount_desc' ? 'Amount ↓' : 'Chain A→Z'}
+        </button>
+        <span className="text-xs text-slate-600 ml-auto">{filtered.length} offer{filtered.length !== 1 ? 's' : ''}</span>
       </div>
 
-      <CreateOfferForm
-        base={base} quote={quote}
-        walletId={walletId} walletEvmAddress={walletEvmAddress} walletAddress={walletAddress}
-        walletXrpAddress={walletXrpAddress}
-        onCreated={loadOffers}
-      />
+      {/* Offers table */}
+      <div className="bg-slate-900/50 border border-slate-700 rounded-xl overflow-hidden">
+        {loading && allOffers.length === 0 ? (
+          <div className="flex items-center justify-center py-12 text-slate-500">
+            <Loader2 size={18} className="animate-spin mr-2" /> Loading offers…
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-slate-500 space-y-2">
+            <ArrowLeftRight size={32} className="opacity-30" />
+            <p className="text-sm">No open offers found</p>
+            <p className="text-xs text-slate-600">Try adjusting your filters</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-slate-500 uppercase tracking-wider border-b border-slate-800">
+                  <th className="text-left px-4 py-2.5">Selling</th>
+                  <th className="text-left px-4 py-2.5">Wants</th>
+                  <th className="text-left px-4 py-2.5">Rate</th>
+                  <th className="text-left px-4 py-2.5">Age</th>
+                  <th className="px-4 py-2.5" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {filtered.map(offer => {
+                  const isOwn = offer.authEvmAddress.toLowerCase() === walletEvmAddress.toLowerCase();
+                  return (
+                    <tr key={offer.id} className={`hover:bg-slate-800/30 transition-colors ${isOwn ? 'opacity-80' : ''}`}>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <ChainBadge chain={offer.baseChain} />
+                          <span className="font-mono font-medium text-white text-xs">
+                            {parseFloat(offer.baseAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <ChainBadge chain={offer.quoteChain} />
+                          <span className="font-mono text-cyan-300 text-xs">
+                            {parseFloat(offer.quoteAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-slate-400 text-xs">
+                        {formatRate(offer.baseAmount, offer.quoteAmount)} {CHAIN_SYMBOLS[offer.quoteChain]}
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-500 text-xs">{formatAge(offer.createdAt)}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        {isOwn ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-slate-700 text-slate-400 border border-slate-600">
+                            Your listing
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => setAcceptTarget(offer)}
+                            className="px-3 py-1 text-xs bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors font-medium"
+                          >
+                            Accept
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
+      {/* How it works */}
       <div className="bg-slate-800/30 border border-slate-700/50 rounded-xl p-4 text-xs text-slate-500 space-y-1">
         <p className="font-medium text-slate-400 mb-2 flex items-center gap-1.5">
           <Info size={13} /> How multi-chain atomic swaps work
         </p>
-        <p>1. <strong className="text-slate-300">Maker</strong> creates an offer with a secret hash — signs with wallet key.</p>
-        <p>2. <strong className="text-slate-300">Taker</strong> accepts and locks {quote} with the same hash.</p>
-        <p>3. Maker reveals preimage to claim {quote}. Taker uses the revealed preimage to claim {base}.</p>
+        <p>1. <strong className="text-slate-300">Maker</strong> creates an offer with a secret hash — signed with wallet key.</p>
+        <p>2. <strong className="text-slate-300">Taker</strong> accepts and locks quote-chain funds with the same hash.</p>
+        <p>3. Maker reveals preimage to claim quote funds. Taker uses the revealed preimage to claim base funds.</p>
         <p>4. Timelocks ensure full refunds if either party abandons the swap.</p>
       </div>
 
@@ -894,4 +583,411 @@ export default function MultiChainMarketTab({
       )}
     </div>
   );
+}
+
+// ─── Sell View ────────────────────────────────────────────────────────────────
+
+function SellView({
+  walletId, walletEvmAddress, walletAddress, walletXrpAddress, onBack,
+}: {
+  walletId: string; walletEvmAddress: string; walletAddress: string; walletXrpAddress: string;
+  onBack: () => void;
+}) {
+  // Chain selectors
+  const [base, setBase]   = useState<ChainId>('XRP');
+  const [quote, setQuote] = useState<ChainId>('ETH');
+
+  // Form state
+  const [baseAmount, setBaseAmount]   = useState('');
+  const [quoteAmount, setQuoteAmount] = useState('');
+  const [makerAddress, setMakerAddress] = useState('');
+  const [locktimeHours, setLocktimeHours] = useState(48);
+  const [password, setPassword]       = useState('');
+  const [submitStatus, setSubmitStatus] = useState<'idle' | 'signing' | 'submitting' | 'done' | 'error'>('idle');
+  const [errorMsg, setErrorMsg]       = useState('');
+
+  // Balance & price state
+  const [balance, setBalance]         = useState<string | null>(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [basePrice, setBasePrice]     = useState<number | null>(null);
+  const [quotePrice, setQuotePrice]   = useState<number | null>(null);
+  const quoteEditedRef = useRef(false);
+
+  // Active listings state
+  const [myListings, setMyListings]   = useState<V2Offer[]>([]);
+  const [listingsLoading, setListingsLoading] = useState(false);
+
+  // Auto-fill receive address based on quote chain
+  useEffect(() => {
+    if (['ETH', 'BNB', 'USDC'].includes(quote)) setMakerAddress(walletEvmAddress);
+    else if (quote === 'XRP') setMakerAddress(walletXrpAddress || '');
+    else if (quote === 'QBTC') setMakerAddress(walletAddress);
+    else setMakerAddress('');
+  }, [quote, walletAddress, walletEvmAddress, walletXrpAddress]);
+
+  // When base changes, ensure quote is different
+  useEffect(() => {
+    if (quote === base) {
+      const alt = ALL_CHAINS.find(c => c !== base);
+      if (alt) setQuote(alt);
+    }
+  }, [base, quote]);
+
+  // Fetch prices when pair changes
+  useEffect(() => {
+    quoteEditedRef.current = false;
+    setQuoteAmount('');
+    setBasePrice(null);
+    setQuotePrice(null);
+    fetchCoinPrice(base).then(setBasePrice);
+    fetchCoinPrice(quote).then(setQuotePrice);
+  }, [base, quote]);
+
+  // Fetch balance when base changes
+  useEffect(() => {
+    setBalance(null);
+    setBalanceLoading(true);
+    fetchChainBalance(base, walletEvmAddress, walletXrpAddress)
+      .then(b => setBalance(b))
+      .finally(() => setBalanceLoading(false));
+  }, [base, walletEvmAddress, walletXrpAddress]);
+
+  // Auto-populate quote amount from market rate
+  useEffect(() => {
+    if (quoteEditedRef.current) return;
+    if (!basePrice || !quotePrice || !baseAmount) { setQuoteAmount(''); return; }
+    const qty = parseFloat(baseAmount);
+    if (isNaN(qty) || qty <= 0) { setQuoteAmount(''); return; }
+    setQuoteAmount((qty * basePrice / quotePrice).toFixed(6));
+  }, [baseAmount, basePrice, quotePrice]);
+
+  // Load my listings
+  const loadMyListings = useCallback(async () => {
+    setListingsLoading(true);
+    try {
+      const all = await fetchV2AllOffers();
+      setMyListings(all.filter(o => o.authEvmAddress.toLowerCase() === walletEvmAddress.toLowerCase() && o.status === 'OPEN'));
+    } catch {
+      setMyListings([]);
+    } finally {
+      setListingsLoading(false);
+    }
+  }, [walletEvmAddress]);
+
+  useEffect(() => { loadMyListings(); }, [loadMyListings]);
+
+  const balanceNum   = balance   ? parseFloat(balance)   : null;
+  const baseAmountNum = baseAmount ? parseFloat(baseAmount) : null;
+  const insufficientBalance = balanceNum !== null && baseAmountNum !== null && baseAmountNum > balanceNum;
+  const marketRate = basePrice && quotePrice ? basePrice / quotePrice : null;
+  const busy = submitStatus === 'signing' || submitStatus === 'submitting';
+
+  const handleBaseChange = (c: ChainId) => {
+    setBase(c);
+    if (quote === c) {
+      const alt = ALL_CHAINS.find(ch => ch !== c);
+      if (alt) setQuote(alt);
+    }
+  };
+
+  const handleQuoteChange = (c: ChainId) => {
+    if (c === base) return;
+    setQuote(c);
+  };
+
+  const submitOffer = async () => {
+    try {
+      setErrorMsg('');
+      if (!baseAmount || !quoteAmount || !makerAddress) { setErrorMsg('Fill in all fields'); return; }
+      if (insufficientBalance) { setErrorMsg(`Insufficient ${base} balance (have ${balance}, need ${baseAmount})`); return; }
+      if (!password.trim()) { setErrorMsg('Enter your wallet password'); return; }
+
+      setSubmitStatus('signing');
+      const { secret, secretHash } = await generateSecret();
+      const timestamp = Math.floor(Date.now() / 1000);
+      const makerLocktime = timestamp + locktimeHours * 3600;
+
+      const message = buildV2Message(
+        'CREATE_OFFER', base, quote,
+        walletEvmAddress.toLowerCase(), baseAmount, quoteAmount,
+        secretHash, makerLocktime, timestamp,
+      );
+      const signature = await signWithWallet(walletId, password, message);
+
+      setSubmitStatus('submitting');
+      await postV2Offer({
+        baseChain: base, quoteChain: quote,
+        baseAmount, quoteAmount, secretHash, makerLocktime,
+        makerChainAddress: makerAddress,
+        authEvmAddress: walletEvmAddress, signature, timestamp,
+      });
+
+      try {
+        const existing = JSON.parse(localStorage.getItem('v2_secrets') || '{}');
+        existing[secretHash] = { secret, createdAt: Date.now(), base, quote };
+        localStorage.setItem('v2_secrets', JSON.stringify(existing));
+      } catch { /* storage full */ }
+
+      setSubmitStatus('done');
+      setBaseAmount(''); setQuoteAmount(''); setPassword('');
+      quoteEditedRef.current = false;
+      loadMyListings();
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+      setSubmitStatus('error');
+    }
+  };
+
+  const chainBtnClass = (active: boolean, disabled: boolean) =>
+    `px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+      disabled ? 'border-slate-800 bg-slate-900 text-slate-700 cursor-not-allowed' :
+      active
+        ? 'border-cyan-500 bg-cyan-500/15 text-white'
+        : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-500 hover:text-slate-200'
+    }`;
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <button onClick={onBack} className="flex items-center gap-1 text-sm text-slate-400 hover:text-slate-200 transition-colors">
+          <ChevronLeft size={16} /> Back
+        </button>
+        <h2 className="text-base font-semibold text-white">Create Listing</h2>
+      </div>
+
+      {/* Create listing form */}
+      <div className="bg-slate-900/50 border border-slate-700 rounded-xl p-4 space-y-4">
+        <div className="text-xs text-slate-500 flex items-start gap-2 bg-slate-800/50 rounded-lg p-3 border border-slate-700">
+          <Info size={14} className="text-blue-400 mt-0.5 shrink-0" />
+          Signed with your wallet's EVM key — no external wallet needed. Secret generated locally; server never sees the preimage.
+        </div>
+
+        <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-800/50 border border-slate-700 rounded-lg px-3 py-2">
+          <KeyRound size={12} className="text-cyan-400" />
+          <span className="font-mono">{truncate(walletEvmAddress, 10)}</span>
+          <span className="text-slate-600 ml-auto">EVM signing key</span>
+        </div>
+
+        {/* Chain pickers */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <div className="text-xs text-slate-400 font-medium">You're selling</div>
+            <div className="flex flex-wrap gap-1">
+              {ALL_CHAINS.map(c => (
+                <button key={c} onClick={() => handleBaseChange(c)}
+                  className={chainBtnClass(base === c, false)}>
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <div className="text-xs text-slate-400 font-medium">You want to receive</div>
+            <div className="flex flex-wrap gap-1">
+              {ALL_CHAINS.map(c => (
+                <button key={c} onClick={() => handleQuoteChange(c)}
+                  disabled={c === base}
+                  className={chainBtnClass(quote === c, c === base)}>
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Amounts */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs mb-1">
+              <span className="flex items-center justify-between">
+                <span className="text-slate-400">Amount to sell ({base})</span>
+                {balanceLoading
+                  ? <span className="text-slate-600 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> checking…</span>
+                  : balance !== null
+                    ? <span className={insufficientBalance ? 'text-red-400 font-medium' : 'text-slate-500'}>
+                        Bal: {balance} {base}
+                      </span>
+                    : null}
+              </span>
+            </label>
+            <input type="number" min="0" step="any" placeholder="0.00" value={baseAmount}
+              onChange={e => setBaseAmount(e.target.value)}
+              className={`w-full bg-slate-900 border rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none ${insufficientBalance ? 'border-red-500/60 focus:border-red-500' : 'border-slate-700 focus:border-cyan-500'}`} />
+            {insufficientBalance && (
+              <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
+                <AlertCircle size={11} /> Insufficient {base} balance
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="block text-xs mb-1">
+              <span className="flex items-center justify-between">
+                <span className="text-slate-400">Amount to receive ({quote})</span>
+                {marketRate && !quoteEditedRef.current && (
+                  <span className="text-slate-600">at market rate</span>
+                )}
+              </span>
+            </label>
+            <input type="number" min="0" step="any" placeholder="0.00" value={quoteAmount}
+              onChange={e => { quoteEditedRef.current = true; setQuoteAmount(e.target.value); }}
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none" />
+            {marketRate && (
+              <p className="text-xs text-slate-600 mt-1">
+                1 {base} ≈ {marketRate.toFixed(6)} {quote}
+                {marketRate && quoteEditedRef.current && quoteAmount && baseAmount && (() => {
+                  const yourRate = parseFloat(quoteAmount) / parseFloat(baseAmount);
+                  const pct = ((yourRate - marketRate) / marketRate) * 100;
+                  if (isNaN(pct) || Math.abs(pct) < 0.01) return null;
+                  return <span className={pct > 0 ? 'text-emerald-400 ml-1' : 'text-amber-400 ml-1'}>({pct > 0 ? '+' : ''}{pct.toFixed(1)}%)</span>;
+                })()}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Receive address */}
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Your {quote} receive address</label>
+          <input type="text" placeholder={`${quote} address`} value={makerAddress}
+            readOnly autoComplete="off"
+            className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 font-mono cursor-default select-all" />
+        </div>
+
+        {/* Locktime */}
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Locktime</label>
+          <div className="flex items-center gap-2">
+            <input type="range" min="12" max="168" step="12" value={locktimeHours}
+              onChange={e => setLocktimeHours(Number(e.target.value))} className="flex-1 accent-cyan-500" />
+            <span className="text-sm text-slate-300 w-16 text-right">{locktimeHours}h</span>
+          </div>
+        </div>
+
+        <PasswordField value={password} onChange={setPassword} disabled={busy} />
+
+        {errorMsg && (
+          <div className="flex items-start gap-2 text-xs text-red-300 bg-red-900/20 border border-red-800/40 rounded-lg p-3">
+            <AlertCircle size={14} className="shrink-0 mt-0.5" />{errorMsg}
+          </div>
+        )}
+
+        {submitStatus === 'done' && (
+          <div className="space-y-2 bg-emerald-900/20 border border-emerald-700/40 rounded-lg p-3">
+            <div className="flex items-center gap-2 text-sm text-emerald-300 font-medium">
+              <CheckCircle2 size={14} /> Listing created!
+            </div>
+            <p className="text-xs text-slate-400">Your secret has been saved securely on this device.</p>
+          </div>
+        )}
+
+        {submitStatus !== 'done' && (
+          <button onClick={submitOffer} disabled={busy || !password.trim() || insufficientBalance}
+            className="w-full py-2.5 rounded-lg font-medium text-sm bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
+            {busy
+              ? <><Loader2 size={14} className="animate-spin" />{submitStatus === 'signing' ? 'Signing…' : 'Submitting…'}</>
+              : 'Create Listing'}
+          </button>
+        )}
+      </div>
+
+      {/* Your active listings */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-300">Your Active Listings</h3>
+          <button onClick={loadMyListings} disabled={listingsLoading}
+            className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300 transition-colors disabled:opacity-50">
+            <RefreshCw size={11} className={listingsLoading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+
+        {listingsLoading && myListings.length === 0 ? (
+          <div className="flex items-center justify-center py-6 text-slate-600 text-sm">
+            <Loader2 size={14} className="animate-spin mr-2" /> Loading…
+          </div>
+        ) : myListings.length === 0 ? (
+          <div className="text-center py-6 text-slate-600 text-sm">No active listings</div>
+        ) : (
+          <div className="bg-slate-900/50 border border-slate-700 rounded-xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-slate-500 uppercase tracking-wider border-b border-slate-800">
+                    <th className="text-left px-4 py-2.5">Selling</th>
+                    <th className="text-left px-4 py-2.5">Wants</th>
+                    <th className="text-left px-4 py-2.5">Rate</th>
+                    <th className="text-left px-4 py-2.5">Created</th>
+                    <th className="px-4 py-2.5" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {myListings.map(offer => (
+                    <tr key={offer.id} className="hover:bg-slate-800/30 transition-colors">
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <ChainBadge chain={offer.baseChain} />
+                          <span className="font-mono font-medium text-white text-xs">
+                            {parseFloat(offer.baseAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <ChainBadge chain={offer.quoteChain} />
+                          <span className="font-mono text-cyan-300 text-xs">
+                            {parseFloat(offer.quoteAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-slate-400 text-xs">
+                        {formatRate(offer.baseAmount, offer.quoteAmount)} {CHAIN_SYMBOLS[offer.quoteChain]}
+                      </td>
+                      <td className="px-4 py-2.5 text-slate-500 text-xs">{formatAge(offer.createdAt)}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <span className="text-xs text-slate-600 italic">Contact support to cancel</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+export default function MultiChainMarketTab({
+  walletId, userId: _userId, walletEvmAddress, walletAddress, walletPubKey: _walletPubKey, walletXrpAddress = '',
+}: MultiChainMarketTabProps) {
+  const [view, setView] = useState<'entry' | 'buy' | 'sell'>('entry');
+
+  if (view === 'buy') {
+    return (
+      <BuyView
+        walletId={walletId}
+        walletEvmAddress={walletEvmAddress}
+        walletAddress={walletAddress}
+        walletXrpAddress={walletXrpAddress}
+        onBack={() => setView('entry')}
+      />
+    );
+  }
+
+  if (view === 'sell') {
+    return (
+      <SellView
+        walletId={walletId}
+        walletEvmAddress={walletEvmAddress}
+        walletAddress={walletAddress}
+        walletXrpAddress={walletXrpAddress}
+        onBack={() => setView('entry')}
+      />
+    );
+  }
+
+  return <EntryScreen onBuy={() => setView('buy')} onSell={() => setView('sell')} />;
 }

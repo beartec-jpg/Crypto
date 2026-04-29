@@ -42,6 +42,7 @@
     { "source": "/api/swap/v2/offers", "destination": "http://204.168.175.194:3099/api/swap/v2/offers" },
     { "source": "/api/swap/v2/stats", "destination": "http://204.168.175.194:3099/api/swap/v2/stats" },
     { "source": "/api/swap/v2/pairs", "destination": "http://204.168.175.194:3099/api/swap/v2/pairs" },
+    { "source": "/api/swap/v2/offers/all", "destination": "http://204.168.175.194:3099/api/swap/v2/offers/all" },
     { "source": "/api/swap/v2/:swapId", "destination": "http://204.168.175.194:3099/api/swap/v2/:swapId" },
     { "source": "/api/swap/cancel/:offerId", "destination": "http://204.168.175.194:3099/api/swap/cancel/:offerId" },
     { "source": "/api/swap/accept/:offerId", "destination": "http://204.168.175.194:3099/api/swap/accept/:offerId" },
