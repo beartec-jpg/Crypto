@@ -45,6 +45,7 @@ interface MultiChainMarketTabProps {
   walletAddress: string;
   walletPubKey: string;
   walletBtcPubKey?: string;  // compressed BTC pubkey hex — passed as takerPubKeyHex when accepting BTC offers
+  walletBtcAddress?: string; // BTC address (testnet) for balance display
   walletXrpAddress?: string;
 }
 
@@ -135,12 +136,14 @@ async function fetchChainBalance(
   chain: ChainId,
   evmAddress: string,
   xrpAddress: string,
+  qbtcAddress?: string,
+  btcAddress?: string,
 ): Promise<string | null> {
   try {
-    if (chain === 'ETH' || chain === 'BNB') {
-      const rpcUrl = chain === 'ETH'
-        ? (import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com')
-        : (import.meta.env.VITE_BNB_RPC_URL || 'https://bsc-testnet.publicnode.com');
+    if (chain === 'ETH' || chain === 'BNB' || chain === 'USDC') {
+      const rpcUrl = chain === 'BNB'
+        ? (import.meta.env.VITE_BNB_RPC_URL || 'https://bsc-testnet.publicnode.com')
+        : (import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com');
       const provider = new ethers.JsonRpcProvider(rpcUrl);
       const bal = await provider.getBalance(evmAddress);
       return parseFloat(ethers.formatEther(bal)).toFixed(6);
@@ -157,6 +160,28 @@ async function fetchChainBalance(
       const drops = data?.result?.account_data?.Balance;
       if (!drops) return null;
       return (Number(drops) / 1_000_000).toFixed(6);
+    }
+    if (chain === 'QBTC' && qbtcAddress) {
+      const rpcProxy = import.meta.env.VITE_QBTC_RPC_URL || '/api/qbtc/rpc';
+      const res = await fetch(rpcProxy, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'scantxoutset', params: ['start', [{ desc: `addr(${qbtcAddress})` }]] }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const data = await res.json() as { result?: { total_amount?: number } };
+      const amt = data?.result?.total_amount;
+      if (amt == null) return null;
+      return parseFloat(amt.toFixed(8)).toString();
+    }
+    if (chain === 'BTC' && btcAddress) {
+      const esplora = import.meta.env.VITE_BTC_ESPLORA_URL || 'https://blockstream.info/testnet';
+      const res = await fetch(`${esplora}/api/address/${btcAddress}`, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) return null;
+      const data = await res.json() as { chain_stats?: { funded_txo_sum?: number; spent_txo_sum?: number }; mempool_stats?: { funded_txo_sum?: number; spent_txo_sum?: number } };
+      const confirmed = (data.chain_stats?.funded_txo_sum ?? 0) - (data.chain_stats?.spent_txo_sum ?? 0);
+      const unconfirmed = (data.mempool_stats?.funded_txo_sum ?? 0) - (data.mempool_stats?.spent_txo_sum ?? 0);
+      return ((confirmed + unconfirmed) / 1e8).toFixed(8);
     }
   } catch { /* network failure — caller handles null */ }
   return null;
@@ -599,9 +624,10 @@ function BuyView({
 // ─── Sell View ────────────────────────────────────────────────────────────────
 
 function SellView({
-  walletId, walletEvmAddress, walletAddress, walletXrpAddress, onBack,
+  walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletBtcAddress, onBack,
 }: {
   walletId: string; walletEvmAddress: string; walletAddress: string; walletXrpAddress: string;
+  walletBtcAddress?: string;
   onBack: () => void;
 }) {
   // Chain selectors
@@ -660,10 +686,10 @@ function SellView({
   useEffect(() => {
     setBalance(null);
     setBalanceLoading(true);
-    fetchChainBalance(base, walletEvmAddress, walletXrpAddress)
+    fetchChainBalance(base, walletEvmAddress, walletXrpAddress, walletAddress, walletBtcAddress)
       .then(b => setBalance(b))
       .finally(() => setBalanceLoading(false));
-  }, [base, walletEvmAddress, walletXrpAddress]);
+  }, [base, walletEvmAddress, walletXrpAddress, walletAddress, walletBtcAddress]);
 
   // Auto-populate quote amount from market rate
   useEffect(() => {
@@ -999,7 +1025,7 @@ function SellView({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function MultiChainMarketTab({
-  walletId, userId: _userId, walletEvmAddress, walletAddress, walletPubKey: _walletPubKey, walletXrpAddress = '', walletBtcPubKey = '',
+  walletId, userId: _userId, walletEvmAddress, walletAddress, walletPubKey: _walletPubKey, walletXrpAddress = '', walletBtcPubKey = '', walletBtcAddress = '',
 }: MultiChainMarketTabProps) {
   const [view, setView] = useState<'entry' | 'buy' | 'sell'>('entry');
 
@@ -1023,6 +1049,7 @@ export default function MultiChainMarketTab({
         walletEvmAddress={walletEvmAddress}
         walletAddress={walletAddress}
         walletXrpAddress={walletXrpAddress}
+        walletBtcAddress={walletBtcAddress}
         onBack={() => setView('entry')}
       />
     );

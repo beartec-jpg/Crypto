@@ -138,6 +138,7 @@ interface MarketplaceTabProps {
   walletEvmAddress: string; // EVM/Ethereum address
   walletXrpAddress?: string; // XRP testnet address
   walletBtcPubKey?: string;  // Compressed BTC pubkey (33-byte hex) for BTC HTLC swaps
+  walletBtcAddress?: string; // BTC address for balance display
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -2029,6 +2030,7 @@ export default function MarketplaceTab({
   walletEvmAddress,
   walletXrpAddress = '',
   walletBtcPubKey = '',
+  walletBtcAddress = '',
 }: MarketplaceTabProps) {
   const [offers, setOffers] = useState<SwapOffer[]>([]);
   const [buyOffers, setBuyOffers] = useState<SwapOffer[]>([]);
@@ -2847,6 +2849,7 @@ export default function MarketplaceTab({
           walletAddress={walletAddress}
           walletPubKey={walletPubKey}
           walletBtcPubKey={walletBtcPubKey}
+          walletBtcAddress={walletBtcAddress}
           walletXrpAddress={walletXrpAddress}
         />
       )}
