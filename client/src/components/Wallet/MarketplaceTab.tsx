@@ -1054,8 +1054,10 @@ function V2SwapActions({
     (isMaker && swap.status === 'SIDE_B_LOCKED' && swap.quoteChain === 'ETH') ||
     (isTaker && swap.status === 'COMPLETE' && swap.baseChain === 'ETH' && !!swap.secret && !ethAlreadyClaimed);
   // canClaimXrp: XRP/ETH taker claims XRP (COMPLETE + secret) OR ETH/XRP maker claims XRP (SIDE_B_LOCKED)
+  //              Also: XRP/ETH maker claims XRP (COMPLETE + secret) when taker locked XRP for maker
   const canClaimXrp =
     (isTaker && swap.status === 'COMPLETE' && swap.baseChain === 'XRP' && !!swap.secret && !xrpAlreadyClaimed) ||
+    (isMaker && swap.status === 'COMPLETE' && swap.baseChain === 'XRP' && !!swap.secret && !xrpAlreadyClaimed) ||
     (isMaker && swap.status === 'SIDE_B_LOCKED' && swap.quoteChain === 'XRP');
   // canClaimBtc: X/BTC maker claims BTC (SIDE_B_LOCKED + secret in localStorage)
   //              BTC/X taker claims BTC (COMPLETE + secret revealed)
