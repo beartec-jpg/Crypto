@@ -1031,6 +1031,10 @@ function V2SwapActions({
   const [btcAlreadyClaimed, setBtcAlreadyClaimed] = useState(
     () => !!localStorage.getItem(btcClaimedKey)
   );
+  const bnbClaimedKey = `v2_bnb_claimed_${swap.publicId}`;
+  const [bnbAlreadyClaimed, setBnbAlreadyClaimed] = useState(
+    () => !!localStorage.getItem(bnbClaimedKey)
+  );
 
   const isTestnet = (import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet';
   const isMaker = swap.authEvmAddressA?.toLowerCase() === walletEvmAddress.toLowerCase();
@@ -1049,6 +1053,10 @@ function V2SwapActions({
   const canLockBtc =
     (isMaker && swap.status === 'PENDING_SIDE_A' && swap.baseChain === 'BTC') ||
     (isTaker && swap.status === 'SIDE_A_LOCKED'  && swap.quoteChain === 'BTC');
+  // canLockBnb: taker locking BNB (XRP/BNB) OR maker locking BNB (BNB/XRP)
+  const canLockBnb =
+    (isTaker && swap.status === 'SIDE_A_LOCKED'  && swap.quoteChain === 'BNB') ||
+    (isMaker && swap.status === 'PENDING_SIDE_A' && swap.baseChain === 'BNB');
 
   // Claim conditions
   // canClaimEth: XRP/ETH maker claims ETH (SIDE_B_LOCKED) OR ETH/XRP taker claims ETH (COMPLETE + secret revealed)
@@ -1065,6 +1073,10 @@ function V2SwapActions({
   const canClaimBtc =
     (isMaker && swap.status === 'SIDE_B_LOCKED' && swap.quoteChain === 'BTC') ||
     (isTaker && swap.status === 'COMPLETE' && swap.baseChain === 'BTC' && !!swap.secret && !btcAlreadyClaimed);
+  // canClaimBnb: XRP/BNB maker claims BNB (SIDE_B_LOCKED) OR BNB/XRP taker claims BNB (COMPLETE + secret)
+  const canClaimBnb =
+    (isMaker && swap.status === 'SIDE_B_LOCKED' && swap.quoteChain === 'BNB') ||
+    (isTaker && swap.status === 'COMPLETE' && swap.baseChain === 'BNB' && !!swap.secret && !bnbAlreadyClaimed);
 
   // For XRP locking: if maker locking (XRP/ETH) counterparty = taker's XRP address (sideBChainAddress)
   //                  if taker locking (ETH/XRP) counterparty = maker's XRP address (sideAChainAddress)
@@ -1395,6 +1407,109 @@ function V2SwapActions({
     }
   };
 
+  const handleLockBnb = async () => {
+    try {
+      setErrorMsg('');
+      setActionStatus('busy');
+      if (!password.trim()) throw new Error('Password required');
+
+      const takerIsLocking = isTaker && swap.quoteChain === 'BNB';
+      const lockAmount    = takerIsLocking ? swap.sideBAmount    : swap.sideAAmount;
+      const locktimeUnix  = takerIsLocking ? Number(swap.sideBLocktime) : Number(swap.sideALocktime);
+      const counterpartyEth = takerIsLocking ? swap.sideAChainAddress : swap.sideBChainAddress;
+      const timelockSecs  = locktimeUnix - Math.floor(Date.now() / 1000);
+      if (timelockSecs <= 60) throw new Error('Locktime has expired or is too close to expiry');
+
+      const unlockedWallet = await unlockWallet(walletId, password);
+      const ethPrivKey = unlockedWallet.privateKeys.ethereum;
+      const rpcUrl = import.meta.env.VITE_BNB_RPC_URL || (isTestnet ? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545' : 'https://bsc-dataseed.bnbchain.org');
+      const chainId = Number(import.meta.env.VITE_BNB_CHAIN_ID || (isTestnet ? 97 : 56));
+      const provider = new ethers.JsonRpcProvider(rpcUrl, chainId);
+      const bnbSigner = new ethers.Wallet('0x' + ethPrivKey, provider);
+
+      const adapterCfg = getEvmAdapterConfig('BNB');
+      const evmAdapter = new EvmAdapter(adapterCfg);
+      const { lockId } = await evmAdapter.lockFunds({
+        signerKey: bnbSigner,
+        amount: lockAmount,
+        secretHash: swap.secretHash,
+        timelockSecs,
+        counterpartyAddress: counterpartyEth!,
+      });
+
+      const ts = Math.floor(Date.now() / 1000);
+      if (takerIsLocking) {
+        const msg = buildV2Message('LOCK_SIDE_B', swap.baseChain as ChainId, swap.quoteChain as ChainId, swap.publicId, lockId, ts);
+        const sig = await bnbSigner.signMessage(msg);
+        await postV2LockSideB({ swapId: swap.publicId, lockId, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+      } else {
+        const msg = buildV2Message('LOCK_SIDE_A', swap.baseChain as ChainId, swap.quoteChain as ChainId, swap.publicId, lockId, ts);
+        const sig = await bnbSigner.signMessage(msg);
+        await postV2LockSideA({ swapId: swap.publicId, lockId, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+      }
+
+      setActionStatus('done');
+      setPassword('');
+      onRefresh();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/insufficient.funds|INSUFFICIENT_FUNDS/i.test(msg)) {
+        setErrorMsg('Insufficient BSC testnet BNB. Get test BNB at: https://www.bnbchain.org/en/testnet-faucet');
+      } else {
+        setErrorMsg(msg);
+      }
+      setActionStatus('error');
+    }
+  };
+
+  const handleClaimBnb = async () => {
+    try {
+      setErrorMsg('');
+      setActionStatus('busy');
+      if (!password.trim()) throw new Error('Password required');
+
+      const unlockedWallet = await unlockWallet(walletId, password);
+      const ethPrivKey = unlockedWallet.privateKeys.ethereum;
+      const rpcUrl = import.meta.env.VITE_BNB_RPC_URL || (isTestnet ? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545' : 'https://bsc-dataseed.bnbchain.org');
+      const chainId = Number(import.meta.env.VITE_BNB_CHAIN_ID || (isTestnet ? 97 : 56));
+      const provider = new ethers.JsonRpcProvider(rpcUrl, chainId);
+      const bnbSigner = new ethers.Wallet('0x' + ethPrivKey, provider);
+      const adapterCfg = getEvmAdapterConfig('BNB');
+      const evmAdapter = new EvmAdapter(adapterCfg);
+
+      const makerClaimingBnb = isMaker && swap.quoteChain === 'BNB';
+      const bnbLockId = makerClaimingBnb ? swap.sideBLockId! : swap.sideALockId!;
+
+      if (makerClaimingBnb) {
+        const secrets = JSON.parse(localStorage.getItem('v2_secrets') || '{}');
+        const secretEntry = secrets[swap.secretHash];
+        if (!secretEntry) throw new Error('Secret not found — was this offer created on this device?');
+        const secret: string = typeof secretEntry === 'string' ? secretEntry : secretEntry.secret;
+        const claimTxHash = await evmAdapter.claimFunds({ signerKey: bnbSigner, lockId: bnbLockId, secret });
+        try {
+          const ts = Math.floor(Date.now() / 1000);
+          const msg = `QBTC_SWAP_V2:CLAIM_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${claimTxHash}:${ts}`;
+          const sig = await bnbSigner.signMessage(msg);
+          await postV2ClaimSideB({ swapId: swap.publicId, secret, claimTxHash, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+        } catch {
+          // Non-fatal: EvmMonitor will detect the withdrawal and set COMPLETE
+        }
+      } else {
+        if (!swap.secret) throw new Error('Secret not yet available — maker must claim XRP first');
+        await evmAdapter.claimFunds({ signerKey: bnbSigner, lockId: bnbLockId, secret: swap.secret });
+        localStorage.setItem(bnbClaimedKey, '1');
+        setBnbAlreadyClaimed(true);
+      }
+
+      setActionStatus('done');
+      setPassword('');
+      onRefresh();
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+      setActionStatus('error');
+    }
+  };
+
   const handleLockBtc = async () => {
     try {
       setErrorMsg('');
@@ -1558,7 +1673,7 @@ function V2SwapActions({
     (isTaker && swap.status === 'SIDE_B_LOCKED') ? 'Waiting for maker to claim first — they reveal the secret which unlocks your claim…' :
     (isMaker && swap.status === 'SIDE_B_LOCKED') ? 'Waiting for counterparty to claim…' : 'Waiting…';
 
-  const hasAction = canLockXrp || canLockEth || canLockBtc || canClaimEth || canClaimXrp || canClaimBtc;
+  const hasAction = canLockXrp || canLockEth || canLockBtc || canLockBnb || canClaimEth || canClaimXrp || canClaimBtc || canClaimBnb;
 
   if (!hasAction) {
     return (
@@ -1674,9 +1789,31 @@ function V2SwapActions({
             : <><CheckCircle2 size={14} /> Claim {(isMaker && swap.quoteChain === 'BTC') ? swap.sideBAmount : swap.sideAAmount} BTC</>}
         </button>
       )}
+      {canLockBnb && (
+        <button
+          onClick={handleLockBnb}
+          disabled={actionStatus === 'busy' || !password.trim()}
+          className="w-full py-2 rounded-lg text-sm font-medium bg-yellow-600 hover:bg-yellow-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+        >
+          {actionStatus === 'busy'
+            ? <><Loader2 size={14} className="animate-spin" /> Locking BNB…</>
+            : <><Lock size={14} /> Lock {(isMaker && swap.baseChain === 'BNB') ? swap.sideAAmount : swap.sideBAmount} BNB</>}
+        </button>
+      )}
+      {canClaimBnb && (
+        <button
+          onClick={handleClaimBnb}
+          disabled={actionStatus === 'busy' || !password.trim()}
+          className="w-full py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+        >
+          {actionStatus === 'busy'
+            ? <><Loader2 size={14} className="animate-spin" /> Claiming BNB…</>
+            : <><CheckCircle2 size={14} /> Claim {(isMaker && swap.quoteChain === 'BNB') ? swap.sideBAmount : swap.sideAAmount} BNB</>}
+        </button>
+      )}
       {actionStatus === 'done' && (
         <p className="text-xs text-emerald-400 flex items-center gap-1">
-          <CheckCircle2 size={12} /> {(canClaimEth || canClaimXrp || canClaimBtc) ? 'Claimed!' : 'Locked on-chain!'}
+          <CheckCircle2 size={12} /> {(canClaimEth || canClaimXrp || canClaimBtc || canClaimBnb) ? 'Claimed!' : 'Locked on-chain!'}
           <Loader2 size={10} className="animate-spin ml-1" /> Waiting for confirmation…
         </p>
       )}
