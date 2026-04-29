@@ -370,6 +370,7 @@ async function _verifyXrpLock(
 // ─── Express app ────────────────────────────────────────────────────────────
 
 const app = express();
+app.set('trust proxy', 1); // Trust Vercel/proxy X-Forwarded-For so express-rate-limit works correctly
 
 const corsOrigins = (process.env.CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 if (corsOrigins.length === 0) {

@@ -36,7 +36,7 @@ import { authenticateWithPasskey, isPasskeyAuthenticated } from '@/lib/passkeySe
 import PinEntryModal from './PinEntryModal';
 import { ethers } from 'ethers';
 import MultiChainMarketTab from '@/components/MultiChainMarketTab';
-import { fetchV2SwapsByAddress, buildV2Message, postV2LockSideA, postV2LockSideB, postV2ClaimSideB, type V2Swap, type ChainId } from '@/lib/swapV2Api';
+import { fetchV2SwapsByAddress, buildV2Message, postV2LockSideA, postV2LockSideB, postV2ClaimSideB, cancelV2Swap, type V2Swap, type ChainId } from '@/lib/swapV2Api';
 import { XrplAdapter, encodeConditionFromHash } from '@/lib/adapters/XrplAdapter';
 import { EvmAdapter, getEvmAdapterConfig } from '@/lib/adapters/EvmAdapter';
 import { getXRPSeed, getXRPTestnetSeed } from '@/lib/walletService';
@@ -992,6 +992,8 @@ function V2SwapActions({
   const [xrpAddrInput, setXrpAddrInput] = useState('');
   const [actionStatus, setActionStatus] = useState<'idle' | 'busy' | 'done' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
+  const [cancellingSwap, setCancellingSwap] = useState(false);
+  const [cancelSwapError, setCancelSwapError] = useState('');
   const [xrpNotFunded, setXrpNotFunded] = useState(false);
   const [faucetStatus, setFaucetStatus] = useState<'idle' | 'busy' | 'done' | 'error'>('idle');
   const prevSwapStatus = useRef(swap.status);
@@ -1091,6 +1093,37 @@ function V2SwapActions({
     } catch (e: unknown) {
       setFaucetStatus('error');
       setErrorMsg(`Faucet failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  const handleCancelSwap = async () => {
+    try {
+      setCancelSwapError('');
+      setCancellingSwap(true);
+      if (!password.trim()) throw new Error('Password required to sign cancellation');
+      const unlockedWallet = await unlockWallet(walletId, password);
+      const ethPrivKey = unlockedWallet.privateKeys.ethereum;
+      const rpcUrl = import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
+      const chainId = Number(import.meta.env.VITE_ETH_CHAIN_ID || 11155111);
+      const provider = new ethers.JsonRpcProvider(rpcUrl, chainId);
+      const ethSigner = new ethers.Wallet('0x' + ethPrivKey, provider);
+      const timestamp = Math.floor(Date.now() / 1000);
+      const msg = `QBTC_SWAP_V2:CANCEL_SWAP:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${walletEvmAddress.toLowerCase()}:${timestamp}`;
+      const sig = await ethSigner.signMessage(msg);
+      const res = await fetch(`${import.meta.env.VITE_SWAP_API_URL || 'https://swap.beartec.uk'}/api/swap/v2/swap/${swap.publicId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ authEvmAddress: walletEvmAddress, signature: sig, timestamp }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
+      }
+      onRefresh();
+    } catch (e: unknown) {
+      setCancelSwapError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCancellingSwap(false);
     }
   };
 
@@ -1646,6 +1679,20 @@ function V2SwapActions({
           <CheckCircle2 size={12} /> {(canClaimEth || canClaimXrp || canClaimBtc) ? 'Claimed!' : 'Locked on-chain!'}
           <Loader2 size={10} className="animate-spin ml-1" /> Waiting for confirmation…
         </p>
+      )}
+      {isMaker && swap.status === 'PENDING_SIDE_A' && (
+        <div className="pt-1 border-t border-slate-700/40">
+          {cancelSwapError && <p className="text-xs text-red-300 mb-1">{cancelSwapError}</p>}
+          <button
+            onClick={handleCancelSwap}
+            disabled={cancellingSwap || !password.trim()}
+            className="w-full py-1.5 rounded-lg text-xs font-medium bg-red-900/40 hover:bg-red-800/60 border border-red-700/40 text-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1.5"
+          >
+            {cancellingSwap
+              ? <><Loader2 size={11} className="animate-spin" /> Cancelling…</>
+              : 'Cancel Swap'}
+          </button>
+        </div>
       )}
     </div>
   );

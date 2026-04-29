@@ -122,6 +122,7 @@ export interface RecordLockParams {
 export type V2Action =
   | 'CREATE_OFFER'
   | 'CANCEL_OFFER'
+  | 'CANCEL_SWAP'
   | 'ACCEPT_OFFER'
   | 'LOCK_SIDE_A'
   | 'LOCK_SIDE_B'
@@ -158,6 +159,15 @@ export function buildV2Message(
   quoteChain: ChainId,
   swapId: string,
   lockId: string,
+  timestamp: number,
+): string;
+
+export function buildV2Message(
+  action: 'CANCEL_OFFER' | 'CANCEL_SWAP',
+  baseChain: ChainId,
+  quoteChain: ChainId,
+  id: string,
+  authEvmAddress: string,
   timestamp: number,
 ): string;
 
@@ -253,6 +263,26 @@ export async function cancelV2Offer(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ authEvmAddress: offer.authEvmAddress, signature, timestamp }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
+  }
+}
+
+export async function cancelV2Swap(
+  swap: V2Swap,
+  walletId: string,
+  password: string,
+  signFn: (walletId: string, password: string, message: string) => Promise<string>,
+): Promise<void> {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const message = `QBTC_SWAP_V2:CANCEL_SWAP:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${swap.authEvmAddressA.toLowerCase()}:${timestamp}`;
+  const signature = await signFn(walletId, password, message);
+  const res = await fetch(`${SWAP_API}/api/swap/v2/swap/${swap.publicId}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ authEvmAddress: swap.authEvmAddressA, signature, timestamp }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
