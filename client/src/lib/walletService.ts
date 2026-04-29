@@ -89,6 +89,7 @@ interface UnlockedWallet extends Wallet {
   privateKeys: {
     ethereum: string;
     bitcoin: string;
+    bitcoinTestnet: string;
     bsc: string;
     xrp: string;
     xrpTestnet: string;
@@ -947,6 +948,7 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     const privateKeys: UnlockedWallet['privateKeys'] = {
       ethereum: '',
       bitcoin: '',
+      bitcoinTestnet: '',
       bsc: '',
       xrp: '',
       xrpTestnet: '',
@@ -961,6 +963,7 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     const btcNode = derivePath(root, DERIVATION_PATHS.bitcoin);
     privateKeys.bitcoin = btcNode.privateKey ? Buffer.from(btcNode.privateKey).toString('hex') : '';
     const btcTestnetNode = derivePath(root, DERIVATION_PATHS.bitcoinTestnet);
+    privateKeys.bitcoinTestnet = btcTestnetNode.privateKey ? Buffer.from(btcTestnetNode.privateKey).toString('hex') : '';
 
     privateKeys.bsc = privateKeys.ethereum;
 

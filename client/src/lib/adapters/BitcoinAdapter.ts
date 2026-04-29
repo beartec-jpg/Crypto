@@ -230,9 +230,12 @@ async function buildBtcRefundTx(
 }
 
 /**
- * Build a simple P2WPKH → P2WSH funding transaction.
- * Spends all provided UTXOs (assumed to belong to a single P2WPKH address),
- * sends `amountSats` to the HTLC P2WSH address, and returns change.
+ * Build a funding transaction that spends UTXOs from a P2PKH or P2WPKH address
+ * to an HTLC P2WSH address, with change back to the source address.
+ *
+ * Detects input type from `refundAddress`:
+ *   - P2PKH  (m/n/1 prefix) → legacy scriptSig signing
+ *   - P2WPKH (tb1q/bc1q)   → segwit witness signing
  */
 async function buildBtcFundingTx(
   utxos: BitcoinUtxo[],
@@ -241,16 +244,21 @@ async function buildBtcFundingTx(
   amountSats: number,
   network: bitcoin.networks.Network,
   feeRate: number,
+  refundAddress: string,
 ): Promise<string> {
   const pubKeyBytes = Buffer.from(signerKey.publicKeyHex, 'hex');
   const privKeyBytes = Buffer.from(signerKey.privateKeyHex, 'hex');
+
+  // Detect input address type from prefix
+  const isLegacyP2PKH = /^[mn1]/.test(refundAddress);
+  const p2pkh = bitcoin.payments.p2pkh({ pubkey: pubKeyBytes, network });
   const p2wpkh = bitcoin.payments.p2wpkh({ pubkey: pubKeyBytes, network });
-  const inputScript = p2wpkh.output!;
 
   const totalInputSats = utxos.reduce((s, u) => s + toSats(u.amount), 0);
 
-  // vbyte estimate: base(10) + P2WPKH inputs(~68 each) + 2 outputs(31 each)
-  const vSize = 10 + utxos.length * 68 + 62;
+  // vbyte estimate (P2PKH inputs are ~148 bytes each non-segwit; P2WPKH ~68 vbytes)
+  const inputVBytes = isLegacyP2PKH ? utxos.length * 148 : utxos.length * 68;
+  const vSize = 10 + inputVBytes + 62;
   const fee = Math.max(DUST_THRESHOLD, Math.ceil(vSize * feeRate));
   const changeAmount = totalInputSats - amountSats - fee;
 
@@ -264,30 +272,41 @@ async function buildBtcFundingTx(
   tx.version = 2;
 
   for (const utxo of utxos) {
-    // nSequence = 0xfffffffe to allow locktime but not RBF
     tx.addInput(Buffer.from(utxo.txid, 'hex').reverse(), utxo.vout, 0xfffffffe);
   }
 
   // Output 0: HTLC P2WSH
   tx.addOutput(bitcoin.address.toOutputScript(htlcAddress, network), amountSats);
 
-  // Output 1: Change back to P2WPKH (locker's address) — only if above dust
+  // Output 1: Change back to sender's address — only if above dust
+  const changeScript = isLegacyP2PKH ? p2pkh.output! : p2wpkh.output!;
   if (changeAmount > DUST_THRESHOLD) {
-    tx.addOutput(p2wpkh.output!, changeAmount);
+    tx.addOutput(changeScript, changeAmount);
   }
 
-  // Sign each P2WPKH input
+  // Sign each input
   for (const [idx, utxo] of utxos.entries()) {
-    const value = toSats(utxo.amount);
-    const digest = tx.hashForWitnessV0(idx, inputScript, value, bitcoin.Transaction.SIGHASH_ALL);
-
-    const sigObj = ecc.sign(digest, privKeyBytes);
-    const derSig = Buffer.concat([
-      Buffer.from(secp256k1.Signature.fromCompact(Buffer.from(sigObj).toString('hex')).toDERRawBytes()),
-      Buffer.from([bitcoin.Transaction.SIGHASH_ALL]),
-    ]);
-
-    tx.setWitness(idx, [derSig, pubKeyBytes]);
+    if (isLegacyP2PKH) {
+      // Legacy P2PKH: sign with hashForSignature, put sig+pubkey in scriptSig
+      const digest = tx.hashForSignature(idx, p2pkh.output!, bitcoin.Transaction.SIGHASH_ALL);
+      const sigObj = ecc.sign(digest, privKeyBytes);
+      const derSig = Buffer.concat([
+        Buffer.from(secp256k1.Signature.fromCompact(Buffer.from(sigObj).toString('hex')).toDERRawBytes()),
+        Buffer.from([bitcoin.Transaction.SIGHASH_ALL]),
+      ]);
+      tx.ins[idx].script = bitcoin.script.compile([derSig, pubKeyBytes]);
+      // No witness for legacy inputs
+    } else {
+      // Segwit P2WPKH: sign with hashForWitnessV0, put sig+pubkey in witness
+      const value = toSats(utxo.amount);
+      const digest = tx.hashForWitnessV0(idx, p2wpkh.output!, value, bitcoin.Transaction.SIGHASH_ALL);
+      const sigObj = ecc.sign(digest, privKeyBytes);
+      const derSig = Buffer.concat([
+        Buffer.from(secp256k1.Signature.fromCompact(Buffer.from(sigObj).toString('hex')).toDERRawBytes()),
+        Buffer.from([bitcoin.Transaction.SIGHASH_ALL]),
+      ]);
+      tx.setWitness(idx, [derSig, pubKeyBytes]);
+    }
   }
 
   return tx.toHex();
@@ -440,7 +459,7 @@ export class BitcoinAdapter implements IChainAdapter {
     }
 
     const rawHex = await buildBtcFundingTx(
-      utxos, key, htlcAddress, amountSats, this.btcNetwork, this.feeRate,
+      utxos, key, htlcAddress, amountSats, this.btcNetwork, this.feeRate, params.refundAddress,
     );
 
     const txid = await broadcastBtc(rawHex, this.esploraUrl);

@@ -1678,7 +1678,9 @@ function V2SwapActions({
       const esploraUrl = isTestnet ? 'https://blockstream.info/testnet' : 'https://blockstream.info';
 
       const unlockedWallet = await unlockWallet(walletId, password);
-      const btcPrivKeyHex = unlockedWallet.privateKeys.bitcoin;
+      const btcPrivKeyHex = isTestnet
+        ? (unlockedWallet.privateKeys.bitcoinTestnet || unlockedWallet.privateKeys.bitcoin)
+        : unlockedWallet.privateKeys.bitcoin;
       if (!btcPrivKeyHex) throw new Error('BTC private key not found in wallet');
 
       // Derive our compressed pubkey
@@ -1755,7 +1757,9 @@ function V2SwapActions({
       const esploraUrl = isTestnet ? 'https://blockstream.info/testnet' : 'https://blockstream.info';
 
       const unlockedWallet = await unlockWallet(walletId, password);
-      const btcPrivKeyHex = unlockedWallet.privateKeys.bitcoin;
+      const btcPrivKeyHex = isTestnet
+        ? (unlockedWallet.privateKeys.bitcoinTestnet || unlockedWallet.privateKeys.bitcoin)
+        : unlockedWallet.privateKeys.bitcoin;
       if (!btcPrivKeyHex) throw new Error('BTC private key not found in wallet');
 
       const { secp256k1 } = await import('@noble/curves/secp256k1');
