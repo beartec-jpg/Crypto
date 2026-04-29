@@ -1877,7 +1877,19 @@ function V2SwapActions({
         placeholder="Wallet password"
         className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none"
       />
-      {errorMsg && <p className="text-xs text-red-300">{errorMsg}</p>}
+      {errorMsg && (
+        /not confirmed|not yet confirmed|unconfirmed|waiting.*confirm|needs.*confirmation|transaction not confirmed/i.test(errorMsg)
+          ? (
+            <div className="rounded-lg border border-amber-700/40 bg-amber-900/20 p-2.5 flex items-start gap-2">
+              <Loader2 size={13} className="animate-spin text-amber-400 mt-0.5 shrink-0" />
+              <div className="space-y-0.5">
+                <p className="text-xs text-amber-300 font-medium">Waiting for Bitcoin confirmation</p>
+                <p className="text-xs text-amber-400/80">Your transaction is in the mempool. Bitcoin testnet blocks take ~10 minutes. Click Lock again once it confirms.</p>
+              </div>
+            </div>
+          )
+          : <p className="text-xs text-red-300">{errorMsg}</p>
+      )}
       {xrpNotFunded && isTestnet && walletXrpAddress && (
         <div className="rounded-lg border border-amber-700/40 bg-amber-900/20 p-2.5 space-y-1.5">
           <p className="text-xs text-amber-300 font-mono break-all">Your XRP address: {walletXrpAddress}</p>
