@@ -1035,6 +1035,10 @@ function V2SwapActions({
   const [bnbAlreadyClaimed, setBnbAlreadyClaimed] = useState(
     () => !!localStorage.getItem(bnbClaimedKey)
   );
+  const qbtcClaimedKey = `v2_qbtc_claimed_${swap.publicId}`;
+  const [qbtcAlreadyClaimed, setQbtcAlreadyClaimed] = useState(
+    () => !!localStorage.getItem(qbtcClaimedKey)
+  );
 
   const isTestnet = (import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet';
   const isMaker = swap.authEvmAddressA?.toLowerCase() === walletEvmAddress.toLowerCase();
@@ -1077,6 +1081,14 @@ function V2SwapActions({
   const canClaimBnb =
     (isMaker && swap.status === 'SIDE_B_LOCKED' && swap.quoteChain === 'BNB') ||
     (isTaker && swap.status === 'COMPLETE' && swap.baseChain === 'BNB' && !!swap.secret && !bnbAlreadyClaimed);
+  // canLockQbtc: maker locking QBTC (QBTC/X) OR taker locking QBTC (X/QBTC)
+  const canLockQbtc =
+    (isMaker && swap.status === 'PENDING_SIDE_A' && swap.baseChain === 'QBTC') ||
+    (isTaker && swap.status === 'SIDE_A_LOCKED'  && swap.quoteChain === 'QBTC');
+  // canClaimQbtc: X/QBTC maker claims QBTC (SIDE_B_LOCKED) OR QBTC/X taker claims QBTC (COMPLETE + secret)
+  const canClaimQbtc =
+    (isMaker && swap.status === 'SIDE_B_LOCKED' && swap.quoteChain === 'QBTC') ||
+    (isTaker && swap.status === 'COMPLETE' && swap.baseChain === 'QBTC' && !!swap.secret && !qbtcAlreadyClaimed);
 
   // For XRP locking: if maker locking (XRP/ETH) counterparty = taker's XRP address (sideBChainAddress)
   //                  if taker locking (ETH/XRP) counterparty = maker's XRP address (sideAChainAddress)
@@ -1510,6 +1522,151 @@ function V2SwapActions({
     }
   };
 
+  const handleLockQbtc = async () => {
+    try {
+      setErrorMsg('');
+      setActionStatus('busy');
+      if (!password.trim()) throw new Error('Password required');
+
+      const qbtcNetwork: 'testnet' | 'mainnet' = isTestnet ? 'testnet' : 'mainnet';
+      const rpcProxyUrl = import.meta.env.VITE_QBTC_RPC_URL || '/api/qbtc/rpc';
+
+      const unlockedWallet = await unlockWallet(walletId, password);
+      const qbtcAddress = isTestnet
+        ? unlockedWallet.addresses.qbtc
+        : unlockedWallet.addresses.qbtcMainnet;
+      if (!qbtcAddress) throw new Error('QBTC address not found in wallet');
+
+      const makerIsLocking = isMaker && swap.baseChain === 'QBTC';
+      const lockAmount = makerIsLocking ? swap.sideAAmount : swap.sideBAmount;
+      const locktimeUnix = makerIsLocking
+        ? Number(swap.sideALocktime ?? 0)
+        : Number(swap.sideBLocktime ?? 0);
+      const timelockSecs = locktimeUnix - Math.floor(Date.now() / 1000);
+      if (timelockSecs <= 60) throw new Error('Locktime has expired or is too close to expiry');
+
+      const keyPair = await QBTCKeyPair.fromMnemonic(unlockedWallet.mnemonic);
+
+      const { BitcoinAdapter } = await import('@/lib/adapters/BitcoinAdapter');
+      const qbtcAdapter = new BitcoinAdapter({ chain: 'QBTC', network: qbtcNetwork, rpcProxyUrl });
+
+      const result = await qbtcAdapter.lockFunds({
+        signerKey: keyPair,
+        amount: lockAmount,
+        secretHash: swap.secretHash,
+        timelockSecs,
+        counterpartyAddress: qbtcAddress,
+        refundAddress: qbtcAddress,
+      });
+
+      if (result.htlcScriptHex) {
+        localStorage.setItem(`v2_qbtc_script_${swap.publicId}`, result.htlcScriptHex);
+      }
+
+      const ethPrivKey = unlockedWallet.privateKeys.ethereum;
+      const rpcUrl = import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
+      const chainId = Number(import.meta.env.VITE_ETH_CHAIN_ID || 11155111);
+      const provider = new ethers.JsonRpcProvider(rpcUrl, chainId);
+      const ethSigner = new ethers.Wallet('0x' + ethPrivKey, provider);
+      const ts = Math.floor(Date.now() / 1000);
+
+      if (makerIsLocking) {
+        const msg = `QBTC_SWAP_V2:LOCK_SIDE_A:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockAddress}:${ts}`;
+        const sig = await ethSigner.signMessage(msg);
+        await postV2LockSideA({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+      } else {
+        const msg = `QBTC_SWAP_V2:LOCK_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockAddress}:${ts}`;
+        const sig = await ethSigner.signMessage(msg);
+        await postV2LockSideB({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+      }
+
+      setActionStatus('done');
+      setPassword('');
+      onRefresh();
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+      setActionStatus('error');
+    }
+  };
+
+  const handleClaimQbtc = async () => {
+    try {
+      setErrorMsg('');
+      setActionStatus('busy');
+      if (!password.trim()) throw new Error('Password required');
+
+      const qbtcNetwork: 'testnet' | 'mainnet' = isTestnet ? 'testnet' : 'mainnet';
+      const rpcProxyUrl = import.meta.env.VITE_QBTC_RPC_URL || '/api/qbtc/rpc';
+
+      const unlockedWallet = await unlockWallet(walletId, password);
+      const qbtcAddress = isTestnet
+        ? unlockedWallet.addresses.qbtc
+        : unlockedWallet.addresses.qbtcMainnet;
+      if (!qbtcAddress) throw new Error('QBTC address not found in wallet');
+
+      const makerClaimingQbtc = isMaker && swap.quoteChain === 'QBTC';
+      const lockId = makerClaimingQbtc ? swap.sideBLockId! : swap.sideALockId!;
+      const lockAddress = makerClaimingQbtc ? swap.sideBLockAddress! : swap.sideALockAddress!;
+      if (!lockId || !lockAddress) throw new Error('QBTC lock ID not found');
+
+      const htlcScriptHex = localStorage.getItem(`v2_qbtc_script_${swap.publicId}`) ?? undefined;
+      if (!htlcScriptHex) throw new Error('QBTC HTLC script not found — QBTC must have been locked on this device');
+
+      let secret: string;
+      if (makerClaimingQbtc) {
+        const secrets = JSON.parse(localStorage.getItem('v2_secrets') || '{}');
+        const entry = secrets[swap.secretHash];
+        if (!entry) throw new Error('Secret not found — was this offer created on this device?');
+        secret = typeof entry === 'string' ? entry : entry.secret;
+      } else {
+        if (!swap.secret) throw new Error('Secret not yet available — maker must claim first');
+        secret = swap.secret;
+      }
+
+      // Fetch UTXOs at HTLC address via QBTC node
+      const qbtcChain = new QBTCChain({ network: qbtcNetwork, rpcUrl: rpcProxyUrl });
+      const qbtcUtxos = await qbtcChain.scanUTXOs(lockAddress);
+      if (!qbtcUtxos.length) throw new Error(`No UTXOs found at QBTC HTLC address ${lockAddress}`);
+
+      const { BitcoinAdapter } = await import('@/lib/adapters/BitcoinAdapter');
+      const qbtcAdapter = new BitcoinAdapter({ chain: 'QBTC', network: qbtcNetwork, rpcProxyUrl });
+
+      await qbtcAdapter.claimFunds({
+        signerKey: null,
+        lockId,
+        secret,
+        outputAddress: qbtcAddress,
+        utxos: qbtcUtxos.map(u => ({ txid: u.txid, vout: u.vout, amount: u.amount })),
+        htlcScriptHex,
+      });
+
+      if (makerClaimingQbtc) {
+        try {
+          const ethPrivKey = unlockedWallet.privateKeys.ethereum;
+          const rpcUrl = import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
+          const chainId = Number(import.meta.env.VITE_ETH_CHAIN_ID || 11155111);
+          const provider = new ethers.JsonRpcProvider(rpcUrl, chainId);
+          const ethSigner = new ethers.Wallet('0x' + ethPrivKey, provider);
+          const ts = Math.floor(Date.now() / 1000);
+          const msg = `QBTC_SWAP_V2:CLAIM_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${lockId}:${ts}`;
+          const sig = await ethSigner.signMessage(msg);
+          await postV2ClaimSideB({ swapId: swap.publicId, secret, claimTxHash: lockId, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+        } catch {
+          // Non-fatal: BitcoinMonitor will detect the on-chain claim
+        }
+      }
+
+      localStorage.setItem(qbtcClaimedKey, '1');
+      setQbtcAlreadyClaimed(true);
+      setActionStatus('done');
+      setPassword('');
+      onRefresh();
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+      setActionStatus('error');
+    }
+  };
+
   const handleLockBtc = async () => {
     try {
       setErrorMsg('');
@@ -1625,14 +1782,19 @@ function V2SwapActions({
       const outputAddress = unlockedWallet.addresses?.bitcoin;
       if (!outputAddress) throw new Error('BTC address not in wallet');
 
-      const { BitcoinAdapter } = await import('@/lib/adapters/BitcoinAdapter');
+      const { BitcoinAdapter, getUtxosBtc } = await import('@/lib/adapters/BitcoinAdapter');
       const btcAdapter = new BitcoinAdapter({ chain: 'BTC', network: btcNetwork, esploraUrl });
+
+      // Fetch UTXOs at the HTLC address before claiming
+      const utxos = await getUtxosBtc(lockAddress, esploraUrl);
+      if (!utxos.length) throw new Error(`No UTXOs found at BTC HTLC address ${lockAddress}`);
 
       await btcAdapter.claimFunds({
         signerKey: { privateKeyHex: btcPrivKeyHex, publicKeyHex: myBtcPubKeyHex },
         lockId,
         secret,
         outputAddress,
+        utxos,
         htlcScriptHex,
       });
 
@@ -1673,7 +1835,7 @@ function V2SwapActions({
     (isTaker && swap.status === 'SIDE_B_LOCKED') ? 'Waiting for maker to claim first — they reveal the secret which unlocks your claim…' :
     (isMaker && swap.status === 'SIDE_B_LOCKED') ? 'Waiting for counterparty to claim…' : 'Waiting…';
 
-  const hasAction = canLockXrp || canLockEth || canLockBtc || canLockBnb || canClaimEth || canClaimXrp || canClaimBtc || canClaimBnb;
+  const hasAction = canLockXrp || canLockEth || canLockBtc || canLockBnb || canLockQbtc || canClaimEth || canClaimXrp || canClaimBtc || canClaimBnb || canClaimQbtc;
 
   if (!hasAction) {
     return (
@@ -1811,9 +1973,31 @@ function V2SwapActions({
             : <><CheckCircle2 size={14} /> Claim {(isMaker && swap.quoteChain === 'BNB') ? swap.sideBAmount : swap.sideAAmount} BNB</>}
         </button>
       )}
+      {canLockQbtc && (
+        <button
+          onClick={handleLockQbtc}
+          disabled={actionStatus === 'busy' || !password.trim()}
+          className="w-full py-2 rounded-lg text-sm font-medium bg-cyan-700 hover:bg-cyan-600 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+        >
+          {actionStatus === 'busy'
+            ? <><Loader2 size={14} className="animate-spin" /> Locking QBTC…</>
+            : <><Lock size={14} /> Lock {(isMaker && swap.baseChain === 'QBTC') ? swap.sideAAmount : swap.sideBAmount} QBTC</>}
+        </button>
+      )}
+      {canClaimQbtc && (
+        <button
+          onClick={handleClaimQbtc}
+          disabled={actionStatus === 'busy' || !password.trim()}
+          className="w-full py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+        >
+          {actionStatus === 'busy'
+            ? <><Loader2 size={14} className="animate-spin" /> Claiming QBTC…</>
+            : <><CheckCircle2 size={14} /> Claim {(isMaker && swap.quoteChain === 'QBTC') ? swap.sideBAmount : swap.sideAAmount} QBTC</>}
+        </button>
+      )}
       {actionStatus === 'done' && (
         <p className="text-xs text-emerald-400 flex items-center gap-1">
-          <CheckCircle2 size={12} /> {(canClaimEth || canClaimXrp || canClaimBtc || canClaimBnb) ? 'Claimed!' : 'Locked on-chain!'}
+          <CheckCircle2 size={12} /> {(canClaimEth || canClaimXrp || canClaimBtc || canClaimBnb || canClaimQbtc) ? 'Claimed!' : 'Locked on-chain!'}
           <Loader2 size={10} className="animate-spin ml-1" /> Waiting for confirmation…
         </p>
       )}

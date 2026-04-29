@@ -400,7 +400,12 @@ export class BitcoinAdapter implements IChainAdapter {
     const chain = new QBTCChain({ network: this.qbtcNetwork, rpcUrl: this.rpcProxyUrl });
     const txid = await chain.sendTransaction(params.refundAddress, htlcAddress, parseFloat(params.amount));
 
-    return { lockId: txid, lockAddress: htlcAddress, vout: 0 };
+    return {
+      lockId: txid,
+      lockAddress: htlcAddress,
+      vout: 0,
+      htlcScriptHex: htlcScript.toString('hex'),
+    };
   }
 
   private async _lockBtc(params: LockParams): Promise<LockResult> {
@@ -462,12 +467,12 @@ export class BitcoinAdapter implements IChainAdapter {
     const htlcScript = Buffer.from(params.htlcScriptHex, 'hex');
 
     if (this.chain === 'QBTC') {
-      const keyPair = params.signerKey as QBTCKeyPair;
+      // Hash-only HTLC mode: anyone with the secret can claim; no signer needed
       const rawHex = await createHTLCClaimTransaction(
         htlcScript,
         params.utxos.map((u) => ({ ...u, scriptPubKey: undefined })),
         params.secret,
-        keyPair,
+        null,
         params.outputAddress,
         this.qbtcNetwork,
         this.feeRate,
