@@ -49,13 +49,19 @@ export interface LockParams {
   signerKey: unknown;
   /** Address on this chain that receives funds if the HTLC is refunded (i.e. the locker) */
   refundAddress: string;
+  /**
+   * Counterparty's compressed secp256k1 pubkey (33-byte hex).
+   * Required for BTC/QBTC HTLCs — used as the claimer pubkey in the HTLC script.
+   * Not needed for EVM (uses address) or XRP (uses Condition).
+   */
+  counterpartyPubKeyHex?: string;
 }
 
 export interface LockResult {
   /**
    * Canonical lock identifier:
    *   EVM   — bytes32 contractId hex string ("0x…")
-   *   BTC/QBTC — P2WSH funding txid
+   *   BTC/QBTC — "txid:vout" string
    *   XRP   — "account:offerSequence" string
    */
   lockId: string;
@@ -63,6 +69,8 @@ export interface LockResult {
   lockAddress?: string;
   /** Output index in the funding tx — Bitcoin/QBTC only */
   vout?: number;
+  /** Hex-encoded HTLC redeem script — Bitcoin/QBTC only. Store this to enable claiming later. */
+  htlcScriptHex?: string;
 }
 
 // ─── Claim params ─────────────────────────────────────────────────────────────

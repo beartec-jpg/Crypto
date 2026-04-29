@@ -90,13 +90,25 @@ export class BitcoinMonitor extends BaseMonitor implements IChainMonitor {
   // ── BaseMonitor.pollSwaps ───────────────────────────────────────────────────
 
   protected async pollSwaps(): Promise<void> {
+    // Watch two cases:
+    //   1. base_chain = $1 (e.g. BTC/ETH): swap is SIDE_A_LOCKED while waiting for taker to
+    //      lock quote; once both locked, the MAKER claims the quote asset (handled by
+    //      EvmMonitor/XrplMonitor).  We also keep legacy QBTC states for backward compat.
+    //   2. quote_chain = $1 (e.g. ETH/BTC): swap is SIDE_B_LOCKED — taker locked BTC and
+    //      we must detect when the MAKER claims that BTC (revealing the secret) so we can
+    //      mark COMPLETE and let the taker claim the other side.
     const result = await this.pool.query(`
       SELECT * FROM atomic_swaps
-      WHERE status IN ('PENDING_QBTC_LOCK', 'QBTC_LOCKED', 'SIDE_A_LOCKED')
+      WHERE (
+        status IN ('PENDING_QBTC_LOCK', 'QBTC_LOCKED', 'SIDE_A_LOCKED')
         AND (
           base_chain = $1
           OR (base_chain IS NULL AND $1 = 'QBTC')
         )
+      ) OR (
+        status = 'SIDE_B_LOCKED'
+        AND quote_chain = $1
+      )
     `, [this.chain]);
 
     for (const swap of result.rows) {
@@ -105,10 +117,16 @@ export class BitcoinMonitor extends BaseMonitor implements IChainMonitor {
   }
 
   private async _processSwap(swap: any): Promise<void> {
-    const lockId: string | null = swap.qbtc_htlc_txid || swap.side_a_lock_id;
+    // Determine which lockId to watch depending on which side is the BTC/QBTC chain
+    const isBtcQuoteChain = swap.quote_chain === this.chain && swap.status === 'SIDE_B_LOCKED';
+    const lockId: string | null = isBtcQuoteChain
+      ? (swap.side_b_lock_id || null)
+      : (swap.qbtc_htlc_txid || swap.side_a_lock_id);
     if (!lockId) return;
 
-    const locktime: number = swap.qbtc_locktime || swap.side_a_locktime || 0;
+    const locktime: number = isBtcQuoteChain
+      ? (swap.side_b_locktime || 0)
+      : (swap.qbtc_locktime || swap.side_a_locktime || 0);
     const now = Math.floor(Date.now() / 1000);
 
     if (locktime > 0 && now > locktime + this.graceSecs) {

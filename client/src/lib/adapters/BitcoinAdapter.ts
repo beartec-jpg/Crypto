@@ -229,7 +229,71 @@ async function buildBtcRefundTx(
   return tx.toHex();
 }
 
-// ─── Broadcast helpers ────────────────────────────────────────────────────────
+/**
+ * Build a simple P2WPKH → P2WSH funding transaction.
+ * Spends all provided UTXOs (assumed to belong to a single P2WPKH address),
+ * sends `amountSats` to the HTLC P2WSH address, and returns change.
+ */
+async function buildBtcFundingTx(
+  utxos: BitcoinUtxo[],
+  signerKey: BtcSignerKey,
+  htlcAddress: string,
+  amountSats: number,
+  network: bitcoin.networks.Network,
+  feeRate: number,
+): Promise<string> {
+  const pubKeyBytes = Buffer.from(signerKey.publicKeyHex, 'hex');
+  const privKeyBytes = Buffer.from(signerKey.privateKeyHex, 'hex');
+  const p2wpkh = bitcoin.payments.p2wpkh({ pubkey: pubKeyBytes, network });
+  const inputScript = p2wpkh.output!;
+
+  const totalInputSats = utxos.reduce((s, u) => s + toSats(u.amount), 0);
+
+  // vbyte estimate: base(10) + P2WPKH inputs(~68 each) + 2 outputs(31 each)
+  const vSize = 10 + utxos.length * 68 + 62;
+  const fee = Math.max(DUST_THRESHOLD, Math.ceil(vSize * feeRate));
+  const changeAmount = totalInputSats - amountSats - fee;
+
+  if (totalInputSats < amountSats + fee) {
+    throw new Error(
+      `Insufficient BTC: have ${totalInputSats} sats, need ${amountSats + fee} sats (amount ${amountSats} + fee ${fee})`,
+    );
+  }
+
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+
+  for (const utxo of utxos) {
+    // nSequence = 0xfffffffe to allow locktime but not RBF
+    tx.addInput(Buffer.from(utxo.txid, 'hex').reverse(), utxo.vout, 0xfffffffe);
+  }
+
+  // Output 0: HTLC P2WSH
+  tx.addOutput(bitcoin.address.toOutputScript(htlcAddress, network), amountSats);
+
+  // Output 1: Change back to P2WPKH (locker's address) — only if above dust
+  if (changeAmount > DUST_THRESHOLD) {
+    tx.addOutput(p2wpkh.output!, changeAmount);
+  }
+
+  // Sign each P2WPKH input
+  for (const [idx, utxo] of utxos.entries()) {
+    const value = toSats(utxo.amount);
+    const digest = tx.hashForWitnessV0(idx, inputScript, value, bitcoin.Transaction.SIGHASH_ALL);
+
+    const sigObj = ecc.sign(digest, privKeyBytes);
+    const derSig = Buffer.concat([
+      Buffer.from(secp256k1.Signature.fromCompact(Buffer.from(sigObj).toString('hex')).toDERRawBytes()),
+      Buffer.from([bitcoin.Transaction.SIGHASH_ALL]),
+    ]);
+
+    tx.setWitness(idx, [derSig, pubKeyBytes]);
+  }
+
+  return tx.toHex();
+}
+
+
 
 /** Broadcast a raw QBTC transaction via the server-side RPC proxy */
 async function broadcastQbtc(rawHex: string, rpcProxyUrl: string): Promise<string> {
@@ -343,32 +407,46 @@ export class BitcoinAdapter implements IChainAdapter {
     const key = params.signerKey as BtcSignerKey;
     const absoluteLocktime = Math.floor(Date.now() / 1000) + params.timelockSecs;
 
+    if (!params.counterpartyPubKeyHex) {
+      throw new Error('BitcoinAdapter.lockFunds (BTC): counterpartyPubKeyHex is required — the counterparty must provide their compressed BTC pubkey');
+    }
+    if (!params.refundAddress) {
+      throw new Error('BitcoinAdapter.lockFunds (BTC): refundAddress is required (the locker\'s BTC address for UTXOs + change)');
+    }
+
+    // Build HTLC script: claimer = counterparty (receives BTC with secret), refunder = locker
     const htlcScript = buildBtcHtlcScript(
       params.secretHash,
-      // In BTC the counterparty is the claimer; refundAddress is refunder
-      Buffer.from(secp256k1.getPublicKey(Buffer.from(
-        // We need the counterparty's pubkey — they supply it when accepting the offer.
-        // For now we use a placeholder; in practice the swap server passes it via params.
-        // The actual counterpartyPubKeyHex must be set in a higher-level LockParams extension.
-        params.secretHash.slice(0, 64), // temporary — will be replaced by counterpartyPubKeyHex
-        'hex',
-      ), true)).toString('hex'),
+      params.counterpartyPubKeyHex,
       key.publicKeyHex,
       absoluteLocktime,
     );
     const htlcAddress = getBtcP2wshAddress(htlcScript, this.btcNetwork);
 
-    // Build a funding transaction using the locker's UTXOs
-    // UTXOs must be provided by the caller (fetched from Esplora or user wallet)
-    if (!params.counterpartyAddress) {
-      throw new Error('BitcoinAdapter.lockFunds (BTC): counterpartyAddress is required');
+    // Fetch UTXOs for the locker's P2WPKH address
+    const utxos = await getUtxosBtc(params.refundAddress, this.esploraUrl);
+    if (!utxos.length) {
+      throw new Error(`No UTXOs found for BTC address ${params.refundAddress} on ${this.esploraUrl}`);
     }
 
-    // For BTC locking, the caller broadcasts externally (e.g. via their BTC wallet).
-    // This adapter builds the HTLC address and returns it; the caller funds it manually
-    // or via their wallet's coin-selection logic.
-    // TODO (Phase 7): integrate full PSBT coin-selection + Esplora broadcast for BTC locks.
-    return { lockId: '', lockAddress: htlcAddress };
+    const amountSats = Math.round(parseFloat(params.amount) * 1e8);
+    if (isNaN(amountSats) || amountSats <= 0) {
+      throw new Error(`Invalid BTC lock amount: ${params.amount}`);
+    }
+
+    const rawHex = await buildBtcFundingTx(
+      utxos, key, htlcAddress, amountSats, this.btcNetwork, this.feeRate,
+    );
+
+    const txid = await broadcastBtc(rawHex, this.esploraUrl);
+    const lockId = `${txid}:0`; // HTLC is always vout=0 (first output)
+
+    return {
+      lockId,
+      lockAddress: htlcAddress,
+      vout: 0,
+      htlcScriptHex: htlcScript.toString('hex'),
+    };
   }
 
   // ── claimFunds ──────────────────────────────────────────────────────────────

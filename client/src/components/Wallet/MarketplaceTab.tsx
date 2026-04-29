@@ -137,6 +137,7 @@ interface MarketplaceTabProps {
   walletPubKey: string;     // ECDSA pubkey hex (66 chars)
   walletEvmAddress: string; // EVM/Ethereum address
   walletXrpAddress?: string; // XRP testnet address
+  walletBtcPubKey?: string;  // Compressed BTC pubkey (33-byte hex) for BTC HTLC swaps
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -977,12 +978,14 @@ function V2SwapActions({
   walletId,
   walletEvmAddress,
   walletXrpAddress,
+  walletBtcPubKey = '',
   onRefresh,
 }: {
   swap: V2Swap;
   walletId: string;
   walletEvmAddress: string;
   walletXrpAddress: string;
+  walletBtcPubKey?: string;
   onRefresh: () => void;
 }) {
   const [password, setPassword] = useState('');
@@ -1022,6 +1025,10 @@ function V2SwapActions({
   const [ethAlreadyClaimed, setEthAlreadyClaimed] = useState(
     () => !!localStorage.getItem(ethClaimedKey)
   );
+  const btcClaimedKey = `v2_btc_claimed_${swap.publicId}`;
+  const [btcAlreadyClaimed, setBtcAlreadyClaimed] = useState(
+    () => !!localStorage.getItem(btcClaimedKey)
+  );
 
   const isTestnet = (import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet';
   const isMaker = swap.authEvmAddressA?.toLowerCase() === walletEvmAddress.toLowerCase();
@@ -1036,6 +1043,10 @@ function V2SwapActions({
   const canLockEth =
     (isTaker && swap.status === 'SIDE_A_LOCKED'  && swap.quoteChain === 'ETH') ||
     (isMaker && swap.status === 'PENDING_SIDE_A' && swap.baseChain === 'ETH');
+  // canLockBtc: maker locking BTC (BTC/X) OR taker locking BTC (X/BTC)
+  const canLockBtc =
+    (isMaker && swap.status === 'PENDING_SIDE_A' && swap.baseChain === 'BTC') ||
+    (isTaker && swap.status === 'SIDE_A_LOCKED'  && swap.quoteChain === 'BTC');
 
   // Claim conditions
   // canClaimEth: XRP/ETH maker claims ETH (SIDE_B_LOCKED) OR ETH/XRP taker claims ETH (COMPLETE + secret revealed)
@@ -1046,6 +1057,11 @@ function V2SwapActions({
   const canClaimXrp =
     (isTaker && swap.status === 'COMPLETE' && swap.baseChain === 'XRP' && !!swap.secret && !xrpAlreadyClaimed) ||
     (isMaker && swap.status === 'SIDE_B_LOCKED' && swap.quoteChain === 'XRP');
+  // canClaimBtc: X/BTC maker claims BTC (SIDE_B_LOCKED + secret in localStorage)
+  //              BTC/X taker claims BTC (COMPLETE + secret revealed)
+  const canClaimBtc =
+    (isMaker && swap.status === 'SIDE_B_LOCKED' && swap.quoteChain === 'BTC') ||
+    (isTaker && swap.status === 'COMPLETE' && swap.baseChain === 'BTC' && !!swap.secret && !btcAlreadyClaimed);
 
   // For XRP locking: if maker locking (XRP/ETH) counterparty = taker's XRP address (sideBChainAddress)
   //                  if taker locking (ETH/XRP) counterparty = maker's XRP address (sideAChainAddress)
@@ -1345,7 +1361,161 @@ function V2SwapActions({
     }
   };
 
-  if (!canLockXrp && !canLockEth && !canClaimEth && !canClaimXrp) {
+  const handleLockBtc = async () => {
+    try {
+      setErrorMsg('');
+      setActionStatus('busy');
+      if (!password.trim()) throw new Error('Password required');
+
+      const btcNetwork: 'testnet' | 'mainnet' = isTestnet ? 'testnet' : 'mainnet';
+      const esploraUrl = isTestnet ? 'https://blockstream.info/testnet/api' : 'https://blockstream.info/api';
+
+      const unlockedWallet = await unlockWallet(walletId, password);
+      const btcPrivKeyHex = unlockedWallet.privateKeys.bitcoin;
+      if (!btcPrivKeyHex) throw new Error('BTC private key not found in wallet');
+
+      // Derive our compressed pubkey
+      const { secp256k1 } = await import('@noble/curves/secp256k1');
+      const privBytes = Uint8Array.from(Buffer.from(btcPrivKeyHex, 'hex'));
+      const pubBytes = secp256k1.getPublicKey(privBytes, true);
+      const myBtcPubKeyHex = Buffer.from(pubBytes).toString('hex');
+
+      const makerIsLocking = isMaker && swap.baseChain === 'BTC';
+      const lockAmount = makerIsLocking ? swap.sideAAmount : swap.sideBAmount;
+      const locktimeSecs = makerIsLocking
+        ? Math.max(0, (swap.sideALocktime ?? 0) - Math.floor(Date.now() / 1000))
+        : Math.max(0, (swap.sideBLocktime ?? 0) - Math.floor(Date.now() / 1000));
+      const counterpartyPubKeyHex = makerIsLocking
+        ? (swap.sideBPubKeyHex || '') : (swap.sideAPubKeyHex || '');
+      if (!counterpartyPubKeyHex) throw new Error('Counterparty BTC pubkey not available — ensure they registered it when accepting the offer');
+
+      const refundAddress = unlockedWallet.addresses?.bitcoin;
+      if (!refundAddress) throw new Error('BTC address not in wallet');
+
+      const { BitcoinAdapter } = await import('@/lib/adapters/BitcoinAdapter');
+      const btcAdapter = new BitcoinAdapter({ chain: 'BTC', network: btcNetwork, esploraUrl });
+
+      const result = await btcAdapter.lockFunds({
+        signerKey: { privateKeyHex: btcPrivKeyHex, publicKeyHex: myBtcPubKeyHex },
+        amount: Number(lockAmount),
+        secretHash: swap.secretHash,
+        timelockSecs: locktimeSecs,
+        counterpartyAddress: refundAddress, // placeholder — script uses pubkeys
+        refundAddress,
+        counterpartyPubKeyHex,
+      });
+
+      if (result.htlcScriptHex) {
+        localStorage.setItem(`v2_btc_script_${swap.publicId}`, result.htlcScriptHex);
+      }
+
+      // Sign and report to server
+      const ethPrivKey = unlockedWallet.privateKeys.ethereum;
+      const rpcUrl = import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
+      const chainId = Number(import.meta.env.VITE_ETH_CHAIN_ID || 11155111);
+      const provider = new ethers.JsonRpcProvider(rpcUrl, chainId);
+      const ethSigner = new ethers.Wallet('0x' + ethPrivKey, provider);
+      const ts = Math.floor(Date.now() / 1000);
+
+      if (makerIsLocking) {
+        const msg = `QBTC_SWAP_V2:LOCK_SIDE_A:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockAddress}:${ts}`;
+        const sig = await ethSigner.signMessage(msg);
+        await postV2LockSideA({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+      } else {
+        const msg = `QBTC_SWAP_V2:LOCK_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockAddress}:${ts}`;
+        const sig = await ethSigner.signMessage(msg);
+        await postV2LockSideB({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+      }
+
+      setActionStatus('done');
+      setPassword('');
+      onRefresh();
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+      setActionStatus('error');
+    }
+  };
+
+  const handleClaimBtc = async () => {
+    try {
+      setErrorMsg('');
+      setActionStatus('busy');
+      if (!password.trim()) throw new Error('Password required');
+
+      const btcNetwork: 'testnet' | 'mainnet' = isTestnet ? 'testnet' : 'mainnet';
+      const esploraUrl = isTestnet ? 'https://blockstream.info/testnet/api' : 'https://blockstream.info/api';
+
+      const unlockedWallet = await unlockWallet(walletId, password);
+      const btcPrivKeyHex = unlockedWallet.privateKeys.bitcoin;
+      if (!btcPrivKeyHex) throw new Error('BTC private key not found in wallet');
+
+      const { secp256k1 } = await import('@noble/curves/secp256k1');
+      const privBytes = Uint8Array.from(Buffer.from(btcPrivKeyHex, 'hex'));
+      const pubBytes = secp256k1.getPublicKey(privBytes, true);
+      const myBtcPubKeyHex = Buffer.from(pubBytes).toString('hex');
+
+      const makerClaimingBtc = isMaker && swap.quoteChain === 'BTC';
+      const htlcScriptHex = localStorage.getItem(`v2_btc_script_${swap.publicId}`) ?? undefined;
+      if (!htlcScriptHex) throw new Error('HTLC script not found — BTC must have been locked on this device');
+
+      const lockAddress = makerClaimingBtc ? swap.sideBLockAddress! : swap.sideALockAddress!;
+      const lockId = makerClaimingBtc ? swap.sideBLockId! : swap.sideALockId!;
+      if (!lockAddress) throw new Error('BTC lock address not found');
+
+      let secret: string;
+      if (makerClaimingBtc) {
+        const secrets = JSON.parse(localStorage.getItem('v2_secrets') || '{}');
+        const entry = secrets[swap.secretHash];
+        if (!entry) throw new Error('Secret not found — was this offer created on this device?');
+        secret = typeof entry === 'string' ? entry : entry.secret;
+      } else {
+        if (!swap.secret) throw new Error('Secret not yet available — maker must claim first');
+        secret = swap.secret;
+      }
+
+      const outputAddress = unlockedWallet.addresses?.bitcoin;
+      if (!outputAddress) throw new Error('BTC address not in wallet');
+
+      const { BitcoinAdapter } = await import('@/lib/adapters/BitcoinAdapter');
+      const btcAdapter = new BitcoinAdapter({ chain: 'BTC', network: btcNetwork, esploraUrl });
+
+      await btcAdapter.claimFunds({
+        signerKey: { privateKeyHex: btcPrivKeyHex, publicKeyHex: myBtcPubKeyHex },
+        lockId,
+        secret,
+        outputAddress,
+        htlcScriptHex,
+      });
+
+      if (makerClaimingBtc) {
+        // Non-fatal: notify server so it stores secret and marks COMPLETE
+        try {
+          const ethPrivKey = unlockedWallet.privateKeys.ethereum;
+          const rpcUrl = import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
+          const chainId = Number(import.meta.env.VITE_ETH_CHAIN_ID || 11155111);
+          const provider = new ethers.JsonRpcProvider(rpcUrl, chainId);
+          const ethSigner = new ethers.Wallet('0x' + ethPrivKey, provider);
+          const ts = Math.floor(Date.now() / 1000);
+          const msg = `QBTC_SWAP_V2:CLAIM_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${lockId}:${ts}`;
+          const sig = await ethSigner.signMessage(msg);
+          await postV2ClaimSideB({ swapId: swap.publicId, secret, claimTxHash: lockId, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+        } catch {
+          // Non-fatal: BitcoinMonitor will detect the on-chain claim
+        }
+      }
+
+      localStorage.setItem(btcClaimedKey, '1');
+      setBtcAlreadyClaimed(true);
+      setActionStatus('done');
+      setPassword('');
+      onRefresh();
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+      setActionStatus('error');
+    }
+  };
+
+
     if (!isMaker && !isTaker) return null; // not our swap
     // User is a participant but has no immediate action — show waiting state
     const waitMsg =
@@ -1444,9 +1614,31 @@ function V2SwapActions({
             : <><CheckCircle2 size={14} /> Claim {swap.sideAAmount} XRP</>}
         </button>
       )}
+      {canLockBtc && (
+        <button
+          onClick={handleLockBtc}
+          disabled={actionStatus === 'busy' || !password.trim()}
+          className="w-full py-2 rounded-lg text-sm font-medium bg-orange-600 hover:bg-orange-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+        >
+          {actionStatus === 'busy'
+            ? <><Loader2 size={14} className="animate-spin" /> Locking BTC…</>
+            : <><Lock size={14} /> Lock {(isMaker && swap.baseChain === 'BTC') ? swap.sideAAmount : swap.sideBAmount} BTC</>}
+        </button>
+      )}
+      {canClaimBtc && (
+        <button
+          onClick={handleClaimBtc}
+          disabled={actionStatus === 'busy' || !password.trim()}
+          className="w-full py-2 rounded-lg text-sm font-medium bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+        >
+          {actionStatus === 'busy'
+            ? <><Loader2 size={14} className="animate-spin" /> Claiming BTC…</>
+            : <><CheckCircle2 size={14} /> Claim {(isMaker && swap.quoteChain === 'BTC') ? swap.sideBAmount : swap.sideAAmount} BTC</>}
+        </button>
+      )}
       {actionStatus === 'done' && (
         <p className="text-xs text-emerald-400 flex items-center gap-1">
-          <CheckCircle2 size={12} /> {canClaimEth || canClaimXrp ? 'Claimed!' : 'Locked on-chain!'}
+          <CheckCircle2 size={12} /> {(canClaimEth || canClaimXrp || canClaimBtc) ? 'Claimed!' : 'Locked on-chain!'}
           <Loader2 size={10} className="animate-spin ml-1" /> Waiting for confirmation…
         </p>
       )}
@@ -1463,6 +1655,7 @@ export default function MarketplaceTab({
   walletPubKey,
   walletEvmAddress,
   walletXrpAddress = '',
+  walletBtcPubKey = '',
 }: MarketplaceTabProps) {
   const [offers, setOffers] = useState<SwapOffer[]>([]);
   const [buyOffers, setBuyOffers] = useState<SwapOffer[]>([]);
@@ -2223,6 +2416,7 @@ export default function MarketplaceTab({
                 walletId={walletId}
                 walletEvmAddress={walletEvmAddress}
                 walletXrpAddress={walletXrpAddress}
+                walletBtcPubKey={walletBtcPubKey}
                 onRefresh={fetchV2Swaps}
               />
             </div>
@@ -2265,6 +2459,7 @@ export default function MarketplaceTab({
           walletEvmAddress={walletEvmAddress}
           walletAddress={walletAddress}
           walletPubKey={walletPubKey}
+          walletBtcPubKey={walletBtcPubKey}
           walletXrpAddress={walletXrpAddress}
         />
       )}

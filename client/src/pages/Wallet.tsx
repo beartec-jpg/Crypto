@@ -733,6 +733,7 @@ export default function WalletPage() {
                   walletPubKey={sovereignWallet.publicKeys?.qbtc || ''}
                   walletEvmAddress={sovereignWallet.addresses?.ethereum || ''}
                   walletXrpAddress={sovereignWallet.addresses?.xrpTestnet || sovereignWallet.addresses?.xrp || ''}
+                  walletBtcPubKey={sovereignWallet.publicKeys?.bitcoin || ''}
                 />
               )}
             </div>

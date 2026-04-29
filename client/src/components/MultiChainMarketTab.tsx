@@ -43,6 +43,7 @@ interface MultiChainMarketTabProps {
   walletEvmAddress: string;
   walletAddress: string;
   walletPubKey: string;
+  walletBtcPubKey?: string;  // compressed BTC pubkey hex — passed as takerPubKeyHex when accepting BTC offers
   walletXrpAddress?: string;
 }
 
@@ -225,10 +226,11 @@ function PasswordField({ value, onChange, disabled = false }: {
 // ─── Accept Offer Modal ───────────────────────────────────────────────────────
 
 function AcceptOfferModal({
-  offer, walletId, walletEvmAddress, walletAddress, walletXrpAddress, onClose, onAccepted,
+  offer, walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletBtcPubKey, onClose, onAccepted,
 }: {
   offer: V2Offer | null;
   walletId: string; walletEvmAddress: string; walletAddress: string; walletXrpAddress: string;
+  walletBtcPubKey?: string;
   onClose: () => void; onAccepted: () => void;
 }) {
   const [takerAddress, setTakerAddress] = useState('');
@@ -265,9 +267,15 @@ function AcceptOfferModal({
       );
       const signature = await signWithWallet(walletId, password, message);
 
+      // For BTC/QBTC offers, include the taker's compressed pubkey so the
+      // maker can reconstruct the HTLC claim script after the taker locks BTC.
+      const isBtcOffer = offer.baseChain === 'BTC' || offer.baseChain === 'QBTC';
+      const takerPubKeyHex = isBtcOffer ? (walletBtcPubKey || undefined) : undefined;
+
       setStatus('submitting');
       const result = await postV2Accept({
         offerId: offer.id, takerChainAddress: takerAddress,
+        takerPubKeyHex,
         authEvmAddress: walletEvmAddress, signature, timestamp,
       });
       setSwapResult(result);
@@ -400,9 +408,10 @@ type SortMode = 'amount_desc' | 'chain_asc';
 type ChainFilter = ChainId | 'All';
 
 function BuyView({
-  walletId, walletEvmAddress, walletAddress, walletXrpAddress, onBack,
+  walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletBtcPubKey, onBack,
 }: {
   walletId: string; walletEvmAddress: string; walletAddress: string; walletXrpAddress: string;
+  walletBtcPubKey?: string;
   onBack: () => void;
 }) {
   const [allOffers, setAllOffers] = useState<V2Offer[]>([]);
@@ -577,6 +586,7 @@ function BuyView({
           offer={acceptTarget}
           walletId={walletId} walletEvmAddress={walletEvmAddress} walletAddress={walletAddress}
           walletXrpAddress={walletXrpAddress}
+          walletBtcPubKey={walletBtcPubKey}
           onClose={() => setAcceptTarget(null)}
           onAccepted={loadOffers}
         />
@@ -961,7 +971,7 @@ function SellView({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function MultiChainMarketTab({
-  walletId, userId: _userId, walletEvmAddress, walletAddress, walletPubKey: _walletPubKey, walletXrpAddress = '',
+  walletId, userId: _userId, walletEvmAddress, walletAddress, walletPubKey: _walletPubKey, walletXrpAddress = '', walletBtcPubKey = '',
 }: MultiChainMarketTabProps) {
   const [view, setView] = useState<'entry' | 'buy' | 'sell'>('entry');
 
@@ -972,6 +982,7 @@ export default function MultiChainMarketTab({
         walletEvmAddress={walletEvmAddress}
         walletAddress={walletAddress}
         walletXrpAddress={walletXrpAddress}
+        walletBtcPubKey={walletBtcPubKey}
         onBack={() => setView('entry')}
       />
     );

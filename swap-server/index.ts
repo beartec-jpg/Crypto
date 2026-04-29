@@ -1381,7 +1381,7 @@ app.get('/api/swap/v2/offers/all', readLimiter, async (_req, res) => {
 app.post('/api/swap/v2/accept/:offerId', writeLimiter, async (req, res) => {
   try {
     const { offerId } = req.params;
-    const { takerChainAddress, authEvmAddress, signature, timestamp } = req.body || {};
+    const { takerChainAddress, takerPubKeyHex, authEvmAddress, signature, timestamp } = req.body || {};
 
     if (!takerChainAddress || typeof takerChainAddress !== 'string') {
       return res.status(400).json({ error: 'takerChainAddress is required' });
@@ -1425,6 +1425,11 @@ app.post('/api/swap/v2/accept/:offerId', writeLimiter, async (req, res) => {
       const sideALocktime = Number(offer.qbtc_locktime) || (now + SWAP_QBTC_TIMELOCK_SECS);
       const sideBLocktime = now + SWAP_EVM_TIMELOCK_SECS;
 
+      // Propagate maker's pubkey from offer; store taker's pubkey if provided
+      // (required for BTC HTLC script reconstruction at claim time)
+      const sideAPubKeyHex = offer.maker_pub_key_hex || null;
+      const sideBPubKeyHex = (typeof takerPubKeyHex === 'string' && takerPubKeyHex.trim()) ? takerPubKeyHex.trim() : null;
+
       const swapResult = await client.query(`
         INSERT INTO atomic_swaps (
           offer_id, base_chain, quote_chain,
@@ -1433,8 +1438,9 @@ app.post('/api/swap/v2/accept/:offerId', writeLimiter, async (req, res) => {
           auth_evm_address_a, auth_evm_address_b,
           secret_hash,
           side_a_locktime, side_b_locktime,
+          side_a_pub_key_hex, side_b_pub_key_hex,
           status, created_at, updated_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'PENDING_SIDE_A',NOW(),NOW())
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'PENDING_SIDE_A',NOW(),NOW())
         RETURNING *
       `, [
         offerId, offer.base_chain, offer.quote_chain,
@@ -1444,6 +1450,7 @@ app.post('/api/swap/v2/accept/:offerId', writeLimiter, async (req, res) => {
         authEvmAddress.toLowerCase(),
         offer.secret_hash,
         sideALocktime, sideBLocktime,
+        sideAPubKeyHex, sideBPubKeyHex,
       ]);
       const swap = swapResult.rows[0];
 
@@ -1551,7 +1558,7 @@ app.post('/api/swap/v2/lock/side-a', writeLimiter, async (req, res) => {
 
 app.post('/api/swap/v2/lock/side-b', writeLimiter, async (req, res) => {
   try {
-    const { swapId, lockId, authEvmAddress, signature, timestamp } = req.body || {};
+    const { swapId, lockId, lockAddress, authEvmAddress, signature, timestamp } = req.body || {};
 
     if (!swapId   || typeof swapId   !== 'string') return res.status(400).json({ error: 'swapId is required' });
     if (!lockId   || typeof lockId   !== 'string') return res.status(400).json({ error: 'lockId is required' });
@@ -1594,9 +1601,9 @@ app.post('/api/swap/v2/lock/side-b', writeLimiter, async (req, res) => {
 
     await pool.query(`
       UPDATE atomic_swaps
-      SET side_b_lock_id = $1, status = 'SIDE_B_LOCKED', updated_at = NOW()
-      WHERE public_id = $2::uuid
-    `, [lockId, swapId]);
+      SET side_b_lock_id = $1, side_b_lock_address = $2, status = 'SIDE_B_LOCKED', updated_at = NOW()
+      WHERE public_id = $3::uuid
+    `, [lockId, lockAddress || null, swapId]);
 
     return res.json({ status: 'SIDE_B_LOCKED', swapId, lockId });
   } catch (err: any) {

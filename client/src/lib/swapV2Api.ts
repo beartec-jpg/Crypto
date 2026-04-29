@@ -48,6 +48,11 @@ export interface V2Swap {
   sideALockId?: string;
   sideALockAddress?: string;
   sideBLockId?: string;
+  sideBLockAddress?: string;
+  /** Maker's compressed BTC/QBTC pubkey (33-byte hex) — required for BTC HTLC script reconstruction */
+  sideAPubKeyHex?: string;
+  /** Taker's compressed BTC/QBTC pubkey (33-byte hex) — required for BTC HTLC script reconstruction */
+  sideBPubKeyHex?: string;
   secret?: string;
   status: 'PENDING_SIDE_A' | 'SIDE_A_LOCKED' | 'SIDE_B_LOCKED' | 'COMPLETE' | 'EXPIRED';
   createdAt: string;
@@ -96,6 +101,8 @@ export interface CreateOfferParams {
 export interface AcceptOfferParams {
   offerId: string;
   takerChainAddress: string;
+  /** Taker's compressed BTC pubkey (33-byte hex) — required when accepting BTC/QBTC offers so the maker can build the HTLC claim script */
+  takerPubKeyHex?: string;
   authEvmAddress: string;
   signature: string;
   timestamp: number;
