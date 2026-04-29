@@ -1572,11 +1572,11 @@ function V2SwapActions({
       const ts = Math.floor(Date.now() / 1000);
 
       if (makerIsLocking) {
-        const msg = `QBTC_SWAP_V2:LOCK_SIDE_A:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockAddress}:${ts}`;
+        const msg = `QBTC_SWAP_V2:LOCK_SIDE_A:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockId}:${ts}`;
         const sig = await ethSigner.signMessage(msg);
         await postV2LockSideA({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
       } else {
-        const msg = `QBTC_SWAP_V2:LOCK_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockAddress}:${ts}`;
+        const msg = `QBTC_SWAP_V2:LOCK_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockId}:${ts}`;
         const sig = await ethSigner.signMessage(msg);
         await postV2LockSideB({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
       }
@@ -1729,11 +1729,11 @@ function V2SwapActions({
       const ts = Math.floor(Date.now() / 1000);
 
       if (makerIsLocking) {
-        const msg = `QBTC_SWAP_V2:LOCK_SIDE_A:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockAddress}:${ts}`;
+        const msg = `QBTC_SWAP_V2:LOCK_SIDE_A:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockId}:${ts}`;
         const sig = await ethSigner.signMessage(msg);
         await postV2LockSideA({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
       } else {
-        const msg = `QBTC_SWAP_V2:LOCK_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockAddress}:${ts}`;
+        const msg = `QBTC_SWAP_V2:LOCK_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockId}:${ts}`;
         const sig = await ethSigner.signMessage(msg);
         await postV2LockSideB({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
       }
