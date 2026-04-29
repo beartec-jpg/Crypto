@@ -1517,14 +1517,18 @@ function V2SwapActions({
     }
   };
 
+  if (!isMaker && !isTaker) return null; // not our swap
 
-    if (!isMaker && !isTaker) return null; // not our swap
-    // User is a participant but has no immediate action — show waiting state
-    const waitMsg =
-      (isMaker && swap.status === 'SIDE_A_LOCKED') ? 'Waiting for taker to lock their side…' :
-      (isTaker && swap.status === 'PENDING_SIDE_A') ? 'Waiting for maker to lock first…' :
-      (isTaker && swap.status === 'SIDE_B_LOCKED') ? 'Waiting for maker to claim first — they reveal the secret which unlocks your claim…' :
-      (isMaker && swap.status === 'SIDE_B_LOCKED') ? 'Waiting for counterparty to claim…' : 'Waiting…';
+  // User is a participant but has no immediate action — show waiting state
+  const waitMsg =
+    (isMaker && swap.status === 'SIDE_A_LOCKED') ? 'Waiting for taker to lock their side…' :
+    (isTaker && swap.status === 'PENDING_SIDE_A') ? 'Waiting for maker to lock first…' :
+    (isTaker && swap.status === 'SIDE_B_LOCKED') ? 'Waiting for maker to claim first — they reveal the secret which unlocks your claim…' :
+    (isMaker && swap.status === 'SIDE_B_LOCKED') ? 'Waiting for counterparty to claim…' : 'Waiting…';
+
+  const hasAction = canLockXrp || canLockEth || canLockBtc || canClaimEth || canClaimXrp || canClaimBtc;
+
+  if (!hasAction) {
     return (
       <div className="pt-2 border-t border-slate-700/50">
         <p className="text-xs text-slate-500 flex items-center gap-1.5">
