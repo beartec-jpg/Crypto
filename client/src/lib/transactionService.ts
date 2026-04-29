@@ -311,13 +311,16 @@ export async function fetchXRPTransactions(address: string, network: TokenNetwor
         isReceive = false;
         if (typeof tx.Amount === 'string') amount = dropsToXrp(tx.Amount).toString();
       } else if (txType === 'EscrowFinish') {
-        // Claiming from escrow — incoming to the Destination/Account claiming
-        isReceive = (tx.Destination === address) || (tx.Account === address && tx.Owner !== address);
-        // Amount is in the escrow object — read from meta AffectedNodes
+        // Claiming from escrow — XRP goes to the Destination set in EscrowCreate
+        // Read the deleted Escrow node's FinalFields to get Destination and Amount
         const escrowNode = (meta.AffectedNodes || []).find(
-          (n: any) => (n.DeletedNode || n.ModifiedNode)?.LedgerEntryType === 'Escrow'
+          (n: any) => n.DeletedNode?.LedgerEntryType === 'Escrow'
         );
         const escrowFields = escrowNode?.DeletedNode?.FinalFields || escrowNode?.DeletedNode?.PreviousFields;
+        const escrowDestination: string | undefined = escrowFields?.Destination;
+        // Receive if this address is the escrow's Destination (XRP recipient)
+        // or if this account submitted the EscrowFinish for someone else's escrow
+        isReceive = escrowDestination === address || (tx.Account === address && escrowFields?.Account !== address);
         if (escrowFields?.Amount && typeof escrowFields.Amount === 'string') {
           amount = dropsToXrp(escrowFields.Amount).toString();
         }

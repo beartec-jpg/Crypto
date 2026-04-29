@@ -35,7 +35,7 @@ export function getChainNetworkAddress(
 
   if (chain === 'xrp') {
     return network === 'testnet'
-      ? (addresses.xrpTestnet || '')
+      ? (addresses.xrpTestnet || addresses.xrp)
       : addresses.xrp;
   }
 

@@ -195,23 +195,63 @@ export async function fetchBSCBalance(address: string, network: TokenNetwork = '
 }
 
 /**
- * Fetch XRP balance using official xrpl.js library
+ * Fetch XRP balance using HTTP JSON-RPC (primary) with WebSocket fallback.
+ * Avoids the singleton WebSocket client state issues.
  */
 export async function fetchXRPBalance(address: string, network: TokenNetwork = 'mainnet'): Promise<string> {
-  try {
-    if (!xrplService.isValidAddress(address)) {
-      console.error('❌ Invalid XRP address format:', address);
-      return '0';
-    }
+  if (!xrplService.isValidAddress(address)) {
+    console.error('❌ Invalid XRP address format:', address);
+    return '0';
+  }
 
+  // ─── Primary: HTTP JSON-RPC (stateless, no shared connection) ────────────
+  const httpEndpoints = network === 'testnet'
+    ? ['https://s.altnet.rippletest.net:51234']
+    : [
+        'https://s1.ripple.com:51234',
+        'https://s2.ripple.com:51234',
+        'https://xrplcluster.com',
+      ];
+
+  for (const endpoint of httpEndpoints) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'account_info',
+          params: [{ account: address, ledger_index: 'validated' }],
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) continue;
+      const data = await res.json();
+      const acct = data?.result?.account_data;
+      if (acct?.Balance) {
+        const xrp = parseFloat(String(parseInt(acct.Balance, 10) / 1_000_000)).toFixed(6);
+        console.log(`✅ XRP balance via HTTP (${network}):`, xrp);
+        return xrp;
+      }
+      if (data?.result?.error === 'actNotFound') {
+        console.warn('⚠️ XRP account not found (not activated)');
+        return '0';
+      }
+    } catch {
+      // try next endpoint
+    }
+  }
+
+  // ─── Fallback: WebSocket xrplService ────────────────────────────────────
+  try {
     const useMainnet = network === 'mainnet';
     const result = await xrplService.getBalance(address, useMainnet);
-    
     if (result) {
       return parseFloat(result.balance).toFixed(6);
     }
-    
-    console.warn('⚠️ XRP account not found or not activated');
+    console.warn('⚠️ XRP account not found or not activated (WS fallback)');
     return '0';
   } catch (error: any) {
     console.error('❌ Failed to fetch XRP balance:', error.message);

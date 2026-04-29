@@ -11,9 +11,10 @@ interface XRPBalanceResult {
 }
 
 class XRPLService {
-  private client: Client | null = null;
-  private isConnecting: boolean = false;
-  private connectionPromise: Promise<void> | null = null;
+  private mainnetClient: Client | null = null;
+  private testnetClient: Client | null = null;
+  private mainnetConnecting: Promise<Client> | null = null;
+  private testnetConnecting: Promise<Client> | null = null;
   private readonly mainnetUrls = [
     'wss://xrplcluster.com/',
     'wss://s1.ripple.com/',
@@ -22,107 +23,92 @@ class XRPLService {
   ];
   private readonly testnetUrl = 'wss://s.altnet.rippletest.net:51233/';
   private currentMainnetUrlIndex = 0;
-  
+
   /**
-   * Get or create WebSocket client connection with fallback support
-   * Made public to allow access from xrpReserveService and tokenService
-   * which need to interact directly with the XRPL client for trustlines and token queries
+   * Get or create WebSocket client connection with fallback support.
+   * Uses SEPARATE clients for mainnet and testnet to prevent race conditions.
+   * Made public to allow access from xrpReserveService and tokenService.
    */
   async getClient(useMainnet: boolean): Promise<Client> {
-    const wsUrl = useMainnet 
-      ? this.mainnetUrls[this.currentMainnetUrlIndex] 
+    // Route to the correct per-network slot
+    const existing: Client | null = useMainnet ? this.mainnetClient : this.testnetClient;
+    const wsUrl = useMainnet
+      ? this.mainnetUrls[this.currentMainnetUrlIndex]
       : this.testnetUrl;
-    
-    // Return existing connected client if same network and URL
-    if (this.client && this.client.url === wsUrl && this.client.isConnected()) {
-      // Verify the connection is actually alive with a ping
+
+    // Return existing connected client if alive
+    if (existing && existing.isConnected()) {
       try {
         await Promise.race([
-          this.client.request({ command: 'ping' }),
+          existing.request({ command: 'ping' }),
           new Promise((_, reject) => setTimeout(() => reject(new Error('ping timeout')), 3000)),
         ]);
-        return this.client;
+        return existing;
       } catch {
         console.warn('⚠️ Stale XRPL connection detected, reconnecting...');
-        try { await this.client.disconnect(); } catch {}
-        this.client = null;
+        try { await existing.disconnect(); } catch {}
+        if (useMainnet) this.mainnetClient = null;
+        else this.testnetClient = null;
       }
     }
-    
-    // Disconnect old client if switching networks or URLs
-    if (this.client && this.client.isConnected()) {
-      await this.client.disconnect();
+
+    // If a connection attempt is already in progress for this network, await it
+    const inFlight = useMainnet ? this.mainnetConnecting : this.testnetConnecting;
+    if (inFlight) {
+      return inFlight;
     }
-    
-    // Wait for existing connection attempt
-    if (this.isConnecting && this.connectionPromise) {
-      await this.connectionPromise;
-      if (this.client && this.client.isConnected()) {
-        return this.client;
-      }
-    }
-    
-    // Try connecting with fallback URLs
-    let lastError: Error | null = null;
-    const maxAttempts = useMainnet ? this.mainnetUrls.length : 1;
-    this.isConnecting = true;
-    
+
+    // Start a new connection attempt
+    const connectPromise = this._connect(useMainnet, wsUrl);
+    if (useMainnet) this.mainnetConnecting = connectPromise;
+    else this.testnetConnecting = connectPromise;
+
     try {
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const currentUrl = useMainnet 
-          ? this.mainnetUrls[this.currentMainnetUrlIndex]
-          : this.testnetUrl;
-        
-        try {
-          console.log(`🔌 Attempting to connect to XRPL at ${currentUrl}...`);
-          
-          // Create new connection
-          this.client = new Client(currentUrl, {
-            connectionTimeout: 10000,
-          });
-          
-          this.connectionPromise = this.client.connect();
-          await this.connectionPromise;
-          
-          console.log(`✅ Connected to XRP ${useMainnet ? 'MAINNET' : 'TESTNET'} at ${currentUrl}`);
-          
-          // Reset to primary URL on successful connection
-          if (useMainnet) {
-            this.currentMainnetUrlIndex = 0;
-          }
-          
-          return this.client;
-        } catch (error) {
-          lastError = error instanceof Error ? error : new Error(String(error));
-          console.error(`❌ Failed to connect to ${currentUrl}:`, error);
-          
-          if (this.client && this.client.isConnected()) {
-            await this.client.disconnect();
-          }
-          this.client = null;
-
-          // Try next URL on mainnet
-          if (useMainnet && attempt < maxAttempts - 1) {
-            this.currentMainnetUrlIndex = (this.currentMainnetUrlIndex + 1) % this.mainnetUrls.length;
-            console.log(`🔄 Trying fallback URL: ${this.mainnetUrls[this.currentMainnetUrlIndex]}`);
-          }
-        }
-      }
-
-      // All attempts failed
-      throw lastError || new Error('Failed to connect to XRPL');
+      const client = await connectPromise;
+      if (useMainnet) this.mainnetClient = client;
+      else this.testnetClient = client;
+      return client;
     } finally {
-      this.isConnecting = false;
-      this.connectionPromise = null;
+      if (useMainnet) this.mainnetConnecting = null;
+      else this.testnetConnecting = null;
     }
   }
-  
+
+  private async _connect(useMainnet: boolean, _wsUrl: string): Promise<Client> {
+    const maxAttempts = useMainnet ? this.mainnetUrls.length : 1;
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const currentUrl = useMainnet
+        ? this.mainnetUrls[this.currentMainnetUrlIndex]
+        : this.testnetUrl;
+
+      try {
+        console.log(`🔌 Connecting to XRPL ${useMainnet ? 'MAINNET' : 'TESTNET'} at ${currentUrl}...`);
+        const client = new Client(currentUrl, { connectionTimeout: 10000 });
+        await client.connect();
+        console.log(`✅ Connected to XRP ${useMainnet ? 'MAINNET' : 'TESTNET'} at ${currentUrl}`);
+        if (useMainnet) this.currentMainnetUrlIndex = 0;
+        return client;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        console.error(`❌ Failed to connect to ${currentUrl}:`, error);
+        if (useMainnet && attempt < maxAttempts - 1) {
+          this.currentMainnetUrlIndex = (this.currentMainnetUrlIndex + 1) % this.mainnetUrls.length;
+          console.log(`🔄 Trying fallback URL: ${this.mainnetUrls[this.currentMainnetUrlIndex]}`);
+        }
+      }
+    }
+
+    throw lastError || new Error('Failed to connect to XRPL');
+  }
+
   /**
    * Fetch XRP account balance with retry logic
    */
   async getBalance(address: string, useMainnet = true, retries = 3): Promise<XRPBalanceResult | null> {
     let lastError: Error | null = null;
-    
+
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         console.log(`🔍 Fetching XRP balance (attempt ${attempt}/${retries}) from ${useMainnet ? 'MAINNET' : 'TESTNET'} for:`, address);
@@ -168,9 +154,12 @@ class XRPLService {
           await new Promise(resolve => setTimeout(resolve, delay));
           
           // Disconnect and reconnect on retry
-          if (this.client && this.client.isConnected()) {
-            await this.client.disconnect();
+          const slot = useMainnet ? this.mainnetClient : this.testnetClient;
+          if (slot && slot.isConnected()) {
+            await slot.disconnect();
           }
+          if (useMainnet) this.mainnetClient = null;
+          else this.testnetClient = null;
         }
       }
     }
@@ -250,14 +239,17 @@ class XRPLService {
   }
   
   /**
-   * Cleanup - disconnect client
+   * Cleanup - disconnect both clients
    */
   async disconnect(): Promise<void> {
-    if (this.client && this.client.isConnected()) {
-      await this.client.disconnect();
-      console.log('🔌 Disconnected from XRPL');
+    for (const client of [this.mainnetClient, this.testnetClient]) {
+      if (client && client.isConnected()) {
+        try { await client.disconnect(); } catch {}
+      }
     }
-    this.client = null;
+    this.mainnetClient = null;
+    this.testnetClient = null;
+    console.log('🔌 Disconnected from XRPL');
   }
 }
 
