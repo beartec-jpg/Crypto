@@ -1914,6 +1914,82 @@ function V2SwapActions({
     }
   };
 
+  const handleRefundBtc = async () => {
+    try {
+      setErrorMsg('');
+      setActionStatus('busy');
+      if (!password.trim()) throw new Error('Password required');
+
+      const btcNetwork: 'testnet' | 'mainnet' = isTestnet ? 'testnet' : 'mainnet';
+      const esploraUrl = isTestnet ? 'https://blockstream.info/testnet' : 'https://blockstream.info';
+
+      const unlockedWallet = await unlockWallet(walletId, password);
+      const btcPrivKeyHex = isTestnet
+        ? (unlockedWallet.privateKeys.bitcoinTestnet || unlockedWallet.privateKeys.bitcoin)
+        : unlockedWallet.privateKeys.bitcoin;
+      if (!btcPrivKeyHex) throw new Error('BTC private key not found');
+
+      const { secp256k1 } = await import('@noble/curves/secp256k1');
+      const privBytes = Uint8Array.from(Buffer.from(btcPrivKeyHex, 'hex'));
+      const pubBytes = secp256k1.getPublicKey(privBytes, true);
+      const myBtcPubKeyHex = Buffer.from(pubBytes).toString('hex');
+
+      const htlcScriptHex = localStorage.getItem(`v2_btc_script_${swap.publicId}`);
+      if (!htlcScriptHex) throw new Error('HTLC script not found in this browser — was the lock created here?');
+
+      const outputAddress = isTestnet
+        ? (unlockedWallet.addresses?.bitcoinTestnet || unlockedWallet.addresses?.bitcoin)
+        : unlockedWallet.addresses?.bitcoin;
+      if (!outputAddress) throw new Error('BTC refund address not found');
+
+      // Determine lockId from saved pending state, swap fields, or ask user
+      const pendingRaw = localStorage.getItem(pendingBtcLockKey);
+      const lockId = pendingRaw
+        ? (JSON.parse(pendingRaw) as { lockId: string }).lockId
+        : (swap.sideALockAddress ? swap.sideALockId : swap.sideBLockId);
+
+      if (!lockId) throw new Error('Lock transaction ID not found — check Active Swaps for the lock address');
+
+      const { BitcoinAdapter, getUtxosBtc } = await import('@/lib/adapters/BitcoinAdapter');
+      const btcAdapter = new BitcoinAdapter({ chain: 'BTC', network: btcNetwork, esploraUrl });
+
+      // lockAddress = P2WSH HTLC address (vout 0 of the lock tx)
+      const [txid] = lockId.split(':');
+      const lockResp = await fetch(`${esploraUrl}/api/tx/${txid}`);
+      if (!lockResp.ok) throw new Error(`Could not fetch lock tx: ${lockResp.status}`);
+      const lockTx = await lockResp.json() as { vout: Array<{ scriptpubkey_address: string; value: number }> };
+      const lockAddress = lockTx.vout[0]?.scriptpubkey_address;
+      if (!lockAddress) throw new Error('Could not determine HTLC lock address');
+
+      const utxos = await getUtxosBtc(lockAddress, esploraUrl);
+      if (!utxos.length) throw new Error(`No UTXOs at HTLC address ${lockAddress} — may already be spent`);
+
+      // Locktime = sideALocktime for maker's BTC, sideBLocktime for taker's BTC
+      const isMakerBtc = swap.baseChain === 'BTC';
+      const locktime = isMakerBtc ? (swap.sideALocktime ?? 0) : (swap.sideBLocktime ?? 0);
+
+      const refundTxHex = await btcAdapter.refundFunds({
+        signerKey: { privateKeyHex: btcPrivKeyHex, publicKeyHex: myBtcPubKeyHex },
+        lockId,
+        outputAddress,
+        utxos,
+        htlcScriptHex,
+        locktime,
+      });
+
+      // refundFunds returns txid on BTC
+      localStorage.removeItem(pendingBtcLockKey);
+      setActionStatus('done');
+      setPassword('');
+      setErrorMsg('');
+      alert(`✅ BTC refund broadcast! TXID: ${refundTxHex}\n\nFunds will return to ${outputAddress} once confirmed.`);
+      onRefresh();
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+      setActionStatus('error');
+    }
+  };
+
   if (!isMaker && !isTaker) return null; // not our swap
 
   // User is a participant but has no immediate action — show waiting state
@@ -1925,12 +2001,34 @@ function V2SwapActions({
 
   const hasAction = canLockXrp || canLockEth || canLockBtc || canLockBnb || canLockQbtc || canClaimEth || canClaimXrp || canClaimBtc || canClaimBnb || canClaimQbtc;
 
+  // Can refund BTC if: we have the HTLC script AND locktime has passed AND there are UTXOs there
+  const btcLocktime = (isMaker && swap.baseChain === 'BTC') ? (swap.sideALocktime ?? 0)
+    : (isTaker && swap.quoteChain === 'BTC') ? (swap.sideBLocktime ?? 0) : 0;
+  const hasBtcHtlcScript = !!(swap.baseChain === 'BTC' || swap.quoteChain === 'BTC')
+    && !!localStorage.getItem(`v2_btc_script_${swap.publicId}`);
+  const btcLocktimeExpired = btcLocktime > 0 && Math.floor(Date.now() / 1000) >= btcLocktime;
+  const canRefundBtc = hasBtcHtlcScript && btcLocktimeExpired;
+
   if (!hasAction) {
     return (
-      <div className="pt-2 border-t border-slate-700/50">
+      <div className="pt-2 border-t border-slate-700/50 space-y-2">
         <p className="text-xs text-slate-500 flex items-center gap-1.5">
           <Loader2 size={11} className="animate-spin" /> {waitMsg}
         </p>
+        {canRefundBtc && (
+          <>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+              placeholder="Wallet password"
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:border-cyan-500 focus:outline-none" />
+            {errorMsg && <p className="text-xs text-red-300">{errorMsg}</p>}
+            <button onClick={handleRefundBtc} disabled={actionStatus === 'busy' || !password.trim()}
+              className="w-full py-2 rounded-lg text-sm font-medium bg-amber-700 hover:bg-amber-600 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
+              {actionStatus === 'busy'
+                ? <><Loader2 size={14} className="animate-spin" /> Refunding BTC…</>
+                : <><RefreshCw size={14} /> Refund BTC (locktime expired)</>}
+            </button>
+          </>
+        )}
       </div>
     );
   }
@@ -2118,6 +2216,16 @@ function V2SwapActions({
             {cancellingSwap
               ? <><Loader2 size={11} className="animate-spin" /> Cancelling…</>
               : 'Cancel Swap'}
+          </button>
+        </div>
+      )}
+      {canRefundBtc && (
+        <div className="pt-1 border-t border-slate-700/40">
+          <button onClick={handleRefundBtc} disabled={actionStatus === 'busy' || !password.trim()}
+            className="w-full py-2 rounded-lg text-sm font-medium bg-amber-700 hover:bg-amber-600 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
+            {actionStatus === 'busy'
+              ? <><Loader2 size={14} className="animate-spin" /> Refunding BTC…</>
+              : <><RefreshCw size={14} /> Refund BTC (locktime expired)</>}
           </button>
         </div>
       )}
