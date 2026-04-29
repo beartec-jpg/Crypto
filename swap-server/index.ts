@@ -1370,6 +1370,45 @@ app.get('/api/swap/v2/offers/all', readLimiter, async (_req, res) => {
   }
 });
 
+// ─── POST /api/swap/v2/offer/:offerId/cancel ─────────────────────────────────
+// Maker cancels their own OPEN offer.
+// Body: authEvmAddress, signature, timestamp
+
+app.post('/api/swap/v2/offer/:offerId/cancel', writeLimiter, async (req, res) => {
+  try {
+    const { offerId } = req.params;
+    const { authEvmAddress, signature, timestamp } = req.body || {};
+
+    if (!authEvmAddress || typeof authEvmAddress !== 'string') return res.status(400).json({ error: 'authEvmAddress is required' });
+    if (!signature      || typeof signature      !== 'string') return res.status(400).json({ error: 'signature is required' });
+    const tsErr = checkTimestamp(timestamp);
+    if (tsErr) return res.status(400).json({ error: tsErr });
+
+    const offerResult = await pool.query('SELECT * FROM swap_offers WHERE id = $1', [offerId]);
+    const offer = offerResult.rows[0];
+    if (!offer) return res.status(404).json({ error: 'Offer not found' });
+    if (offer.status !== 'OPEN') return res.status(409).json({ error: `Cannot cancel offer in status: ${offer.status}` });
+
+    // Verify the signer is the maker
+    if (offer.auth_evm_address.toLowerCase() !== authEvmAddress.toLowerCase()) {
+      return res.status(403).json({ error: 'Not the offer owner' });
+    }
+
+    const canonicalMsg = buildV2Message('CANCEL_OFFER', offer.base_chain, offer.quote_chain, offerId, authEvmAddress.toLowerCase(), Number(timestamp));
+    try {
+      assertEvmSignature(canonicalMsg, signature, authEvmAddress);
+    } catch (authErr: any) {
+      return res.status(authErr.statusCode || 403).json({ error: authErr.message });
+    }
+
+    await pool.query("UPDATE swap_offers SET status = 'CANCELLED' WHERE id = $1", [offerId]);
+    return res.json({ status: 'CANCELLED' });
+  } catch (err: any) {
+    console.error('POST /api/swap/v2/offer/cancel:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to cancel offer' });
+  }
+});
+
 // ─── POST /api/swap/v2/accept/:offerId ───────────────────────────────────────
 // Taker accepts an open offer.  Creates an atomic_swap record.
 //

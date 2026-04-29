@@ -121,6 +121,7 @@ export interface RecordLockParams {
 
 export type V2Action =
   | 'CREATE_OFFER'
+  | 'CANCEL_OFFER'
   | 'ACCEPT_OFFER'
   | 'LOCK_SIDE_A'
   | 'LOCK_SIDE_B'
@@ -234,6 +235,29 @@ export async function fetchV2AllOffers(): Promise<V2Offer[]> {
   const res = await fetch(`${SWAP_API}/api/swap/v2/offers/all`);
   if (!res.ok) throw new Error(`Failed to fetch all offers: ${res.statusText}`);
   return res.json();
+}
+
+export async function cancelV2Offer(
+  offer: V2Offer,
+  walletId: string,
+  password: string,
+  signFn: (walletId: string, password: string, message: string) => Promise<string>,
+): Promise<void> {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const message = buildV2Message(
+    'CANCEL_OFFER', offer.baseChain, offer.quoteChain,
+    offer.id, offer.authEvmAddress.toLowerCase(), timestamp,
+  );
+  const signature = await signFn(walletId, password, message);
+  const res = await fetch(`${SWAP_API}/api/swap/v2/offer/${offer.id}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ authEvmAddress: offer.authEvmAddress, signature, timestamp }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string }).error || `HTTP ${res.status}`);
+  }
 }
 
 export async function fetchV2Swap(swapId: string): Promise<V2Swap> {

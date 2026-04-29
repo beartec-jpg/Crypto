@@ -31,6 +31,7 @@ import {
   buildV2Message,
   generateSecret,
   fetchV2AllOffers,
+  cancelV2Offer,
   postV2Offer,
   postV2Accept,
 } from '@/lib/swapV2Api';
@@ -626,6 +627,8 @@ function SellView({
   // Active listings state
   const [myListings, setMyListings]   = useState<V2Offer[]>([]);
   const [listingsLoading, setListingsLoading] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [cancelError, setCancelError]   = useState<string>('');
 
   // Auto-fill receive address based on quote chain
   useEffect(() => {
@@ -685,6 +688,20 @@ function SellView({
   }, [walletEvmAddress]);
 
   useEffect(() => { loadMyListings(); }, [loadMyListings]);
+
+  const handleCancelListing = useCallback(async (offer: V2Offer) => {
+    if (!password.trim()) { setCancelError('Enter your wallet password to cancel'); return; }
+    setCancelError('');
+    setCancellingId(offer.id);
+    try {
+      await cancelV2Offer(offer, walletId, password, signWithWallet);
+      await loadMyListings();
+    } catch (e: unknown) {
+      setCancelError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCancellingId(null);
+    }
+  }, [password, walletId, loadMyListings]);
 
   const balanceNum   = balance   ? parseFloat(balance)   : null;
   const baseAmountNum = baseAmount ? parseFloat(baseAmount) : null;
@@ -903,6 +920,11 @@ function SellView({
 
       {/* Your active listings */}
       <div className="space-y-3">
+        {cancelError && (
+          <div className="flex items-center gap-2 text-xs text-red-300 bg-red-900/20 border border-red-800/40 rounded-lg p-2">
+            <AlertCircle size={12} className="shrink-0" />{cancelError}
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-slate-300">Your Active Listings</h3>
           <button onClick={loadMyListings} disabled={listingsLoading}
@@ -954,7 +976,13 @@ function SellView({
                       </td>
                       <td className="px-4 py-2.5 text-slate-500 text-xs">{formatAge(offer.createdAt)}</td>
                       <td className="px-4 py-2.5 text-right">
-                        <span className="text-xs text-slate-600 italic">Contact support to cancel</span>
+                        <button
+                          onClick={() => handleCancelListing(offer)}
+                          disabled={cancellingId === offer.id}
+                          className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors"
+                        >
+                          {cancellingId === offer.id ? 'Cancelling…' : 'Cancel'}
+                        </button>
                       </td>
                     </tr>
                   ))}
