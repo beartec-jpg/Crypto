@@ -1346,6 +1346,30 @@ app.get('/api/swap/v2/offers', readLimiter, async (req, res) => {
   }
 });
 
+// ─── GET /api/swap/v2/offers/all ─────────────────────────────────────────────
+// List all open ASK offers across every pair (multi-chain marketplace browse).
+// No pair filter required. Limit: 200, ordered by created_at DESC.
+// NOTE: Must be registered BEFORE the /api/swap/v2/:swapId catch-all route.
+
+app.get('/api/swap/v2/offers/all', readLimiter, async (_req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT * FROM swap_offers
+      WHERE status = 'OPEN'
+        AND offer_type = 'ASK'
+        AND base_chain IS NOT NULL
+        AND quote_chain IS NOT NULL
+      ORDER BY created_at DESC
+      LIMIT 200
+    `);
+
+    return res.json(result.rows.map(toCamelCase));
+  } catch (err: any) {
+    console.error('GET /api/swap/v2/offers/all:', err.message);
+    return res.status(500).json({ error: err.message || 'Failed to fetch all offers' });
+  }
+});
+
 // ─── POST /api/swap/v2/accept/:offerId ───────────────────────────────────────
 // Taker accepts an open offer.  Creates an atomic_swap record.
 //
