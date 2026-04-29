@@ -53,45 +53,81 @@ export async function fetchEthereumTransactions(address: string, network: TokenN
       axios.get('https://api.etherscan.io/v2/api', { params: { ...baseParams, action: 'tokentx' } }),
     ]);
 
-    const nativeTxs: Transaction[] = nativeResp.data.status === '1'
-      ? nativeResp.data.result.map((tx: any) => ({
-          hash: tx.hash,
-          type: tx.to?.toLowerCase() === address.toLowerCase() ? 'receive' : 'send',
-          amount: (parseInt(tx.value) / 1e18).toFixed(6),
-          token: 'ETH',
-          to: tx.to,
-          from: tx.from,
-          timestamp: new Date(parseInt(tx.timeStamp) * 1000),
-          status: tx.txreceipt_status === '1' ? 'confirmed' : tx.isError === '1' ? 'failed' : 'confirmed',
-          chain: 'ethereum' as const,
-          blockNumber: parseInt(tx.blockNumber),
-          fee: (parseInt(tx.gasUsed) * parseInt(tx.gasPrice) / 1e18).toFixed(6),
-        }))
-      : [];
+    // Build a map of internal ETH receives (e.g. HTLC claim payouts) keyed by tx hash.
+    // These share the same hash as the outgoing contract call but carry the real ETH amount.
+    const internalReceiveByHash = new Map<string, { amount: string; from: string; blockNumber: number; timeStamp: number }>();
+    if (internalResp.data.status === '1') {
+      for (const itx of internalResp.data.result) {
+        if (
+          itx.to?.toLowerCase() === address.toLowerCase() &&
+          parseInt(itx.value) > 0 &&
+          itx.isError === '0'
+        ) {
+          internalReceiveByHash.set(itx.hash, {
+            amount: (parseInt(itx.value) / 1e18).toFixed(6),
+            from: itx.from,
+            blockNumber: parseInt(itx.blockNumber),
+            timeStamp: parseInt(itx.timeStamp),
+          });
+        }
+      }
+    }
 
-    // Internal transactions capture ETH received from contract calls (e.g. HTLC withdraw)
-    const seenHashes = new Set(nativeTxs.map(t => t.hash));
-    const internalTxs: Transaction[] = internalResp.data.status === '1'
-      ? internalResp.data.result
-          .filter((tx: any) =>
-            tx.to?.toLowerCase() === address.toLowerCase() &&
-            parseInt(tx.value) > 0 &&
-            tx.isError === '0' &&
-            !seenHashes.has(tx.hash)
-          )
-          .map((tx: any) => ({
+    // Map native txs. Zero-value outgoing contract calls that have a corresponding
+    // internal ETH receive (e.g. HTLC withdraw/claim) are shown as the received amount.
+    const nativeTxs: Transaction[] = nativeResp.data.status === '1'
+      ? nativeResp.data.result.map((tx: any) => {
+          const isOutgoingZeroValueCall =
+            tx.to?.toLowerCase() !== address.toLowerCase() && parseInt(tx.value) === 0;
+          const internalReceive = isOutgoingZeroValueCall
+            ? internalReceiveByHash.get(tx.hash)
+            : undefined;
+          if (internalReceive) {
+            // Upgrade: show this as the ETH received from the contract (e.g. HTLC claim)
+            internalReceiveByHash.delete(tx.hash); // consumed — don't add again below
+            return {
+              hash: tx.hash,
+              type: 'receive' as const,
+              amount: internalReceive.amount,
+              token: 'ETH',
+              to: address,
+              from: internalReceive.from,
+              timestamp: new Date(parseInt(tx.timeStamp) * 1000),
+              status: tx.txreceipt_status === '1' ? 'confirmed' as const : 'failed' as const,
+              chain: 'ethereum' as const,
+              blockNumber: parseInt(tx.blockNumber),
+              fee: (parseInt(tx.gasUsed) * parseInt(tx.gasPrice) / 1e18).toFixed(6),
+            };
+          }
+          return {
             hash: tx.hash,
-            type: 'receive' as const,
+            type: tx.to?.toLowerCase() === address.toLowerCase() ? 'receive' : 'send',
             amount: (parseInt(tx.value) / 1e18).toFixed(6),
             token: 'ETH',
             to: tx.to,
             from: tx.from,
             timestamp: new Date(parseInt(tx.timeStamp) * 1000),
-            status: 'confirmed' as const,
+            status: tx.txreceipt_status === '1' ? 'confirmed' : tx.isError === '1' ? 'failed' : 'confirmed',
             chain: 'ethereum' as const,
             blockNumber: parseInt(tx.blockNumber),
-          }))
+            fee: (parseInt(tx.gasUsed) * parseInt(tx.gasPrice) / 1e18).toFixed(6),
+          } as Transaction;
+        })
       : [];
+
+    // Any remaining internal receives that had no corresponding native tx
+    const internalTxs: Transaction[] = [...internalReceiveByHash.entries()].map(([hash, itx]) => ({
+      hash,
+      type: 'receive' as const,
+      amount: itx.amount,
+      token: 'ETH',
+      to: address,
+      from: itx.from,
+      timestamp: new Date(itx.timeStamp * 1000),
+      status: 'confirmed' as const,
+      chain: 'ethereum' as const,
+      blockNumber: itx.blockNumber,
+    }));
 
     const tokenTxs: Transaction[] = tokenResp.data.status === '1'
       ? tokenResp.data.result.map((tx: any) => ({

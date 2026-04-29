@@ -60,13 +60,15 @@ export async function fetchPrices(): Promise<CoinGeckoPrices> {
 /**
  * Fetch Ethereum balance via Etherscan API v2
  * Supports mainnet (chainid 1) and Sepolia testnet (chainid 11155111)
+ * Falls back to direct RPC if Etherscan is unavailable or rate-limited.
  */
 export async function fetchEthereumBalance(address: string, network: TokenNetwork = 'mainnet'): Promise<string> {
+  const chainId = network === 'testnet' ? 11155111 : 1;
+  const networkLabel = network === 'testnet' ? 'TESTNET (Sepolia)' : 'MAINNET';
+  console.log(`🔍 Fetching ETH balance from ${networkLabel} for:`, address);
+
+  // ─── Primary: Etherscan API v2 ───────────────────────────────────────────
   try {
-    const chainId = network === 'testnet' ? 11155111 : 1;
-    const networkLabel = network === 'testnet' ? 'TESTNET (Sepolia)' : 'MAINNET';
-    console.log(`🔍 Fetching ETH balance from ${networkLabel} for:`, address);
-    
     const response = await axios.get('https://api.etherscan.io/v2/api', {
       params: {
         chainid: chainId,
@@ -87,13 +89,45 @@ export async function fetchEthereumBalance(address: string, network: TokenNetwor
       console.log(`✅ ETH Balance (${networkLabel}):`, balanceEth, 'ETH');
       return balanceEth.toFixed(6);
     }
-    
-    console.warn('⚠️ ETH account not found or no balance');
-    return '0';
+
+    console.warn('⚠️ Etherscan returned no balance, trying RPC fallback');
   } catch (error: any) {
-    console.error('❌ Failed to fetch Ethereum balance:', error.message);
-    return '0';
+    console.warn('⚠️ Etherscan failed, trying RPC fallback:', error.message);
   }
+
+  // ─── Fallback: direct eth_getBalance via public RPC ─────────────────────
+  const rpcUrls = network === 'testnet'
+    ? [
+        'https://ethereum-sepolia-rpc.publicnode.com',
+        'https://rpc.sepolia.org',
+        'https://sepolia.drpc.org',
+      ]
+    : [
+        'https://ethereum-rpc.publicnode.com',
+        'https://eth.llamarpc.com',
+        'https://rpc.ankr.com/eth',
+      ];
+
+  for (const rpcUrl of rpcUrls) {
+    try {
+      const rpcResp = await axios.post(
+        rpcUrl,
+        { jsonrpc: '2.0', id: 1, method: 'eth_getBalance', params: [address, 'latest'] },
+        { timeout: 8000 },
+      );
+      if (rpcResp.data.result) {
+        const balanceWei = BigInt(rpcResp.data.result);
+        const balanceEth = Number(balanceWei) / 1e18;
+        console.log(`✅ ETH Balance via RPC fallback (${networkLabel}):`, balanceEth, 'ETH');
+        return balanceEth.toFixed(6);
+      }
+    } catch {
+      // try next
+    }
+  }
+
+  console.error('❌ All ETH balance sources failed');
+  return '0';
 }
 
 /**
