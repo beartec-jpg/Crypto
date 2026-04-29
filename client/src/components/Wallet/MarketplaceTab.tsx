@@ -1696,7 +1696,9 @@ function V2SwapActions({
         ? (swap.sideBPubKeyHex || '') : (swap.sideAPubKeyHex || '');
       if (!counterpartyPubKeyHex) throw new Error('Counterparty BTC pubkey not available — ensure they registered it when accepting the offer');
 
-      const refundAddress = unlockedWallet.addresses?.bitcoin;
+      const refundAddress = isTestnet
+        ? (unlockedWallet.addresses?.bitcoinTestnet || unlockedWallet.addresses?.bitcoin)
+        : unlockedWallet.addresses?.bitcoin;
       if (!refundAddress) throw new Error('BTC address not in wallet');
 
       const { BitcoinAdapter } = await import('@/lib/adapters/BitcoinAdapter');
@@ -1780,7 +1782,9 @@ function V2SwapActions({
         secret = swap.secret;
       }
 
-      const outputAddress = unlockedWallet.addresses?.bitcoin;
+      const outputAddress = isTestnet
+        ? (unlockedWallet.addresses?.bitcoinTestnet || unlockedWallet.addresses?.bitcoin)
+        : unlockedWallet.addresses?.bitcoin;
       if (!outputAddress) throw new Error('BTC address not in wallet');
 
       const { BitcoinAdapter, getUtxosBtc } = await import('@/lib/adapters/BitcoinAdapter');
