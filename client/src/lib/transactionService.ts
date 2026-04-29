@@ -46,26 +46,51 @@ export async function fetchEthereumTransactions(address: string, network: TokenN
       apikey: import.meta.env.VITE_ETHERSCAN_API_KEY || '',
     };
 
-    // Fetch native ETH transfers and ERC20 token transfers in parallel
-    const [nativeResp, tokenResp] = await Promise.all([
+    // Fetch native ETH, internal ETH (HTLC claims), and ERC20 token transfers in parallel
+    const [nativeResp, internalResp, tokenResp] = await Promise.all([
       axios.get('https://api.etherscan.io/v2/api', { params: { ...baseParams, action: 'txlist' } }),
+      axios.get('https://api.etherscan.io/v2/api', { params: { ...baseParams, action: 'txlistinternal' } }),
       axios.get('https://api.etherscan.io/v2/api', { params: { ...baseParams, action: 'tokentx' } }),
     ]);
 
     const nativeTxs: Transaction[] = nativeResp.data.status === '1'
       ? nativeResp.data.result.map((tx: any) => ({
           hash: tx.hash,
-          type: tx.to.toLowerCase() === address.toLowerCase() ? 'receive' : 'send',
+          type: tx.to?.toLowerCase() === address.toLowerCase() ? 'receive' : 'send',
           amount: (parseInt(tx.value) / 1e18).toFixed(6),
           token: 'ETH',
           to: tx.to,
           from: tx.from,
           timestamp: new Date(parseInt(tx.timeStamp) * 1000),
-          status: tx.txreceipt_status === '1' ? 'confirmed' : 'failed',
+          status: tx.txreceipt_status === '1' ? 'confirmed' : tx.isError === '1' ? 'failed' : 'confirmed',
           chain: 'ethereum' as const,
           blockNumber: parseInt(tx.blockNumber),
           fee: (parseInt(tx.gasUsed) * parseInt(tx.gasPrice) / 1e18).toFixed(6),
         }))
+      : [];
+
+    // Internal transactions capture ETH received from contract calls (e.g. HTLC withdraw)
+    const seenHashes = new Set(nativeTxs.map(t => t.hash));
+    const internalTxs: Transaction[] = internalResp.data.status === '1'
+      ? internalResp.data.result
+          .filter((tx: any) =>
+            tx.to?.toLowerCase() === address.toLowerCase() &&
+            parseInt(tx.value) > 0 &&
+            tx.isError === '0' &&
+            !seenHashes.has(tx.hash)
+          )
+          .map((tx: any) => ({
+            hash: tx.hash,
+            type: 'receive' as const,
+            amount: (parseInt(tx.value) / 1e18).toFixed(6),
+            token: 'ETH',
+            to: tx.to,
+            from: tx.from,
+            timestamp: new Date(parseInt(tx.timeStamp) * 1000),
+            status: 'confirmed' as const,
+            chain: 'ethereum' as const,
+            blockNumber: parseInt(tx.blockNumber),
+          }))
       : [];
 
     const tokenTxs: Transaction[] = tokenResp.data.status === '1'
@@ -84,8 +109,8 @@ export async function fetchEthereumTransactions(address: string, network: TokenN
         }))
       : [];
 
-    const allTxs = [...nativeTxs, ...tokenTxs].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-    console.log(`✅ Found ${nativeTxs.length} ETH + ${tokenTxs.length} token transactions on ${label}`);
+    const allTxs = [...nativeTxs, ...internalTxs, ...tokenTxs].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    console.log(`✅ Found ${nativeTxs.length} ETH + ${internalTxs.length} internal + ${tokenTxs.length} token transactions on ${label}`);
     return allTxs;
   } catch (error: any) {
     console.error('❌ Failed to fetch Ethereum transactions:', error.message);
@@ -223,32 +248,74 @@ export async function fetchXRPTransactions(address: string, network: TokenNetwor
   try {
     const txs = await xrplService.getTransactions(address, network === 'mainnet', 20);
     
-    const transactions: Transaction[] = txs.map((item: any) => {
-      const tx = item.tx;
-      const meta = item.meta;
-      
-      const isReceive = tx.Destination === address;
-      
+    const transactions: Transaction[] = txs.flatMap((item: any) => {
+      const tx = item.tx_json ?? item.tx ?? item;
+      const meta = item.meta ?? {};
+      if (!tx || meta.TransactionResult === 'tecNO_TARGET') return [];
+
+      const txType: string = tx.TransactionType || '';
+
+      // Determine direction and amount based on transaction type
+      let isReceive = false;
       let amount = '0';
-      if (typeof tx.Amount === 'string') {
-        amount = dropsToXrp(tx.Amount).toString();
-      } else if (tx.Amount?.value) {
-        amount = tx.Amount.value;
+      let token = 'XRP';
+
+      if (txType === 'Payment') {
+        isReceive = tx.Destination === address;
+        // Use delivered_amount from meta for accuracy (handles partial payments)
+        const delivered = meta.delivered_amount ?? tx.Amount;
+        if (typeof delivered === 'string') {
+          amount = dropsToXrp(delivered).toString();
+        } else if (delivered?.value) {
+          amount = delivered.value;
+          token = delivered.currency || 'XRP';
+        }
+      } else if (txType === 'EscrowCreate') {
+        // Sending XRP into escrow — outgoing
+        isReceive = false;
+        if (typeof tx.Amount === 'string') amount = dropsToXrp(tx.Amount).toString();
+      } else if (txType === 'EscrowFinish') {
+        // Claiming from escrow — incoming to the Destination/Account claiming
+        isReceive = (tx.Destination === address) || (tx.Account === address && tx.Owner !== address);
+        // Amount is in the escrow object — read from meta AffectedNodes
+        const escrowNode = (meta.AffectedNodes || []).find(
+          (n: any) => (n.DeletedNode || n.ModifiedNode)?.LedgerEntryType === 'Escrow'
+        );
+        const escrowFields = escrowNode?.DeletedNode?.FinalFields || escrowNode?.DeletedNode?.PreviousFields;
+        if (escrowFields?.Amount && typeof escrowFields.Amount === 'string') {
+          amount = dropsToXrp(escrowFields.Amount).toString();
+        }
+      } else if (txType === 'EscrowCancel') {
+        // Cancelled escrow — funds returned to owner
+        isReceive = tx.Account === address;
+        const escrowNode = (meta.AffectedNodes || []).find(
+          (n: any) => (n.DeletedNode || n.ModifiedNode)?.LedgerEntryType === 'Escrow'
+        );
+        const escrowFields = escrowNode?.DeletedNode?.FinalFields || escrowNode?.DeletedNode?.PreviousFields;
+        if (escrowFields?.Amount && typeof escrowFields.Amount === 'string') {
+          amount = dropsToXrp(escrowFields.Amount).toString();
+        }
+      } else {
+        // Other tx types (OfferCreate etc.) — skip zero-value ones
+        return [];
       }
-      
-      return {
+
+      // Skip dust/zero transactions (e.g. pure fee payments with no value)
+      if (parseFloat(amount) === 0) return [];
+
+      return [{
         hash: tx.hash,
         type: isReceive ? 'receive' : 'send',
         amount: parseFloat(amount).toFixed(6),
-        token: 'XRP',
-        to: tx.Destination || '',
+        token,
+        to: tx.Destination || tx.Account || '',
         from: tx.Account || '',
-        timestamp: new Date((tx.date + 946684800) * 1000),
+        timestamp: new Date(((tx.date ?? 0) + 946684800) * 1000),
         status: meta.TransactionResult === 'tesSUCCESS' ? 'confirmed' : 'failed',
         chain: 'xrp' as const,
         blockNumber: tx.ledger_index,
-        fee: dropsToXrp(tx.Fee).toString(),
-      };
+        fee: tx.Fee ? dropsToXrp(tx.Fee).toString() : '0',
+      }];
     });
     
     console.log(`✅ Found ${transactions.length} XRP transactions`);
