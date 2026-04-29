@@ -1245,10 +1245,15 @@ function V2SwapActions({
 
         const claimTxHash = await evmAdapter.claimFunds({ signerKey: ethSigner, lockId: ethLockId, secret });
         // Report to server — stores secret and sets COMPLETE
-        const ts = Math.floor(Date.now() / 1000);
-        const msg = `QBTC_SWAP_V2:CLAIM_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${claimTxHash}:${ts}`;
-        const sig = await ethSigner.signMessage(msg);
-        await postV2ClaimSideB({ swapId: swap.publicId, secret, claimTxHash, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+        // Non-fatal: EvmMonitor will catch up on next poll if this fails
+        try {
+          const ts = Math.floor(Date.now() / 1000);
+          const msg = `QBTC_SWAP_V2:CLAIM_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${claimTxHash}:${ts}`;
+          const sig = await ethSigner.signMessage(msg);
+          await postV2ClaimSideB({ swapId: swap.publicId, secret, claimTxHash, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+        } catch {
+          // Non-fatal: EvmMonitor will detect the withdrawal and set COMPLETE
+        }
       } else {
         // Taker claims ETH (ETH/XRP) — secret was revealed by maker on XRP chain, now in swap.secret
         if (!swap.secret) throw new Error('Secret not yet available — maker must claim XRP first');
