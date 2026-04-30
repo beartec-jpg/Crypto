@@ -73,6 +73,14 @@ export default function SecuritySettings({ userId, walletId, walletEvmAddress, o
   const [sepoliaBalance, setSepoliaBalance] = useState<string | null>(null);
   const alreadyDeployed = !!import.meta.env.VITE_ETH_HTLC_CONTRACT;
 
+  // Deploy BNB HTLC state
+  const [deployBnbPassword, setDeployBnbPassword] = useState('');
+  const [deployBnbStatus, setDeployBnbStatus] = useState<'idle' | 'deploying' | 'done' | 'error'>('idle');
+  const [deployedBnbAddress, setDeployedBnbAddress] = useState('');
+  const [deployBnbError, setDeployBnbError] = useState('');
+  const [bscTestnetBalance, setBscTestnetBalance] = useState<string | null>(null);
+  const alreadyDeployedBnb = !!import.meta.env.VITE_BNB_HTLC_CONTRACT;
+
   useEffect(() => {
     if (!walletEvmAddress || alreadyDeployed) return;
     const SEPOLIA_RPC = 'https://ethereum-sepolia-rpc.publicnode.com';
@@ -90,6 +98,24 @@ export default function SecuritySettings({ userId, walletId, walletEvmAddress, o
       })
       .catch(() => {});
   }, [walletEvmAddress, alreadyDeployed]);
+
+  useEffect(() => {
+    if (!walletEvmAddress || alreadyDeployedBnb) return;
+    const BSC_TESTNET_RPC = 'https://data-seed-prebsc-1-s1.bnbchain.org:8545';
+    fetch(BSC_TESTNET_RPC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'eth_getBalance', params: [walletEvmAddress, 'latest'] }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.result) {
+          const bal = parseFloat(ethers.formatEther(BigInt(d.result)));
+          setBscTestnetBalance(bal.toFixed(6));
+        }
+      })
+      .catch(() => {});
+  }, [walletEvmAddress, alreadyDeployedBnb]);
 
   const handleDeployHTLC = async () => {
     if (!walletId || !walletEvmAddress) return;
@@ -111,6 +137,29 @@ export default function SecuritySettings({ userId, walletId, walletEvmAddress, o
     } catch (e: unknown) {
       setDeployError(e instanceof Error ? e.message : String(e));
       setDeployStatus('error');
+    }
+  };
+
+  const handleDeployBnbHTLC = async () => {
+    if (!walletId || !walletEvmAddress) return;
+    setDeployBnbStatus('deploying');
+    setDeployBnbError('');
+    try {
+      const wallet = await unlockWallet(walletId, deployBnbPassword);
+      const ethPrivateKey = wallet.privateKeys.ethereum;
+      if (!ethPrivateKey) throw new Error('Ethereum key not found in wallet');
+      const provider = new ethers.JsonRpcProvider('https://data-seed-prebsc-1-s1.bnbchain.org:8545');
+      const signer = new ethers.Wallet('0x' + ethPrivateKey, provider);
+      const factory = new ethers.ContractFactory(HTLC_ETH_ABI, HTLC_ETH_BYTECODE, signer);
+      const contract = await factory.deploy();
+      await contract.waitForDeployment();
+      const addr = await contract.getAddress();
+      setDeployedBnbAddress(addr);
+      setDeployBnbStatus('done');
+      setDeployBnbPassword('');
+    } catch (e: unknown) {
+      setDeployBnbError(e instanceof Error ? e.message : String(e));
+      setDeployBnbStatus('error');
     }
   };
 
@@ -764,6 +813,62 @@ export default function SecuritySettings({ userId, walletId, walletEvmAddress, o
                     <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Deploying…</>
                   ) : (
                     <><Rocket className="w-4 h-4" /> Deploy to Sepolia</>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Deploy BNB HTLC */}
+      {walletId && walletEvmAddress && !alreadyDeployedBnb && (
+        <div className="pt-6 border-t border-gray-700">
+          <h3 className="text-lg font-medium mb-4 flex items-center gap-2"><Rocket className="w-5 h-5 text-yellow-400" /> Deploy BNB HTLC Contract</h3>
+          <div className="p-4 rounded-xl bg-yellow-900/20 border border-yellow-700/50 space-y-3">
+            <p className="text-sm text-gray-400">
+              Deploy <code className="text-yellow-300">HashedTimelockETH</code> to BSC Testnet so BNB atomic swaps work.
+              Costs ~0.001 tBNB in gas.
+            </p>
+            {bscTestnetBalance !== null && (
+              <p className="text-xs text-slate-400">
+                BSC Testnet balance: <span className={parseFloat(bscTestnetBalance) < 0.001 ? 'text-red-400' : 'text-emerald-400'}>{bscTestnetBalance} tBNB</span>
+                {parseFloat(bscTestnetBalance) < 0.001 && (
+                  <a href="https://testnet.bnbchain.org/faucet-smart" target="_blank" rel="noreferrer"
+                    className="ml-2 text-yellow-400 underline inline-flex items-center gap-0.5">
+                    Get tBNB <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </p>
+            )}
+            {deployBnbStatus === 'done' ? (
+              <div className="space-y-2">
+                <p className="text-emerald-400 text-sm font-medium">✅ Deployed!</p>
+                <p className="text-xs font-mono text-slate-300 break-all bg-slate-800 rounded p-2">{deployedBnbAddress}</p>
+                <p className="text-xs text-amber-300">Set <code>VITE_BNB_HTLC_CONTRACT={deployedBnbAddress}</code> in Vercel env vars and <code>BNB_HTLC_CONTRACT={deployedBnbAddress}</code> on the VPS, then redeploy.</p>
+                <a href={`https://testnet.bscscan.com/address/${deployedBnbAddress}`} target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-yellow-400 hover:underline">
+                  View on BSCScan <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Wallet password (to sign deploy tx)</label>
+                  <input type="password" value={deployBnbPassword} onChange={e => setDeployBnbPassword(e.target.value)}
+                    disabled={deployBnbStatus === 'deploying'}
+                    placeholder="Your wallet password"
+                    className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 focus:border-yellow-500 focus:outline-none text-sm disabled:opacity-50" />
+                </div>
+                {deployBnbError && <p className="text-xs text-red-400">{deployBnbError}</p>}
+                <button
+                  onClick={handleDeployBnbHTLC}
+                  disabled={deployBnbStatus === 'deploying' || !deployBnbPassword.trim() || (bscTestnetBalance !== null && parseFloat(bscTestnetBalance) < 0.001)}
+                  className="w-full px-4 py-2 rounded-lg bg-yellow-600 hover:bg-yellow-500 text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium flex items-center justify-center gap-2">
+                  {deployBnbStatus === 'deploying' ? (
+                    <><div className="w-4 h-4 border-2 border-slate-900/30 border-t-slate-900 rounded-full animate-spin" /> Deploying…</>
+                  ) : (
+                    <><Rocket className="w-4 h-4" /> Deploy to BSC Testnet</>
                   )}
                 </button>
               </div>
