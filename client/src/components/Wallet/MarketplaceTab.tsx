@@ -2549,6 +2549,10 @@ export default function MarketplaceTab({
       if (isTaker && s.baseChain === 'ETH' && !localStorage.getItem(ethClaimedKey)) return true;
       if (isTaker && s.baseChain === 'BTC' && !localStorage.getItem(btcClaimedKey)) return true;
     }
+    // Keep EXPIRED/CANCELLED BTC swaps in active list if we have a saved HTLC script (need to refund)
+    if ((s.status === 'EXPIRED' || s.status === 'CANCELLED') &&
+        (s.baseChain === 'BTC' || s.quoteChain === 'BTC') &&
+        !!localStorage.getItem(`v2_btc_script_${s.publicId}`)) return true;
     return false;
   });
   const v2PastSwaps   = v2Swaps.filter(s => !v2ActiveSwaps.includes(s)).slice(0, 5);
@@ -3038,13 +3042,25 @@ export default function MarketplaceTab({
             ))}
             {v2PastSwaps.map(swap => {
               const isMaker = swap.authEvmAddressA?.toLowerCase() === walletEvmAddress.toLowerCase();
+              const hasBtcScript = (swap.baseChain === 'BTC' || swap.quoteChain === 'BTC') &&
+                !!localStorage.getItem(`v2_btc_script_${swap.publicId}`);
               return (
-                <div key={swap.publicId} className="rounded-xl border border-slate-700/50 bg-slate-950/40 p-3 space-y-1 opacity-60">
+                <div key={swap.publicId} className={`rounded-xl border border-slate-700/50 bg-slate-950/40 p-3 space-y-1 ${hasBtcScript ? '' : 'opacity-60'}`}>
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm text-slate-400">{swap.baseChain} ↔ {swap.quoteChain} <span className="text-xs text-slate-600">{isMaker ? 'Maker' : 'Taker'}</span></span>
                     <V2SwapStatusBadge status={swap.status} isMaker={isMaker} />
                   </div>
                   <p className="text-xs font-mono text-slate-600 truncate">{swap.publicId}</p>
+                  {hasBtcScript && (
+                    <V2SwapActions
+                      swap={swap}
+                      walletId={walletId}
+                      walletEvmAddress={walletEvmAddress}
+                      walletXrpAddress={walletXrpAddress}
+                      walletBtcPubKey={walletBtcPubKey}
+                      onRefresh={fetchV2Swaps}
+                    />
+                  )}
                 </div>
               );
             })}
