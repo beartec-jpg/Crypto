@@ -417,7 +417,7 @@ export class BitcoinAdapter implements IChainAdapter {
     // Fetch UTXOs for the locker's address via QBTC RPC proxy
     const { QBTCChain } = await import('../qbtcService.ts');
     const chain = new QBTCChain({ network: this.qbtcNetwork, rpcUrl: this.rpcProxyUrl });
-    const txid = await chain.sendTransaction(params.refundAddress, htlcAddress, parseFloat(params.amount));
+    const { txid } = await chain.sendTransaction(keyPair, htlcAddress, String(params.amount));
 
     return {
       lockId: txid,
