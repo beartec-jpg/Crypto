@@ -55,6 +55,8 @@ export interface V2Swap {
   sideBPubKeyHex?: string;
   /** QBTC HTLC redeem script hex stored by server at lock time — allows maker to claim without localStorage */
   sideBHtlcScript?: string;
+  /** BTC HTLC redeem script hex stored by server at lock time — allows taker to claim without localStorage */
+  sideAHtlcScript?: string;
   secret?: string;
   status: 'PENDING_SIDE_A' | 'SIDE_A_LOCKED' | 'SIDE_B_LOCKED' | 'COMPLETE' | 'EXPIRED';
   createdAt: string;

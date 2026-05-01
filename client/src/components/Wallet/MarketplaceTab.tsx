@@ -1035,7 +1035,7 @@ function V2SwapActions({
   useEffect(() => {
     const raw = localStorage.getItem(pendingBtcLockKey);
     if (!raw) return;
-    let pending: { lockId: string; lockAddress: string; side: 'A' | 'B'; ethPrivKey: string; walletEvmAddress: string; ts: number };
+    let pending: { lockId: string; lockAddress: string; htlcScriptHex?: string; side: 'A' | 'B'; ethPrivKey: string; walletEvmAddress: string; ts: number };
     try { pending = JSON.parse(raw); } catch { localStorage.removeItem(pendingBtcLockKey); return; }
 
     const esploraBase = (import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet'
@@ -1061,7 +1061,7 @@ function V2SwapActions({
         const sig = await ethSigner.signMessage(msg);
         const { postV2LockSideA: lockA, postV2LockSideB: lockB } = await import('@/lib/swapV2Api');
         const fn = pending.side === 'A' ? lockA : lockB;
-        await fn({ swapId: swap.publicId, lockId: pending.lockId, lockAddress: pending.lockAddress, authEvmAddress: pending.walletEvmAddress, signature: sig, timestamp: ts });
+        await fn({ swapId: swap.publicId, lockId: pending.lockId, lockAddress: pending.lockAddress, htlcScriptHex: pending.htlcScriptHex, authEvmAddress: pending.walletEvmAddress, signature: sig, timestamp: ts });
 
         localStorage.removeItem(pendingBtcLockKey);
         setErrorMsg('');
@@ -1892,6 +1892,7 @@ function V2SwapActions({
       localStorage.setItem(pendingBtcLockKey, JSON.stringify({
         lockId: result.lockId,
         lockAddress: result.lockAddress,
+        htlcScriptHex: result.htlcScriptHex || null,
         side: makerIsLocking ? 'A' : 'B',
         ethPrivKey,
         walletEvmAddress,
@@ -1909,11 +1910,11 @@ function V2SwapActions({
         if (makerIsLocking) {
           const msg = `QBTC_SWAP_V2:LOCK_SIDE_A:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockId}:${ts}`;
           const sig = await ethSigner.signMessage(msg);
-          await postV2LockSideA({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+          await postV2LockSideA({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, htlcScriptHex: result.htlcScriptHex, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
         } else {
           const msg = `QBTC_SWAP_V2:LOCK_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockId}:${ts}`;
           const sig = await ethSigner.signMessage(msg);
-          await postV2LockSideB({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+          await postV2LockSideB({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, htlcScriptHex: result.htlcScriptHex, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
         }
         // Immediate success — clear pending state
         localStorage.removeItem(pendingBtcLockKey);
@@ -1958,7 +1959,13 @@ function V2SwapActions({
       const myBtcPubKeyHex = Buffer.from(pubBytes).toString('hex');
 
       const makerClaimingBtc = isMaker && swap.quoteChain === 'BTC';
-      const htlcScriptHex = localStorage.getItem(`v2_btc_script_${swap.publicId}`) ?? undefined;
+      let htlcScriptHex: string | undefined = localStorage.getItem(`v2_btc_script_${swap.publicId}`) ?? undefined;
+
+      // Fallback: use server-stored script (saved when maker locked BTC)
+      if (!htlcScriptHex && !makerClaimingBtc && swap.sideAHtlcScript) {
+        htlcScriptHex = swap.sideAHtlcScript;
+      }
+
       if (!htlcScriptHex) throw new Error('HTLC script not found — BTC must have been locked on this device');
 
       const lockAddress = makerClaimingBtc ? swap.sideBLockAddress! : swap.sideALockAddress!;
