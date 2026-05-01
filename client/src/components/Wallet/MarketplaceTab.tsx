@@ -1970,12 +1970,25 @@ function V2SwapActions({
 
       if (!htlcScriptHex) throw new Error('HTLC script not found — BTC must have been locked on this device');
 
-      // Diagnostic: extract claimer pubkey from HTLC script (offset 37, length 33)
+      // Extract claimer pubkey from HTLC script (offset 37, length 33)
       // Script: OP_IF(1) OP_SHA256(1) OP_PUSH32(1) secretHash(32) OP_EQUALVERIFY(1) OP_PUSH33(1) claimerPub(33)
       const htlcScriptBuf = Buffer.from(htlcScriptHex, 'hex');
       const scriptClaimerPub = htlcScriptBuf.length > 70 ? htlcScriptBuf.slice(37, 70).toString('hex') : 'unknown';
+
+      // The claiming key: normally BTC key, but the HTLC may have been built using the taker's
+      // QBTC ECDSA pubkey as claimer (takerPubKeyHex = walletPubKey at accept time).
+      // In that case derive the QBTC keypair and use its ECDSA key to sign the claim.
+      let claimPrivKeyHex = btcPrivKeyHex;
+      let claimPubKeyHex = myBtcPubKeyHex;
       if (scriptClaimerPub !== myBtcPubKeyHex) {
-        throw new Error(`BTC pubkey mismatch — HTLC claimer: ${scriptClaimerPub}, your wallet key: ${myBtcPubKeyHex}`);
+        const { QBTCKeyPair: KP } = await import('@/lib/qbtcService');
+        const qbtcKp = await KP.fromMnemonic(unlockedWallet.mnemonic);
+        if (qbtcKp.ecdsaPublicKeyHex === scriptClaimerPub) {
+          claimPrivKeyHex = qbtcKp.ecdsaPrivateKeyHex;
+          claimPubKeyHex = qbtcKp.ecdsaPublicKeyHex;
+        } else {
+          throw new Error(`BTC pubkey mismatch — HTLC claimer: ${scriptClaimerPub}, BTC key: ${myBtcPubKeyHex}, QBTC key: ${qbtcKp.ecdsaPublicKeyHex}`);
+        }
       }
 
       const lockAddress = makerClaimingBtc ? swap.sideBLockAddress! : swap.sideALockAddress!;
@@ -2006,7 +2019,7 @@ function V2SwapActions({
       if (!utxos.length) throw new Error(`No UTXOs found at BTC HTLC address ${lockAddress}`);
 
       await btcAdapter.claimFunds({
-        signerKey: { privateKeyHex: btcPrivKeyHex, publicKeyHex: myBtcPubKeyHex },
+        signerKey: { privateKeyHex: claimPrivKeyHex, publicKeyHex: claimPubKeyHex },
         lockId,
         secret,
         outputAddress,

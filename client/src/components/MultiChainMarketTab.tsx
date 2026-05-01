@@ -295,12 +295,16 @@ function AcceptOfferModal({
       const signature = await signWithWallet(walletId, password, message);
 
       // Include the taker's pubkey so the maker can reconstruct the HTLC claim script.
-      // Use QBTC ECDSA pubkey (walletPubKey) when taker will lock QBTC, BTC pubkey for BTC locks.
+      // The stored pubkey is used as the claimer in the BASE chain HTLC.
+      // For BTC→QBTC: taker claims BTC → send BTC pubkey.
+      // For QBTC→BTC: taker claims QBTC → send QBTC pubkey.
       let takerPubKeyHex: string | undefined;
-      if (offer.quoteChain === 'QBTC') {
-        takerPubKeyHex = walletPubKey || undefined; // QBTC ECDSA pubkey (m/44'/9999'/0'/0/0)
-      } else if (offer.quoteChain === 'BTC' || offer.baseChain === 'BTC') {
+      if (offer.baseChain === 'BTC') {
+        takerPubKeyHex = walletBtcPubKey || undefined; // taker claims BTC → provide BTC pubkey
+      } else if (offer.quoteChain === 'BTC') {
         takerPubKeyHex = walletBtcPubKey || undefined;
+      } else {
+        takerPubKeyHex = walletPubKey || undefined; // QBTC ECDSA pubkey
       }
 
       setStatus('submitting');
