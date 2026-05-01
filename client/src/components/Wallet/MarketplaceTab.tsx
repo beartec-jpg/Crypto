@@ -1086,7 +1086,9 @@ function V2SwapActions({
     const rpcProxyUrl = import.meta.env.VITE_QBTC_RPC_URL || '/api/qbtc/rpc';
     const qbtcNet = (import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet' ? 'testnet' : 'mainnet';
 
+    let attempts = 0;
     const trySubmit = async () => {
+      attempts++;
       try {
         // Just retry the server submission — QBTC confirms in ~10s so by the time poller runs it's confirmed
         const { ethers: eth } = await import('ethers');
@@ -1114,6 +1116,10 @@ function V2SwapActions({
           setErrorMsg('');
           setActionStatus('done');
           onRefresh();
+        } else if (attempts >= 3) {
+          // Show the real error after 3 failed attempts
+          setErrorMsg(`QBTC lock server error: ${msg}`);
+          setActionStatus('error');
         }
         // Otherwise silent — retry next poll
       }
