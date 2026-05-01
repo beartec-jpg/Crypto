@@ -53,6 +53,8 @@ export interface V2Swap {
   sideAPubKeyHex?: string;
   /** Taker's compressed BTC/QBTC pubkey (33-byte hex) — required for BTC HTLC script reconstruction */
   sideBPubKeyHex?: string;
+  /** QBTC HTLC redeem script hex stored by server at lock time — allows maker to claim without localStorage */
+  sideBHtlcScript?: string;
   secret?: string;
   status: 'PENDING_SIDE_A' | 'SIDE_A_LOCKED' | 'SIDE_B_LOCKED' | 'COMPLETE' | 'EXPIRED';
   createdAt: string;
@@ -112,6 +114,7 @@ export interface RecordLockParams {
   swapId: string;
   lockId: string;
   lockAddress?: string;
+  htlcScriptHex?: string;
   authEvmAddress: string;
   signature: string;
   timestamp: number;

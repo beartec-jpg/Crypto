@@ -1698,7 +1698,7 @@ function V2SwapActions({
         } else {
           const msg = `QBTC_SWAP_V2:LOCK_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockId}:${ts}`;
           const sig = await ethSigner.signMessage(msg);
-          await postV2LockSideB({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+          await postV2LockSideB({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, htlcScriptHex: result.htlcScriptHex, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
         }
         localStorage.removeItem(`v2_pending_qbtc_lock_${swap.publicId}`);
         setActionStatus('done');
@@ -1741,8 +1741,44 @@ function V2SwapActions({
       const lockAddress = makerClaimingQbtc ? swap.sideBLockAddress! : swap.sideALockAddress!;
       if (!lockId || !lockAddress) throw new Error('QBTC lock ID not found');
 
-      const htlcScriptHex = localStorage.getItem(`v2_qbtc_script_${swap.publicId}`) ?? undefined;
-      if (!htlcScriptHex) throw new Error('QBTC HTLC script not found — QBTC must have been locked on this device');
+      // Try to recover htlcScriptHex:
+      // 1. localStorage (fastest path — set when user locked on this device)
+      // 2. Reconstruct using own QBTC keypair (works when maker == taker device in testing,
+      //    or when maker unlocks with the same wallet that locked)
+      // 3. Reconstruct using sideBPubKeyHex from server (works when server stored correct QBTC pubkey)
+      let htlcScriptHex: string | undefined = localStorage.getItem(`v2_qbtc_script_${swap.publicId}`) ?? undefined;
+
+      if (!htlcScriptHex) {
+        const { createHTLCScript: buildScript, getHTLCAddress: deriveAddr, QBTCKeyPair: KP } = await import('@/lib/qbtcService');
+        const locktimeForScript = Number(makerClaimingQbtc ? swap.sideBLocktime : swap.sideALocktime);
+
+        // Attempt 1: reconstruct using this wallet's QBTC keypair (same-device test or same wallet)
+        try {
+          const kp = await KP.fromMnemonic(unlockedWallet.mnemonic);
+          const candidate = buildScript({ sellerPubKeyHex: kp.ecdsaPublicKeyHex, secretHashHex: swap.secretHash, locktime: locktimeForScript });
+          if (deriveAddr(candidate, qbtcNetwork) === lockAddress) {
+            htlcScriptHex = candidate.toString('hex');
+          }
+        } catch { /* ignore */ }
+
+        // Attempt 2: reconstruct using sideBPubKeyHex from server
+        if (!htlcScriptHex && (makerClaimingQbtc ? swap.sideBPubKeyHex : swap.sideAPubKeyHex)) {
+          try {
+            const serverPubKey = (makerClaimingQbtc ? swap.sideBPubKeyHex : swap.sideAPubKeyHex)!;
+            const candidate = buildScript({ sellerPubKeyHex: serverPubKey, secretHashHex: swap.secretHash, locktime: locktimeForScript });
+            if (deriveAddr(candidate, qbtcNetwork) === lockAddress) {
+              htlcScriptHex = candidate.toString('hex');
+            }
+          } catch { /* ignore */ }
+        }
+
+        // Attempt 3: use server-stored script directly (saved when taker locked)
+        if (!htlcScriptHex && makerClaimingQbtc && swap.sideBHtlcScript) {
+          htlcScriptHex = swap.sideBHtlcScript;
+        }
+
+        if (!htlcScriptHex) throw new Error('QBTC HTLC script could not be recovered — script not in localStorage and reconstruction failed');
+      }
 
       let secret: string;
       if (makerClaimingQbtc) {
