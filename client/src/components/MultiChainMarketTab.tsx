@@ -252,11 +252,11 @@ function PasswordField({ value, onChange, disabled = false }: {
 // ─── Accept Offer Modal ───────────────────────────────────────────────────────
 
 function AcceptOfferModal({
-  offer, walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletBtcPubKey, walletBtcAddress, onClose, onAccepted,
+  offer, walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletPubKey, walletBtcPubKey, walletBtcAddress, onClose, onAccepted,
 }: {
   offer: V2Offer | null;
   walletId: string; walletEvmAddress: string; walletAddress: string; walletXrpAddress: string;
-  walletBtcPubKey?: string; walletBtcAddress?: string;
+  walletPubKey?: string; walletBtcPubKey?: string; walletBtcAddress?: string;
   onClose: () => void; onAccepted: () => void;
 }) {
   const [takerAddress, setTakerAddress] = useState('');
@@ -439,10 +439,10 @@ type SortMode = 'amount_desc' | 'chain_asc';
 type ChainFilter = ChainId | 'All';
 
 function BuyView({
-  walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletBtcPubKey, walletBtcAddress, onBack,
+  walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletPubKey, walletBtcPubKey, walletBtcAddress, onBack,
 }: {
   walletId: string; walletEvmAddress: string; walletAddress: string; walletXrpAddress: string;
-  walletBtcPubKey?: string; walletBtcAddress?: string;
+  walletPubKey?: string; walletBtcPubKey?: string; walletBtcAddress?: string;
   onBack: () => void;
 }) {
   const [allOffers, setAllOffers] = useState<V2Offer[]>([]);
@@ -617,6 +617,7 @@ function BuyView({
           offer={acceptTarget}
           walletId={walletId} walletEvmAddress={walletEvmAddress} walletAddress={walletAddress}
           walletXrpAddress={walletXrpAddress}
+          walletPubKey={walletPubKey}
           walletBtcPubKey={walletBtcPubKey}
           walletBtcAddress={walletBtcAddress}
           onClose={() => setAcceptTarget(null)}
@@ -1031,7 +1032,7 @@ function SellView({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function MultiChainMarketTab({
-  walletId, userId: _userId, walletEvmAddress, walletAddress, walletPubKey: _walletPubKey, walletXrpAddress = '', walletBtcPubKey = '', walletBtcAddress = '',
+  walletId, userId: _userId, walletEvmAddress, walletAddress, walletPubKey, walletXrpAddress = '', walletBtcPubKey = '', walletBtcAddress = '',
 }: MultiChainMarketTabProps) {
   const [view, setView] = useState<'entry' | 'buy' | 'sell'>('entry');
 
@@ -1042,6 +1043,7 @@ export default function MultiChainMarketTab({
         walletEvmAddress={walletEvmAddress}
         walletAddress={walletAddress}
         walletXrpAddress={walletXrpAddress}
+        walletPubKey={walletPubKey}
         walletBtcPubKey={walletBtcPubKey}
         walletBtcAddress={walletBtcAddress}
         onBack={() => setView('entry')}
