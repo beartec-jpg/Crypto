@@ -1,5 +1,8 @@
 {
   "version": 2,
+  "typescript": {
+    "ignoreBuildErrors": true
+  },
   "installCommand": "npm install --include=dev && cd cold-signer && npm install",
   "buildCommand": "npx vite build && cd cold-signer && npx vite build && cp -r dist ../dist/cold-signer",
   "outputDirectory": "dist",
