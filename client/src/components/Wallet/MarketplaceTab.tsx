@@ -1845,9 +1845,9 @@ function V2SwapActions({
       const esploraUrl = isTestnet ? 'https://blockstream.info/testnet' : 'https://blockstream.info';
 
       const unlockedWallet = await unlockWallet(walletId, password);
-      const btcPrivKeyHex = isTestnet
-        ? (unlockedWallet.privateKeys.bitcoinTestnet || unlockedWallet.privateKeys.bitcoin)
-        : unlockedWallet.privateKeys.bitcoin;
+      // Always use the mainnet-path BTC key (m/44'/0'/0'/0/0) since walletBtcPubKey
+      // is set from publicKeys.bitcoin (same path) — must match what's in the HTLC script.
+      const btcPrivKeyHex = unlockedWallet.privateKeys.bitcoin || unlockedWallet.privateKeys.bitcoinTestnet;
       if (!btcPrivKeyHex) throw new Error('BTC private key not found in wallet');
 
       // Derive our compressed pubkey
