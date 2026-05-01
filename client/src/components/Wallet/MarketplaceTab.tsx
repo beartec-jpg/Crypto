@@ -1075,6 +1075,55 @@ function V2SwapActions({
     return () => clearInterval(id);
   }, [pendingBtcLockKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-confirm pending QBTC lock: poll RPC until tx confirms, then submit to server
+  const pendingQbtcLockKey = `v2_pending_qbtc_lock_${swap.publicId}`;
+  useEffect(() => {
+    const raw = localStorage.getItem(pendingQbtcLockKey);
+    if (!raw) return;
+    let pending: { lockId: string; lockAddress: string; side: 'A' | 'B'; ethPrivKey: string; walletEvmAddress: string; ts: number };
+    try { pending = JSON.parse(raw); } catch { localStorage.removeItem(pendingQbtcLockKey); return; }
+
+    const rpcProxyUrl = import.meta.env.VITE_QBTC_RPC_URL || '/api/qbtc/rpc';
+    const qbtcNet = (import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet' ? 'testnet' : 'mainnet';
+
+    const trySubmit = async () => {
+      try {
+        // Check confirmation via RPC
+        const resp = await fetch(rpcProxyUrl, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '1.0', method: 'getrawtransaction', params: [pending.lockId, true] }),
+        });
+        if (!resp.ok) return;
+        const rpc = await resp.json() as { result?: { confirmations?: number } };
+        if (!rpc.result || !rpc.result.confirmations || rpc.result.confirmations < 1) return;
+
+        // Confirmed — submit to server
+        const { ethers: eth } = await import('ethers');
+        const rpcUrl = import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
+        const chainId = Number(import.meta.env.VITE_ETH_CHAIN_ID || 11155111);
+        const provider = new eth.JsonRpcProvider(rpcUrl, chainId);
+        const ethSigner = new eth.Wallet('0x' + pending.ethPrivKey, provider);
+        const ts = Math.floor(Date.now() / 1000);
+        const action = pending.side === 'A' ? 'LOCK_SIDE_A' : 'LOCK_SIDE_B';
+        const msg = `QBTC_SWAP_V2:${action}:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${pending.lockId}:${ts}`;
+        const sig = await ethSigner.signMessage(msg);
+        const { postV2LockSideA: lockA, postV2LockSideB: lockB } = await import('@/lib/swapV2Api');
+        const fn = pending.side === 'A' ? lockA : lockB;
+        await fn({ swapId: swap.publicId, lockId: pending.lockId, lockAddress: pending.lockAddress, authEvmAddress: pending.walletEvmAddress, signature: sig, timestamp: ts });
+
+        localStorage.removeItem(pendingQbtcLockKey);
+        setErrorMsg('');
+        setActionStatus('done');
+        onRefresh();
+      } catch { /* silent — retry next poll */ }
+    };
+
+    void qbtcNet; // suppress unused warning
+    const id = setInterval(trySubmit, 15_000); // QBTC blocks ~10s, check every 15s
+    trySubmit();
+    return () => clearInterval(id);
+  }, [pendingQbtcLockKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Track XRP claims in localStorage so button doesn't reappear after claiming
   const xrpClaimedKey = `v2_xrp_claimed_${swap.publicId}`;
   const [xrpAlreadyClaimed, setXrpAlreadyClaimed] = useState(
@@ -1627,19 +1676,38 @@ function V2SwapActions({
       const ethSigner = new ethers.Wallet('0x' + ethPrivKey, provider);
       const ts = Math.floor(Date.now() / 1000);
 
-      if (makerIsLocking) {
-        const msg = `QBTC_SWAP_V2:LOCK_SIDE_A:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockId}:${ts}`;
-        const sig = await ethSigner.signMessage(msg);
-        await postV2LockSideA({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
-      } else {
-        const msg = `QBTC_SWAP_V2:LOCK_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockId}:${ts}`;
-        const sig = await ethSigner.signMessage(msg);
-        await postV2LockSideB({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
-      }
+      // Save pending QBTC lock so the auto-confirm poller can retry if server rejects
+      const pendingQbtcSide = makerIsLocking ? 'A' : 'B';
+      localStorage.setItem(`v2_pending_qbtc_lock_${swap.publicId}`, JSON.stringify({
+        lockId: result.lockId, lockAddress: result.lockAddress,
+        side: pendingQbtcSide, ethPrivKey, walletEvmAddress, ts,
+      }));
 
-      setActionStatus('done');
-      setPassword('');
-      onRefresh();
+      try {
+        if (makerIsLocking) {
+          const msg = `QBTC_SWAP_V2:LOCK_SIDE_A:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockId}:${ts}`;
+          const sig = await ethSigner.signMessage(msg);
+          await postV2LockSideA({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+        } else {
+          const msg = `QBTC_SWAP_V2:LOCK_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockId}:${ts}`;
+          const sig = await ethSigner.signMessage(msg);
+          await postV2LockSideB({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+        }
+        localStorage.removeItem(`v2_pending_qbtc_lock_${swap.publicId}`);
+        setActionStatus('done');
+        setPassword('');
+        onRefresh();
+      } catch (serverErr: unknown) {
+        const msg = serverErr instanceof Error ? serverErr.message : String(serverErr);
+        // If unconfirmed, keep pending in localStorage — poller will retry
+        if (/not confirmed|unconfirmed|confirmation/i.test(msg)) {
+          setErrorMsg(msg);
+          setActionStatus('error');
+        } else {
+          localStorage.removeItem(`v2_pending_qbtc_lock_${swap.publicId}`);
+          throw serverErr;
+        }
+      }
     } catch (e: unknown) {
       setErrorMsg(e instanceof Error ? e.message : String(e));
       setActionStatus('error');
@@ -2066,8 +2134,8 @@ function V2SwapActions({
             <div className="rounded-lg border border-amber-700/40 bg-amber-900/20 p-2.5 flex items-start gap-2">
               <Loader2 size={13} className="animate-spin text-amber-400 mt-0.5 shrink-0" />
               <div className="space-y-0.5">
-                <p className="text-xs text-amber-300 font-medium">Waiting for Bitcoin confirmation</p>
-                <p className="text-xs text-amber-400/80">Your transaction is in the mempool. Checking every 30 seconds — will automatically register once confirmed (~10 min on testnet).</p>
+                <p className="text-xs text-amber-300 font-medium">Waiting for confirmation</p>
+                <p className="text-xs text-amber-400/80">Transaction is in the mempool. Checking automatically — will register once confirmed.</p>
               </div>
             </div>
           )
