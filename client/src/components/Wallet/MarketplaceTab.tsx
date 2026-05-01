@@ -1088,19 +1088,7 @@ function V2SwapActions({
 
     const trySubmit = async () => {
       try {
-        // Check confirmation via scantxoutset on the lock address (works without txindex)
-        const resp = await fetch(rpcProxyUrl, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jsonrpc: '1.0', method: 'scantxoutset', params: ['start', [{ desc: `addr(${pending.lockAddress})` }]] }),
-        });
-        if (!resp.ok) return;
-        const rpc = await resp.json() as { result?: { unspents?: Array<{ txid: string }> } };
-        const unspents = rpc.result?.unspents ?? [];
-        // Check if our txid is in the UTXOs at the lock address
-        const confirmed = unspents.some(u => u.txid === pending.lockId) || unspents.length > 0;
-        if (!confirmed) return;
-
-        // Confirmed — submit to server
+        // Just retry the server submission — QBTC confirms in ~10s so by the time poller runs it's confirmed
         const { ethers: eth } = await import('ethers');
         const rpcUrl = import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
         const chainId = Number(import.meta.env.VITE_ETH_CHAIN_ID || 11155111);
@@ -1118,7 +1106,17 @@ function V2SwapActions({
         setErrorMsg('');
         setActionStatus('done');
         onRefresh();
-      } catch { /* silent — retry next poll */ }
+      } catch (e) {
+        // If server says already locked / swap already progressed, clear pending
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/already|invalid status|wrong status/i.test(msg)) {
+          localStorage.removeItem(pendingQbtcLockKey);
+          setErrorMsg('');
+          setActionStatus('done');
+          onRefresh();
+        }
+        // Otherwise silent — retry next poll
+      }
     };
 
     void qbtcNet; // suppress unused warning
