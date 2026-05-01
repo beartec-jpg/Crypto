@@ -1968,6 +1968,14 @@ function V2SwapActions({
 
       if (!htlcScriptHex) throw new Error('HTLC script not found — BTC must have been locked on this device');
 
+      // Diagnostic: extract claimer pubkey from HTLC script (offset 37, length 33)
+      // Script: OP_IF(1) OP_SHA256(1) OP_PUSH32(1) secretHash(32) OP_EQUALVERIFY(1) OP_PUSH33(1) claimerPub(33)
+      const htlcScriptBuf = Buffer.from(htlcScriptHex, 'hex');
+      const scriptClaimerPub = htlcScriptBuf.length > 70 ? htlcScriptBuf.slice(37, 70).toString('hex') : 'unknown';
+      if (scriptClaimerPub !== myBtcPubKeyHex) {
+        throw new Error(`BTC pubkey mismatch — HTLC claimer: ${scriptClaimerPub}, your wallet key: ${myBtcPubKeyHex}`);
+      }
+
       const lockAddress = makerClaimingBtc ? swap.sideBLockAddress! : swap.sideALockAddress!;
       const lockId = makerClaimingBtc ? swap.sideBLockId! : swap.sideALockId!;
       if (!lockAddress) throw new Error('BTC lock address not found');
