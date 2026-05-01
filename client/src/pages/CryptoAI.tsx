@@ -383,177 +383,135 @@ export default function CryptoAI() {
     return { profile, poc: poc.price, vah, val };
   }, []);
 
-  // === Order Blocks Detection (SMC Style with Quality Filters) ===
+  // === Order Blocks Detection (SMC swing-based, matches chart indicator logic) ===
   const detectOrderBlocks = useCallback((bars: Bar[]): { bullishOB: OrderBlock[], bearishOB: OrderBlock[] } => {
     const bullishOB: OrderBlock[] = [];
     const bearishOB: OrderBlock[] = [];
 
-    if (bars.length < 20) return { bullishOB, bearishOB };
+    const swingLength = 5;
+    if (bars.length < swingLength * 2 + 1) return { bullishOB, bearishOB };
 
-    // Calculate filters
-    const atrArray = calculateATR(bars);
-    const atr = atrArray[atrArray.length - 1]; // Use latest ATR
-    const minBody = atr * 1.5;
-    const avgVol = averageVolume(bars.slice(-20));
-    const avgDelta = averageDelta(bars.slice(-20));
+    const avgRange = bars.slice(-20).reduce((sum, b) => sum + (b.high - b.low), 0) / 20;
 
-    for (let i = 5; i < bars.length - 5; i++) {
-      const prev = bars[i - 1];
-      const curr = bars[i];
+    // Find swing highs and lows
+    for (let i = swingLength; i < bars.length - swingLength; i++) {
+      let isSwingHigh = true;
+      let isSwingLow = true;
 
-      const prevBody = Math.abs(prev.close - prev.open);
-      const currBody = Math.abs(curr.close - curr.open);
-      
-      // Calculate deltas
-      const prevBuyVol = prev.close >= prev.open ? prev.volume : 0;
-      const prevSellVol = prev.close < prev.open ? prev.volume : 0;
-      const prevDelta = Math.abs(prevBuyVol - prevSellVol);
-
-      // Bullish OB: strong bearish candle followed by bullish move
-      if (prev.close < prev.open && 
-          curr.close > curr.open && 
-          curr.close > prev.high &&
-          prevBody > minBody &&
-          prev.volume > avgVol * 1.5 &&
-          prevDelta > avgDelta * 2) {
-        bullishOB.push({ time: bars[i].time, price: prev.low, type: 'bullish' });
+      for (let j = 1; j <= swingLength; j++) {
+        if (bars[i].high <= bars[i - j].high || bars[i].high <= bars[i + j].high) isSwingHigh = false;
+        if (bars[i].low >= bars[i - j].low || bars[i].low >= bars[i + j].low) isSwingLow = false;
       }
 
-      // Bearish OB: strong bullish candle followed by bearish move
-      if (prev.close > prev.open && 
-          curr.close < curr.open && 
-          curr.close < prev.low &&
-          prevBody > minBody &&
-          prev.volume > avgVol * 1.5 &&
-          prevDelta > avgDelta * 2) {
-        bearishOB.push({ time: bars[i].time, price: prev.high, type: 'bearish' });
+      // Bullish OB at swing lows: last bearish candle before upward reversal
+      if (isSwingLow) {
+        for (let k = i; k >= Math.max(0, i - 3); k--) {
+          const candle = bars[k];
+          if (candle.close < candle.open) {
+            const postCandles = bars.slice(k + 1, Math.min(k + swingLength + 1, bars.length));
+            const maxHighAfter = postCandles.length > 0 ? Math.max(...postCandles.map(c => c.high)) : candle.high;
+            if (maxHighAfter - candle.low > avgRange * 1.5) {
+              // Check if mitigated
+              let mitigated = false;
+              for (let m = k + swingLength + 1; m < bars.length; m++) {
+                if (bars[m].close < candle.low) { mitigated = true; break; }
+              }
+              if (!mitigated) {
+                bullishOB.push({ time: candle.time, price: candle.low, type: 'bullish' });
+              }
+              break;
+            }
+          }
+        }
+      }
+
+      // Bearish OB at swing highs: last bullish candle before downward reversal
+      if (isSwingHigh) {
+        for (let k = i; k >= Math.max(0, i - 3); k--) {
+          const candle = bars[k];
+          if (candle.close > candle.open) {
+            const postCandles = bars.slice(k + 1, Math.min(k + swingLength + 1, bars.length));
+            const minLowAfter = postCandles.length > 0 ? Math.min(...postCandles.map(c => c.low)) : candle.low;
+            if (candle.high - minLowAfter > avgRange * 1.5) {
+              // Check if mitigated
+              let mitigated = false;
+              for (let m = k + swingLength + 1; m < bars.length; m++) {
+                if (bars[m].close > candle.high) { mitigated = true; break; }
+              }
+              if (!mitigated) {
+                bearishOB.push({ time: candle.time, price: candle.high, type: 'bearish' });
+              }
+              break;
+            }
+          }
+        }
       }
     }
     return { bullishOB, bearishOB };
-  }, [calculateATR, averageVolume, averageDelta]);
+  }, []);
 
-  // === Fair Value Gap (FVG) Detection (High Value Only) ===
+  // === Fair Value Gap (FVG) Detection ===
+  // Uses the same logic as the chart indicator: detect all unfilled gaps (no volume/ATR filtering).
   const detectFVG = useCallback((bars: Bar[]): { bullFVG: FVG[], bearFVG: FVG[] } => {
     const bullFVG: FVG[] = [];
     const bearFVG: FVG[] = [];
 
-    if (bars.length < 20) return { bullFVG, bearFVG };
-
-    // Calculate ATR and average volume for filtering
-    const atrArray = calculateATR(bars, 14);
-    const avgVolume = bars.reduce((sum, b) => sum + b.volume, 0) / bars.length;
-    const FVG_VOLUME_THRESHOLD = 1.5; // Must be 1.5x average volume to be "high value"
+    if (bars.length < 3) return { bullFVG, bearFVG };
 
     for (let i = 2; i < bars.length; i++) {
-      // Use ATR at the time of FVG formation (i-2)
-      const atrIndex = Math.min(i - 2, atrArray.length - 1);
-      const atr = atrArray[atrIndex];
-
-      // Bullish FVG: bars[i].low > bars[i-2].high (gap between current and i-2)
+      // Bullish FVG: candle i-2 HIGH < candle i LOW (gap between them)
       if (bars[i].low > bars[i - 2].high) {
-        const gapSize = bars[i].low - bars[i - 2].high;
-        const lower = bars[i - 2].high;
-        const upper = bars[i].low;
-        
-        // ATR filter: gap must be at least 1 ATR
-        if (gapSize >= atr) {
-          // Calculate volume score for the gap zone
-          let totalVolume = 0;
-          let count = 0;
-          
-          for (let j = 0; j < bars.length; j++) {
-            const bar = bars[j];
-            // Check if bar overlaps with FVG zone
-            if (bar.low <= upper && bar.high >= lower) {
-              totalVolume += bar.volume;
-              count++;
-            }
-          }
-          
-          const volumeScore = count > 0 ? totalVolume / (avgVolume * count) : 0;
-          
-          // Only keep high value FVGs
-          if (volumeScore >= FVG_VOLUME_THRESHOLD) {
-            bullFVG.push({
-              time: bars[i].time,
-              low: lower,
-              high: upper,
-              mitigated: false
-            });
-          }
-        }
+        bullFVG.push({
+          time: bars[i].time,
+          low: bars[i - 2].high,
+          high: bars[i].low,
+          mitigated: false
+        });
       }
-      
-      // Bearish FVG: bars[i].high < bars[i-2].low (gap between current and i-2)
+
+      // Bearish FVG: candle i-2 LOW > candle i HIGH (gap between them)
       if (bars[i].high < bars[i - 2].low) {
-        const gapSize = bars[i - 2].low - bars[i].high;
-        const lower = bars[i].high;
-        const upper = bars[i - 2].low;
-        
-        // ATR filter: gap must be at least 1 ATR
-        if (gapSize >= atr) {
-          // Calculate volume score for the gap zone
-          let totalVolume = 0;
-          let count = 0;
-          
-          for (let j = 0; j < bars.length; j++) {
-            const bar = bars[j];
-            // Check if bar overlaps with FVG zone
-            if (bar.low <= upper && bar.high >= lower) {
-              totalVolume += bar.volume;
-              count++;
-            }
-          }
-          
-          const volumeScore = count > 0 ? totalVolume / (avgVolume * count) : 0;
-          
-          // Only keep high value FVGs
-          if (volumeScore >= FVG_VOLUME_THRESHOLD) {
-            bearFVG.push({
-              time: bars[i].time,
-              low: lower,
-              high: upper,
-              mitigated: false
-            });
-          }
-        }
+        bearFVG.push({
+          time: bars[i].time,
+          low: bars[i].high,
+          high: bars[i - 2].low,
+          mitigated: false
+        });
       }
     }
-    
-    // Mark mitigated FVGs (price filled the gap completely)
+
+    // Mark mitigated FVGs (price closed through the gap)
     for (let i = 0; i < bullFVG.length; i++) {
       const fvg = bullFVG[i];
       const fvgIndex = bars.findIndex(b => b.time === fvg.time);
       if (fvgIndex >= 0) {
         for (let j = fvgIndex + 1; j < bars.length; j++) {
-          // Bullish FVG is filled if price went below the lower boundary
-          if (bars[j].low <= fvg.low) {
+          if (bars[j].close <= fvg.low) {
             bullFVG[i].mitigated = true;
             break;
           }
         }
       }
     }
-    
+
     for (let i = 0; i < bearFVG.length; i++) {
       const fvg = bearFVG[i];
       const fvgIndex = bars.findIndex(b => b.time === fvg.time);
       if (fvgIndex >= 0) {
         for (let j = fvgIndex + 1; j < bars.length; j++) {
-          // Bearish FVG is filled if price went above the upper boundary
-          if (bars[j].high >= fvg.high) {
+          if (bars[j].close >= fvg.high) {
             bearFVG[i].mitigated = true;
             break;
           }
         }
       }
     }
-    
-    return { 
-      bullFVG: bullFVG.filter(f => !f.mitigated), 
-      bearFVG: bearFVG.filter(f => !f.mitigated) 
+
+    return {
+      bullFVG: bullFVG.filter(f => !f.mitigated),
+      bearFVG: bearFVG.filter(f => !f.mitigated)
     };
-  }, [calculateATR]);
+  }, []);
 
   // === Volume Imbalances Detection ===
   const detectImbalances = useCallback((profile: VolumeProfileBin[]): Imbalance[] => {
