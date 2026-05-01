@@ -1948,9 +1948,11 @@ function V2SwapActions({
       const esploraUrl = isTestnet ? 'https://blockstream.info/testnet' : 'https://blockstream.info';
 
       const unlockedWallet = await unlockWallet(walletId, password);
-      const btcPrivKeyHex = isTestnet
-        ? (unlockedWallet.privateKeys.bitcoinTestnet || unlockedWallet.privateKeys.bitcoin)
-        : unlockedWallet.privateKeys.bitcoin;
+      // Always use the mainnet-path BTC key (m/44'/0'/0'/0/0) because walletBtcPubKey
+      // (registered in the HTLC) was derived from publicKeys.bitcoin, which is always
+      // the mainnet HD path.  Using bitcoinTestnet (m/44'/1'/0'/0/0) produces a
+      // different keypair and causes "Signature must be zero" during claim.
+      const btcPrivKeyHex = unlockedWallet.privateKeys.bitcoin;
       if (!btcPrivKeyHex) throw new Error('BTC private key not found in wallet');
 
       const { secp256k1 } = await import('@noble/curves/secp256k1');
