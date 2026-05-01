@@ -1088,14 +1088,17 @@ function V2SwapActions({
 
     const trySubmit = async () => {
       try {
-        // Check confirmation via RPC
+        // Check confirmation via scantxoutset on the lock address (works without txindex)
         const resp = await fetch(rpcProxyUrl, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jsonrpc: '1.0', method: 'getrawtransaction', params: [pending.lockId, true] }),
+          body: JSON.stringify({ jsonrpc: '1.0', method: 'scantxoutset', params: ['start', [{ desc: `addr(${pending.lockAddress})` }]] }),
         });
         if (!resp.ok) return;
-        const rpc = await resp.json() as { result?: { confirmations?: number } };
-        if (!rpc.result || !rpc.result.confirmations || rpc.result.confirmations < 1) return;
+        const rpc = await resp.json() as { result?: { unspents?: Array<{ txid: string }> } };
+        const unspents = rpc.result?.unspents ?? [];
+        // Check if our txid is in the UTXOs at the lock address
+        const confirmed = unspents.some(u => u.txid === pending.lockId) || unspents.length > 0;
+        if (!confirmed) return;
 
         // Confirmed — submit to server
         const { ethers: eth } = await import('ethers');
