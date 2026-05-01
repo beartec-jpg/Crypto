@@ -7,7 +7,7 @@
 
 import { ethers } from 'ethers';
 
-const SWAP_API = (import.meta.env.VITE_SWAP_API_URL || '').replace(/\/$/, '');
+const SWAP_API = (import.meta.env.VITE_SWAP_API_URL || (typeof window !== 'undefined' ? window.location.origin : '')).replace(/\/$/, '');
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
