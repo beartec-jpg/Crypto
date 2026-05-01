@@ -723,16 +723,21 @@ export class QBTCChain {
     signMode: 'hybrid' | 'ecdsa' = 'hybrid'
   ): Promise<{ hex: string; fee: number; falconCompatibilityProof?: QBTCFalconCompatibilityProof }> {
     const fromAddress = keyPair.getAddress(this.settings.network);
-    const scanResult = await this.rpcCall<{ unspents: Array<{ txid: string; vout: number; amount: number; height: number; scriptPubKey: string }> }>(
+    const scanResult = await this.rpcCall<{ height: number; unspents: Array<{ txid: string; vout: number; amount: number; height: number; scriptPubKey: string }> }>(
       'scantxoutset', ['start', [{ desc: addressToRawDescriptor(fromAddress, QBTC_NETWORKS[this.settings.network]) }]]
     );
-    const utxos: QBTCUtxo[] = (scanResult?.unspents ?? []).map(u => ({
-      txid: u.txid,
-      vout: u.vout,
-      amount: u.amount,
-      address: fromAddress,
-      scriptPubKey: u.scriptPubKey,
-    }));
+    const chainHeight = scanResult?.height ?? 0;
+    // Filter out coinbase UTXOs that haven't matured (need 100 confirmations)
+    const COINBASE_MATURITY = 100;
+    const utxos: QBTCUtxo[] = (scanResult?.unspents ?? [])
+      .filter(u => (chainHeight - u.height) >= COINBASE_MATURITY)
+      .map(u => ({
+        txid: u.txid,
+        vout: u.vout,
+        amount: u.amount,
+        address: fromAddress,
+        scriptPubKey: u.scriptPubKey,
+      }));
 
     const amountSats = toSats(Number(amount));
     const feeRate = Math.max(5, Number(this.settings.feeRate || 5));
