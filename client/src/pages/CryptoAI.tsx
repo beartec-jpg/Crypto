@@ -391,7 +391,8 @@ export default function CryptoAI() {
     const swingLength = 5;
     if (bars.length < swingLength * 2 + 1) return { bullishOB, bearishOB };
 
-    const avgRange = bars.slice(-20).reduce((sum, b) => sum + (b.high - b.low), 0) / 20;
+    const recentBars = bars.slice(-20);
+    const avgRange = recentBars.reduce((sum, b) => sum + (b.high - b.low), 0) / recentBars.length;
 
     // Find swing highs and lows
     for (let i = swingLength; i < bars.length - swingLength; i++) {
