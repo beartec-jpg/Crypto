@@ -305,7 +305,7 @@ async function _verifyQbtcLock(
     return { valid: false, reason: `QBTC RPC error: ${err.message}` };
   }
   if (!tx) return { valid: false, reason: 'Transaction not found' };
-  if (!tx.confirmations || tx.confirmations < 1) return { valid: false, reason: 'Needs at least 1 confirmation' };
+  if (!tx.confirmations || tx.confirmations < 1) return { valid: false, reason: 'Transaction not confirmed' };
 
   const expectedSats = qbtcToSats(expectedAmount);
   const voutData = tx.vout?.[vout];
