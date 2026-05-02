@@ -80,7 +80,7 @@ const ROADMAP: RoadmapPhase[] = [
       'Mining proxy APIs live: /api/qbtc/pool-stats and /api/qbtc/browser-miner',
       'Block explorer (QBTC Scan) live with DAG health, chain stats, and transaction lookup',
       'P2P network stress testing completed (200 TPS peak, 13,000+ transactions, full mempool recovery)',
-      'Cross-chain atomic swap protocol (QBTC ↔ BTC/ETH) deployed',
+      'Cross-chain atomic swap protocol deployed (QBTC ↔ BTC, QBTC ↔ ETH, XRP ↔ ETH — both directions)',
       'Community node operators onboarding',
     ],
   },
