@@ -1006,6 +1006,7 @@ function V2SwapActions({
   const [hasPendingBtcLock, setHasPendingBtcLock] = useState(() => !!localStorage.getItem(pendingBtcLockKey));
   const [hasPendingQbtcLock, setHasPendingQbtcLock] = useState(() => !!localStorage.getItem(pendingQbtcLockKey));
   const [pollCheckCount, setPollCheckCount] = useState(() => Number(localStorage.getItem(pollCountKey) || 0));
+  const [lastBtcBlockInfo, setLastBtcBlockInfo] = useState<{ height: number; timestamp: number } | null>(null);
   const prevSwapStatus = useRef(swap.status);
 
   // Auto-poll after a lock/claim until the swap status changes (max 30s)
@@ -1053,6 +1054,18 @@ function V2SwapActions({
         localStorage.setItem(pollCountKey, String(next));
         return next;
       });
+      // Fetch latest block tip for estimated confirmation time
+      try {
+        const tipHashResp = await fetch(`${esploraBase}/api/blocks/tip/hash`);
+        if (tipHashResp.ok) {
+          const tipHash = (await tipHashResp.text()).trim();
+          const blockResp = await fetch(`${esploraBase}/api/block/${tipHash}`);
+          if (blockResp.ok) {
+            const block = await blockResp.json() as { height: number; timestamp: number };
+            setLastBtcBlockInfo({ height: block.height, timestamp: block.timestamp });
+          }
+        }
+      } catch { /* non-fatal */ }
       try {
         const r = await fetch(`${esploraBase}/api/tx/${txid}`);
         if (!r.ok) return;
@@ -2338,6 +2351,27 @@ function V2SwapActions({
                 style={{ width: `${Math.min(100, (pollCheckCount / 40) * 100)}%` }}
               />
             </div>
+            {hasPendingBtcLock && lastBtcBlockInfo && (() => {
+              const ageSecs = Math.floor(Date.now() / 1000) - lastBtcBlockInfo.timestamp;
+              const ageMin = Math.floor(ageSecs / 60);
+              const ageSec = ageSecs % 60;
+              // BTC targets 10 min (600s) blocks; estimated next block
+              const nextBlockSecs = Math.max(0, 600 - ageSecs);
+              const nextMin = Math.floor(nextBlockSecs / 60);
+              const nextSec = nextBlockSecs % 60;
+              return (
+                <div className="flex justify-between items-center pt-0.5">
+                  <span className="text-xs text-amber-500/60">
+                    Block #{lastBtcBlockInfo.height} — {ageMin > 0 ? `${ageMin}m ` : ''}{ageSec}s ago
+                  </span>
+                  <span className="text-xs text-amber-400/80">
+                    {nextBlockSecs === 0
+                      ? 'Next block overdue'
+                      : `Next ~${nextMin > 0 ? `${nextMin}m ` : ''}${nextSec}s`}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
