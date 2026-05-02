@@ -404,9 +404,7 @@ export class BitcoinAdapter implements IChainAdapter {
 
   private async _lockQbtc(params: LockParams): Promise<LockResult> {
     const keyPair = params.signerKey as QBTCKeyPair;
-    const absoluteLocktime = Math.floor(Date.now() / 1000) + params.timelockSecs;
-
-    // Build hash-only HTLC script (seller-lock-first pattern used in the existing flow)
+    const absoluteLocktime = params.absoluteLocktime ?? (Math.floor(Date.now() / 1000) + params.timelockSecs);
     const htlcScript = createHTLCScript({
       sellerPubKeyHex: keyPair.ecdsaPublicKeyHex,
       secretHashHex: params.secretHash,

@@ -36,6 +36,8 @@ export interface LockParams {
   amount: string;
   /** Seconds from now until the refund (OP_CLTV / EscrowCancel) path unlocks */
   timelockSecs: number;
+  /** Optional: absolute unix timestamp to use directly instead of computing from timelockSecs */
+  absoluteLocktime?: number;
   /** Address on this chain where the counterparty receives funds when they reveal the secret */
   counterpartyAddress: string;
   /**
