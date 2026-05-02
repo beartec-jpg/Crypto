@@ -641,6 +641,14 @@ export default function QBTCMiningPage() {
           </span>
         </div>
 
+        {/* Beta notice */}
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex flex-wrap items-center gap-2 text-xs text-amber-200">
+          <span className="font-semibold text-amber-300">⚠ Beta Software</span>
+          <span>The QBTC mining pool is in beta on testnet. Mining rewards are testnet QBTC and have no monetary value. Pool software and reward calculations may change without notice.</span>
+          <span>Bug reports &amp; feedback:</span>
+          <a href="mailto:beartec@beartec.uk" className="text-amber-400 hover:text-amber-300 underline">beartec@beartec.uk</a>
+        </div>
+
         <div className="rounded-2xl border border-slate-700 bg-slate-900/70 p-6 md:p-8 space-y-6">
           {/* Title + Tabs */}
           <div className="flex items-center gap-3">

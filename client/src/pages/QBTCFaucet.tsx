@@ -261,6 +261,12 @@ export default function QBTCFaucetPage() {
                     {phase === 'error' ? <AlertTriangle className="w-4 h-4 text-rose-400" /> : <Zap className="w-4 h-4 text-cyan-300" />}
                     {message}
                   </p>
+                  {phase === 'error' && (
+                    <p className="text-xs mt-2 text-slate-400">
+                      Need help? Email{' '}
+                      <a href="mailto:beartec@beartec.uk" className="text-cyan-400 hover:text-cyan-300 underline">beartec@beartec.uk</a>
+                    </p>
+                  )}
                   {claimCountdown && (
                     <p className="text-xs mt-2 text-amber-300 flex items-center gap-2">
                       <Hourglass className="w-3.5 h-3.5" />

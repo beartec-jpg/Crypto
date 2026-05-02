@@ -4125,7 +4125,7 @@ export default function CryptoAI() {
               </a>
               <span className="text-gray-700">•</span>
               <a 
-                href="mailto:support@beartec.io" 
+                href="mailto:beartec@beartec.uk" 
                 className="hover:text-blue-400 transition-colors"
                 data-testid="link-contact"
               >

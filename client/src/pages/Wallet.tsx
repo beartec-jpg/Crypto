@@ -36,6 +36,9 @@ type WalletMode = 'dashboard' | 'vault' | 'send' | 'receive' | 'settings' | 'sec
 export default function WalletPage() {
   const { user } = useUser();
   const userId = user?.id || '';
+  const userEmail = user?.primaryEmailAddress?.emailAddress || '';
+  const isAdmin = userEmail === 'beartec@beartec.uk';
+  const isTestnetEnv = (import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet';
   const { toast } = useToast();
   
   const [mode, setMode] = useState<WalletMode>('dashboard');
@@ -412,6 +415,18 @@ export default function WalletPage() {
         </div>
       </div>
 
+      {/* Beta Notice Banner */}
+      {isTestnetEnv && (
+        <div className="bg-amber-900/40 border-b border-amber-600/40">
+          <div className="max-w-7xl mx-auto px-4 py-2 flex items-center justify-center gap-2 text-xs flex-wrap">
+            <span className="text-amber-300 font-semibold">⚠ Beta — Testnet Only</span>
+            <span className="text-amber-200/80">All tokens and swaps use testnet networks. No real funds are at risk.</span>
+            <span className="text-amber-200/60">Issues or feedback?</span>
+            <a href="mailto:beartec@beartec.uk" className="text-amber-400 hover:text-amber-300 underline">beartec@beartec.uk</a>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* BearTec Logo */}
         <div className="flex justify-center mb-8">
@@ -470,23 +485,25 @@ export default function WalletPage() {
 
           {(isPasskeyAuthenticated || sovereignWallet) && (
             <div className="flex items-center rounded-lg bg-gray-800 overflow-hidden border border-gray-700">
-              <button
-                onClick={() => setTokenNetwork('mainnet')}
-                className={`px-2 sm:px-3 py-2 text-xs sm:text-sm transition-colors ${
-                  tokenNetwork === 'mainnet' ? 'bg-emerald-600 text-white' : 'text-gray-300 hover:text-white'
-                }`}
-                title="Use mainnet tokens"
-              >
-                Mainnet
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => setTokenNetwork('mainnet')}
+                  className={`px-2 sm:px-3 py-2 text-xs sm:text-sm transition-colors ${
+                    tokenNetwork === 'mainnet' ? 'bg-emerald-600 text-white' : 'text-gray-300 hover:text-white'
+                  }`}
+                  title="Use mainnet tokens (admin only)"
+                >
+                  Mainnet
+                </button>
+              )}
               <button
                 onClick={() => setTokenNetwork('testnet')}
                 className={`px-2 sm:px-3 py-2 text-xs sm:text-sm transition-colors ${
-                  tokenNetwork === 'testnet' ? 'bg-emerald-600 text-white' : 'text-gray-300 hover:text-white'
+                  tokenNetwork === 'testnet' || !isAdmin ? 'bg-emerald-600 text-white' : 'text-gray-300 hover:text-white'
                 }`}
                 title="Use testnet tokens"
               >
-                Testnet
+                {isAdmin ? 'Testnet' : 'Testnet (Beta)'}
               </button>
             </div>
           )}

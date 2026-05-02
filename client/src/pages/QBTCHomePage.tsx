@@ -179,6 +179,14 @@ export default function QBTCHomePage() {
           </span>
         </div>
 
+        {/* Beta / Testnet disclaimer */}
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex flex-wrap items-center gap-2 text-xs text-amber-200">
+          <span className="font-semibold text-amber-300">⚠ Testnet Beta</span>
+          <span>QBTC is currently in active development on testnet. Coins, transactions, and mining rewards have no monetary value. The protocol and reward structure may change at any time.</span>
+          <span>Feedback &amp; bug reports:</span>
+          <a href="mailto:beartec@beartec.uk" className="text-amber-400 hover:text-amber-300 underline">beartec@beartec.uk</a>
+        </div>
+
         {/* ── Hero ── */}
         <section className="text-center space-y-6 pt-6">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 text-xs font-medium">

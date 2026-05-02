@@ -1100,6 +1100,14 @@ export default function QBTCScanPage() {
           </span>
         </div>
 
+        {/* Testnet beta notice */}
+        <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-4 py-3 flex flex-wrap items-center gap-2 text-xs text-cyan-200/80">
+          <span className="font-semibold text-cyan-300">Testnet Explorer</span>
+          <span>QBTC is currently on testnet. All transactions, balances, and blocks shown here are testnet-only and have no monetary value.</span>
+          <span>Issues?</span>
+          <a href="mailto:beartec@beartec.uk" className="text-cyan-400 hover:text-cyan-300 underline">beartec@beartec.uk</a>
+        </div>
+
         <div className="rounded-2xl border border-slate-700 bg-slate-900/70 backdrop-blur p-6 md:p-8">
           <h1 className="text-3xl font-bold tracking-tight mb-2">QBTC Scan</h1>
           <p className="text-slate-300 mb-4">Search transactions, addresses, blocks, and monitor live QBTC chain, DAG, and PQC status.</p>

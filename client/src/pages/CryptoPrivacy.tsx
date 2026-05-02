@@ -191,7 +191,7 @@ export default function CryptoPrivacy() {
                 <li><strong>Withdraw consent:</strong> Revoke consent for data processing</li>
               </ul>
               <p className="text-sm mt-3">
-                To exercise these rights, contact us at info@BearTec.uk
+                To exercise these rights, contact us at beartec@beartec.uk
               </p>
             </CardContent>
           </Card>
@@ -268,7 +268,7 @@ export default function CryptoPrivacy() {
             <CardContent className="text-gray-300 space-y-3">
               <p>If you have questions about this Privacy Policy or our data practices, contact us:</p>
               <ul className="list-none space-y-2 text-sm">
-                <li><strong>Email:</strong> info@BearTec.uk</li>
+                <li><strong>Email:</strong> beartec@beartec.uk</li>
               </ul>
             </CardContent>
           </Card>
@@ -292,7 +292,7 @@ export default function CryptoPrivacy() {
                 Trading Education
               </Button>
             </Link>
-            <a href="mailto:info@BearTec.uk" className="text-gray-400 hover:text-white">
+            <a href="mailto:beartec@beartec.uk" className="text-gray-400 hover:text-white">
               Contact Support
             </a>
           </div>

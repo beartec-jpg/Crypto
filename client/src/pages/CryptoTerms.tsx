@@ -312,7 +312,7 @@ export default function CryptoTerms() {
             <CardContent className="text-gray-300 space-y-3">
               <p>For questions about these Terms, contact us:</p>
               <ul className="list-none space-y-2 text-sm">
-                <li><strong>Email:</strong> info@BearTec.uk</li>
+                <li><strong>Email:</strong> beartec@beartec.uk</li>
               </ul>
             </CardContent>
           </Card>
@@ -348,7 +348,7 @@ export default function CryptoTerms() {
                 Trading Education
               </Button>
             </Link>
-            <a href="mailto:info@BearTec.uk" className="text-gray-400 hover:text-white">
+            <a href="mailto:beartec@beartec.uk" className="text-gray-400 hover:text-white">
               Contact Support
             </a>
           </div>

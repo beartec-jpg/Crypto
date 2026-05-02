@@ -402,7 +402,7 @@ export default function CryptoAccount() {
                     Your subscription renews automatically each month. You can cancel anytime from the subscription management page.
                   </p>
                   <p>
-                    Need help? Contact support at <a href="mailto:support@beartec.uk" className="text-cyan-400 hover:underline">support@beartec.uk</a>
+                    Need help? Contact support at <a href="mailto:beartec@beartec.uk" className="text-cyan-400 hover:underline">beartec@beartec.uk</a>
                   </p>
                 </div>
               </div>
