@@ -1084,7 +1084,7 @@ function V2SwapActions({
     const id = setInterval(trySubmit, 30_000);
     trySubmit(); // check immediately on mount
     return () => clearInterval(id);
-  }, [pendingBtcLockKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pendingBtcLockKey, hasPendingBtcLock]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-confirm pending QBTC lock: poll RPC until tx confirms, then submit to server
   useEffect(() => {
@@ -1160,7 +1160,7 @@ function V2SwapActions({
     const id = setInterval(trySubmit, 15_000); // QBTC blocks ~10s, check every 15s
     trySubmit();
     return () => clearInterval(id);
-  }, [pendingQbtcLockKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pendingQbtcLockKey, hasPendingQbtcLock]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track XRP claims in localStorage so button doesn't reappear after claiming
   const xrpClaimedKey = `v2_xrp_claimed_${swap.publicId}`;
