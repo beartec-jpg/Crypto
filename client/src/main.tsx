@@ -13,6 +13,19 @@ import { setupErrorTracking } from '@/lib/errorTracking'
 setupPerformanceMonitoring();
 setupErrorTracking();
 
+// Auto-reload on chunk load failures (stale cache after deploy)
+window.addEventListener('unhandledrejection', (event) => {
+  const msg = event?.reason?.message || '';
+  if (msg.includes('Failed to fetch dynamically imported module') || msg.includes('Importing a module script failed')) {
+    const reloadKey = '__chunk_reload_at__';
+    const last = Number(sessionStorage.getItem(reloadKey) || 0);
+    if (Date.now() - last > 10_000) {
+      sessionStorage.setItem(reloadKey, String(Date.now()));
+      window.location.reload();
+    }
+  }
+});
+
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 const WALLETCONNECT_PROJECT_ID = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID
 
