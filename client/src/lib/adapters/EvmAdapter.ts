@@ -135,7 +135,7 @@ export class EvmAdapter implements IChainAdapter {
     }
 
     const hashlock = toHex32(params.secretHash);
-    const timelockUnix = BigInt(Math.floor(Date.now() / 1000) + params.timelockSecs);
+    const timelockUnix = BigInt(params.absoluteLocktime ?? (Math.floor(Date.now() / 1000) + params.timelockSecs));
     const amountUnits = parseAmount(params.amount, this.decimals);
 
     let contractId: string;

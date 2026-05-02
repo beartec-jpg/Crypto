@@ -18,7 +18,7 @@ export const SUPPORTED_CHAINS: ChainId[] = ['QBTC', 'BTC', 'ETH', 'BNB', 'USDC',
 export const SUPPORTED_PAIRS = new Set([
   'QBTC/USDC', 'QBTC/ETH', 'QBTC/BNB', 'QBTC/BTC', 'QBTC/XRP',
   'ETH/USDC',  'ETH/BNB',  'ETH/BTC',  'ETH/XRP',
-  'BNB/USDC',  'BNB/BTC',  'BNB/XRP',
+  'BNB/USDC',  'BNB/ETH',  'BNB/BTC',  'BNB/XRP',
   'USDC/BTC',  'USDC/XRP',
   'BTC/XRP',
 ]);
