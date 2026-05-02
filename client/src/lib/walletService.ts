@@ -75,6 +75,7 @@ interface Wallet {
   publicKeys?: {
     ethereum: string;
     bitcoin: string;
+    bitcoinTestnet?: string;
     bsc: string;
     xrp: string;
     solana: string;
@@ -499,6 +500,7 @@ export async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
   const btcTestnetNode = derivePath(root, DERIVATION_PATHS.bitcoinTestnet);
   if (!btcTestnetNode.privateKey) throw new Error('Failed to derive BTC testnet key');
   addresses.bitcoinTestnet = deriveBitcoinAddress(btcTestnetNode.privateKey, 'testnet');
+  publicKeys.bitcoinTestnet = Buffer.from(secp256k1.getPublicKey(btcTestnetNode.privateKey, true)).toString('hex');
   
   // BSC (same as Ethereum)
   addresses.bsc = addresses.ethereum;

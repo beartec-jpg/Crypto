@@ -1845,9 +1845,11 @@ function V2SwapActions({
       const esploraUrl = isTestnet ? 'https://blockstream.info/testnet' : 'https://blockstream.info';
 
       const unlockedWallet = await unlockWallet(walletId, password);
-      // Always use the mainnet-path BTC key (m/44'/0'/0'/0/0) since walletBtcPubKey
-      // is set from publicKeys.bitcoin (same path) — must match what's in the HTLC script.
-      const btcPrivKeyHex = unlockedWallet.privateKeys.bitcoin || unlockedWallet.privateKeys.bitcoinTestnet;
+      // Use the key that matches the refundAddress (the address UTXOs will be fetched from).
+      // In testnet mode use the testnet HD path (m/44'/1') so the signing key matches the address.
+      const btcPrivKeyHex = isTestnet
+        ? (unlockedWallet.privateKeys.bitcoinTestnet || unlockedWallet.privateKeys.bitcoin)
+        : unlockedWallet.privateKeys.bitcoin;
       if (!btcPrivKeyHex) throw new Error('BTC private key not found in wallet');
 
       // Derive our compressed pubkey
