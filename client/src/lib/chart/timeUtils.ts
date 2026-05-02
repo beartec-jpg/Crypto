@@ -46,23 +46,23 @@ export const generateFutureWhitespace = (lastCandleTime: number, interval: strin
  */
 export const getFutureBarCount = (interval: string): number => {
   const futureCounts: Record<string, number> = {
-    '1m': 300,
-    '3m': 300,
-    '5m': 300,
-    '15m': 200,
-    '30m': 150,
-    '1h': 150,
-    '2h': 120,
-    '4h': 100,
-    '6h': 75,
-    '8h': 60,
-    '12h': 50,
-    '1d': 50,
-    '3d': 30,
-    '1w': 20,
-    '1M': 12,
+    '1m': 500,
+    '3m': 500,
+    '5m': 500,
+    '15m': 400,
+    '30m': 300,
+    '1h': 500,
+    '2h': 300,
+    '4h': 200,
+    '6h': 200,
+    '8h': 150,
+    '12h': 120,
+    '1d': 365,
+    '3d': 200,
+    '1w': 104,
+    '1M': 36,
   };
-  return futureCounts[interval] ?? 150; // conservative fallback for unrecognized timeframes
+  return futureCounts[interval] ?? 300; // fallback for unrecognized timeframes
 };
 
 /**

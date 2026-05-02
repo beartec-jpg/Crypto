@@ -2588,6 +2588,7 @@ interface GrokWaveAnalysis {
 }
 
 import { incrementTickerClick, getFavorites } from '@/lib/tickerUtils';
+import { getFutureBarCount } from '@/lib/chart/timeUtils';
 import { FavoritesOnlySelector } from '@/components/TickerSelector';
 const TIMEFRAMES = [
   { label: '1 Month', value: '1M' },
@@ -3979,8 +3980,9 @@ const aiAnalyze = useMutation({
     const secondLastCandle = candles.length >= 2 ? candles[candles.length - 2] : candles[0];
     const candleInterval = lastCandle.time - secondLastCandle.time || 60;
     
-    // Extend chart data with 300 virtual future candles to match Indicators page (for drawing tools)
-    for (let i = 1; i <= 300; i++) {
+    // Extend chart data with virtual future candles to match Indicators page (for drawing tools)
+    const futureBarCount = getFutureBarCount(timeframeRef.current);
+    for (let i = 1; i <= futureBarCount; i++) {
       const futureTime = lastCandle.time + (candleInterval * i);
       chartData.push({
         time: futureTime as any,
