@@ -1655,7 +1655,7 @@ app.post('/api/swap/v2/lock/side-a', writeLimiter, async (req, res) => {
 
 app.post('/api/swap/v2/lock/side-b', writeLimiter, async (req, res) => {
   try {
-    const { swapId, lockId, lockAddress, authEvmAddress, signature, timestamp } = req.body || {};
+    const { swapId, lockId, lockAddress, htlcScriptHex, authEvmAddress, signature, timestamp } = req.body || {};
 
     if (!swapId   || typeof swapId   !== 'string') return res.status(400).json({ error: 'swapId is required' });
     if (!lockId   || typeof lockId   !== 'string') return res.status(400).json({ error: 'lockId is required' });
@@ -1698,11 +1698,12 @@ app.post('/api/swap/v2/lock/side-b', writeLimiter, async (req, res) => {
       return res.status(httpStatus).json({ error: `Lock verification failed: ${verification.reason}` });
     }
 
+    const htlcScriptValB = (typeof htlcScriptHex === 'string' && htlcScriptHex.trim()) ? htlcScriptHex.trim() : null;
     await pool.query(`
       UPDATE atomic_swaps
-      SET side_b_lock_id = $1, side_b_lock_address = $2, status = 'SIDE_B_LOCKED', updated_at = NOW()
-      WHERE public_id = $3::uuid
-    `, [lockId, lockAddress || null, swapId]);
+      SET side_b_lock_id = $1, side_b_lock_address = $2, side_b_htlc_script = $3, status = 'SIDE_B_LOCKED', updated_at = NOW()
+      WHERE public_id = $4::uuid
+    `, [lockId, lockAddress || null, htlcScriptValB, swapId]);
 
     return res.json({ status: 'SIDE_B_LOCKED', swapId, lockId });
   } catch (err: any) {
