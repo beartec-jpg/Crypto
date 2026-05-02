@@ -427,7 +427,7 @@ export class BitcoinAdapter implements IChainAdapter {
 
   private async _lockBtc(params: LockParams): Promise<LockResult> {
     const key = params.signerKey as BtcSignerKey;
-    const absoluteLocktime = Math.floor(Date.now() / 1000) + params.timelockSecs;
+    const absoluteLocktime = params.absoluteLocktime ?? (Math.floor(Date.now() / 1000) + params.timelockSecs);
 
     if (!params.counterpartyPubKeyHex) {
       throw new Error('BitcoinAdapter.lockFunds (BTC): counterpartyPubKeyHex is required — the counterparty must provide their compressed BTC pubkey');

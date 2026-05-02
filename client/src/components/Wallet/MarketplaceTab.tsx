@@ -37,6 +37,7 @@ import PinEntryModal from './PinEntryModal';
 import { ethers } from 'ethers';
 import MultiChainMarketTab from '@/components/MultiChainMarketTab';
 import { fetchV2SwapsByAddress, buildV2Message, postV2LockSideA, postV2LockSideB, postV2ClaimSideB, cancelV2Swap, type V2Swap, type ChainId } from '@/lib/swapV2Api';
+import { BitcoinAdapter, getUtxosBtc } from '@/lib/adapters/BitcoinAdapter';
 import { XrplAdapter, encodeConditionFromHash } from '@/lib/adapters/XrplAdapter';
 import { EvmAdapter, getEvmAdapterConfig } from '@/lib/adapters/EvmAdapter';
 import { getXRPSeed, getXRPTestnetSeed } from '@/lib/walletService';
@@ -1078,7 +1079,20 @@ function V2SwapActions({
         setErrorMsg('');
         setActionStatus('done');
         onRefresh();
-      } catch { /* silent — will retry next poll */ }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        // Fast-fail on terminal server errors — swap already progressed or validation failed
+        if (/already|invalid status|wrong status|htlc script|locktime|pubkey/i.test(msg)) {
+          clearInterval(id);
+          localStorage.removeItem(pendingBtcLockKey);
+          localStorage.removeItem(pollCountKey);
+          setHasPendingBtcLock(false);
+          setErrorMsg('');
+          setActionStatus('done');
+          onRefresh();
+        }
+        // Otherwise silent — will retry next poll
+      }
     };
 
     const id = setInterval(trySubmit, 30_000);
@@ -1719,7 +1733,6 @@ function V2SwapActions({
         const absoluteLocktime = locktimeUnix; // pass as absolute to _lockQbtc
         const keyPair = await QBTCKeyPair.fromMnemonic(unlockedWallet.mnemonic);
         const lockAmount = makerIsLocking ? swap.sideAAmount : swap.sideBAmount;
-        const { BitcoinAdapter } = await import('@/lib/adapters/BitcoinAdapter');
         const qbtcAdapter = new BitcoinAdapter({ chain: 'QBTC', network: qbtcNetwork, rpcProxyUrl });
         const result = await qbtcAdapter.lockFunds({
           signerKey: keyPair,
@@ -1863,7 +1876,6 @@ function V2SwapActions({
       const qbtcUtxos = await qbtcChain.scanUTXOs(lockAddress);
       if (!qbtcUtxos.length) throw new Error(`No UTXOs found at QBTC HTLC address ${lockAddress}`);
 
-      const { BitcoinAdapter } = await import('@/lib/adapters/BitcoinAdapter');
       const qbtcAdapter = new BitcoinAdapter({ chain: 'QBTC', network: qbtcNetwork, rpcProxyUrl });
 
       await qbtcAdapter.claimFunds({
@@ -1929,9 +1941,7 @@ function V2SwapActions({
 
       const makerIsLocking = isMaker && swap.baseChain === 'BTC';
       const lockAmount = makerIsLocking ? swap.sideAAmount : swap.sideBAmount;
-      const locktimeSecs = makerIsLocking
-        ? Math.max(0, (swap.sideALocktime ?? 0) - Math.floor(Date.now() / 1000))
-        : Math.max(0, (swap.sideBLocktime ?? 0) - Math.floor(Date.now() / 1000));
+      const locktimeUnix = makerIsLocking ? Number(swap.sideALocktime ?? 0) : Number(swap.sideBLocktime ?? 0);
       const counterpartyPubKeyHex = makerIsLocking
         ? (swap.sideBPubKeyHex || '') : (swap.sideAPubKeyHex || '');
       if (!counterpartyPubKeyHex) throw new Error('Counterparty BTC pubkey not available — ensure they registered it when accepting the offer');
@@ -1941,14 +1951,14 @@ function V2SwapActions({
         : unlockedWallet.addresses?.bitcoin;
       if (!refundAddress) throw new Error('BTC address not in wallet');
 
-      const { BitcoinAdapter } = await import('@/lib/adapters/BitcoinAdapter');
       const btcAdapter = new BitcoinAdapter({ chain: 'BTC', network: btcNetwork, esploraUrl });
 
       const result = await btcAdapter.lockFunds({
         signerKey: { privateKeyHex: btcPrivKeyHex, publicKeyHex: myBtcPubKeyHex },
         amount: Number(lockAmount),
         secretHash: swap.secretHash,
-        timelockSecs: locktimeSecs,
+        absoluteLocktime: locktimeUnix,
+        timelockSecs: 0, // ignored when absoluteLocktime is set
         counterpartyAddress: refundAddress, // placeholder — script uses pubkeys
         refundAddress,
         counterpartyPubKeyHex,
@@ -2079,7 +2089,6 @@ function V2SwapActions({
         : unlockedWallet.addresses?.bitcoin;
       if (!outputAddress) throw new Error('BTC address not in wallet');
 
-      const { BitcoinAdapter, getUtxosBtc } = await import('@/lib/adapters/BitcoinAdapter');
       const btcAdapter = new BitcoinAdapter({ chain: 'BTC', network: btcNetwork, esploraUrl });
 
       // Fetch UTXOs at the HTLC address before claiming
@@ -2159,7 +2168,6 @@ function V2SwapActions({
         ? (JSON.parse(pendingRaw) as { lockId: string }).lockId
         : lockIdFromDb;
 
-      const { BitcoinAdapter, getUtxosBtc } = await import('@/lib/adapters/BitcoinAdapter');
       const btcAdapter = new BitcoinAdapter({ chain: 'BTC', network: btcNetwork, esploraUrl });
 
       let lockAddress: string | undefined;
