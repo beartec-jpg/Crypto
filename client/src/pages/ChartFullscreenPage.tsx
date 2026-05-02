@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Time, createSeriesMarkers, type ISeriesMarkersPluginApi } from 'lightweight-charts';
 import { useToast } from '@/hooks/use-toast';
+import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import { useDrawingHistory } from '@/hooks/useDrawingHistory';
 import { useElliottWaveLabels } from '@/hooks/useElliottWaveLabels';
 import { useWaveSelection } from '@/hooks/useWaveSelection';
@@ -332,6 +333,22 @@ export function ChartFullscreenPage({
 
   // Hooks - Toast notifications
   const { toast } = useToast();
+
+  // Tier-based access control for SMC indicators
+  const { tier } = useCryptoAuth();
+  const isPaidTier = tier !== 'free';
+
+  const requirePaidForSMC = useCallback((toolName: string, action: () => void) => {
+    if (isPaidTier) {
+      action();
+      return;
+    }
+    toast({
+      title: 'Upgrade Required',
+      description: `${toolName} is a Smart Money Concept tool available on the Core plan (£15/mo) and above.`,
+      variant: 'destructive',
+    });
+  }, [isPaidTier, toast]);
 
   const persistDrawingDefaults = useCallback((payload: { tool: string; style: any }) => {
     const raw = userSettings?.drawingDefaults as any;
@@ -2303,20 +2320,62 @@ export function ChartFullscreenPage({
           onElderImpulseToggle={indicators.elderImpulse.setShow}
           onOpenEmaSma={() => setShowEmaSmaModal(true)}
           fvgSettings={fvgSettings.settings}
-          onFVGSettingsChange={fvgSettings.setSettings}
+          onFVGSettingsChange={(s) => {
+            if (s.enabled && !fvgSettings.settings.enabled) {
+              requirePaidForSMC('FVG', () => fvgSettings.setSettings(s));
+            } else {
+              fvgSettings.setSettings(s);
+            }
+          }}
           obSettings={obSettings.settings}
-          onOBSettingsChange={obSettings.setSettings}
+          onOBSettingsChange={(s) => {
+            if (s.enabled && !obSettings.settings.enabled) {
+              requirePaidForSMC('Order Blocks', () => obSettings.setSettings(s));
+            } else {
+              obSettings.setSettings(s);
+            }
+          }}
           breakerSettings={breakerSettings.settings}
-          onBreakerSettingsChange={breakerSettings.setSettings}
+          onBreakerSettingsChange={(s) => {
+            if (s.enabled && !breakerSettings.settings.enabled) {
+              requirePaidForSMC('Breaker Blocks', () => breakerSettings.setSettings(s));
+            } else {
+              breakerSettings.setSettings(s);
+            }
+          }}
           bosSettings={bosSettings.settings}
-          onBOSSettingsChange={bosSettings.setSettings}
+          onBOSSettingsChange={(s) => {
+            if (s.enabled && !bosSettings.settings.enabled) {
+              requirePaidForSMC('BOS / CHoCH', () => bosSettings.setSettings(s));
+            } else {
+              bosSettings.setSettings(s);
+            }
+          }}
           liquiditySettings={liquiditySettings.settings}
-          onLiquiditySettingsChange={liquiditySettings.setSettings}
+          onLiquiditySettingsChange={(s) => {
+            if (s.enabled && !liquiditySettings.settings.enabled) {
+              requirePaidForSMC('Liquidity Zones', () => liquiditySettings.setSettings(s));
+            } else {
+              liquiditySettings.setSettings(s);
+            }
+          }}
           pdZoneSettings={pdZoneSettings.settings}
-          onPDZoneSettingsChange={pdZoneSettings.setSettings}
+          onPDZoneSettingsChange={(s) => {
+            if (s.enabled && !pdZoneSettings.settings.enabled) {
+              requirePaidForSMC('Premium / Discount Zones', () => pdZoneSettings.setSettings(s));
+            } else {
+              pdZoneSettings.setSettings(s);
+            }
+          }}
           onOpenSmc={() => setShowSmcModal(true)}
           autoFibSettings={autoFibSettings.settings}
-          onAutoFibToggle={(enabled) => autoFibSettings.updateSettings({ enabled })}
+          onAutoFibToggle={(enabled) => {
+            if (enabled) {
+              requirePaidForSMC('Auto-Fibonacci', () => autoFibSettings.updateSettings({ enabled: true }));
+            } else {
+              autoFibSettings.updateSettings({ enabled: false });
+            }
+          }}
           onOpenAutoFib={() => setShowAutoFibModal(true)}
           highLowEnabled={highLowEnabled}
           onToggleHighLow={setHighLowEnabled}
