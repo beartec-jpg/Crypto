@@ -1806,35 +1806,42 @@ function V2SwapActions({
         const { createHTLCScript: buildScript, getHTLCAddress: deriveAddr, QBTCKeyPair: KP } = await import('@/lib/qbtcService');
         const locktimeForScript = Number(makerClaimingQbtc ? swap.sideBLocktime : swap.sideALocktime);
 
-        // Attempt 1: reconstruct using this wallet's QBTC keypair (same-device test or same wallet)
-        try {
-          const kp = await KP.fromMnemonic(unlockedWallet.mnemonic);
-          const candidate = buildScript({ sellerPubKeyHex: kp.ecdsaPublicKeyHex, secretHashHex: swap.secretHash, locktime: locktimeForScript });
-          if (deriveAddr(candidate, qbtcNetwork) === lockAddress) {
-            htlcScriptHex = candidate.toString('hex');
-          }
-        } catch { /* ignore */ }
-
-        // Attempt 2: reconstruct using sideBPubKeyHex from server, trying locktime ±10 to handle timing drift
-        if (!htlcScriptHex && (makerClaimingQbtc ? swap.sideBPubKeyHex : swap.sideAPubKeyHex)) {
-          try {
-            const serverPubKey = (makerClaimingQbtc ? swap.sideBPubKeyHex : swap.sideAPubKeyHex)!;
-            for (let delta = 0; delta <= 10 && !htlcScriptHex; delta++) {
-              for (const sign of [1, -1]) {
-                const lt = locktimeForScript + delta * sign;
-                const candidate = buildScript({ sellerPubKeyHex: serverPubKey, secretHashHex: swap.secretHash, locktime: lt });
+        // Helper: try a pubkey over a range of locktime deltas
+        const tryPubKeyRange = (pubKeyHex: string, range = 300) => {
+          for (let delta = 0; delta <= range && !htlcScriptHex; delta++) {
+            for (const sign of [1, -1]) {
+              if (delta === 0 && sign === -1) continue; // skip duplicate 0
+              const lt = locktimeForScript + delta * sign;
+              try {
+                const candidate = buildScript({ sellerPubKeyHex: pubKeyHex, secretHashHex: swap.secretHash, locktime: lt });
                 if (deriveAddr(candidate, qbtcNetwork) === lockAddress) {
                   htlcScriptHex = candidate.toString('hex');
                   break;
                 }
-              }
+              } catch { /* ignore */ }
             }
-          } catch { /* ignore */ }
+          }
+        };
+
+        // Attempt 1: reconstruct using this wallet's QBTC keypair (same-device test or same wallet)
+        // Try ±300 s range to handle timing drift in old code that re-computed Date.now() inside adapter
+        try {
+          const kp = await KP.fromMnemonic(unlockedWallet.mnemonic);
+          tryPubKeyRange(kp.ecdsaPublicKeyHex, 300);
+        } catch { /* ignore */ }
+
+        // Attempt 2: reconstruct using sideBPubKeyHex from server, trying locktime ±300s to handle timing drift
+        if (!htlcScriptHex && (makerClaimingQbtc ? swap.sideBPubKeyHex : swap.sideAPubKeyHex)) {
+          const serverPubKey = (makerClaimingQbtc ? swap.sideBPubKeyHex : swap.sideAPubKeyHex)!;
+          tryPubKeyRange(serverPubKey, 300);
         }
 
         // Attempt 3: use server-stored script directly (saved when taker locked)
         if (!htlcScriptHex && makerClaimingQbtc && swap.sideBHtlcScript) {
           htlcScriptHex = swap.sideBHtlcScript;
+        }
+        if (!htlcScriptHex && !makerClaimingQbtc && swap.sideAHtlcScript) {
+          htlcScriptHex = swap.sideAHtlcScript;
         }
 
         if (!htlcScriptHex) throw new Error('QBTC HTLC script could not be recovered — script not in localStorage and reconstruction failed');
