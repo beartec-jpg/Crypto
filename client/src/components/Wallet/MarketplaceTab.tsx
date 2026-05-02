@@ -1676,19 +1676,14 @@ function V2SwapActions({
       const rpcProxyUrl = import.meta.env.VITE_QBTC_RPC_URL || '/api/qbtc/rpc';
 
       const unlockedWallet = await unlockWallet(walletId, password);
-      const qbtcAddress = isTestnet
-        ? unlockedWallet.addresses.qbtc
-        : unlockedWallet.addresses.qbtcMainnet;
+      const qbtcAddress = isTestnet ? unlockedWallet.addresses.qbtc : unlockedWallet.addresses.qbtcMainnet;
       if (!qbtcAddress) throw new Error('QBTC address not found in wallet');
 
       const makerIsLocking = isMaker && swap.baseChain === 'QBTC';
-      const locktimeUnix = makerIsLocking
-        ? Number(swap.sideALocktime ?? 0)
-        : Number(swap.sideBLocktime ?? 0);
+      const pendingQbtcSide: 'A' | 'B' = makerIsLocking ? 'A' : 'B';
+      const locktimeUnix = makerIsLocking ? Number(swap.sideALocktime ?? 0) : Number(swap.sideBLocktime ?? 0);
       const timelockSecs = locktimeUnix - Math.floor(Date.now() / 1000);
       if (timelockSecs <= 60) throw new Error('Locktime has expired or is too close to expiry');
-
-      const keyPair = await QBTCKeyPair.fromMnemonic(unlockedWallet.mnemonic);
 
       const ethPrivKey = unlockedWallet.privateKeys.ethereum;
       const rpcUrl = import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
@@ -1696,26 +1691,36 @@ function V2SwapActions({
       const provider = new ethers.JsonRpcProvider(rpcUrl, chainId);
       const ethSigner = new ethers.Wallet('0x' + ethPrivKey, provider);
 
-      // ── Check for already-pending lock first — avoids double-broadcasting ──
-      const existingPendingRaw = localStorage.getItem(pendingQbtcLockKey);
-      let result: { lockId: string; lockAddress: string; htlcScriptHex?: string };
-      if (existingPendingRaw) {
+      // Reuse existing pending tx if one exists — avoids double-broadcasting
+      let lockId: string;
+      let lockAddress: string;
+      let htlcScriptHex: string | undefined;
+
+      const existingRaw = localStorage.getItem(pendingQbtcLockKey);
+      if (existingRaw) {
         try {
-          const existing = JSON.parse(existingPendingRaw) as typeof result & { side: string };
-          result = existing;
+          const p = JSON.parse(existingRaw) as { lockId: string; lockAddress: string; htlcScriptHex?: string };
+          lockId = p.lockId;
+          lockAddress = p.lockAddress;
+          htlcScriptHex = p.htlcScriptHex;
         } catch {
           localStorage.removeItem(pendingQbtcLockKey);
-          result = await broadcastQbtcLock();
+          // fall through to broadcast below
+          lockId = '';
+          lockAddress = '';
         }
       } else {
-        result = await broadcastQbtcLock();
+        lockId = '';
+        lockAddress = '';
       }
 
-      async function broadcastQbtcLock() {
+      if (!lockId) {
+        // Broadcast new tx
+        const keyPair = await QBTCKeyPair.fromMnemonic(unlockedWallet.mnemonic);
         const lockAmount = makerIsLocking ? swap.sideAAmount : swap.sideBAmount;
         const { BitcoinAdapter } = await import('@/lib/adapters/BitcoinAdapter');
         const qbtcAdapter = new BitcoinAdapter({ chain: 'QBTC', network: qbtcNetwork, rpcProxyUrl });
-        const r = await qbtcAdapter.lockFunds({
+        const result = await qbtcAdapter.lockFunds({
           signerKey: keyPair,
           amount: lockAmount,
           secretHash: swap.secretHash,
@@ -1723,38 +1728,42 @@ function V2SwapActions({
           counterpartyAddress: qbtcAddress,
           refundAddress: qbtcAddress,
         });
-        if (r.htlcScriptHex) {
-          localStorage.setItem(`v2_qbtc_script_${swap.publicId}`, r.htlcScriptHex);
-        }
-        const pendingQbtcSide = makerIsLocking ? 'A' : 'B';
-        localStorage.setItem(pendingQbtcLockKey, JSON.stringify({
-          lockId: r.lockId, lockAddress: r.lockAddress, htlcScriptHex: r.htlcScriptHex,
-          side: pendingQbtcSide, ethPrivKey, walletEvmAddress, ts: Math.floor(Date.now() / 1000),
-        }));
-        setHasPendingQbtcLock(true);
-        return r;
+        lockId = result.lockId;
+        lockAddress = result.lockAddress;
+        htlcScriptHex = result.htlcScriptHex;
+        if (htlcScriptHex) localStorage.setItem(`v2_qbtc_script_${swap.publicId}`, htlcScriptHex);
       }
 
-      const ts = Math.floor(Date.now() / 1000);
+      // Save / refresh pending state and start poller
+      localStorage.setItem(pendingQbtcLockKey, JSON.stringify({
+        lockId, lockAddress, htlcScriptHex,
+        side: pendingQbtcSide, ethPrivKey, walletEvmAddress,
+        ts: Math.floor(Date.now() / 1000),
+      }));
+      setHasPendingQbtcLock(true);
 
+      // Attempt immediate server registration (succeeds once tx has ≥1 confirmation)
+      const ts = Math.floor(Date.now() / 1000);
       try {
         if (makerIsLocking) {
-          const msg = `QBTC_SWAP_V2:LOCK_SIDE_A:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockId}:${ts}`;
+          const msg = `QBTC_SWAP_V2:LOCK_SIDE_A:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${lockId}:${ts}`;
           const sig = await ethSigner.signMessage(msg);
-          await postV2LockSideA({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+          await postV2LockSideA({ swapId: swap.publicId, lockId, lockAddress, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
         } else {
-          const msg = `QBTC_SWAP_V2:LOCK_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${result.lockId}:${ts}`;
+          const msg = `QBTC_SWAP_V2:LOCK_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${lockId}:${ts}`;
           const sig = await ethSigner.signMessage(msg);
-          await postV2LockSideB({ swapId: swap.publicId, lockId: result.lockId, lockAddress: result.lockAddress, htlcScriptHex: result.htlcScriptHex, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
+          await postV2LockSideB({ swapId: swap.publicId, lockId, lockAddress, htlcScriptHex, authEvmAddress: walletEvmAddress, signature: sig, timestamp: ts });
         }
-        localStorage.removeItem(`v2_pending_qbtc_lock_${swap.publicId}`);
+        // Success — clear pending
+        localStorage.removeItem(pendingQbtcLockKey);
+        localStorage.removeItem(pollCountKey);
+        setHasPendingQbtcLock(false);
         setActionStatus('done');
         setPassword('');
         onRefresh();
       } catch (serverErr: unknown) {
+        // TX was broadcast but not yet confirmed — poller will retry
         const msg = serverErr instanceof Error ? serverErr.message : String(serverErr);
-        // TX was broadcast — keep pending state so poller can retry on next confirmation
-        // Do NOT clear localStorage here regardless of error type
         setErrorMsg(msg);
         setActionStatus('error');
       }
