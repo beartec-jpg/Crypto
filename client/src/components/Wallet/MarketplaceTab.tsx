@@ -1089,11 +1089,19 @@ function V2SwapActions({
   useEffect(() => {
     const raw = localStorage.getItem(pendingQbtcLockKey);
     if (!raw) return;
-    let pending: { lockId: string; lockAddress: string; side: 'A' | 'B'; ethPrivKey: string; walletEvmAddress: string; ts: number };
+    let pending: { lockId: string; lockAddress: string; htlcScriptHex?: string; side: 'A' | 'B'; ethPrivKey: string; walletEvmAddress: string; ts: number };
     try { pending = JSON.parse(raw); } catch { localStorage.removeItem(pendingQbtcLockKey); return; }
 
     const rpcProxyUrl = import.meta.env.VITE_QBTC_RPC_URL || '/api/qbtc/rpc';
     const qbtcNet = (import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet' ? 'testnet' : 'mainnet';
+
+    // If counter already exhausted from a previous session, show reset immediately
+    const savedCount = Number(localStorage.getItem(pollCountKey) || 0);
+    if (savedCount >= 40) {
+      setErrorMsg('QBTC_LOCK_STUCK: Previous attempts exhausted — transaction may have been dropped');
+      setActionStatus('error');
+      return;
+    }
 
     let attempts = 0;
     const trySubmit = async () => {
@@ -1116,7 +1124,7 @@ function V2SwapActions({
         const sig = await ethSigner.signMessage(msg);
         const { postV2LockSideA: lockA, postV2LockSideB: lockB } = await import('@/lib/swapV2Api');
         const fn = pending.side === 'A' ? lockA : lockB;
-        await fn({ swapId: swap.publicId, lockId: pending.lockId, lockAddress: pending.lockAddress, authEvmAddress: pending.walletEvmAddress, signature: sig, timestamp: ts });
+        await fn({ swapId: swap.publicId, lockId: pending.lockId, lockAddress: pending.lockAddress, htlcScriptHex: pending.htlcScriptHex, authEvmAddress: pending.walletEvmAddress, signature: sig, timestamp: ts });
 
         localStorage.removeItem(pendingQbtcLockKey);
         localStorage.removeItem(pollCountKey);
@@ -1133,7 +1141,7 @@ function V2SwapActions({
           setActionStatus('done');
           onRefresh();
         } else if (attempts >= 40) {
-          // Exhausted retries — stop polling, show error with reset option
+          // Exhausted retries — stop polling, show reset button
           clearInterval(id);
           setErrorMsg(`QBTC_LOCK_STUCK: ${msg}`);
           setActionStatus('error');
