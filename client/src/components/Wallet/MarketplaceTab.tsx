@@ -2958,12 +2958,16 @@ export default function MarketplaceTab({
     if (s.status === 'COMPLETE' && s.secret) {
       const isMaker = s.authEvmAddressA?.toLowerCase() === walletEvmAddress.toLowerCase();
       const isTaker = s.authEvmAddressB?.toLowerCase() === walletEvmAddress.toLowerCase();
-      const xrpClaimedKey = `v2_xrp_claimed_${s.publicId}`;
-      const ethClaimedKey = `v2_eth_claimed_${s.publicId}`;
-      const btcClaimedKey = `v2_btc_claimed_${s.publicId}`;
+      const xrpClaimedKey  = `v2_xrp_claimed_${s.publicId}`;
+      const ethClaimedKey  = `v2_eth_claimed_${s.publicId}`;
+      const btcClaimedKey  = `v2_btc_claimed_${s.publicId}`;
+      const bnbClaimedKey  = `v2_bnb_claimed_${s.publicId}`;
+      const qbtcClaimedKey = `v2_qbtc_claimed_${s.publicId}`;
       if ((isTaker || isMaker) && s.baseChain === 'XRP' && !localStorage.getItem(xrpClaimedKey)) return true;
-      if (isTaker && s.baseChain === 'ETH' && !localStorage.getItem(ethClaimedKey)) return true;
-      if (isTaker && s.baseChain === 'BTC' && !localStorage.getItem(btcClaimedKey)) return true;
+      if (isTaker && s.baseChain === 'ETH'  && !localStorage.getItem(ethClaimedKey))  return true;
+      if (isTaker && s.baseChain === 'BTC'  && !localStorage.getItem(btcClaimedKey))  return true;
+      if (isTaker && s.baseChain === 'BNB'  && !localStorage.getItem(bnbClaimedKey))  return true;
+      if (isTaker && s.baseChain === 'QBTC' && !localStorage.getItem(qbtcClaimedKey)) return true;
     }
     // Keep EXPIRED/CANCELLED BTC swaps in active list if we have a saved HTLC script (need to refund)
     if ((s.status === 'EXPIRED' || s.status === 'CANCELLED') &&
