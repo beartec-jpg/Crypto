@@ -326,11 +326,8 @@ async function _verifyBtcLock(
   const esploraBase = process.env.BTC_ESPLORA_URL || 'https://blockstream.info/testnet';
 
   const resp = await fetch(`${esploraBase}/api/tx/${txid}`, { signal: AbortSignal.timeout(10_000) });
-  if (!resp.ok) {
-    // 404 = tx broadcast but not yet indexed by Esplora — treat same as unconfirmed
-    if (resp.status === 404) return { valid: false, reason: 'Transaction not confirmed (not yet indexed)' };
-    return { valid: false, reason: `Esplora returned ${resp.status}` };
-  }
+  if (resp.status === 404) return { valid: false, reason: 'Transaction not confirmed' }; // not yet indexed — treat as unconfirmed
+  if (!resp.ok) return { valid: false, reason: `Esplora returned ${resp.status}` };
 
   const tx = await resp.json() as any;
   if (!tx.status?.confirmed) return { valid: false, reason: 'Transaction not confirmed' };
@@ -1617,7 +1614,8 @@ app.post('/api/swap/v2/lock/side-a', writeLimiter, async (req, res) => {
       swap.secret_hash,
     );
     if (!verification.valid) {
-      return res.status(422).json({ error: `Lock verification failed: ${verification.reason}` });
+      const httpStatus = /not confirmed/i.test(verification.reason || '') ? 425 : 422;
+      return res.status(httpStatus).json({ error: `Lock verification failed: ${verification.reason}` });
     }
 
     const htlcScriptValA = (typeof htlcScriptHex === 'string' && htlcScriptHex.trim()) ? htlcScriptHex.trim() : null;
@@ -1679,7 +1677,8 @@ app.post('/api/swap/v2/lock/side-b', writeLimiter, async (req, res) => {
       swap.secret_hash,
     );
     if (!verification.valid) {
-      return res.status(422).json({ error: `Lock verification failed: ${verification.reason}` });
+      const httpStatus = /not confirmed/i.test(verification.reason || '') ? 425 : 422;
+      return res.status(httpStatus).json({ error: `Lock verification failed: ${verification.reason}` });
     }
 
     await pool.query(`

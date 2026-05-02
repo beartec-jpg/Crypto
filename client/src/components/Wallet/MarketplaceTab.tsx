@@ -1943,7 +1943,7 @@ function V2SwapActions({
         onRefresh();
       } catch (serverErr: unknown) {
         const msg = serverErr instanceof Error ? serverErr.message : String(serverErr);
-        if (/not confirmed|Transaction not confirmed|not yet indexed|Esplora returned 404/i.test(msg)) {
+        if (/not confirmed|Transaction not confirmed|Lock verification failed/i.test(msg)) {
           // TX in mempool — auto-confirm poller will submit when confirmed
           setErrorMsg(msg);
           setActionStatus('error');
@@ -2236,7 +2236,7 @@ function V2SwapActions({
         </div>
       )}
       {errorMsg && (
-        /not confirmed|not yet confirmed|unconfirmed|waiting.*confirm|needs.*confirmation|transaction not confirmed/i.test(errorMsg)
+        /not confirmed|not yet confirmed|unconfirmed|waiting.*confirm|needs.*confirmation|transaction not confirmed|lock verification failed/i.test(errorMsg)
           ? (
             <div className="rounded-lg border border-amber-700/40 bg-amber-900/20 p-2.5 space-y-2">
               <div className="flex items-start gap-2">
