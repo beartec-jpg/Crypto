@@ -326,7 +326,11 @@ async function _verifyBtcLock(
   const esploraBase = process.env.BTC_ESPLORA_URL || 'https://blockstream.info/testnet';
 
   const resp = await fetch(`${esploraBase}/api/tx/${txid}`, { signal: AbortSignal.timeout(10_000) });
-  if (!resp.ok) return { valid: false, reason: `Esplora returned ${resp.status}` };
+  if (!resp.ok) {
+    // 404 = tx broadcast but not yet indexed by Esplora — treat same as unconfirmed
+    if (resp.status === 404) return { valid: false, reason: 'Transaction not confirmed (not yet indexed)' };
+    return { valid: false, reason: `Esplora returned ${resp.status}` };
+  }
 
   const tx = await resp.json() as any;
   if (!tx.status?.confirmed) return { valid: false, reason: 'Transaction not confirmed' };

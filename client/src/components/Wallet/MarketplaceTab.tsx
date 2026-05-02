@@ -1943,7 +1943,7 @@ function V2SwapActions({
         onRefresh();
       } catch (serverErr: unknown) {
         const msg = serverErr instanceof Error ? serverErr.message : String(serverErr);
-        if (/not confirmed|Transaction not confirmed/i.test(msg)) {
+        if (/not confirmed|Transaction not confirmed|not yet indexed|Esplora returned 404/i.test(msg)) {
           // TX in mempool — auto-confirm poller will submit when confirmed
           setErrorMsg(msg);
           setActionStatus('error');
