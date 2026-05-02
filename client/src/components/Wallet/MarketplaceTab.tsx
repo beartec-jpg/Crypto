@@ -2242,8 +2242,8 @@ function V2SwapActions({
               <div className="flex items-start gap-2">
                 <Loader2 size={13} className="animate-spin text-amber-400 mt-0.5 shrink-0" />
                 <div className="space-y-0.5 flex-1 min-w-0">
-                  <p className="text-xs text-amber-300 font-medium">Waiting for confirmation</p>
-                  <p className="text-xs text-amber-400/80">Transaction is in the mempool. Checking automatically — will register once confirmed.</p>
+                  <p className="text-xs text-amber-300 font-medium">Transaction sent — awaiting confirmation</p>
+                  <p className="text-xs text-amber-400/80">Your lock is in the mempool. This page will update automatically once the block confirms (~10 min on BTC testnet).</p>
                 </div>
               </div>
               {pollCheckCount > 0 && (
