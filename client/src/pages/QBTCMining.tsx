@@ -517,7 +517,7 @@ export default function QBTCMiningPage() {
           <p className="font-mono text-[11px] text-amber-300 break-all">{cpuminerCommand}</p>
         </div>
         <div className="text-xs text-slate-400 space-y-1">
-          <p>• <span className="text-slate-300">Browser</span> — in-browser WebAssembly miner. Password: <code className="text-amber-300">browser</code></p>
+          <p>• <span className="text-slate-300">Browser</span> — home / low-power rigs. Password: <code className="text-amber-300">browser</code></p>
           <p>• <span className="text-slate-300">Hobby</span> — CPUs &amp; GPUs up to 5 TH/s. Password: <code className="text-amber-300">hobby</code></p>
           <p>• <span className="text-slate-300">Pro / ASIC</span> — high-performance hardware &gt;5 TH/s. Password: <code className="text-amber-300">pro</code></p>
           <p>• Leave password as <code className="text-amber-300">x</code> to auto-route by observed hash rate.</p>
