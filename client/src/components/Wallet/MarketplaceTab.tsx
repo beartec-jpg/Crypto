@@ -1002,8 +1002,8 @@ function V2SwapActions({
   const pendingQbtcLockKey = `v2_pending_qbtc_lock_${swap.publicId}`;
   const pollCountKey = `v2_poll_count_${swap.publicId}`;
 
-  const [hasPendingBtcLock] = useState(() => !!localStorage.getItem(pendingBtcLockKey));
-  const [hasPendingQbtcLock] = useState(() => !!localStorage.getItem(pendingQbtcLockKey));
+  const [hasPendingBtcLock, setHasPendingBtcLock] = useState(() => !!localStorage.getItem(pendingBtcLockKey));
+  const [hasPendingQbtcLock, setHasPendingQbtcLock] = useState(() => !!localStorage.getItem(pendingQbtcLockKey));
   const [pollCheckCount, setPollCheckCount] = useState(() => Number(localStorage.getItem(pollCountKey) || 0));
   const prevSwapStatus = useRef(swap.status);
 
@@ -1074,6 +1074,7 @@ function V2SwapActions({
 
         localStorage.removeItem(pendingBtcLockKey);
         localStorage.removeItem(pollCountKey);
+        setHasPendingBtcLock(false);
         setErrorMsg('');
         setActionStatus('done');
         onRefresh();
@@ -1128,6 +1129,7 @@ function V2SwapActions({
 
         localStorage.removeItem(pendingQbtcLockKey);
         localStorage.removeItem(pollCountKey);
+        setHasPendingQbtcLock(false);
         setErrorMsg('');
         setActionStatus('done');
         onRefresh();
@@ -1137,6 +1139,7 @@ function V2SwapActions({
         if (/already|invalid status|wrong status/i.test(msg)) {
           localStorage.removeItem(pendingQbtcLockKey);
           localStorage.removeItem(pollCountKey);
+          setHasPendingQbtcLock(false);
           setErrorMsg('');
           setActionStatus('done');
           onRefresh();
@@ -1728,6 +1731,7 @@ function V2SwapActions({
           lockId: r.lockId, lockAddress: r.lockAddress, htlcScriptHex: r.htlcScriptHex,
           side: pendingQbtcSide, ethPrivKey, walletEvmAddress, ts: Math.floor(Date.now() / 1000),
         }));
+        setHasPendingQbtcLock(true);
         return r;
       }
 
@@ -1932,6 +1936,7 @@ function V2SwapActions({
 
       // Save pending lock so auto-confirm poller can submit once confirmed
       const ethPrivKey = unlockedWallet.privateKeys.ethereum;
+      setHasPendingBtcLock(true);
       localStorage.setItem(pendingBtcLockKey, JSON.stringify({
         lockId: result.lockId,
         lockAddress: result.lockAddress,
@@ -2254,53 +2259,59 @@ function V2SwapActions({
           <p className="text-xs text-emerald-300">{statusNotice}</p>
         </div>
       )}
-      {errorMsg && (
-        /QBTC_LOCK_STUCK/i.test(errorMsg)
-          ? (
-            <div className="rounded-lg border border-red-700/40 bg-red-900/20 p-2.5 space-y-2">
-              <p className="text-xs text-red-300 font-medium">Lock timed out after 40 checks</p>
-              <p className="text-xs text-red-400/80">The QBTC transaction may have been dropped. Click Reset to clear and try again.</p>
-              <button
-                onClick={() => {
-                  localStorage.removeItem(pendingQbtcLockKey);
-                  localStorage.removeItem(pollCountKey);
-                  setErrorMsg('');
-                  setActionStatus('idle');
-                  window.location.reload();
-                }}
-                className="w-full py-1.5 rounded-md text-xs font-medium bg-red-700 hover:bg-red-600 text-white transition-colors"
-              >
-                Reset &amp; Retry Lock
-              </button>
+      {/* QBTC lock stuck — reset required */}
+      {/QBTC_LOCK_STUCK/i.test(errorMsg) && (
+        <div className="rounded-lg border border-red-700/40 bg-red-900/20 p-2.5 space-y-2">
+          <p className="text-xs text-red-300 font-medium">Lock timed out after 40 checks</p>
+          <p className="text-xs text-red-400/80">The QBTC transaction may have been dropped. Click Reset to clear and try again.</p>
+          <button
+            onClick={() => {
+              localStorage.removeItem(pendingQbtcLockKey);
+              localStorage.removeItem(pollCountKey);
+              setHasPendingQbtcLock(false);
+              setErrorMsg('');
+              setActionStatus('idle');
+              window.location.reload();
+            }}
+            className="w-full py-1.5 rounded-md text-xs font-medium bg-red-700 hover:bg-red-600 text-white transition-colors"
+          >
+            Reset &amp; Retry Lock
+          </button>
+        </div>
+      )}
+      {/* Pending lock waiting box — shown whenever a lock is in-flight, chain-specific message */}
+      {(hasPendingBtcLock || hasPendingQbtcLock) && !(/QBTC_LOCK_STUCK/i.test(errorMsg)) && (
+        <div className="rounded-lg border border-amber-700/40 bg-amber-900/20 p-2.5 space-y-2">
+          <div className="flex items-start gap-2">
+            <Loader2 size={13} className="animate-spin text-amber-400 mt-0.5 shrink-0" />
+            <div className="space-y-0.5 flex-1 min-w-0">
+              <p className="text-xs text-amber-300 font-medium">
+                {hasPendingBtcLock ? 'BTC transaction sent — awaiting confirmation' : 'QBTC transaction sent — awaiting confirmation'}
+              </p>
+              <p className="text-xs text-amber-400/80">
+                {hasPendingBtcLock
+                  ? 'BTC blocks take ~10 min on testnet. This will update automatically once confirmed.'
+                  : 'QBTC blocks confirm in ~10–30s. This will update automatically once confirmed.'}
+              </p>
             </div>
-          )
-        : /not confirmed|not yet confirmed|unconfirmed|waiting.*confirm|needs.*confirmation|transaction not confirmed|lock verification failed/i.test(errorMsg)
-          ? (
-            <div className="rounded-lg border border-amber-700/40 bg-amber-900/20 p-2.5 space-y-2">
-              <div className="flex items-start gap-2">
-                <Loader2 size={13} className="animate-spin text-amber-400 mt-0.5 shrink-0" />
-                <div className="space-y-0.5 flex-1 min-w-0">
-                  <p className="text-xs text-amber-300 font-medium">Transaction sent — awaiting confirmation</p>
-                  <p className="text-xs text-amber-400/80">Your lock is in the mempool. This page will update automatically once the block confirms (~10 min on BTC testnet).</p>
-                </div>
-              </div>
-              {pollCheckCount > 0 && (
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-amber-500/70">Checks completed</span>
-                    <span className="text-xs font-mono text-amber-400">{pollCheckCount} / 40</span>
-                  </div>
-                  <div className="w-full bg-slate-700/60 rounded-full h-1.5 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 transition-all duration-500"
-                      style={{ width: `${Math.min(100, (pollCheckCount / 40) * 100)}%` }}
-                    />
-                  </div>
-                </div>
-              )}
+          </div>
+          <div className="space-y-1">
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-amber-500/70">Checks completed</span>
+              <span className="text-xs font-mono text-amber-400">{pollCheckCount} / 40</span>
             </div>
-          )
-          : <p className="text-xs text-red-300">{errorMsg}</p>
+            <div className="w-full bg-slate-700/60 rounded-full h-1.5 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 transition-all duration-500"
+                style={{ width: `${Math.min(100, (pollCheckCount / 40) * 100)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Generic errors (not pending-lock related) */}
+      {errorMsg && !(/QBTC_LOCK_STUCK|not confirmed|not yet confirmed|unconfirmed|lock verification failed/i.test(errorMsg)) && (
+        <p className="text-xs text-red-300">{errorMsg}</p>
       )}
       {xrpNotFunded && isTestnet && walletXrpAddress && (
         <div className="rounded-lg border border-amber-700/40 bg-amber-900/20 p-2.5 space-y-1.5">
