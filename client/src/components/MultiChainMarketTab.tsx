@@ -636,10 +636,10 @@ function BuyView({
 // ─── Sell View ────────────────────────────────────────────────────────────────
 
 function SellView({
-  walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletBtcAddress, onBack,
+  walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletBtcAddress, walletBtcPubKey, onBack,
 }: {
   walletId: string; walletEvmAddress: string; walletAddress: string; walletXrpAddress: string;
-  walletBtcAddress?: string;
+  walletBtcAddress?: string; walletBtcPubKey?: string;
   onBack: () => void;
 }) {
   // Chain selectors
@@ -785,6 +785,8 @@ function SellView({
         baseChain: base, quoteChain: quote,
         baseAmount, quoteAmount, secretHash, makerLocktime,
         makerChainAddress: makerAddress,
+        // Required for BTC HTLC script: taker needs maker's BTC pubkey to build the hashlock+refund script
+        ...(walletBtcPubKey && (base === 'BTC' || quote === 'BTC') ? { makerPubKeyHex: walletBtcPubKey } : {}),
         authEvmAddress: walletEvmAddress, signature, timestamp,
       });
 
@@ -1065,6 +1067,7 @@ export default function MultiChainMarketTab({
         walletAddress={walletAddress}
         walletXrpAddress={walletXrpAddress}
         walletBtcAddress={walletBtcAddress}
+        walletBtcPubKey={walletBtcPubKey}
         onBack={() => setView('entry')}
       />
     );
