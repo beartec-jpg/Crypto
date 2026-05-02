@@ -2103,24 +2103,38 @@ function V2SwapActions({
         : unlockedWallet.addresses?.bitcoin;
       if (!outputAddress) throw new Error('BTC refund address not found');
 
-      // Determine lockId from saved pending state, swap fields, or ask user
+      // Determine lockId: first try pending localStorage, then DB
       const pendingRaw = localStorage.getItem(pendingBtcLockKey);
+      const makerBtcLock = isMaker && swap.baseChain === 'BTC';
+      const lockIdFromDb = makerBtcLock ? swap.sideALockId : swap.sideBLockId;
       const lockId = pendingRaw
         ? (JSON.parse(pendingRaw) as { lockId: string }).lockId
-        : (swap.sideALockAddress ? swap.sideALockId : swap.sideBLockId);
-
-      if (!lockId) throw new Error('Lock transaction ID not found — check Active Swaps for the lock address');
+        : lockIdFromDb;
 
       const { BitcoinAdapter, getUtxosBtc } = await import('@/lib/adapters/BitcoinAdapter');
       const btcAdapter = new BitcoinAdapter({ chain: 'BTC', network: btcNetwork, esploraUrl });
 
-      // lockAddress = P2WSH HTLC address (vout 0 of the lock tx)
-      const [txid] = lockId.split(':');
-      const lockResp = await fetch(`${esploraUrl}/api/tx/${txid}`);
-      if (!lockResp.ok) throw new Error(`Could not fetch lock tx: ${lockResp.status}`);
-      const lockTx = await lockResp.json() as { vout: Array<{ scriptpubkey_address: string; value: number }> };
-      const lockAddress = lockTx.vout[0]?.scriptpubkey_address;
-      if (!lockAddress) throw new Error('Could not determine HTLC lock address');
+      let lockAddress: string | undefined;
+
+      if (lockId) {
+        // Fast path: fetch vout 0 address from lock tx
+        const [txid] = lockId.split(':');
+        const lockResp = await fetch(`${esploraUrl}/api/tx/${txid}`);
+        if (lockResp.ok) {
+          const lockTx = await lockResp.json() as { vout: Array<{ scriptpubkey_address: string }> };
+          lockAddress = lockTx.vout[0]?.scriptpubkey_address;
+        }
+      }
+
+      if (!lockAddress) {
+        // Fallback: derive P2WSH address from the script directly
+        const { payments, networks } = await import('bitcoinjs-lib');
+        const btcNet = btcNetwork === 'testnet' ? networks.testnet : networks.bitcoin;
+        const scriptBuf = Buffer.from(htlcScriptHex, 'hex');
+        const p2wsh = payments.p2wsh({ redeem: { output: scriptBuf }, network: btcNet });
+        lockAddress = p2wsh.address;
+        if (!lockAddress) throw new Error('Could not derive HTLC address from script');
+      }
 
       const utxos = await getUtxosBtc(lockAddress, esploraUrl);
       if (!utxos.length) throw new Error(`No UTXOs at HTLC address ${lockAddress} — may already be spent`);
@@ -2131,7 +2145,7 @@ function V2SwapActions({
 
       const refundTxHex = await btcAdapter.refundFunds({
         signerKey: { privateKeyHex: btcPrivKeyHex, publicKeyHex: myBtcPubKeyHex },
-        lockId,
+        lockId: lockId ?? `${lockAddress}:0`,
         outputAddress,
         utxos,
         htlcScriptHex,
@@ -2168,7 +2182,7 @@ function V2SwapActions({
   const hasBtcHtlcScript = !!(swap.baseChain === 'BTC' || swap.quoteChain === 'BTC')
     && !!localStorage.getItem(`v2_btc_script_${swap.publicId}`);
   const btcLocktimeExpired = btcLocktime > 0 && Math.floor(Date.now() / 1000) >= btcLocktime;
-  const canRefundBtc = hasBtcHtlcScript && btcLocktimeExpired;
+  const canRefundBtc = hasBtcHtlcScript && btcLocktimeExpired && swap.status !== 'COMPLETE' && swap.status !== 'CANCELLED';
 
   if (!hasAction) {
     return (
