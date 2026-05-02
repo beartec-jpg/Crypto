@@ -224,6 +224,7 @@ async function verifyLockOnChain(
   lockId: string,
   expectedAmount: string,
   expectedSecretHash: string,
+  lockAddress?: string,
 ): Promise<{ valid: boolean; reason?: string }> {
   try {
     switch (chain) {
@@ -232,7 +233,7 @@ async function verifyLockOnChain(
       case 'BNB':
         return await _verifyEvmLock(chain, lockId, expectedAmount, expectedSecretHash);
       case 'QBTC':
-        return await _verifyQbtcLock(lockId, expectedAmount);
+        return await _verifyQbtcLock(lockId, expectedAmount, lockAddress);
       case 'BTC':
         return await _verifyBtcLock(lockId, expectedAmount);
       case 'XRP':
@@ -293,28 +294,42 @@ async function _verifyEvmLock(
 async function _verifyQbtcLock(
   lockId: string,
   expectedAmount: string,
+  lockAddress?: string,
 ): Promise<{ valid: boolean; reason?: string }> {
   // lockId format: "txid:vout" or just "txid" (vout defaults to 0)
   const [txid, voutStr] = lockId.split(':');
   const vout = parseInt(voutStr || '0', 10);
 
-  let tx: any;
+  const expectedSats = qbtcToSats(expectedAmount);
+
+  // Primary: getrawtransaction (works when txindex enabled or tx still in mempool)
   try {
-    tx = await qbtcRpcCall('getrawtransaction', [txid, true]);
+    const tx = await qbtcRpcCall('getrawtransaction', [txid, true]);
+    if (tx) {
+      if (!tx.confirmations || tx.confirmations < 1) return { valid: false, reason: 'Transaction not confirmed' };
+      const voutData = tx.vout?.[vout];
+      if (!voutData) return { valid: false, reason: `vout ${vout} not found in tx` };
+      const val = typeof voutData.value === 'number' ? voutData.value.toFixed(8) : String(voutData.value ?? '0');
+      if (qbtcToSats(val) < expectedSats) return { valid: false, reason: 'Amount too low' };
+      return { valid: true };
+    }
+  } catch {
+    // getrawtransaction fails once TX is mined on nodes without txindex — fall through to scantxoutset
+  }
+
+  // Fallback: scantxoutset — queries the confirmed UTXO set directly, no txindex needed
+  if (!lockAddress) return { valid: false, reason: 'Transaction not confirmed (txindex disabled; lockAddress required for fallback)' };
+  try {
+    const scan: any = await qbtcRpcCall('scantxoutset', ['start', [{ desc: `addr(${lockAddress})` }]]);
+    if (!scan || !scan.unspents) return { valid: false, reason: 'Transaction not confirmed' };
+    const match = (scan.unspents as any[]).find((u: any) => u.txid === txid && Number(u.vout) === vout);
+    if (!match) return { valid: false, reason: 'Transaction not confirmed' };
+    const val = typeof match.amount === 'number' ? match.amount.toFixed(8) : String(match.amount ?? '0');
+    if (qbtcToSats(val) < expectedSats) return { valid: false, reason: 'Amount too low' };
+    return { valid: true };
   } catch (err: any) {
     return { valid: false, reason: `QBTC RPC error: ${err.message}` };
   }
-  if (!tx) return { valid: false, reason: 'Transaction not found' };
-  if (!tx.confirmations || tx.confirmations < 1) return { valid: false, reason: 'Transaction not confirmed' };
-
-  const expectedSats = qbtcToSats(expectedAmount);
-  const voutData = tx.vout?.[vout];
-  if (!voutData) return { valid: false, reason: `vout ${vout} not found in tx` };
-
-  const val = typeof voutData.value === 'number' ? voutData.value.toFixed(8) : String(voutData.value ?? '0');
-  if (qbtcToSats(val) < expectedSats) return { valid: false, reason: 'Amount too low' };
-
-  return { valid: true };
 }
 
 async function _verifyBtcLock(
@@ -1612,6 +1627,7 @@ app.post('/api/swap/v2/lock/side-a', writeLimiter, async (req, res) => {
       swap.base_chain, lockId,
       swap.side_a_amount || swap.qbtc_amount || '0',
       swap.secret_hash,
+      lockAddress,
     );
     if (!verification.valid) {
       const httpStatus = /not confirmed/i.test(verification.reason || '') ? 425 : 422;
@@ -1675,6 +1691,7 @@ app.post('/api/swap/v2/lock/side-b', writeLimiter, async (req, res) => {
       swap.quote_chain, lockId,
       swap.side_b_amount || swap.usdc_amount || '0',
       swap.secret_hash,
+      lockAddress,
     );
     if (!verification.valid) {
       const httpStatus = /not confirmed/i.test(verification.reason || '') ? 425 : 422;
