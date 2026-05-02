@@ -1132,8 +1132,12 @@ function V2SwapActions({
           setErrorMsg('');
           setActionStatus('done');
           onRefresh();
+        } else if (attempts >= 40) {
+          // Exhausted retries — stop polling, show error with reset option
+          clearInterval(id);
+          setErrorMsg(`QBTC_LOCK_STUCK: ${msg}`);
+          setActionStatus('error');
         } else if (attempts >= 3) {
-          // Show the real error after 3 failed attempts
           setErrorMsg(`QBTC lock server error: ${msg}`);
           setActionStatus('error');
         }
@@ -2243,7 +2247,26 @@ function V2SwapActions({
         </div>
       )}
       {errorMsg && (
-        /not confirmed|not yet confirmed|unconfirmed|waiting.*confirm|needs.*confirmation|transaction not confirmed|lock verification failed/i.test(errorMsg)
+        /QBTC_LOCK_STUCK/i.test(errorMsg)
+          ? (
+            <div className="rounded-lg border border-red-700/40 bg-red-900/20 p-2.5 space-y-2">
+              <p className="text-xs text-red-300 font-medium">Lock timed out after 40 checks</p>
+              <p className="text-xs text-red-400/80">The QBTC transaction may have been dropped. Click Reset to clear and try again.</p>
+              <button
+                onClick={() => {
+                  localStorage.removeItem(pendingQbtcLockKey);
+                  localStorage.removeItem(pollCountKey);
+                  setErrorMsg('');
+                  setActionStatus('idle');
+                  window.location.reload();
+                }}
+                className="w-full py-1.5 rounded-md text-xs font-medium bg-red-700 hover:bg-red-600 text-white transition-colors"
+              >
+                Reset &amp; Retry Lock
+              </button>
+            </div>
+          )
+        : /not confirmed|not yet confirmed|unconfirmed|waiting.*confirm|needs.*confirmation|transaction not confirmed|lock verification failed/i.test(errorMsg)
           ? (
             <div className="rounded-lg border border-amber-700/40 bg-amber-900/20 p-2.5 space-y-2">
               <div className="flex items-start gap-2">
