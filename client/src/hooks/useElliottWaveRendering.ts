@@ -212,7 +212,7 @@ export function useElliottWaveRendering({
         })),
         waveType,
         color,
-        showPointLabels: false,
+        showPointLabels: true,
         lastCandleTime,
         candleInterval,
         barCount: candles.length,
