@@ -673,8 +673,9 @@ function SellView({
     if (['ETH', 'BNB', 'USDC'].includes(quote)) setMakerAddress(walletEvmAddress);
     else if (quote === 'XRP') setMakerAddress(walletXrpAddress || '');
     else if (quote === 'QBTC') setMakerAddress(walletAddress);
+    else if (quote === 'BTC') setMakerAddress(walletBtcAddress || '');
     else setMakerAddress('');
-  }, [quote, walletAddress, walletEvmAddress, walletXrpAddress]);
+  }, [quote, walletAddress, walletEvmAddress, walletXrpAddress, walletBtcAddress]);
 
   // When base changes, ensure quote is different
   useEffect(() => {
