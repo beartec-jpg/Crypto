@@ -78,6 +78,9 @@ const ROADMAP: RoadmapPhase[] = [
       'Public mining pool UI with lane tabs (Home/GPU/Pro) and round fairness metrics',
       'Browser CPU miner (Web Worker + one-click start/stop + local hashrate)',
       'Mining proxy APIs live: /api/qbtc/pool-stats and /api/qbtc/browser-miner',
+      'Block explorer (QBTC Scan) live with DAG health, chain stats, and transaction lookup',
+      'P2P network stress testing completed (200 TPS peak, 13,000+ transactions, full mempool recovery)',
+      'Cross-chain atomic swap protocol deployed (BTC ↔ QBTC, QBTC ↔ ETH, XRP ↔ ETH — all pairs both directions)',
       'Community node operators onboarding',
     ],
   },
@@ -89,9 +92,8 @@ const ROADMAP: RoadmapPhase[] = [
     items: [
       'Security audit of PQC integration',
       'Comprehensive consensus test suite',
-      'P2P network stress testing',
       'Merge mining support (AuxPoW with Bitcoin)',
-      'Block explorer',
+      'Extended soak testing on multi-node testnet',
     ],
   },
   {
@@ -110,7 +112,7 @@ const ROADMAP: RoadmapPhase[] = [
 ];
 
 const STATS = [
-  { label: 'Block Time', value: '~1 second' },
+  { label: 'Block Time', value: '~10 seconds' },
   { label: 'GHOSTDAG K', value: '32' },
   { label: 'Max DAG Parents', value: '64' },
   { label: 'PQC Algorithms', value: 'Falcon, SPHINCS+, Kyber, NTRU' },
@@ -373,7 +375,7 @@ export default function QBTCHomePage() {
                   Your DAG is Your Equalizer
                 </div>
                 <p className="text-sm text-slate-400">
-                  With GHOSTDAG K=32 and 1-second blocks, up to 32 concurrent blocks are all
+                  With GHOSTDAG K=32 and 10-second blocks, up to 32 concurrent blocks are all
                   considered valid. Small miners aren't orphaned — everyone earns rewards instead of
                   fighting a winner-take-all race.
                 </p>
