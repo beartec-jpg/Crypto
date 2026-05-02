@@ -998,6 +998,7 @@ function V2SwapActions({
   const [xrpNotFunded, setXrpNotFunded] = useState(false);
   const [faucetStatus, setFaucetStatus] = useState<'idle' | 'busy' | 'done' | 'error'>('idle');
   const [statusNotice, setStatusNotice] = useState('');
+  const [pollCheckCount, setPollCheckCount] = useState(0);
   const prevSwapStatus = useRef(swap.status);
 
   // Key for pending BTC lock awaiting confirmation
@@ -1043,6 +1044,7 @@ function V2SwapActions({
     const [txid] = pending.lockId.split(':');
 
     const trySubmit = async () => {
+      setPollCheckCount(n => n + 1);
       try {
         const r = await fetch(`${esploraBase}/api/tx/${txid}`);
         if (!r.ok) return;
@@ -1089,6 +1091,7 @@ function V2SwapActions({
     let attempts = 0;
     const trySubmit = async () => {
       attempts++;
+      setPollCheckCount(n => n + 1);
       try {
         // Just retry the server submission — QBTC confirms in ~10s so by the time poller runs it's confirmed
         const { ethers: eth } = await import('ethers');
@@ -1839,6 +1842,7 @@ function V2SwapActions({
     try {
       setErrorMsg('');
       setActionStatus('busy');
+      setPollCheckCount(0);
       if (!password.trim()) throw new Error('Password required');
 
       const btcNetwork: 'testnet' | 'mainnet' = isTestnet ? 'testnet' : 'mainnet';
@@ -2206,12 +2210,28 @@ function V2SwapActions({
       {errorMsg && (
         /not confirmed|not yet confirmed|unconfirmed|waiting.*confirm|needs.*confirmation|transaction not confirmed/i.test(errorMsg)
           ? (
-            <div className="rounded-lg border border-amber-700/40 bg-amber-900/20 p-2.5 flex items-start gap-2">
-              <Loader2 size={13} className="animate-spin text-amber-400 mt-0.5 shrink-0" />
-              <div className="space-y-0.5">
-                <p className="text-xs text-amber-300 font-medium">Waiting for confirmation</p>
-                <p className="text-xs text-amber-400/80">Transaction is in the mempool. Checking automatically — will register once confirmed.</p>
+            <div className="rounded-lg border border-amber-700/40 bg-amber-900/20 p-2.5 space-y-2">
+              <div className="flex items-start gap-2">
+                <Loader2 size={13} className="animate-spin text-amber-400 mt-0.5 shrink-0" />
+                <div className="space-y-0.5 flex-1 min-w-0">
+                  <p className="text-xs text-amber-300 font-medium">Waiting for confirmation</p>
+                  <p className="text-xs text-amber-400/80">Transaction is in the mempool. Checking automatically — will register once confirmed.</p>
+                </div>
               </div>
+              {pollCheckCount > 0 && (
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-amber-500/70">Checks completed</span>
+                    <span className="text-xs font-mono text-amber-400">{pollCheckCount} / 40</span>
+                  </div>
+                  <div className="w-full bg-slate-700/60 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 transition-all duration-500"
+                      style={{ width: `${Math.min(100, (pollCheckCount / 40) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )
           : <p className="text-xs text-red-300">{errorMsg}</p>
