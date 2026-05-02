@@ -998,11 +998,14 @@ function V2SwapActions({
   const [xrpNotFunded, setXrpNotFunded] = useState(false);
   const [faucetStatus, setFaucetStatus] = useState<'idle' | 'busy' | 'done' | 'error'>('idle');
   const [statusNotice, setStatusNotice] = useState('');
-  const [pollCheckCount, setPollCheckCount] = useState(0);
-  const prevSwapStatus = useRef(swap.status);
-
-  // Key for pending BTC lock awaiting confirmation
   const pendingBtcLockKey = `v2_pending_btc_lock_${swap.publicId}`;
+  const pendingQbtcLockKey = `v2_pending_qbtc_lock_${swap.publicId}`;
+  const pollCountKey = `v2_poll_count_${swap.publicId}`;
+
+  const [hasPendingBtcLock] = useState(() => !!localStorage.getItem(pendingBtcLockKey));
+  const [hasPendingQbtcLock] = useState(() => !!localStorage.getItem(pendingQbtcLockKey));
+  const [pollCheckCount, setPollCheckCount] = useState(() => Number(localStorage.getItem(pollCountKey) || 0));
+  const prevSwapStatus = useRef(swap.status);
 
   // Auto-poll after a lock/claim until the swap status changes (max 30s)
   useEffect(() => {
@@ -1044,7 +1047,11 @@ function V2SwapActions({
     const [txid] = pending.lockId.split(':');
 
     const trySubmit = async () => {
-      setPollCheckCount(n => n + 1);
+      setPollCheckCount(n => {
+        const next = n + 1;
+        localStorage.setItem(pollCountKey, String(next));
+        return next;
+      });
       try {
         const r = await fetch(`${esploraBase}/api/tx/${txid}`);
         if (!r.ok) return;
@@ -1066,6 +1073,7 @@ function V2SwapActions({
         await fn({ swapId: swap.publicId, lockId: pending.lockId, lockAddress: pending.lockAddress, htlcScriptHex: pending.htlcScriptHex, authEvmAddress: pending.walletEvmAddress, signature: sig, timestamp: ts });
 
         localStorage.removeItem(pendingBtcLockKey);
+        localStorage.removeItem(pollCountKey);
         setErrorMsg('');
         setActionStatus('done');
         onRefresh();
@@ -1078,7 +1086,6 @@ function V2SwapActions({
   }, [pendingBtcLockKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-confirm pending QBTC lock: poll RPC until tx confirms, then submit to server
-  const pendingQbtcLockKey = `v2_pending_qbtc_lock_${swap.publicId}`;
   useEffect(() => {
     const raw = localStorage.getItem(pendingQbtcLockKey);
     if (!raw) return;
@@ -1091,7 +1098,11 @@ function V2SwapActions({
     let attempts = 0;
     const trySubmit = async () => {
       attempts++;
-      setPollCheckCount(n => n + 1);
+      setPollCheckCount(n => {
+        const next = n + 1;
+        localStorage.setItem(pollCountKey, String(next));
+        return next;
+      });
       try {
         // Just retry the server submission — QBTC confirms in ~10s so by the time poller runs it's confirmed
         const { ethers: eth } = await import('ethers');
@@ -1108,6 +1119,7 @@ function V2SwapActions({
         await fn({ swapId: swap.publicId, lockId: pending.lockId, lockAddress: pending.lockAddress, authEvmAddress: pending.walletEvmAddress, signature: sig, timestamp: ts });
 
         localStorage.removeItem(pendingQbtcLockKey);
+        localStorage.removeItem(pollCountKey);
         setErrorMsg('');
         setActionStatus('done');
         onRefresh();
@@ -1116,6 +1128,7 @@ function V2SwapActions({
         const msg = e instanceof Error ? e.message : String(e);
         if (/already|invalid status|wrong status/i.test(msg)) {
           localStorage.removeItem(pendingQbtcLockKey);
+          localStorage.removeItem(pollCountKey);
           setErrorMsg('');
           setActionStatus('done');
           onRefresh();
@@ -1843,6 +1856,7 @@ function V2SwapActions({
       setErrorMsg('');
       setActionStatus('busy');
       setPollCheckCount(0);
+      localStorage.removeItem(pollCountKey);
       if (!password.trim()) throw new Error('Password required');
 
       const btcNetwork: 'testnet' | 'mainnet' = isTestnet ? 'testnet' : 'mainnet';
@@ -2299,11 +2313,13 @@ function V2SwapActions({
       {canLockBtc && (
         <button
           onClick={handleLockBtc}
-          disabled={actionStatus === 'busy' || !password.trim()}
+          disabled={actionStatus === 'busy' || !password.trim() || hasPendingBtcLock}
           className="w-full py-2 rounded-lg text-sm font-medium bg-orange-600 hover:bg-orange-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
         >
           {actionStatus === 'busy'
             ? <><Loader2 size={14} className="animate-spin" /> Locking BTC…</>
+            : hasPendingBtcLock
+            ? <><Loader2 size={14} className="animate-spin" /> Awaiting confirmation…</>
             : <><Lock size={14} /> Lock {(isMaker && swap.baseChain === 'BTC') ? swap.sideAAmount : swap.sideBAmount} BTC</>}
         </button>
       )}
@@ -2343,11 +2359,13 @@ function V2SwapActions({
       {canLockQbtc && (
         <button
           onClick={handleLockQbtc}
-          disabled={actionStatus === 'busy' || !password.trim()}
+          disabled={actionStatus === 'busy' || !password.trim() || hasPendingQbtcLock}
           className="w-full py-2 rounded-lg text-sm font-medium bg-cyan-700 hover:bg-cyan-600 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
         >
           {actionStatus === 'busy'
             ? <><Loader2 size={14} className="animate-spin" /> Locking QBTC…</>
+            : hasPendingQbtcLock
+            ? <><Loader2 size={14} className="animate-spin" /> Awaiting confirmation…</>
             : <><Lock size={14} /> Lock {(isMaker && swap.baseChain === 'QBTC') ? swap.sideAAmount : swap.sideBAmount} QBTC</>}
         </button>
       )}
