@@ -70,6 +70,7 @@ export function TradePanel({
   const [histEntry, setHistEntry] = useState('');
   const [histSl, setHistSl] = useState('');
   const [histTp, setHistTp] = useState('');
+  const [histStillActive, setHistStillActive] = useState(false);
   const [histEntryDate, setHistEntryDate] = useState(tsToDatetimeLocal(Math.min(currentTime, Math.floor(Date.now() / 1000)) - 86400));
   const [histExitDate, setHistExitDate] = useState(tsToDatetimeLocal(Math.min(currentTime, Math.floor(Date.now() / 1000))));
 
@@ -89,8 +90,9 @@ export function TradePanel({
     const sl = parseFloat(histSl);
     const tp = parseFloat(histTp);
     const entryTs = datetimeLocalToTs(histEntryDate);
-    const exitTs = datetimeLocalToTs(histExitDate);
-    if (isNaN(entry) || isNaN(sl) || isNaN(tp) || !entryTs || !exitTs) return;
+    const exitTs = histStillActive ? undefined : datetimeLocalToTs(histExitDate);
+    if (isNaN(entry) || isNaN(sl) || isNaN(tp) || !entryTs) return;
+    if (!histStillActive && !exitTs) return;
     onAddTrade(histDir, entry, sl, tp, entryTs, exitTs);
     setView('results');
     setHistEntry('');
@@ -282,6 +284,34 @@ export function TradePanel({
             </Button>
           </div>
 
+          {/* Still Active toggle */}
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              onClick={() => setHistStillActive(false)}
+              className={cn(
+                'flex-1 text-xs font-semibold',
+                !histStillActive
+                  ? 'bg-slate-600 hover:bg-slate-500 text-white'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-600',
+              )}
+            >
+              Closed
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setHistStillActive(true)}
+              className={cn(
+                'flex-1 text-xs font-semibold',
+                histStillActive
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-600',
+              )}
+            >
+              Still Active
+            </Button>
+          </div>
+
           {/* Entry date */}
           <div>
             <Label className="text-slate-400 text-xs">Entry Date &amp; Time</Label>
@@ -293,16 +323,18 @@ export function TradePanel({
             />
           </div>
 
-          {/* Exit date */}
-          <div>
-            <Label className="text-slate-400 text-xs">Exit Date &amp; Time</Label>
-            <Input
-              type="datetime-local"
-              value={histExitDate}
-              onChange={e => setHistExitDate(e.target.value)}
-              className="mt-1 h-8 bg-slate-800 border-slate-600 text-white text-xs"
-            />
-          </div>
+          {/* Exit date – only shown when trade is closed */}
+          {!histStillActive && (
+            <div>
+              <Label className="text-slate-400 text-xs">Exit Date &amp; Time</Label>
+              <Input
+                type="datetime-local"
+                value={histExitDate}
+                onChange={e => setHistExitDate(e.target.value)}
+                className="mt-1 h-8 bg-slate-800 border-slate-600 text-white text-xs"
+              />
+            </div>
+          )}
 
           {/* Entry price */}
           <div>
@@ -353,7 +385,7 @@ export function TradePanel({
               size="sm"
               className="flex-1 bg-purple-600 hover:bg-purple-700 text-white"
               onClick={handleAddHistorical}
-              disabled={!histEntry || !histSl || !histTp || !histEntryDate || !histExitDate}
+              disabled={!histEntry || !histSl || !histTp || !histEntryDate || (!histStillActive && !histExitDate)}
             >
               Add
             </Button>

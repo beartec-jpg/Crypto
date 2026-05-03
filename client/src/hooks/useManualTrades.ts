@@ -21,11 +21,46 @@ function saveTrades(trades: ManualTrade[]) {
   }
 }
 
+/**
+ * Scan a single open trade against candles starting at startIdx.
+ * Returns [updatedTrade, lastScannedIndex].
+ */
+function scanTrade(
+  trade: ManualTrade,
+  candles: Array<{ time: number; high: number; low: number; close: number }>,
+  startIdx: number,
+): [ManualTrade, number] {
+  for (let i = startIdx; i < candles.length; i++) {
+    const c = candles[i];
+
+    // For historical/manual trades with a pre-set closeTime: allow the exact
+    // closeTime candle through to the TP/SL checks below first.  Only stop
+    // (mark as manual) when we step *past* that candle.
+    if (trade.closeTime && c.time > trade.closeTime) {
+      return [{ ...trade, outcome: 'manual' as const }, i];
+    }
+
+    if (trade.direction === 'LONG') {
+      if (c.low <= trade.slPrice) return [{ ...trade, outcome: 'loss' as const, closeTime: c.time }, i];
+      if (c.high >= trade.tpPrice) return [{ ...trade, outcome: 'win' as const, closeTime: c.time }, i];
+    } else {
+      if (c.high >= trade.slPrice) return [{ ...trade, outcome: 'loss' as const, closeTime: c.time }, i];
+      if (c.low <= trade.tpPrice) return [{ ...trade, outcome: 'win' as const, closeTime: c.time }, i];
+    }
+  }
+  return [trade, candles.length - 1];
+}
+
 export function useManualTrades(symbol: string, candles: Array<{ time: number; high: number; low: number; close: number }>) {
   const [trades, setTrades] = useState<ManualTrade[]>(() => loadTrades());
 
   // Track the last candle index checked per trade to avoid rescanning already-processed candles.
   const lastCheckedCandleRef = useRef<Map<string, number>>(new Map());
+
+  // Keep a stable ref to the latest candles so addTrade can access them without
+  // being listed as a dependency (which would recreate the callback on every tick).
+  const candlesRef = useRef(candles);
+  useEffect(() => { candlesRef.current = candles; }, [candles]);
 
   // Persist on change
   useEffect(() => {
@@ -48,45 +83,10 @@ export function useManualTrades(symbol: string, candles: Array<{ time: number; h
           : candles.findIndex(c => c.time >= trade.entryTime);
         if (startIdx < 0) return trade;
 
-        for (let i = startIdx; i < candles.length; i++) {
-          const c = candles[i];
-
-          // For historical/manual trades with a pre-set closeTime: allow the exact
-          // closeTime candle through to the TP/SL checks below first.  Only stop
-          // (mark as manual) when we step *past* that candle.
-          if (trade.closeTime && c.time > trade.closeTime) {
-            changed = true;
-            lastCheckedCandleRef.current.set(trade.id, i);
-            return { ...trade, outcome: 'manual' as const };
-          }
-
-          if (trade.direction === 'LONG') {
-            if (c.low <= trade.slPrice) {
-              changed = true;
-              lastCheckedCandleRef.current.set(trade.id, i);
-              return { ...trade, outcome: 'loss' as const, closeTime: c.time };
-            }
-            if (c.high >= trade.tpPrice) {
-              changed = true;
-              lastCheckedCandleRef.current.set(trade.id, i);
-              return { ...trade, outcome: 'win' as const, closeTime: c.time };
-            }
-          } else {
-            if (c.high >= trade.slPrice) {
-              changed = true;
-              lastCheckedCandleRef.current.set(trade.id, i);
-              return { ...trade, outcome: 'loss' as const, closeTime: c.time };
-            }
-            if (c.low <= trade.tpPrice) {
-              changed = true;
-              lastCheckedCandleRef.current.set(trade.id, i);
-              return { ...trade, outcome: 'win' as const, closeTime: c.time };
-            }
-          }
-        }
-        // Record the last candle we scanned so next update starts from here
-        lastCheckedCandleRef.current.set(trade.id, candles.length - 1);
-        return trade;
+        const [scannedTrade, lastScanned] = scanTrade(trade, candles, startIdx);
+        lastCheckedCandleRef.current.set(trade.id, lastScanned);
+        if (scannedTrade !== trade) changed = true;
+        return scannedTrade;
       });
       return changed ? updated : prev;
     });
@@ -100,7 +100,7 @@ export function useManualTrades(symbol: string, candles: Array<{ time: number; h
     entryTime: number,
     closeTime?: number,
   ) => {
-    const trade: ManualTrade = {
+    let trade: ManualTrade = {
       id: `trade_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       symbol,
       direction,
@@ -110,6 +110,18 @@ export function useManualTrades(symbol: string, candles: Array<{ time: number; h
       entryTime,
       ...(closeTime !== undefined ? { closeTime } : {}),
     };
+    // Immediately scan the new trade against current candles so that historical
+    // trades added while candles are already loaded get a win/loss outcome right
+    // away (the candle-change effect won't fire in that situation).
+    const currentCandles = candlesRef.current;
+    if (currentCandles.length > 0) {
+      const startIdx = currentCandles.findIndex(c => c.time >= trade.entryTime);
+      if (startIdx >= 0) {
+        const [scannedTrade, lastIdx] = scanTrade(trade, currentCandles, startIdx);
+        trade = scannedTrade;
+        lastCheckedCandleRef.current.set(trade.id, lastIdx);
+      }
+    }
     setTrades(prev => [...prev, trade]);
   }, [symbol]);
 
