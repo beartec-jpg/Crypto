@@ -111,8 +111,12 @@ class TradeRenderer implements IPrimitivePaneRenderer {
         // Labels
         ctx.font = 'bold 10px sans-serif';
 
-        // TP label
-        const tpLabel = `TP ${trade.tpPrice}`;
+        // TP label with % gain
+        const risk = Math.abs(trade.entryPrice - trade.slPrice);
+        const reward = Math.abs(trade.tpPrice - trade.entryPrice);
+        const tpPct = trade.entryPrice > 0 ? (reward / trade.entryPrice) * 100 : 0;
+        const tpPctSign = trade.direction === 'LONG' ? '+' : '-';
+        const tpLabel = `TP ${trade.tpPrice}  ${tpPctSign}${tpPct.toFixed(2)}%`;
         const tpLabelY = tpZoneTop + 12;
         ctx.fillStyle = 'rgba(0,0,0,0.65)';
         ctx.fillRect(rectX + 2, tpLabelY - 10, ctx.measureText(tpLabel).width + 6, 13);
@@ -129,7 +133,8 @@ class TradeRenderer implements IPrimitivePaneRenderer {
 
         // Direction label at entry – placed near the right edge of the box so it
         // doesn't overlap the candles that are anchored to the left (activation) edge.
-        const dirLabel = `${trade.direction} @ ${trade.entryPrice}`;
+        const rr = risk > 0 ? (reward / risk).toFixed(1) : '—';
+        const dirLabel = `${trade.direction} @ ${trade.entryPrice}  R/R ${rr}`;
         const dirLabelW = ctx.measureText(dirLabel).width + 6;
         const dirLabelX = Math.max(rectX + 2, rectX + rectW - dirLabelW - 4);
         ctx.fillStyle = 'rgba(0,0,0,0.75)';
