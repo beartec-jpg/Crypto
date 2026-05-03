@@ -1747,6 +1747,8 @@ export function ChartFullscreenPage({
 
     const drawing = drawings.find(d => d.id === drawingInteraction.selectedDrawingId);
     if (!drawing || drawing.type === 'elliott_wave') return false;
+    // Prevent dragging drawings that belong to a higher timeframe
+    if (drawing.timeframe && drawing.timeframe !== timeframe) return false;
 
     const chartPoint = getChartPointFromClient(clientX, clientY);
     if (!chartPoint) return false;
@@ -2072,6 +2074,7 @@ export function ChartFullscreenPage({
     selectedDrawingId: drawingInteraction.selectedDrawingId,
     drawings,
     setDrawings,
+    currentTimeframe: timeframe,
     drawingsPersistence,
     deleteEWLabelMutation,
     recordDelete,
@@ -2688,6 +2691,8 @@ export function ChartFullscreenPage({
           onMoveDrawing={handleEditMoveDrawing}
           onDeleteDrawing={drawingActions.handleDeleteDrawing}
           onCloseQuickMenu={drawingInteraction.closeQuickMenu}
+          currentTimeframe={timeframe}
+          selectedDrawingTimeframe={drawings.find(d => d.id === drawingInteraction.selectedDrawingId)?.timeframe}
         />
 
         {/* Trade zone overlay */}

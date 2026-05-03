@@ -1,4 +1,4 @@
-import { PenSquare, Settings, Trash2, Bell } from 'lucide-react';
+import { PenSquare, Settings, Trash2, Bell, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface DrawingQuickMenuProps {
@@ -9,6 +9,10 @@ interface DrawingQuickMenuProps {
   onAlert?: () => void;
   onDelete: () => void;
   onClose: () => void;
+  /** When true, the drawing is from a higher timeframe and cannot be edited or deleted here. */
+  isHigherTimeframe?: boolean;
+  /** The timeframe label to display when isHigherTimeframe is true (e.g. '4h', '1d'). */
+  sourceTimeframe?: string;
 }
 
 /**
@@ -23,6 +27,8 @@ export function DrawingQuickMenu({
   onAlert,
   onDelete,
   onClose,
+  isHigherTimeframe,
+  sourceTimeframe,
 }: DrawingQuickMenuProps) {
   return (
     <>
@@ -43,7 +49,14 @@ export function DrawingQuickMenu({
         }}
       >
         <div className="flex flex-col p-1 gap-1">
-          {onMove && (
+          {isHigherTimeframe && (
+            <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-amber-400/90 border-b border-slate-700/60 mb-0.5">
+              <Lock className="h-3 w-3" />
+              <span>{sourceTimeframe ? `${sourceTimeframe} drawing (read-only)` : 'Higher TF drawing (read-only)'}</span>
+            </div>
+          )}
+
+          {!isHigherTimeframe && onMove && (
             <Button
               variant="ghost"
               size="sm"
@@ -71,7 +84,7 @@ export function DrawingQuickMenu({
             Settings
           </Button>
           
-          {onAlert && (
+          {!isHigherTimeframe && onAlert && (
             <Button
               variant="ghost"
               size="sm"
@@ -86,18 +99,20 @@ export function DrawingQuickMenu({
             </Button>
           )}
           
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              onDelete();
-              onClose();
-            }}
-            className="justify-start text-red-400 hover:text-red-300 hover:bg-red-950/30"
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete
-          </Button>
+          {!isHigherTimeframe && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                onDelete();
+                onClose();
+              }}
+              className="justify-start text-red-400 hover:text-red-300 hover:bg-red-950/30"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete
+            </Button>
+          )}
         </div>
       </div>
     </>

@@ -15,6 +15,10 @@ interface FullscreenDrawingLayerProps {
   onMove?: () => void;
   onDelete: () => void;
   onCloseQuickMenu: () => void;
+  /** The timeframe currently displayed on the chart. */
+  currentTimeframe?: string;
+  /** Timeframe of the currently selected drawing (if from a different TF). */
+  selectedDrawingTimeframe?: string;
 }
 
 export function FullscreenDrawingLayer({
@@ -30,7 +34,10 @@ export function FullscreenDrawingLayer({
   onMove,
   onDelete,
   onCloseQuickMenu,
+  currentTimeframe,
+  selectedDrawingTimeframe,
 }: FullscreenDrawingLayerProps) {
+  const isHigherTF = !!(selectedDrawingTimeframe && currentTimeframe && selectedDrawingTimeframe !== currentTimeframe);
   // Track cursor position for rubber-band preview
   const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
 
@@ -125,6 +132,8 @@ export function FullscreenDrawingLayer({
           onAlert={onAlert}
           onDelete={onDelete}
           onClose={onCloseQuickMenu}
+          isHigherTimeframe={isHigherTF}
+          sourceTimeframe={selectedDrawingTimeframe}
         />
       )}
     </>

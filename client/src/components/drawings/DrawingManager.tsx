@@ -64,6 +64,7 @@ export function DrawingManager({
       setDrawings(savedDrawings.map(d => ({
         id: d.id,
         type: d.drawing_type || d.drawingType,
+        timeframe: d.timeframe,
         points: d.coordinates?.points || [],
         style: d.style || { color: '#3b82f6', lineWidth: 2 },
       })).filter(d => d.points.length > 0)); // Only keep drawings with valid points

@@ -39,6 +39,10 @@ interface WaveOverlayStackProps {
   onMoveDrawing?: () => void;
   onDeleteDrawing: () => void;
   onCloseQuickMenu: () => void;
+  /** The timeframe currently shown on the chart. */
+  currentTimeframe?: string;
+  /** Timeframe of the currently selected drawing (populated when from a higher TF). */
+  selectedDrawingTimeframe?: string;
 }
 
 export function WaveOverlayStack({
@@ -63,6 +67,8 @@ export function WaveOverlayStack({
   onMoveDrawing,
   onDeleteDrawing,
   onCloseQuickMenu,
+  currentTimeframe,
+  selectedDrawingTimeframe,
 }: WaveOverlayStackProps) {
   return (
     <>
@@ -118,6 +124,8 @@ export function WaveOverlayStack({
         onMove={onMoveDrawing}
         onDelete={onDeleteDrawing}
         onCloseQuickMenu={onCloseQuickMenu}
+        currentTimeframe={currentTimeframe}
+        selectedDrawingTimeframe={selectedDrawingTimeframe}
       />
     </>
   );

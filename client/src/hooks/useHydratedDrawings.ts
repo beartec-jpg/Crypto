@@ -54,6 +54,7 @@ export function useHydratedDrawings({ persistedDrawings, ewLabels, setDrawings }
           return {
             id: drawing.id,
             type: drawingType,
+            timeframe: drawing.timeframe,
             points: drawing.coordinates?.points || drawing.points || [],
             style: { color: drawing.style?.color || '#3b82f6', lineWidth: drawing.style?.lineWidth || 2, ...drawing.style },
           };
