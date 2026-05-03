@@ -246,6 +246,7 @@ export function useElliottWaveRendering({
         zigzagOpacity,
         zigzagStyle,
         fontSize,
+        isInternal: waveType === 'internal_abc',
         showPointLabels: true,
         lastCandleTime,
         candleInterval,

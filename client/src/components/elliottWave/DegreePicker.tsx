@@ -495,23 +495,18 @@ export function DegreePicker({ isOpen, onSelect, onClose }: DegreePickerProps) {
               </div>
             </div>
 
-            {/* Internal ABC sub-waves */}
+            {/* Internal ABC sub-wave */}
             <div className="mb-2">
               <p className="text-xs text-slate-400 mb-1">Internal (sub-wave)</p>
               <p className="text-xs text-slate-500 mb-1">Smaller, translucent – draw inside a larger wave without changing degree</p>
-              <div className="grid grid-cols-3 gap-2">
-                {['a', 'b', 'c'].map(label => (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={() => handleInternalWaveSelect(label)}
-                    className="px-3 py-2 rounded text-sm font-bold bg-slate-800 border border-slate-500 text-slate-400 hover:bg-slate-600 transition-all text-center opacity-70"
-                    title={`Internal ${label.toUpperCase()} wave`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <button
+                type="button"
+                onClick={() => handleInternalWaveSelect('abc')}
+                className="w-full px-3 py-2 rounded text-sm font-bold bg-slate-800 border border-slate-500 text-slate-400 hover:bg-slate-600 transition-all text-center opacity-70"
+                title="Internal ABC zigzag"
+              >
+                ABC
+              </button>
             </div>
 
             <div className="mt-4 flex gap-2">

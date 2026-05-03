@@ -129,14 +129,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                            intervalStr === '1w' ? '1w' : '1h';
 
     const defaultCandleCounts: Record<string, number> = {
-      '1m': 2500, '3m': 2500, '5m': 2500, '15m': 2000, '30m': 2000,
-      '1h': 2000, '2h': 1500, '4h': 1500, '6h': 1000, '12h': 750,
-      '1d': 500, '1w': 200,
+      '1m': 3000, '3m': 3000, '5m': 3000, '15m': 3000, '30m': 3000,
+      '1h': 3000, '2h': 3000, '4h': 3000, '6h': 2000, '12h': 1500,
+      '1d': 1000, '1w': 500,
     };
     // Use a moderate fallback for unrecognized intervals to avoid excessive data fetching
     const candlesNeeded = limitParam
-      ? Math.min(parseInt(limitParam as string, 10), 3000)
-      : (defaultCandleCounts[binanceInterval] ?? 1500);
+      ? Math.min(parseInt(limitParam as string, 10), 5000)
+      : (defaultCandleCounts[binanceInterval] ?? 3000);
     const intervalMs = INTERVAL_MS[binanceInterval] || 60 * 60 * 1000;
     const endTime = endTimeParam ? parseInt(endTimeParam as string, 10) * 1000 : Date.now();
     const startTime = endTime - (candlesNeeded * intervalMs);

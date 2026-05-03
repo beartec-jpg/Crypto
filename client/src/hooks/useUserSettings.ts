@@ -45,7 +45,7 @@ export function useUserSettings() {
   });
 
   // Save settings mutation
-  const { mutate: updateSettings, isPending: isSaving } = useMutation({
+  const { mutateAsync: updateSettings, isPending: isSaving } = useMutation({
     mutationFn: async (partial: Partial<UserSettingsResponse>) => {
       const currentSettings = settings || DEFAULT_USER_SETTINGS;
       const newSettings: UserSettingsResponse = {
