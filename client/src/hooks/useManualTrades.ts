@@ -50,6 +50,16 @@ export function useManualTrades(symbol: string, candles: Array<{ time: number; h
 
         for (let i = startIdx; i < candles.length; i++) {
           const c = candles[i];
+
+          // For historical/manual trades with a pre-set closeTime: allow the exact
+          // closeTime candle through to the TP/SL checks below first.  Only stop
+          // (mark as manual) when we step *past* that candle.
+          if (trade.closeTime && c.time > trade.closeTime) {
+            changed = true;
+            lastCheckedCandleRef.current.set(trade.id, i);
+            return { ...trade, outcome: 'manual' as const };
+          }
+
           if (trade.direction === 'LONG') {
             if (c.low <= trade.slPrice) {
               changed = true;
@@ -88,6 +98,7 @@ export function useManualTrades(symbol: string, candles: Array<{ time: number; h
     slPrice: number,
     tpPrice: number,
     entryTime: number,
+    closeTime?: number,
   ) => {
     const trade: ManualTrade = {
       id: `trade_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -97,9 +108,18 @@ export function useManualTrades(symbol: string, candles: Array<{ time: number; h
       slPrice,
       tpPrice,
       entryTime,
+      ...(closeTime !== undefined ? { closeTime } : {}),
     };
     setTrades(prev => [...prev, trade]);
   }, [symbol]);
+
+  const exitTrade = useCallback((id: string, exitTime: number) => {
+    setTrades(prev => prev.map(t =>
+      t.id === id && !t.outcome
+        ? { ...t, closeTime: exitTime, outcome: 'manual' as const }
+        : t,
+    ));
+  }, []);
 
   const deleteTrade = useCallback((id: string) => {
     lastCheckedCandleRef.current.delete(id);
@@ -108,5 +128,5 @@ export function useManualTrades(symbol: string, candles: Array<{ time: number; h
 
   const symbolTrades = trades.filter(t => t.symbol === symbol);
 
-  return { trades: symbolTrades, addTrade, deleteTrade };
+  return { trades: symbolTrades, addTrade, exitTrade, deleteTrade };
 }

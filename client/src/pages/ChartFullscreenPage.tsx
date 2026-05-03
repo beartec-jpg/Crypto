@@ -493,7 +493,7 @@ export function ChartFullscreenPage({
     })),
     [effectiveCandles],
   );
-  const { trades: manualTrades, addTrade: addManualTrade, deleteTrade: deleteManualTrade } = useManualTrades(symbol, tradeCandleData);
+  const { trades: manualTrades, addTrade: addManualTrade, exitTrade: exitManualTrade, deleteTrade: deleteManualTrade } = useManualTrades(symbol, tradeCandleData);
   const latestTradeCandle = tradeCandleData[tradeCandleData.length - 1];
   const currentTradePrice = latestTradeCandle?.close ?? 0;
   const currentTradeTime = latestTradeCandle?.time ?? 0;
@@ -2707,6 +2707,7 @@ export function ChartFullscreenPage({
               symbol={symbol}
               trades={manualTrades}
               onAddTrade={addManualTrade}
+              onExitTrade={exitManualTrade}
               onDeleteTrade={deleteManualTrade}
               onClose={() => setShowTradePanel(false)}
             />
