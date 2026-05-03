@@ -96,6 +96,10 @@ import { findDrawingsNearClick } from '@/lib/drawingHitDetection';
 // all use Button, but Vite's production scope-hoisting can drop the binding
 // if no ancestor in the chunk explicitly imports it.
 import { Button } from '@/components/ui/button';
+// Trade tool
+import { useManualTrades } from '@/hooks/useManualTrades';
+import { TradePanel } from '@/components/trading/TradePanel';
+import { TradeZoneRenderer } from '@/components/chart/TradeZoneRenderer';
 // Types and constants
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
 import type { DivergencePoint, MAConfig } from '@/types/chart.types';
@@ -282,6 +286,22 @@ export function ChartFullscreenPage({
   const [rewindPosition, setRewindPosition] = useState<number | null>(null);
   // Rewind settings hook - placed here so handleToggleRewind can reference it
   const rewindSettings = useRewindSettings();
+
+  // Trade tool
+  const [showTradePanel, setShowTradePanel] = useState(false);
+  const tradeCandleData = useMemo(
+    () => effectiveCandles.map(c => ({
+      time: Number((c as { time: number }).time),
+      high: (c as { high: number }).high,
+      low: (c as { low: number }).low,
+      close: (c as { close: number }).close,
+    })),
+    [effectiveCandles],
+  );
+  const { trades: manualTrades, addTrade: addManualTrade, deleteTrade: deleteManualTrade } = useManualTrades(symbol, tradeCandleData);
+  const latestTradeCandle = tradeCandleData[tradeCandleData.length - 1];
+  const currentTradePrice = latestTradeCandle?.close ?? 0;
+  const currentTradeTime = latestTradeCandle?.time ?? 0;
 
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -945,42 +965,96 @@ export function ChartFullscreenPage({
   ]);
 
   const historicalSystemSignalMarkers = useMemo(() => {
-    return historicalSystemSignalEvents.map(event => {
-      const isBuy = event.action === 'BUY OPEN' || event.action === 'BUY CLOSE';
-      const isOpen = event.action === 'BUY OPEN' || event.action === 'SELL OPEN';
-      return {
-        time: event.time as Time,
-        position: isBuy ? 'belowBar' as const : 'aboveBar' as const,
-        shape: isBuy ? 'arrowUp' as const : 'arrowDown' as const,
-        color: isBuy
-          ? (isOpen ? '#22c55e' : '#84cc16')
-          : (isOpen ? '#ef4444' : '#fb923c'),
-        text: isOpen ? 'OPEN' : 'CLOSE',
-        size: 2,
-      };
-    });
+    // Only show a single LONG or SHORT marker for the most recent active signal.
+    // An active signal is a BUY OPEN (or SELL OPEN) that has no subsequent CLOSE.
+    // Scan backwards once per direction: stop at the first matching OPEN or CLOSE.
+    const markers: Array<{
+      time: Time;
+      position: 'belowBar' | 'aboveBar';
+      shape: 'arrowUp' | 'arrowDown';
+      color: string;
+      text: string;
+      size: number;
+    }> = [];
+
+    // Find the last BUY OPEN with no BUY CLOSE after it (single backwards pass)
+    for (let i = historicalSystemSignalEvents.length - 1; i >= 0; i--) {
+      const ev = historicalSystemSignalEvents[i];
+      if (ev.action === 'BUY CLOSE') break; // CLOSE comes after the last OPEN → zone is closed
+      if (ev.action === 'BUY OPEN') {
+        markers.push({
+          time: ev.time as Time,
+          position: 'belowBar',
+          shape: 'arrowUp',
+          color: '#22c55e',
+          text: 'LONG',
+          size: 2,
+        });
+        break;
+      }
+    }
+
+    // Find the last SELL OPEN with no SELL CLOSE after it (single backwards pass)
+    for (let i = historicalSystemSignalEvents.length - 1; i >= 0; i--) {
+      const ev = historicalSystemSignalEvents[i];
+      if (ev.action === 'SELL CLOSE') break; // CLOSE comes after the last OPEN → zone is closed
+      if (ev.action === 'SELL OPEN') {
+        markers.push({
+          time: ev.time as Time,
+          position: 'aboveBar',
+          shape: 'arrowDown',
+          color: '#ef4444',
+          text: 'SHORT',
+          size: 2,
+        });
+        break;
+      }
+    }
+
+    markers.sort((a, b) => (a.time as number) - (b.time as number));
+    return markers;
   }, [historicalSystemSignalEvents]);
 
   const displayedSystemMarkers = useMemo(() => {
     if (activeSystemBacktestSignals) {
-      const markers = [
-        ...activeSystemBacktestSignals.buySignals.map(s => ({
-          time: s.time as Time,
-          position: 'belowBar' as const,
-          shape: 'arrowUp' as const,
-          color: s.type === 'zone-open' ? '#22c55e' : '#84cc16',
-          text: s.type === 'zone-open' ? 'OPEN' : 'CLOSE',
+      // Only show the last active buy and/or sell open signal (no close markers)
+      const markers: Array<{
+        time: Time;
+        position: 'belowBar' | 'aboveBar';
+        shape: 'arrowUp' | 'arrowDown';
+        color: string;
+        text: string;
+        size: number;
+      }> = [];
+
+      const lastBuy = activeSystemBacktestSignals.buySignals
+        .filter(s => s.type === 'zone-open')
+        .at(-1);
+      if (lastBuy) {
+        markers.push({
+          time: lastBuy.time as Time,
+          position: 'belowBar',
+          shape: 'arrowUp',
+          color: '#22c55e',
+          text: 'LONG',
           size: 2,
-        })),
-        ...activeSystemBacktestSignals.sellSignals.map(s => ({
-          time: s.time as Time,
-          position: 'aboveBar' as const,
-          shape: 'arrowDown' as const,
-          color: s.type === 'zone-open' ? '#ef4444' : '#fb923c',
-          text: s.type === 'zone-open' ? 'OPEN' : 'CLOSE',
+        });
+      }
+
+      const lastSell = activeSystemBacktestSignals.sellSignals
+        .filter(s => s.type === 'zone-open')
+        .at(-1);
+      if (lastSell) {
+        markers.push({
+          time: lastSell.time as Time,
+          position: 'aboveBar',
+          shape: 'arrowDown',
+          color: '#ef4444',
+          text: 'SHORT',
           size: 2,
-        })),
-      ];
+        });
+      }
+
       markers.sort((a, b) => (a.time as number) - (b.time as number));
       return markers;
     }
@@ -2425,6 +2499,7 @@ export function ChartFullscreenPage({
           rewindEnabled={rewindSettings.settings.enabled}
           onToggleRewind={handleToggleRewind}
           onOpenRewindSettings={() => setShowRewindModal(true)}
+          onOpenTrade={() => setShowTradePanel(v => !v)}
           activeSystem={tradingSystem.activeSystem}
           onActivateSystem={tradingSystem.activateSystem}
           onDeactivateSystem={tradingSystem.deactivateSystem}
@@ -2595,6 +2670,29 @@ export function ChartFullscreenPage({
           onDeleteDrawing={drawingActions.handleDeleteDrawing}
           onCloseQuickMenu={drawingInteraction.closeQuickMenu}
         />
+
+        {/* Trade zone overlay */}
+        <TradeZoneRenderer
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          trades={manualTrades}
+          currentTime={currentTradeTime}
+        />
+
+        {/* Trade panel popup */}
+        {showTradePanel && (
+          <div className="absolute bottom-16 left-2 z-50">
+            <TradePanel
+              currentPrice={currentTradePrice}
+              currentTime={currentTradeTime}
+              symbol={symbol}
+              trades={manualTrades}
+              onAddTrade={addManualTrade}
+              onDeleteTrade={deleteManualTrade}
+              onClose={() => setShowTradePanel(false)}
+            />
+          </div>
+        )}
       </div>
       
       <FullscreenOscillatorLayout

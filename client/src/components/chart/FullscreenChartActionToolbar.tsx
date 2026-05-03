@@ -90,6 +90,8 @@ interface FullscreenChartActionToolbarProps {
   onToggleRewind: (enabled: boolean) => void;
   onOpenRewindSettings: () => void;
 
+  onOpenTrade?: () => void;
+
   activeSystem: TradingSystemId | null;
   onActivateSystem: (systemId: TradingSystemId) => void;
   onDeactivateSystem: () => void;
@@ -160,6 +162,7 @@ export function FullscreenChartActionToolbar({
   rewindEnabled,
   onToggleRewind,
   onOpenRewindSettings,
+  onOpenTrade,
   activeSystem,
   onActivateSystem,
   onDeactivateSystem,
@@ -224,6 +227,7 @@ export function FullscreenChartActionToolbar({
         rewindEnabled={rewindEnabled}
         onToggleRewind={onToggleRewind}
         onOpenRewindSettings={onOpenRewindSettings}
+        onOpenTrade={onOpenTrade}
       />
 
       <div className="w-px h-6 bg-slate-700" />

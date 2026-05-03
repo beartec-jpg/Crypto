@@ -24,6 +24,7 @@ interface ToolsMenuProps {
   rewindEnabled: boolean;
   onToggleRewind: (enabled: boolean) => void;
   onOpenRewindSettings: () => void;
+  onOpenTrade?: () => void;
   className?: string;
 }
 
@@ -46,6 +47,7 @@ export function ToolsMenu({
   rewindEnabled,
   onToggleRewind,
   onOpenRewindSettings,
+  onOpenTrade,
   className,
 }: ToolsMenuProps) {
   const [open, setOpen] = useState(false);
@@ -272,6 +274,23 @@ export function ToolsMenu({
               </Button>
             </div>
           </div>
+
+          {onOpenTrade && (
+            <div className="pt-1 border-t border-slate-700 mt-1">
+              <Button
+                variant="ghost"
+                className="w-full justify-start px-1 py-1.5 text-sm font-medium text-slate-100 hover:bg-slate-800 hover:text-white"
+                onClick={() => {
+                  setOpen(false);
+                  onOpenTrade();
+                }}
+                data-testid="btn-open-trade"
+              >
+                Trade
+                <span className="ml-2 text-xs text-slate-400">Open / manage trades</span>
+              </Button>
+            </div>
+          )}
         </div>
       </PopoverContent>
     </Popover>
