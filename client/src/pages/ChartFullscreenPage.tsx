@@ -287,21 +287,8 @@ export function ChartFullscreenPage({
   // Rewind settings hook - placed here so handleToggleRewind can reference it
   const rewindSettings = useRewindSettings();
 
-  // Trade tool
+  // Trade tool state (data computed after effectiveCandles is available)
   const [showTradePanel, setShowTradePanel] = useState(false);
-  const tradeCandleData = useMemo(
-    () => effectiveCandles.map(c => ({
-      time: Number((c as { time: number }).time),
-      high: (c as { high: number }).high,
-      low: (c as { low: number }).low,
-      close: (c as { close: number }).close,
-    })),
-    [effectiveCandles],
-  );
-  const { trades: manualTrades, addTrade: addManualTrade, deleteTrade: deleteManualTrade } = useManualTrades(symbol, tradeCandleData);
-  const latestTradeCandle = tradeCandleData[tradeCandleData.length - 1];
-  const currentTradePrice = latestTradeCandle?.close ?? 0;
-  const currentTradeTime = latestTradeCandle?.time ?? 0;
 
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -478,6 +465,21 @@ export function ChartFullscreenPage({
     () => candles.slice(0, effectiveCandleCount),
     [candles, effectiveCandleCount],
   );
+
+  // Trade tool data (must be after effectiveCandles to avoid TDZ)
+  const tradeCandleData = useMemo(
+    () => effectiveCandles.map(c => ({
+      time: Number((c as { time: number }).time),
+      high: (c as { high: number }).high,
+      low: (c as { low: number }).low,
+      close: (c as { close: number }).close,
+    })),
+    [effectiveCandles],
+  );
+  const { trades: manualTrades, addTrade: addManualTrade, deleteTrade: deleteManualTrade } = useManualTrades(symbol, tradeCandleData);
+  const latestTradeCandle = tradeCandleData[tradeCandleData.length - 1];
+  const currentTradePrice = latestTradeCandle?.close ?? 0;
+  const currentTradeTime = latestTradeCandle?.time ?? 0;
 
   // Rewind handlers
   const handleStepBack = useCallback(() => {
