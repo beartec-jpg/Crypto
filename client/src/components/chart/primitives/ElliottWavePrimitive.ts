@@ -140,12 +140,14 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
       // Draw zigzag lines between consecutive points.
       // Even-indexed legs (0→1, 2→3, 4→5) = impulse / wave-line style.
       // Odd-indexed legs  (1→2, 3→4)       = correction / zigzag style.
+      // Exception: internal ABC uses a single uniform solid style for all legs.
+      const isInternalAbc = this._data.isInternal === true;
       for (let i = 0; i < coords.length - 1; i++) {
         const p1 = coords[i];
         const p2 = coords[i + 1];
         if (p1.x === null || p1.y === null || p2.x === null || p2.y === null) continue;
 
-        const isImpulseLeg = i % 2 === 0;
+        const isImpulseLeg = isInternalAbc || i % 2 === 0;
         if (isImpulseLeg) {
           ctx.globalAlpha = impulseOpacity;
           ctx.strokeStyle = impulseColor;
