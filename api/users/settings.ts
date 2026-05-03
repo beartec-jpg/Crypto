@@ -94,10 +94,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const cryptoUserId = userResult.rows[0].id;
 
     // One-time safe schema evolution for drawing defaults.
-    await pool.query(
-      `ALTER TABLE user_settings
-       ADD COLUMN IF NOT EXISTS drawing_defaults JSONB DEFAULT '{}'::jsonb`
-    );
+    // Wrapped in its own try/catch so a no-op migration never aborts the request.
+    try {
+      await pool.query(
+        `ALTER TABLE user_settings
+         ADD COLUMN IF NOT EXISTS drawing_defaults JSONB DEFAULT '{}'::jsonb`
+      );
+    } catch (schemaErr) {
+      console.warn('[settings] drawing_defaults column migration warning (safe to ignore):', schemaErr);
+    }
 
     if (req.method === 'GET') {
       console.log(`📥 GET /api/users/settings - userId: ${cryptoUserId}`);

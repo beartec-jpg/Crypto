@@ -63,8 +63,6 @@ export interface ElliottWaveData {
   hiddenPointLabels?: number[];
 }
 
-// Color for the 0→5 diagonal trendline (distinct from the wave color)
-const DIAGONAL_TRENDLINE_COLOR = '#FACC15';
 // Final point label rendering constants
 const LABEL_STROKE_COLOR = '#000';
 const LABEL_STROKE_WIDTH = 3;
@@ -137,28 +135,17 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
       const isUptrend = this._data.points.length >= 2 &&
         this._data.points[1].price > this._data.points[0].price;
 
-      // Draw zigzag lines between consecutive points.
-      // Even-indexed legs (0→1, 2→3, 4→5) = impulse / wave-line style.
-      // Odd-indexed legs  (1→2, 3→4)       = correction / zigzag style.
-      // Exception: internal ABC uses a single uniform solid style for all legs.
-      const isInternalAbc = this._data.isInternal === true;
+      // Draw a single uniform zigzag line through all consecutive points.
+      // All legs use the "Zigzag Line" (impulse*) settings from the settings panel.
       for (let i = 0; i < coords.length - 1; i++) {
         const p1 = coords[i];
         const p2 = coords[i + 1];
         if (p1.x === null || p1.y === null || p2.x === null || p2.y === null) continue;
 
-        const isImpulseLeg = isInternalAbc || i % 2 === 0;
-        if (isImpulseLeg) {
-          ctx.globalAlpha = impulseOpacity;
-          ctx.strokeStyle = impulseColor;
-          ctx.lineWidth = impulseWidth;
-          ctx.setLineDash(getLineDash(this._data.impulseStyle));
-        } else {
-          ctx.globalAlpha = zigzagOpacity;
-          ctx.strokeStyle = zigzagColor;
-          ctx.lineWidth = 1;
-          ctx.setLineDash(getLineDash(this._data.zigzagStyle ?? 'dashed'));
-        }
+        ctx.globalAlpha = impulseOpacity;
+        ctx.strokeStyle = impulseColor;
+        ctx.lineWidth = impulseWidth;
+        ctx.setLineDash(getLineDash(this._data.impulseStyle ?? 'solid'));
 
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
@@ -170,17 +157,20 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
       ctx.globalAlpha = 1;
       ctx.setLineDash([]);
 
-      // Draw dashed diagonal trendline from point 0 to point 5 when all 6 points placed
-      if (coords.length === 6) {
+      // Draw a straight "marker" line from point 0 to the last point when ≥3 points
+      // placed.  Uses the "Marker" (zigzag*) settings so it is visually distinct
+      // from the zigzag segments above.
+      if (coords.length >= 3) {
         const p0 = coords[0];
-        const p5 = coords[5];
-        if (p0.x !== null && p0.y !== null && p5.x !== null && p5.y !== null) {
-          ctx.strokeStyle = DIAGONAL_TRENDLINE_COLOR;
+        const pN = coords[coords.length - 1];
+        if (p0.x !== null && p0.y !== null && pN.x !== null && pN.y !== null) {
+          ctx.globalAlpha = zigzagOpacity;
+          ctx.strokeStyle = zigzagColor;
           ctx.lineWidth = 1;
-          ctx.setLineDash([5, 5]);
+          ctx.setLineDash(getLineDash(this._data.zigzagStyle ?? 'dashed'));
           ctx.beginPath();
           ctx.moveTo(p0.x, p0.y);
-          ctx.lineTo(p5.x, p5.y);
+          ctx.lineTo(pN.x, pN.y);
           ctx.stroke();
           ctx.setLineDash([]);
         }
