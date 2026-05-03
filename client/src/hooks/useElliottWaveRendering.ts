@@ -200,8 +200,17 @@ export function useElliottWaveRendering({
     for (const drawing of ewDrawings) {
       if (drawing.points.length < 2) continue;
 
-      const waveType = drawing.style?.waveType ?? 'EW';
-      const color = drawing.style?.color ?? '#00CED1';
+      const s = (drawing.style ?? {}) as any;
+      const waveType     = s.waveType      ?? 'EW';
+      const color        = s.color         ?? '#00CED1';
+      const impulseColor = s.impulseColor  ?? color;
+      const impulseOpacity = typeof s.impulseOpacity === 'number' ? s.impulseOpacity : 1;
+      const impulseWidth = typeof s.impulseWidth === 'number' ? s.impulseWidth : (s.lineWidth ?? 2);
+      const impulseStyle = s.impulseStyle  ?? 'solid';
+      const zigzagColor  = s.zigzagColor   ?? '#808080';
+      const zigzagOpacity = typeof s.zigzagOpacity === 'number' ? s.zigzagOpacity : 1;
+      const zigzagStyle  = s.zigzagStyle   ?? 'dashed';
+      const fontSize     = s.fontSize      ?? '12px';
 
       const data = {
         points: drawing.points.map(point => ({
@@ -212,6 +221,14 @@ export function useElliottWaveRendering({
         })),
         waveType,
         color,
+        impulseColor,
+        impulseOpacity,
+        impulseWidth,
+        impulseStyle,
+        zigzagColor,
+        zigzagOpacity,
+        zigzagStyle,
+        fontSize,
         showPointLabels: true,
         lastCandleTime,
         candleInterval,

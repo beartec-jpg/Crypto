@@ -81,6 +81,8 @@ export function useElliottWaveController({
     if (!elliottWave.canSave) return;
 
     const degreeConfig = getDegreeConfiguration(selectedWaveDegree);
+    const isInternal = selectedWavePatternType === 'internal_abc';
+
     saveEWLabelMutation.mutate({
       symbol,
       timeframe,
@@ -101,6 +103,12 @@ export function useElliottWaveController({
         waveLabel: selectedWaveLabel,
         impulseColor: degreeConfig.impulse.color,
         zigzagColor: degreeConfig.correction.color,
+        isInternal,
+        ...(isInternal && {
+          fontSize: '9px',
+          impulseOpacity: 0.5,
+          zigzagOpacity: 0.5,
+        }),
       },
     });
 

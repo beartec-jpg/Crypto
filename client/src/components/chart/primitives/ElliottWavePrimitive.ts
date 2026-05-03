@@ -21,8 +21,26 @@ export interface ElliottWaveData {
   points: { time: number; price: number; label?: string; isMidAir?: boolean }[];
   /** Higher-degree label drawn at the last point, e.g. "W1", "C" */
   waveType: string;
-  /** Line / label color */
+  /** Line / label color (legacy fallback) */
   color?: string;
+  /** Color for impulse / main-wave legs (even-indexed segments) */
+  impulseColor?: string;
+  /** Opacity for impulse legs (0–1) */
+  impulseOpacity?: number;
+  /** Stroke width for impulse legs in pixels */
+  impulseWidth?: number;
+  /** Dash style for impulse legs */
+  impulseStyle?: 'solid' | 'dashed' | 'dotted';
+  /** Color for correction / retracement legs (odd-indexed segments) */
+  zigzagColor?: string;
+  /** Opacity for correction legs (0–1) */
+  zigzagOpacity?: number;
+  /** Dash style for correction legs */
+  zigzagStyle?: 'solid' | 'dashed' | 'dotted';
+  /** Font size for point labels, e.g. "12px" */
+  fontSize?: string;
+  /** When true the wave is an internal sub-wave drawn at a smaller, more translucent style */
+  isInternal?: boolean;
   /** When true, render individual point labels (for saved/reloaded drawings) */
   showPointLabels?: boolean;
   /** Time of the last candle in the dataset – used for future point rendering */
@@ -48,10 +66,15 @@ export interface ElliottWaveData {
 // Color for the 0→5 diagonal trendline (distinct from the wave color)
 const DIAGONAL_TRENDLINE_COLOR = '#FACC15';
 // Final point label rendering constants
-const FINAL_POINT_RADIUS = 6;
-const LABEL_FONT = 'bold 12px sans-serif';
 const LABEL_STROKE_COLOR = '#000';
 const LABEL_STROKE_WIDTH = 3;
+
+/** Translate a line-style value to a canvas dash pattern */
+function getLineDash(style: string | undefined): number[] {
+  if (style === 'dashed') return [5, 5];
+  if (style === 'dotted') return [2, 4];
+  return [];
+}
 
 // ─── Renderer ────────────────────────────────────────────────────────────────
 
@@ -76,7 +99,16 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
     target.useMediaCoordinateSpace((scope: any) => {
       const ctx: CanvasRenderingContext2D = scope.context;
       const timeScale = this._chart!.timeScale();
-      const color = this._data.isSelected ? '#facc15' : (this._data.color ?? '#00CED1');
+
+      const isSelected = this._data.isSelected;
+
+      // Resolve per-leg style values (selected state overrides all colors to yellow)
+      const impulseColor   = isSelected ? '#facc15' : (this._data.impulseColor  ?? this._data.color ?? '#00CED1');
+      const zigzagColor    = isSelected ? '#facc15' : (this._data.zigzagColor   ?? this._data.color ?? '#808080');
+      const impulseOpacity = this._data.impulseOpacity ?? 1;
+      const zigzagOpacity  = this._data.zigzagOpacity  ?? 1;
+      const impulseWidth   = this._data.impulseWidth   ?? 2;
+      const fontSize       = this._data.fontSize       ?? '12px';
 
       // Resolve screen X for a point, extrapolating for future times
       const resolveX = (time: number): number | null => {
@@ -105,20 +137,36 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
       const isUptrend = this._data.points.length >= 2 &&
         this._data.points[1].price > this._data.points[0].price;
 
-      // Draw solid zigzag lines between consecutive points
-      // Zigzag lines: solid thin lines connecting consecutive points
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([]);
+      // Draw zigzag lines between consecutive points.
+      // Even-indexed legs (0→1, 2→3, 4→5) = impulse / wave-line style.
+      // Odd-indexed legs  (1→2, 3→4)       = correction / zigzag style.
       for (let i = 0; i < coords.length - 1; i++) {
         const p1 = coords[i];
         const p2 = coords[i + 1];
         if (p1.x === null || p1.y === null || p2.x === null || p2.y === null) continue;
+
+        const isImpulseLeg = i % 2 === 0;
+        if (isImpulseLeg) {
+          ctx.globalAlpha = impulseOpacity;
+          ctx.strokeStyle = impulseColor;
+          ctx.lineWidth = impulseWidth;
+          ctx.setLineDash(getLineDash(this._data.impulseStyle));
+        } else {
+          ctx.globalAlpha = zigzagOpacity;
+          ctx.strokeStyle = zigzagColor;
+          ctx.lineWidth = 1;
+          ctx.setLineDash(getLineDash(this._data.zigzagStyle ?? 'dashed'));
+        }
+
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
         ctx.lineTo(p2.x, p2.y);
         ctx.stroke();
       }
+
+      // Reset state before drawing overlays
+      ctx.globalAlpha = 1;
+      ctx.setLineDash([]);
 
       // Draw dashed diagonal trendline from point 0 to point 5 when all 6 points placed
       if (coords.length === 6) {
@@ -137,15 +185,16 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
       }
 
       // Point labels
+      const labelFont = `bold ${fontSize} sans-serif`;
       if (this._data.showPointLabels && coords.length > 0) {
         ctx.textAlign = 'center';
-        ctx.font = LABEL_FONT;
+        ctx.font = labelFont;
 
         for (let i = 0; i < coords.length; i++) {
           const c = coords[i];
           if (c.x === null || c.y === null || !c.label) continue;
 
-          const dotColor = c.isMidAir ? '#f97316' : color;
+          const dotColor = c.isMidAir ? '#f97316' : impulseColor;
 
           const isHigh = isUptrend ? (i % 2 === 1) : (i % 2 === 0);
 
@@ -174,9 +223,9 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
         
         if (c.x !== null && c.y !== null && c.label) {
           ctx.textAlign = 'center';
-          ctx.font = LABEL_FONT;
+          ctx.font = labelFont;
           
-          const dotColor = c.isMidAir ? '#f97316' : color;
+          const dotColor = c.isMidAir ? '#f97316' : impulseColor;
           const isHigh = isUptrend ? (finalIndex % 2 === 1) : (finalIndex % 2 === 0);
 
           // Each stack level is 16 px apart so stacked labels don't overlap.
