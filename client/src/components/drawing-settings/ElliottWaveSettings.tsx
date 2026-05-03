@@ -50,9 +50,9 @@ export function ElliottWaveSettings({ drawing, onUpdate }: ElliottWaveSettingsPr
 
   return (
     <div className="space-y-4 p-4 bg-slate-900 rounded-lg">
-      {/* Main Wave Line */}
+      {/* Zigzag Line */}
       <div className="border-b border-slate-700 pb-4">
-        <div className="text-sm font-semibold text-white mb-3">Wave Lines</div>
+        <div className="text-sm font-semibold text-white mb-3">Zigzag Line</div>
 
         <div className="space-y-3">
           <div className="flex items-center gap-3">
@@ -81,9 +81,9 @@ export function ElliottWaveSettings({ drawing, onUpdate }: ElliottWaveSettingsPr
         </div>
       </div>
 
-      {/* Zigzag Correction Line */}
+      {/* Marker (diagonal p0→end) */}
       <div className="border-b border-slate-700 pb-4">
-        <div className="text-sm font-semibold text-white mb-3">Correction Lines</div>
+        <div className="text-sm font-semibold text-white mb-3">Marker</div>
 
         <div className="space-y-3">
           <div className="flex items-center gap-3">

@@ -144,7 +144,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'PATCH') {
-      const { points, fibonacciMode, validationResult, isComplete, degree } = req.body;
+      const { points, fibonacciMode, validationResult, isComplete, degree, metadata } = req.body;
       
       // Build update query dynamically
       const updates: string[] = ['updated_at = NOW()'];
@@ -172,6 +172,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         values.push(validationResult?.isValid !== false ? 'valid' : 'warning');
         updates.push(`validation_errors = $${paramIndex++}`);
         values.push(validationResult?.errors || []);
+      }
+      if (metadata !== undefined) {
+        // Merge incoming metadata with existing metadata using jsonb || operator.
+        // All metadata fields are top-level scalars or replaceable objects (e.g.
+        // customPointLabels) so a shallow top-level merge is the correct behaviour.
+        updates.push(`metadata = COALESCE(metadata, '{}'::jsonb) || $${paramIndex++}::jsonb`);
+        values.push(JSON.stringify(metadata));
       }
       
       values.push(id);
