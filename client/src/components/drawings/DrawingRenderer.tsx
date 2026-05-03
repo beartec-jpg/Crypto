@@ -76,7 +76,7 @@ export function DrawingRenderer({
         id: `drawing-${Date.now()}`,
         type: currentTool,
         points: [newPoint],
-        style: { color, lineWidth: 2, ...toolDefaults, ...textDefaults, autoColor: useAutoColor }
+        style: { lineWidth: 2, ...toolDefaults, ...textDefaults, color, autoColor: useAutoColor }
       };
       
       console.log('[Renderer] Creating single-point drawing:', newDrawing);
@@ -134,7 +134,7 @@ export function DrawingRenderer({
           id: `drawing-${Date.now()}`,
           type: currentTool,
           points: newPoints,
-          style: { color, lineWidth: 2, ...savedDefaults, ...fibStyle, ...channelStyle, autoColor: useAutoColor }
+          style: { lineWidth: 2, ...savedDefaults, ...fibStyle, ...channelStyle, color, autoColor: useAutoColor }
         };
         
         console.log('[Renderer] Creating new drawing:', newDrawing);

@@ -17,8 +17,8 @@ interface FullscreenChartModalsProps {
   onUpdateDrawing: (updates: { style: any }) => void;
   autoColorEnabled?: boolean;
   onAutoColorChange?: (enabled: boolean) => void;
-  onSaveDrawingDefaults?: (payload: { tool: string; style: any }) => void;
-  onResetDrawingDefaults?: (tool: string) => void;
+  onSaveDrawingDefaults?: (payload: { tool: string; style: any }) => void | Promise<void>;
+  onResetDrawingDefaults?: (tool: string) => void | Promise<void>;
 
   showSelectionModal: boolean;
   nearbyDrawings: any[];

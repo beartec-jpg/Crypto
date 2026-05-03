@@ -14,8 +14,8 @@ interface DrawingSettingsPanelProps {
   onClose: () => void;
   autoColorEnabled?: boolean;
   onAutoColorChange?: (enabled: boolean) => void;
-  onSaveAsDefault?: (payload: { tool: string; style: any }) => void;
-  onResetDefault?: (tool: string) => void;
+  onSaveAsDefault?: (payload: { tool: string; style: any }) => void | Promise<void>;
+  onResetDefault?: (tool: string) => void | Promise<void>;
 }
 
 export function DrawingSettingsPanel({

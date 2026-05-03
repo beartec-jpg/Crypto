@@ -357,7 +357,7 @@ export function ChartFullscreenPage({
     });
   }, [isPaidTier, toast]);
 
-  const persistDrawingDefaults = useCallback((payload: { tool: string; style: any }) => {
+  const persistDrawingDefaults = useCallback(async (payload: { tool: string; style: any }) => {
     const raw = userSettings?.drawingDefaults as any;
     const byTool = { ...(raw?.byTool || {}) };
     byTool[payload.tool] = {
@@ -365,36 +365,53 @@ export function ChartFullscreenPage({
       ...payload.style,
     };
 
-    updateUserSettings({
-      drawingDefaults: {
-        ...(raw || {}),
-        byTool,
-        autoColorEnabled,
-      },
-    } as any);
-    toast({
-      title: 'Defaults saved',
-      description: `Default style saved for ${payload.tool.replace('_', ' ')}`,
-    });
+    try {
+      await updateUserSettings({
+        drawingDefaults: {
+          ...(raw || {}),
+          byTool,
+          autoColorEnabled,
+        },
+      } as any);
+      toast({
+        title: 'Defaults saved',
+        description: `Default style saved for ${payload.tool.replace('_', ' ')}`,
+      });
+    } catch (error) {
+      console.error('[Drawing] Failed to save drawing defaults:', error);
+      toast({
+        title: 'Failed to save defaults',
+        description: 'Could not save default style. Please try again.',
+        variant: 'destructive',
+      });
+    }
   }, [userSettings, autoColorEnabled, updateUserSettings, toast]);
 
-  const resetDrawingDefaults = useCallback((tool: string) => {
+  const resetDrawingDefaults = useCallback(async (tool: string) => {
     const raw = userSettings?.drawingDefaults as any;
     const byTool = { ...(raw?.byTool || {}) };
     delete byTool[tool];
 
-    updateUserSettings({
-      drawingDefaults: {
-        ...(raw || {}),
-        byTool,
-        autoColorEnabled,
-      },
-    } as any);
-
-    toast({
-      title: 'Defaults reset',
-      description: `Saved default removed for ${tool.replace('_', ' ')}`,
-    });
+    try {
+      await updateUserSettings({
+        drawingDefaults: {
+          ...(raw || {}),
+          byTool,
+          autoColorEnabled,
+        },
+      } as any);
+      toast({
+        title: 'Defaults reset',
+        description: `Saved default removed for ${tool.replace('_', ' ')}`,
+      });
+    } catch (error) {
+      console.error('[Drawing] Failed to reset drawing defaults:', error);
+      toast({
+        title: 'Failed to reset defaults',
+        description: 'Could not reset default style. Please try again.',
+        variant: 'destructive',
+      });
+    }
   }, [userSettings, autoColorEnabled, updateUserSettings, toast]);
 
   const handleAutoColorPreferenceChange = useCallback((enabled: boolean) => {
