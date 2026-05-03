@@ -18,7 +18,7 @@ export interface ManualTrade {
   tpPrice: number;
   entryTime: number;
   closeTime?: number;
-  outcome?: 'win' | 'loss';
+  outcome?: 'win' | 'loss' | 'manual';
 }
 
 type RequestUpdateCallback = () => void;
@@ -127,12 +127,15 @@ class TradeRenderer implements IPrimitivePaneRenderer {
         ctx.fillStyle = '#ef4444';
         ctx.fillText(slLabel, rectX + 5, slLabelY);
 
-        // Direction label at entry
+        // Direction label at entry – placed near the right edge of the box so it
+        // doesn't overlap the candles that are anchored to the left (activation) edge.
         const dirLabel = `${trade.direction} @ ${trade.entryPrice}`;
+        const dirLabelW = ctx.measureText(dirLabel).width + 6;
+        const dirLabelX = Math.max(rectX + 2, rectX + rectW - dirLabelW - 4);
         ctx.fillStyle = 'rgba(0,0,0,0.75)';
-        ctx.fillRect(rectX + 2, yEntry - 14, ctx.measureText(dirLabel).width + 6, 13);
-        ctx.fillStyle = trade.outcome === 'win' ? '#22c55e' : trade.outcome === 'loss' ? '#ef4444' : '#ffffff';
-        ctx.fillText(dirLabel, rectX + 5, yEntry - 3);
+        ctx.fillRect(dirLabelX, yEntry - 14, dirLabelW, 13);
+        ctx.fillStyle = trade.outcome === 'win' ? '#22c55e' : trade.outcome === 'loss' ? '#ef4444' : trade.outcome === 'manual' ? '#a78bfa' : '#ffffff';
+        ctx.fillText(dirLabel, dirLabelX + 3, yEntry - 3);
       }
     });
   }
