@@ -98,6 +98,7 @@ export function TradePanel({
     setHistEntry('');
     setHistSl('');
     setHistTp('');
+    setHistStillActive(false);
   };
 
   const wins = trades.filter(t => t.outcome === 'win').length;

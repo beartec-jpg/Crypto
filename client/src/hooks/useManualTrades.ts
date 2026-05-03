@@ -30,6 +30,7 @@ function scanTrade(
   candles: Array<{ time: number; high: number; low: number; close: number }>,
   startIdx: number,
 ): [ManualTrade, number] {
+  if (candles.length === 0) return [trade, 0];
   for (let i = startIdx; i < candles.length; i++) {
     const c = candles[i];
 
