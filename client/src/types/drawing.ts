@@ -254,6 +254,8 @@ export type SelectionCandidate = {
 export interface Drawing {
   id: string;
   type: string;
+  /** The timeframe this drawing was originally created on (e.g. '4h', '1d'). */
+  timeframe?: string;
   points: { time: number; price: number; snapType?: 'high' | 'low' | 'none'; label?: string; isMidAir?: boolean }[];
   style: {
     color: string;

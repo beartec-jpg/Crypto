@@ -7,6 +7,7 @@ interface UseFullscreenDrawingActionsParams {
   selectedDrawingId: string | null;
   drawings: Drawing[];
   setDrawings: Dispatch<SetStateAction<Drawing[]>>;
+  currentTimeframe: string;
   drawingsPersistence: {
     deleteDrawing: (id: string) => void;
     updateDrawing: (payload: { id: string; updates: { style: Partial<Drawing['style']> } }) => void;
@@ -22,6 +23,7 @@ export function useFullscreenDrawingActions({
   selectedDrawingId,
   drawings,
   setDrawings,
+  currentTimeframe,
   drawingsPersistence,
   deleteEWLabelMutation,
   recordDelete,
@@ -32,6 +34,9 @@ export function useFullscreenDrawingActions({
     if (!id) return;
 
     const drawing = drawings.find(item => item.id === id);
+    // Prevent deleting drawings that belong to a higher timeframe
+    if (drawing?.timeframe && drawing.timeframe !== currentTimeframe) return;
+
     if (drawing?.type === 'elliott_wave') {
       deleteEWLabelMutation.mutate(id);
       setDrawings(previous => previous.filter(item => item.id !== id));
@@ -44,13 +49,16 @@ export function useFullscreenDrawingActions({
     }
 
     setSelectedDrawingId(null);
-  }, [selectedDrawingId, drawings, deleteEWLabelMutation, setDrawings, recordDelete, drawingsPersistence, setSelectedDrawingId]);
+  }, [selectedDrawingId, drawings, currentTimeframe, deleteEWLabelMutation, setDrawings, recordDelete, drawingsPersistence, setSelectedDrawingId]);
 
   const handleUpdateDrawing = useCallback((updates: { style: Partial<Drawing['style']> }) => {
     const selectedId = selectedDrawingId;
     if (!selectedId) return;
 
     const drawing = drawings.find(item => item.id === selectedId);
+    // Prevent editing drawings that belong to a higher timeframe
+    if (drawing?.timeframe && drawing.timeframe !== currentTimeframe) return;
+
     setDrawings(previous => previous.map(item => (
       item.id === selectedId
         ? { ...item, style: { ...item.style, ...updates.style } }
@@ -63,7 +71,7 @@ export function useFullscreenDrawingActions({
     } else {
       drawingsPersistence.updateDrawing({ id: selectedId, updates: { style: updates.style } });
     }
-  }, [selectedDrawingId, drawings, setDrawings, drawingsPersistence]);
+  }, [selectedDrawingId, drawings, currentTimeframe, setDrawings, drawingsPersistence]);
 
   return {
     handleDeleteDrawing,
