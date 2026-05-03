@@ -106,6 +106,18 @@ export function TradePanel({
   const pending = trades.filter(t => !t.outcome).length;
   const winRate = wins + losses > 0 ? Math.round((wins / (wins + losses)) * 100) : 0;
 
+  const avgRR = (() => {
+    const rrValues = trades
+      .map(t => {
+        const risk = Math.abs(t.entryPrice - t.slPrice);
+        const reward = Math.abs(t.tpPrice - t.entryPrice);
+        return risk > 0 ? reward / risk : null;
+      })
+      .filter((v): v is number => v !== null);
+    if (rrValues.length === 0) return null;
+    return rrValues.reduce((a, b) => a + b, 0) / rrValues.length;
+  })();
+
   return (
     <div className="w-72 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl text-slate-100 text-sm">
       {/* Header */}
@@ -398,7 +410,7 @@ export function TradePanel({
       {view === 'results' && (
         <div className="p-3 space-y-3">
           {/* Stats row */}
-          <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="grid grid-cols-2 gap-2 text-center">
             <div className="bg-slate-800 rounded p-2">
               <div className="text-green-400 font-bold">{wins}</div>
               <div className="text-slate-400 text-[10px]">Wins</div>
@@ -410,6 +422,10 @@ export function TradePanel({
             <div className="bg-slate-800 rounded p-2">
               <div className="text-slate-200 font-bold">{winRate}%</div>
               <div className="text-slate-400 text-[10px]">Win Rate</div>
+            </div>
+            <div className="bg-slate-800 rounded p-2">
+              <div className="text-yellow-400 font-bold">{avgRR !== null ? avgRR.toFixed(1) : '—'}</div>
+              <div className="text-slate-400 text-[10px]">Avg R/R</div>
             </div>
           </div>
 
