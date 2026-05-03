@@ -967,6 +967,7 @@ export function ChartFullscreenPage({
   const historicalSystemSignalMarkers = useMemo(() => {
     // Only show a single LONG or SHORT marker for the most recent active signal.
     // An active signal is a BUY OPEN (or SELL OPEN) that has no subsequent CLOSE.
+    // Scan backwards once per direction: stop at the first matching OPEN or CLOSE.
     const markers: Array<{
       time: Time;
       position: 'belowBar' | 'aboveBar';
@@ -976,44 +977,38 @@ export function ChartFullscreenPage({
       size: number;
     }> = [];
 
-    // Find the last BUY OPEN with no BUY CLOSE after it
+    // Find the last BUY OPEN with no BUY CLOSE after it (single backwards pass)
     for (let i = historicalSystemSignalEvents.length - 1; i >= 0; i--) {
       const ev = historicalSystemSignalEvents[i];
+      if (ev.action === 'BUY CLOSE') break; // CLOSE comes after the last OPEN → zone is closed
       if (ev.action === 'BUY OPEN') {
-        const hasClose = historicalSystemSignalEvents.slice(i + 1).some(e => e.action === 'BUY CLOSE');
-        if (!hasClose) {
-          markers.push({
-            time: ev.time as Time,
-            position: 'belowBar',
-            shape: 'arrowUp',
-            color: '#22c55e',
-            text: 'LONG',
-            size: 2,
-          });
-        }
+        markers.push({
+          time: ev.time as Time,
+          position: 'belowBar',
+          shape: 'arrowUp',
+          color: '#22c55e',
+          text: 'LONG',
+          size: 2,
+        });
         break;
       }
-      if (ev.action === 'BUY CLOSE') break;
     }
 
-    // Find the last SELL OPEN with no SELL CLOSE after it
+    // Find the last SELL OPEN with no SELL CLOSE after it (single backwards pass)
     for (let i = historicalSystemSignalEvents.length - 1; i >= 0; i--) {
       const ev = historicalSystemSignalEvents[i];
+      if (ev.action === 'SELL CLOSE') break; // CLOSE comes after the last OPEN → zone is closed
       if (ev.action === 'SELL OPEN') {
-        const hasClose = historicalSystemSignalEvents.slice(i + 1).some(e => e.action === 'SELL CLOSE');
-        if (!hasClose) {
-          markers.push({
-            time: ev.time as Time,
-            position: 'aboveBar',
-            shape: 'arrowDown',
-            color: '#ef4444',
-            text: 'SHORT',
-            size: 2,
-          });
-        }
+        markers.push({
+          time: ev.time as Time,
+          position: 'aboveBar',
+          shape: 'arrowDown',
+          color: '#ef4444',
+          text: 'SHORT',
+          size: 2,
+        });
         break;
       }
-      if (ev.action === 'SELL CLOSE') break;
     }
 
     markers.sort((a, b) => (a.time as number) - (b.time as number));

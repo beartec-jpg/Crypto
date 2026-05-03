@@ -59,9 +59,11 @@ class TradeRenderer implements IPrimitivePaneRenderer {
           const xClose = timeScale.timeToCoordinate(trade.closeTime as Time);
           xEnd = xClose !== null ? xClose : chartWidth;
         } else {
-          // Extend to the current candle position if available, else chart edge
+          // Extend past the current candle by a small padding so the zone right edge is
+          // clearly visible beyond the latest candle body.
+          const ACTIVE_ZONE_RIGHT_PADDING = 20;
           const xCurrent = timeScale.timeToCoordinate(this._currentTime as Time);
-          xEnd = xCurrent !== null ? xCurrent + 20 : chartWidth;
+          xEnd = xCurrent !== null ? xCurrent + ACTIVE_ZONE_RIGHT_PADDING : chartWidth;
         }
 
         const yEntry = this._series!.priceToCoordinate(trade.entryPrice);
