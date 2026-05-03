@@ -77,7 +77,7 @@ export function useHydratedDrawings({ persistedDrawings, ewLabels, setDrawings }
             price: point.price,
             // Use saved label when present; fall back to pattern-derived label so
             // the settings panel always shows meaningful wave labels instead of "0,1,2,3".
-            label: point.label ?? fallbackLabels[i],
+            label: point.label ?? fallbackLabels[i] ?? String(i),
             isMidAir: point.isMidAir ?? false,
             snapType: point.snapType ?? 'high',
           })),
