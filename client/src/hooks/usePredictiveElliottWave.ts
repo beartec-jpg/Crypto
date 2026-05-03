@@ -58,6 +58,11 @@ function getPatternConfig(
   const parent = formatParentLabel(waveLabel, degree);
 
   switch (patternType) {
+    case 'internal_abc':
+      return {
+        labels: ['0', 'a', 'b', 'c'],
+        total: 4,
+      };
     case 'zigzag':
     case 'flat':
     case 'combination':
