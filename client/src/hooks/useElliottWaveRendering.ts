@@ -4,6 +4,23 @@ import { ElliottWavePrimitive } from '@/components/chart/primitives/ElliottWaveP
 import { getDegreeConfiguration } from '@/components/elliottWave/DegreePicker';
 import type { Drawing } from '@/types/drawing';
 
+/** Typed shape of style properties stored in Elliott Wave drawings */
+interface EWDrawingStyle {
+  waveType?: string;
+  color?: string;
+  impulseColor?: string;
+  impulseOpacity?: number;
+  impulseWidth?: number;
+  lineWidth?: number;
+  impulseStyle?: 'solid' | 'dashed' | 'dotted';
+  zigzagColor?: string;
+  zigzagOpacity?: number;
+  zigzagStyle?: 'solid' | 'dashed' | 'dotted';
+  fontSize?: string;
+  customPointLabels?: Record<number, string>;
+  hiddenPointLabels?: number[];
+}
+
 // Wave degree hierarchy: lower number = higher (more dominant) degree.
 const DEGREE_ORDER_MAP: Record<string, number> = {
   'grand supercycle': 0,
@@ -200,7 +217,7 @@ export function useElliottWaveRendering({
     for (const drawing of ewDrawings) {
       if (drawing.points.length < 2) continue;
 
-      const s = (drawing.style ?? {}) as any;
+      const s = (drawing.style ?? {}) as EWDrawingStyle;
       const waveType     = s.waveType      ?? 'EW';
       const color        = s.color         ?? '#00CED1';
       const impulseColor = s.impulseColor  ?? color;
