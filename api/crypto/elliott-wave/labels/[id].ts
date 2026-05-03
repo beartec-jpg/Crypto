@@ -174,7 +174,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         values.push(validationResult?.errors || []);
       }
       if (metadata !== undefined) {
-        // Merge incoming metadata with existing metadata so we don't overwrite unrelated fields
+        // Merge incoming metadata with existing metadata using jsonb || operator.
+        // All metadata fields are top-level scalars or replaceable objects (e.g.
+        // customPointLabels) so a shallow top-level merge is the correct behaviour.
         updates.push(`metadata = COALESCE(metadata, '{}'::jsonb) || $${paramIndex++}::jsonb`);
         values.push(JSON.stringify(metadata));
       }

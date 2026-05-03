@@ -158,8 +158,8 @@ class ElliottWaveRenderer implements IPrimitivePaneRenderer {
       ctx.setLineDash([]);
 
       // Draw a straight "marker" line from point 0 to the last point.
-      // Requires at least 3 points (i.e. at least 2 segments) so the marker has
-      // visible separation from the zigzag path above.
+      // Requires at least 3 points so the marker visually differs from the
+      // single zigzag segment that would already connect those two points.
       if (coords.length >= 3) {
         const p0 = coords[0];
         const pN = coords[coords.length - 1];
