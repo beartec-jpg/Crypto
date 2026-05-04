@@ -10,6 +10,7 @@ interface TradePanelProps {
   currentPrice: number;
   currentTime: number;
   symbol: string;
+  timeframe: string;
   trades: ManualTrade[];
   onAddTrade: (
     direction: 'LONG' | 'SHORT',
@@ -53,6 +54,7 @@ export function TradePanel({
   currentPrice,
   currentTime,
   symbol,
+  timeframe,
   trades,
   onAddTrade,
   onExitTrade,
@@ -489,10 +491,16 @@ export function TradePanel({
                   <div className="text-[10px] text-slate-400">
                     E:{trade.entryPrice} SL:{trade.slPrice} TP:{trade.tpPrice}
                   </div>
-                  <div className="text-[10px] text-slate-500">
+                  <div className="text-[10px] text-slate-500 flex items-center gap-2">
+                    <span
+                      className="bg-slate-700 text-slate-300 px-1 rounded"
+                      title="Timeframe"
+                    >
+                      {trade.timeframe}
+                    </span>
                     <span title="Activation time">▶ {formatTs(trade.entryTime)}</span>
                     {trade.closeTime && (
-                      <span className="ml-2" title="Exit time">■ {formatTs(trade.closeTime)}</span>
+                      <span title="Exit time">■ {formatTs(trade.closeTime)}</span>
                     )}
                   </div>
                 </div>

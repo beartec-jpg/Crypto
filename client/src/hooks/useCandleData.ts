@@ -67,8 +67,10 @@ export function useCandleData({
   useEffect(() => {
     if (!enabled) return;
 
-    // Immediately clear stale candles so symbol/timeframe switches never keep old price bars.
-    setCandles([]);
+    // Do NOT immediately clear candles on symbol/timeframe changes.
+    // Keeping the previous bars visible prevents the chart from going blank
+    // during the brief network round-trip.  New data replaces them atomically
+    // once the fetch completes.
     setError(null);
     setIsLoading(true);
 

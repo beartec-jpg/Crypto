@@ -52,7 +52,7 @@ function scanTrade(
   return [trade, candles.length - 1];
 }
 
-export function useManualTrades(symbol: string, candles: Array<{ time: number; high: number; low: number; close: number }>) {
+export function useManualTrades(symbol: string, timeframe: string, candles: Array<{ time: number; high: number; low: number; close: number }>) {
   const [trades, setTrades] = useState<ManualTrade[]>(() => loadTrades());
 
   // Track the last candle index checked per trade to avoid rescanning already-processed candles.
@@ -104,6 +104,7 @@ export function useManualTrades(symbol: string, candles: Array<{ time: number; h
     let trade: ManualTrade = {
       id: `trade_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       symbol,
+      timeframe,
       direction,
       entryPrice,
       slPrice,
@@ -124,7 +125,7 @@ export function useManualTrades(symbol: string, candles: Array<{ time: number; h
       }
     }
     setTrades(prev => [...prev, trade]);
-  }, [symbol]);
+  }, [symbol, timeframe]);
 
   const exitTrade = useCallback((id: string, exitTime: number) => {
     setTrades(prev => prev.map(t =>

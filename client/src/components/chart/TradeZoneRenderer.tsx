@@ -8,15 +8,19 @@ interface TradeZoneRendererProps {
   candleSeries: ISeriesApi<'Candlestick'> | null;
   trades: ManualTrade[];
   currentTime: number;
+  timeframe: string;
 }
 
-export function TradeZoneRenderer({ chart, candleSeries, trades, currentTime }: TradeZoneRendererProps) {
+export function TradeZoneRenderer({ chart, candleSeries, trades, currentTime, timeframe }: TradeZoneRendererProps) {
   const primitiveRef = useRef<TradePrimitive | null>(null);
+
+  // Only render trades that belong to the current timeframe
+  const timeframeTrades = trades.filter(t => t.timeframe === timeframe);
 
   useEffect(() => {
     if (!chart || !candleSeries) return;
 
-    const primitive = new TradePrimitive(trades, currentTime);
+    const primitive = new TradePrimitive(timeframeTrades, currentTime);
     try {
       candleSeries.attachPrimitive(primitive);
       primitiveRef.current = primitive;
@@ -37,9 +41,9 @@ export function TradeZoneRenderer({ chart, candleSeries, trades, currentTime }: 
 
   useEffect(() => {
     if (primitiveRef.current) {
-      primitiveRef.current.update(trades, currentTime);
+      primitiveRef.current.update(timeframeTrades, currentTime);
     }
-  }, [trades, currentTime]);
+  }, [timeframeTrades, currentTime]);
 
   return null;
 }
