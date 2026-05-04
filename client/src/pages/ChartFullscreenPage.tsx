@@ -1943,7 +1943,7 @@ export function ChartFullscreenPage({
     window.addEventListener('touchmove', onTouchMove, { passive: false });
     window.addEventListener('mouseup', onPointerEnd);
     window.addEventListener('touchend', onPointerEnd);
-    window.addEventListener('mouseleave', onPointerLeaveOrCancel);
+    document.addEventListener('mouseleave', onPointerLeaveOrCancel);
     window.addEventListener('touchcancel', onPointerLeaveOrCancel);
     window.addEventListener('blur', onPointerLeaveOrCancel);
 
@@ -1955,7 +1955,7 @@ export function ChartFullscreenPage({
       window.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener('mouseup', onPointerEnd);
       window.removeEventListener('touchend', onPointerEnd);
-      window.removeEventListener('mouseleave', onPointerLeaveOrCancel);
+      document.removeEventListener('mouseleave', onPointerLeaveOrCancel);
       window.removeEventListener('touchcancel', onPointerLeaveOrCancel);
       window.removeEventListener('blur', onPointerLeaveOrCancel);
     };

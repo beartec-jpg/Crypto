@@ -8275,6 +8275,24 @@ CRITICAL DATA RULES:
 
   // ─── Admin User Management API ────────────────────────────────────────────
   // All routes require an authenticated @beartec.uk account.
+  // Simple in-memory rate limiter: max 60 requests per minute per user.
+  const adminRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  function adminRateLimit(req: Request, res: Response, next: NextFunction) {
+    const key = (req as any).cryptoUser?.email || req.ip || 'unknown';
+    const now = Date.now();
+    const windowMs = 60_000;
+    const maxRequests = 60;
+    const entry = adminRateLimitMap.get(key);
+    if (!entry || now > entry.resetAt) {
+      adminRateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+    entry.count += 1;
+    if (entry.count > maxRequests) {
+      return res.status(429).json({ error: 'Too many requests. Please wait before retrying.' });
+    }
+    return next();
+  }
 
   function requireAdminAuth(req: Request, res: Response, next: NextFunction) {
     const email = (req as any).cryptoUser?.email || '';
@@ -8285,7 +8303,7 @@ CRITICAL DATA RULES:
   }
 
   // GET /api/admin/users — list all users with their subscription details
-  app.get('/api/admin/users', requireCryptoAuth, requireAdminAuth, async (req: Request, res: Response) => {
+  app.get('/api/admin/users', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
     try {
       const { db } = await import('./db');
       const { cryptoUsers: usersTable, cryptoSubscriptions: subsTable } = await import('@shared/schema');
@@ -8319,7 +8337,7 @@ CRITICAL DATA RULES:
   });
 
   // PATCH /api/admin/users/:userId/tier — update subscription tier
-  app.patch('/api/admin/users/:userId/tier', requireCryptoAuth, requireAdminAuth, async (req: Request, res: Response) => {
+  app.patch('/api/admin/users/:userId/tier', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
     try {
       const { userId } = req.params;
       const { tier } = req.body as { tier: string };
@@ -8336,7 +8354,7 @@ CRITICAL DATA RULES:
   });
 
   // POST /api/admin/users/:userId/reset-credits — reset monthly AI + Elliott credits
-  app.post('/api/admin/users/:userId/reset-credits', requireCryptoAuth, requireAdminAuth, async (req: Request, res: Response) => {
+  app.post('/api/admin/users/:userId/reset-credits', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
     try {
       const { userId } = req.params;
       await cryptoSubscriptionService.resetMonthlyCredits(userId);
@@ -8349,7 +8367,7 @@ CRITICAL DATA RULES:
   });
 
   // POST /api/admin/users/:userId/bonus-credits — add bonus AI/Elliott credits
-  app.post('/api/admin/users/:userId/bonus-credits', requireCryptoAuth, requireAdminAuth, async (req: Request, res: Response) => {
+  app.post('/api/admin/users/:userId/bonus-credits', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
     try {
       const { userId } = req.params;
       const { bonusAi = 0, bonusElliott = 0 } = req.body as { bonusAi?: number; bonusElliott?: number };
@@ -8372,7 +8390,7 @@ CRITICAL DATA RULES:
   });
 
   // PATCH /api/admin/users/:userId/elliott-addon — toggle Elliott Wave add-on
-  app.patch('/api/admin/users/:userId/elliott-addon', requireCryptoAuth, requireAdminAuth, async (req: Request, res: Response) => {
+  app.patch('/api/admin/users/:userId/elliott-addon', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
     try {
       const { userId } = req.params;
       const { enabled } = req.body as { enabled: boolean };
@@ -8388,7 +8406,7 @@ CRITICAL DATA RULES:
   });
 
   // POST /api/admin/users/:userId/custom-access — set custom tool/indicator access list
-  app.post('/api/admin/users/:userId/custom-access', requireCryptoAuth, requireAdminAuth, async (req: Request, res: Response) => {
+  app.post('/api/admin/users/:userId/custom-access', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
     try {
       const { userId } = req.params;
       const { tools } = req.body as { tools: string[] };
@@ -8410,7 +8428,7 @@ CRITICAL DATA RULES:
   });
 
   // POST /api/admin/users/:userId/send-password-reset — generate a Clerk sign-in token (one-time reset link)
-  app.post('/api/admin/users/:userId/send-password-reset', requireCryptoAuth, requireAdminAuth, async (req: Request, res: Response) => {
+  app.post('/api/admin/users/:userId/send-password-reset', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
     try {
       const { userId } = req.params;
       const secretKey = process.env.CLERK_SECRET_KEY;
