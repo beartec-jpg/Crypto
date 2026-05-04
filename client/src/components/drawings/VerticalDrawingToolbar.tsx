@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { Activity, Type, ArrowUpDown } from 'lucide-react';
+import { Activity, Type, ArrowUpDown, Hash, Spline } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
@@ -66,6 +66,18 @@ const TOOLS: ToolConfig[] = [
     icon: Type,
     label: 'Text Label',
     description: 'Place text annotation on chart',
+  },
+  {
+    id: 'number_label',
+    icon: Hash,
+    label: 'Number Label',
+    description: 'Drop sequential numbered labels (1, 2, 3…)',
+  },
+  {
+    id: 'free_draw',
+    icon: Spline,
+    label: 'Free Draw',
+    description: 'Freehand stroke – free / line / curve assisted',
   },
   {
     id: 'elliott_wave',

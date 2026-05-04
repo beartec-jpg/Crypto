@@ -7,6 +7,8 @@ import {
   HorizontalLinePrimitive,
   VerticalLinePrimitive,
   TextLabelPrimitive,
+  NumberLabelPrimitive,
+  FreeDrawPrimitive,
   RectanglePrimitive,
   FibRetracementPrimitive,
   TrendFibPrimitive,
@@ -83,9 +85,9 @@ export function useDrawingPrimitives({
         existingPrimitive.setSelected(selectedDrawingId === drawing.id);
         
         if ('updatePoints' in existingPrimitive) {
-          (existingPrimitive as TrendLinePrimitive | RectanglePrimitive | FibRetracementPrimitive | TrendFibPrimitive | ChannelPrimitive).updatePoints(drawing.points);
+          (existingPrimitive as TrendLinePrimitive | RectanglePrimitive | FibRetracementPrimitive | TrendFibPrimitive | ChannelPrimitive | FreeDrawPrimitive).updatePoints(drawing.points);
         } else if ('updatePoint' in existingPrimitive) {
-          (existingPrimitive as HorizontalLinePrimitive | VerticalLinePrimitive | TextLabelPrimitive).updatePoint(drawing.points[0]);
+          (existingPrimitive as HorizontalLinePrimitive | VerticalLinePrimitive | TextLabelPrimitive | NumberLabelPrimitive).updatePoint(drawing.points[0]);
         }
         
         existingPrimitive.updateStyle(effectiveStyle);
@@ -93,7 +95,7 @@ export function useDrawingPrimitives({
         // Create new primitive
         const primitive = createDrawingPrimitive(
           drawing.id,
-          drawing.type as 'trendline' | 'horizontal' | 'vertical' | 'text' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel',
+          drawing.type as 'trendline' | 'horizontal' | 'vertical' | 'text' | 'number_label' | 'free_draw' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel',
           drawing.points,
           effectiveStyle
         );

@@ -20,6 +20,8 @@ interface DrawingRendererProps {
   onElliottWavePoint?: (point: GesturePoint) => void;
   drawingDefaultsByTool?: Record<string, any>;
   onDrawingComplete?: (tool: Exclude<ChartDrawingTool, null>) => void;
+  /** Returns the next number to use for a number_label drawing */
+  getNextNumberLabel?: () => number;
 }
 
 export function DrawingRenderer({
@@ -36,6 +38,7 @@ export function DrawingRenderer({
   onElliottWavePoint,
   drawingDefaultsByTool,
   onDrawingComplete,
+  getNextNumberLabel,
 }: DrawingRendererProps) {
   const { toast } = useToast();
 
@@ -55,7 +58,7 @@ export function DrawingRenderer({
     }
     
     // For single-point tools, save immediately on first click
-    if (currentTool === 'horizontal' || currentTool === 'vertical' || currentTool === 'text') {
+    if (currentTool === 'horizontal' || currentTool === 'vertical' || currentTool === 'text' || currentTool === 'number_label') {
       const newPoint = { time: point.time as number, price: point.price, snapType: point.snapType };
       const toolDefaults = drawingDefaultsByTool?.[currentTool] || {};
       const useAutoColor = toolDefaults.autoColor ?? autoColorEnabledRef.current;
@@ -71,12 +74,19 @@ export function DrawingRenderer({
             backgroundColor: toolDefaults.backgroundColor || 'rgba(15, 23, 42, 0.8)',
           }
         : {};
+
+      const numberLabelDefaults = currentTool === 'number_label'
+        ? {
+            text: String(getNextNumberLabel?.() ?? 1),
+            fontSize: toolDefaults.fontSize || 13,
+          }
+        : {};
       
       const newDrawing = {
         id: `drawing-${Date.now()}`,
         type: currentTool,
         points: [newPoint],
-        style: { lineWidth: 2, ...toolDefaults, ...textDefaults, color, autoColor: useAutoColor }
+        style: { lineWidth: 2, ...toolDefaults, ...textDefaults, ...numberLabelDefaults, color, autoColor: useAutoColor }
       };
       
       console.log('[Renderer] Creating single-point drawing:', newDrawing);
@@ -85,7 +95,7 @@ export function DrawingRenderer({
       // Save to database
       console.log('[Renderer] Calling saveDrawingMutation.mutate');
       saveDrawingMutation.mutate(newDrawing);
-      toast({ title: 'Drawing Saved', description: `${currentTool === 'text' ? 'text label' : currentTool === 'vertical' ? 'vertical line' : 'horizontal line'} added to chart` });
+      toast({ title: 'Drawing Saved', description: `${currentTool === 'text' ? 'text label' : currentTool === 'number_label' ? `label #${newDrawing.style.text}` : currentTool === 'vertical' ? 'vertical line' : 'horizontal line'} added to chart` });
 
       if (currentTool === 'text') {
         finishDrawing(currentTool);

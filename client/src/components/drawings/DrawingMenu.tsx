@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Pencil, TrendingUp, Minus, Square, GitBranch, Activity, Type, ArrowUpDown } from 'lucide-react';
+import { Pencil, TrendingUp, Minus, Square, GitBranch, Activity, Type, ArrowUpDown, Hash, Spline } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import type { ChartDrawingTool } from '@/types/drawing';
+import type { ChartDrawingTool, FreeDrawMode } from '@/types/drawing';
 
 interface DrawingTool {
   id: ChartDrawingTool;
@@ -79,6 +79,18 @@ const DRAWING_TOOLS: DrawingTool[] = [
     description: 'Place text annotation on chart',
   },
   {
+    id: 'number_label',
+    icon: <Hash className="h-4 w-4" />,
+    label: 'Number Label',
+    description: 'Drop sequential numbered labels',
+  },
+  {
+    id: 'free_draw',
+    icon: <Spline className="h-4 w-4" />,
+    label: 'Free Draw',
+    description: 'Freehand stroke on chart',
+  },
+  {
     id: 'rectangle',
     icon: <Square className="h-4 w-4" />,
     label: 'Rectangle',
@@ -113,10 +125,18 @@ const DRAWING_TOOLS: DrawingTool[] = [
 interface DrawingMenuProps {
   activeTool: ChartDrawingTool;
   onSelectTool: (tool: ChartDrawingTool) => void;
+  freeDrawMode?: FreeDrawMode;
+  onFreeDrawModeChange?: (mode: FreeDrawMode) => void;
   className?: string;
 }
 
-export function DrawingMenu({ activeTool, onSelectTool, className }: DrawingMenuProps) {
+const FREE_DRAW_MODES: { mode: FreeDrawMode; label: string; title: string }[] = [
+  { mode: 'free', label: '~', title: 'Free – exact stroke' },
+  { mode: 'line_assisted', label: '⟋', title: 'Line assisted – straightens segments' },
+  { mode: 'curve_assisted', label: '∪', title: 'Curve assisted – smooth curves' },
+];
+
+export function DrawingMenu({ activeTool, onSelectTool, freeDrawMode = 'line_assisted', onFreeDrawModeChange, className }: DrawingMenuProps) {
   const [open, setOpen] = useState(false);
 
   const handleSelectTool = (toolId: ChartDrawingTool) => {
@@ -160,8 +180,30 @@ export function DrawingMenu({ activeTool, onSelectTool, className }: DrawingMenu
       <DropdownMenuContent
         side="bottom"
         align="start"
-        className="w-52 bg-slate-900 border-slate-700 text-slate-100 p-1"
+        className="w-56 bg-slate-900 border-slate-700 text-slate-100 p-1"
       >
+        {/* Free-draw sub-mode selector shown when free_draw is active */}
+        {activeTool === 'free_draw' && onFreeDrawModeChange && (
+          <div className="flex items-center gap-1 px-2 py-1.5 mb-1 border-b border-slate-700">
+            <span className="text-xs text-slate-400 mr-1">Mode:</span>
+            {FREE_DRAW_MODES.map(({ mode, label, title }) => (
+              <button
+                key={mode}
+                title={title}
+                onClick={(e: React.MouseEvent) => { e.stopPropagation(); onFreeDrawModeChange(mode); }}
+                className={cn(
+                  'flex-1 rounded px-1.5 py-0.5 text-sm font-mono transition-colors',
+                  freeDrawMode === mode
+                    ? 'bg-blue-600 text-white'
+                    : 'text-slate-300 hover:bg-slate-700',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {DRAWING_TOOLS.map(tool => (
           <DropdownMenuItem
             key={tool.id}

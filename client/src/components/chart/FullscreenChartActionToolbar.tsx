@@ -19,6 +19,8 @@ interface ConfluenceSnapshot {
 interface FullscreenChartActionToolbarProps {
   activeTool: ChartDrawingTool;
   onSelectTool: (tool: ChartDrawingTool) => void;
+  freeDrawMode?: import('@/types/drawing').FreeDrawMode;
+  onFreeDrawModeChange?: (mode: import('@/types/drawing').FreeDrawMode) => void;
 
   selectedOscillators: Set<string>;
   onToggleOscillator: (id: string, enabled: boolean) => void;
@@ -102,6 +104,8 @@ interface FullscreenChartActionToolbarProps {
 export function FullscreenChartActionToolbar({
   activeTool,
   onSelectTool,
+  freeDrawMode,
+  onFreeDrawModeChange,
   selectedOscillators,
   onToggleOscillator,
   onOpenOscillators,
@@ -171,7 +175,7 @@ export function FullscreenChartActionToolbar({
 }: FullscreenChartActionToolbarProps) {
   return (
     <div className="absolute top-2 left-2 z-30 flex items-center gap-1 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-1 shadow-xl">
-      <DrawingMenu activeTool={activeTool} onSelectTool={onSelectTool} />
+      <DrawingMenu activeTool={activeTool} onSelectTool={onSelectTool} freeDrawMode={freeDrawMode} onFreeDrawModeChange={onFreeDrawModeChange} />
       <IndicatorMenu
         selectedOscillators={selectedOscillators}
         onToggleOscillator={onToggleOscillator}

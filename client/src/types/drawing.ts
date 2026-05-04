@@ -29,12 +29,16 @@ export type ChartDrawingTool =
   | 'horizontal' 
   | 'vertical'
   | 'text'
+  | 'number_label'
+  | 'free_draw'
   | 'rectangle' 
   | 'fib_retracement' 
   | 'trend_fib' 
   | 'channel'
   | 'elliott_wave'
   | null;
+
+export type FreeDrawMode = 'free' | 'line_assisted' | 'curve_assisted';
 
 export type LineStyle = 'solid' | 'dashed' | 'dotted';
 
@@ -303,6 +307,8 @@ export interface Drawing {
     customPointLabels?: Record<number, string>;
     /** For elliott_wave drawings: indices of points whose labels should be hidden */
     hiddenPointLabels?: number[];
+    /** For free_draw drawings: the drawing sub-mode used to capture/render the stroke */
+    drawSubMode?: 'free' | 'line_assisted' | 'curve_assisted';
   };
 }
 
