@@ -12,6 +12,7 @@ import type {
 export interface ManualTrade {
   id: string;
   symbol: string;
+  timeframe: string;
   direction: 'LONG' | 'SHORT';
   entryPrice: number;
   slPrice: number;

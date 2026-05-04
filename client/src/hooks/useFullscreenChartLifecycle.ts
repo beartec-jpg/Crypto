@@ -42,7 +42,8 @@ export function useFullscreenChartLifecycle({
     if (!candleSeriesRef.current) return;
 
     if (candles.length === 0) {
-      candleSeriesRef.current.setData([]);
+      // Don't blank the chart while fetching – keep the previous bars visible
+      // until new data arrives so there is no flash of empty content.
       return;
     }
 

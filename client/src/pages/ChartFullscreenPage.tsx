@@ -493,7 +493,7 @@ export function ChartFullscreenPage({
     })),
     [effectiveCandles],
   );
-  const { trades: manualTrades, addTrade: addManualTrade, exitTrade: exitManualTrade, deleteTrade: deleteManualTrade } = useManualTrades(symbol, tradeCandleData);
+  const { trades: manualTrades, addTrade: addManualTrade, exitTrade: exitManualTrade, deleteTrade: deleteManualTrade } = useManualTrades(symbol, timeframe, tradeCandleData);
   const latestTradeCandle = tradeCandleData[tradeCandleData.length - 1];
   const currentTradePrice = latestTradeCandle?.close ?? 0;
   const currentTradeTime = latestTradeCandle?.time ?? 0;
@@ -2578,7 +2578,7 @@ export function ChartFullscreenPage({
           smartMoneyPanelData={smartMoneyPanelData}
           showHtfBiasPanel={htfBiasSettings.settings.enabled}
           htfBiasEntries={htfBiasEntries}
-          isLoading={isLoading}
+          isLoading={isLoading && candles.length === 0}
           errorMessage={error?.message || null}
           chartContainerRef={chartContainerRef}
           chartPercentage={oscillatorPanel.chartPercentage}
@@ -2701,6 +2701,7 @@ export function ChartFullscreenPage({
           candleSeries={candleSeriesRef.current}
           trades={manualTrades}
           currentTime={currentTradeTime}
+          timeframe={timeframe}
         />
 
         {/* Trade panel popup */}
@@ -2710,6 +2711,7 @@ export function ChartFullscreenPage({
               currentPrice={currentTradePrice}
               currentTime={currentTradeTime}
               symbol={symbol}
+              timeframe={timeframe}
               trades={manualTrades}
               onAddTrade={addManualTrade}
               onExitTrade={exitManualTrade}

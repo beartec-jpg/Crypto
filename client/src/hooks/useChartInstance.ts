@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { createChart, IChartApi, ISeriesApi, ColorType, CandlestickSeries } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, ColorType, CandlestickSeries, CrosshairMode } from 'lightweight-charts';
+import { formatPriceDynamic } from '@/lib/chart/priceUtils';
 import {
   RESIZE_DEBOUNCE_MS,
   MOBILE_NAV_HEIGHT,
@@ -125,6 +126,9 @@ export function useChartInstance({
         vertLines: { color: '#1e293b' },
         horzLines: { color: '#1e293b' },
       },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+      },
       width,
       height,
       timeScale: {
@@ -143,6 +147,11 @@ export function useChartInstance({
       borderDownColor: '#ef4444',
       wickUpColor: '#22c55e',
       wickDownColor: '#ef4444',
+      priceFormat: {
+        type: 'custom',
+        minMove: 0.00000001,
+        formatter: (price: number) => formatPriceDynamic(price),
+      },
     });
 
     chartRef.current = chart;
