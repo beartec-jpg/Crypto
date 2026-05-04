@@ -25,6 +25,7 @@ const CryptoFeedbackBoard = lazy(() => import('@/pages/CryptoFeedbackBoard'));
 const CryptoElliottWaveLessons = lazy(() => import('@/pages/CryptoElliottWaveLessons'));
 const DevAnalytics = lazy(() => import('@/pages/DevAnalytics'));
 const CryptoSandbox = lazy(() => import('@/pages/CryptoSandbox'));
+const AdminPanel = lazy(() => import('@/pages/AdminPanel'));
 const NotFound = lazy(() => import('@/pages/not-found'));
 // 1. Add with other lazy imports (around line 22)
 const Wallet = lazy(() => import('@/pages/Wallet'));
@@ -151,6 +152,12 @@ function App() {
             </Route>
             <Route path="/dev/analytics">
               <ProtectedRoute component={DevAnalytics} />
+            </Route>
+            <Route path="/admin">
+              <ProtectedRoute component={DevAnalytics} />
+            </Route>
+            <Route path="/admin/users">
+              <ProtectedRoute component={AdminPanel} />
             </Route>
             <Route path="/dev/sandbox">
               <ProtectedRoute component={CryptoSandbox} />

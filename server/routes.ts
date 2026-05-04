@@ -5047,8 +5047,8 @@ JSON output only, no markdown:
 
       console.log(`📊 Subscription check for ${userEmail} (${userId})`);
 
-      // ADMIN OVERRIDE: beartec@beartec.uk is always elite without Stripe check
-      if (userEmail === 'beartec@beartec.uk') {
+      // ADMIN OVERRIDE: any @beartec.uk account is always elite without Stripe check
+      if (userEmail.endsWith('@beartec.uk')) {
         return res.json({
           tier: 'elite',
           status: 'active',
@@ -7000,6 +7000,7 @@ Return JSON:
 
   // ==================== FEEDBACK BOARD ROUTES ====================
   const ADMIN_EMAIL = 'beartec@beartec.uk';
+  const isAdminEmail = (email: string) => email === ADMIN_EMAIL || email.endsWith('@beartec.uk');
 
   // Get all feedback posts (public)
   app.get("/api/crypto/feedback-board", async (_req, res) => {
@@ -7126,7 +7127,7 @@ Return JSON:
       const userEmail = (req as any).cryptoUser?.email?.toLowerCase() || '';
       
       // Admin only access
-      if (userEmail !== ADMIN_EMAIL) {
+      if (!isAdminEmail(userEmail)) {
         return res.status(403).json({ error: 'This feature is in sandbox mode - admin access only' });
       }
       
@@ -7438,7 +7439,7 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
       const userEmail = req.cryptoUser?.email?.toLowerCase() || '';
       
       // Admin only access
-      if (userEmail !== ADMIN_EMAIL) {
+      if (!isAdminEmail(userEmail)) {
         return res.status(403).json({ error: 'This feature is in sandbox mode - admin access only' });
       }
       
@@ -7833,7 +7834,7 @@ CRITICAL FOR SINGLE-PHASE STRUCTURES:
       const userEmail = (req as any).cryptoUser?.email?.toLowerCase() || '';
       
       // Admin only access
-      if (userEmail !== ADMIN_EMAIL) {
+      if (!isAdminEmail(userEmail)) {
         return res.status(403).json({ error: 'This feature is in sandbox mode - admin access only' });
       }
       
@@ -8180,7 +8181,7 @@ CRITICAL DATA RULES:
     try {
       // Check if user is dev (beartec@beartec.uk)
       const userEmail = req.cryptoUser?.email || '';
-      const isDev = userEmail === 'beartec@beartec.uk';
+      const isDev = userEmail.endsWith('@beartec.uk');
       
       if (!isDev) {
         return res.status(403).json({ error: 'Dev access only' });
@@ -8210,7 +8211,7 @@ CRITICAL DATA RULES:
   app.get("/api/analytics/realtime", async (req: Request, res: Response) => {
     try {
       const userEmail = req.cryptoUser?.email || '';
-      const isDev = userEmail === 'beartec@beartec.uk';
+      const isDev = userEmail.endsWith('@beartec.uk');
       
       if (!isDev) {
         return res.status(403).json({ error: 'Dev access only' });
@@ -8228,7 +8229,7 @@ CRITICAL DATA RULES:
   app.get("/api/analytics/top", async (req: Request, res: Response) => {
     try {
       const userEmail = req.cryptoUser?.email || '';
-      const isDev = userEmail === 'beartec@beartec.uk';
+      const isDev = userEmail.endsWith('@beartec.uk');
       
       if (!isDev) {
         return res.status(403).json({ error: 'Dev access only' });
@@ -8247,7 +8248,7 @@ CRITICAL DATA RULES:
   app.get("/api/analytics/api-costs", async (req: Request, res: Response) => {
     try {
       const userEmail = req.cryptoUser?.email || '';
-      const isDev = userEmail === 'beartec@beartec.uk';
+      const isDev = userEmail.endsWith('@beartec.uk');
       
       if (!isDev) {
         return res.status(403).json({ error: 'Dev access only' });
@@ -8268,6 +8269,185 @@ CRITICAL DATA RULES:
       res.json(costs);
     } catch (error: any) {
       console.error('API costs error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ─── Admin User Management API ────────────────────────────────────────────
+  // All routes require an authenticated @beartec.uk account.
+  // Simple in-memory rate limiter: max 60 requests per minute per user.
+  const adminRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  function adminRateLimit(req: Request, res: Response, next: NextFunction) {
+    const key = (req as any).cryptoUser?.email || req.ip || 'unknown';
+    const now = Date.now();
+    const windowMs = 60_000;
+    const maxRequests = 60;
+    const entry = adminRateLimitMap.get(key);
+    if (!entry || now > entry.resetAt) {
+      adminRateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+    entry.count += 1;
+    if (entry.count > maxRequests) {
+      return res.status(429).json({ error: 'Too many requests. Please wait before retrying.' });
+    }
+    return next();
+  }
+
+  function requireAdminAuth(req: Request, res: Response, next: NextFunction) {
+    const email = (req as any).cryptoUser?.email || '';
+    if (!email.endsWith('@beartec.uk')) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    return next();
+  }
+
+  // GET /api/admin/users — list all users with their subscription details
+  app.get('/api/admin/users', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
+    try {
+      const { db } = await import('./db');
+      const { cryptoUsers: usersTable, cryptoSubscriptions: subsTable } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+
+      const rows = await db
+        .select({
+          userId: usersTable.id,
+          email: usersTable.email,
+          firstName: usersTable.firstName,
+          lastName: usersTable.lastName,
+          createdAt: usersTable.createdAt,
+          tier: subsTable.tier,
+          hasElliottAddon: subsTable.hasElliottAddon,
+          aiCredits: subsTable.aiCredits,
+          elliottAiCredits: subsTable.elliottAiCredits,
+          bonusAiCredits: subsTable.bonusAiCredits,
+          bonusElliottCredits: subsTable.bonusElliottCredits,
+          customToolAccess: subsTable.customToolAccess,
+          subscriptionStatus: subsTable.subscriptionStatus,
+        })
+        .from(usersTable)
+        .leftJoin(subsTable, eq(usersTable.id, subsTable.userId))
+        .orderBy(usersTable.createdAt);
+
+      res.json(rows);
+    } catch (error: any) {
+      console.error('Admin users error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // PATCH /api/admin/users/:userId/tier — update subscription tier
+  app.patch('/api/admin/users/:userId/tier', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const { tier } = req.body as { tier: string };
+      const validTiers = ['free', 'beginner', 'intermediate', 'pro', 'elite'];
+      if (!tier || !validTiers.includes(tier)) {
+        return res.status(400).json({ error: `tier must be one of: ${validTiers.join(', ')}` });
+      }
+      await cryptoSubscriptionService.updateSubscriptionTier(userId, tier as any, '');
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Admin tier update error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/admin/users/:userId/reset-credits — reset monthly AI + Elliott credits
+  app.post('/api/admin/users/:userId/reset-credits', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      await cryptoSubscriptionService.resetMonthlyCredits(userId);
+      await cryptoSubscriptionService.resetElliottMonthlyCredits(userId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Admin reset credits error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/admin/users/:userId/bonus-credits — add bonus AI/Elliott credits
+  app.post('/api/admin/users/:userId/bonus-credits', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const { bonusAi = 0, bonusElliott = 0 } = req.body as { bonusAi?: number; bonusElliott?: number };
+      if (typeof bonusAi !== 'number' || bonusAi < 0 || !Number.isInteger(bonusAi)) {
+        return res.status(400).json({ error: 'bonusAi must be a non-negative integer' });
+      }
+      if (typeof bonusElliott !== 'number' || bonusElliott < 0 || !Number.isInteger(bonusElliott)) {
+        return res.status(400).json({ error: 'bonusElliott must be a non-negative integer' });
+      }
+      const { db } = await import('./db');
+      const { cryptoSubscriptions: subsTable } = await import('@shared/schema');
+      const { eq, sql: drizzleSql } = await import('drizzle-orm');
+      await db
+        .update(subsTable)
+        .set({
+          bonusAiCredits: drizzleSql`COALESCE(${subsTable.bonusAiCredits}, 0) + ${bonusAi}`,
+          bonusElliottCredits: drizzleSql`COALESCE(${subsTable.bonusElliottCredits}, 0) + ${bonusElliott}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(subsTable.userId, userId));
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Admin bonus credits error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // PATCH /api/admin/users/:userId/elliott-addon — toggle Elliott Wave add-on
+  app.patch('/api/admin/users/:userId/elliott-addon', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const { enabled } = req.body as { enabled: boolean };
+      if (typeof enabled !== 'boolean') {
+        return res.status(400).json({ error: 'enabled must be a boolean' });
+      }
+      await cryptoSubscriptionService.toggleElliottAddon(userId, enabled);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Admin Elliott addon error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/admin/users/:userId/custom-access — set custom tool/indicator access list
+  app.post('/api/admin/users/:userId/custom-access', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const { tools } = req.body as { tools: string[] };
+      if (!Array.isArray(tools)) {
+        return res.status(400).json({ error: 'tools must be an array of strings' });
+      }
+      const { db } = await import('./db');
+      const { cryptoSubscriptions: subsTable } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      await db
+        .update(subsTable)
+        .set({ customToolAccess: tools, updatedAt: new Date() })
+        .where(eq(subsTable.userId, userId));
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Admin custom access error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/admin/users/:userId/send-password-reset — generate a Clerk sign-in token (one-time reset link)
+  app.post('/api/admin/users/:userId/send-password-reset', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const secretKey = process.env.CLERK_SECRET_KEY;
+      if (!secretKey) {
+        return res.status(500).json({ error: 'Clerk not configured' });
+      }
+      const { createClerkClient } = await import('@clerk/backend');
+      const clerk = createClerkClient({ secretKey });
+      // Create a one-time sign-in token valid for 10 minutes
+      const token = await clerk.signInTokens.createSignInToken({ userId, expiresInSeconds: 600 });
+      res.json({ token: token.token, url: token.url });
+    } catch (error: any) {
+      console.error('Admin password reset error:', error);
       res.status(500).json({ error: error.message });
     }
   });

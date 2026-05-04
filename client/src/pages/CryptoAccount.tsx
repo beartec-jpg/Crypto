@@ -2,7 +2,7 @@ import { Helmet } from 'react-helmet-async';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { useCryptoAuth, isDevelopment, setDevAdminMode, ADMIN_EMAIL } from '@/hooks/useCryptoAuth';
 import { useQuery } from '@tanstack/react-query';
-import { Crown, Sparkles, Info, CreditCard, Bot, Shield, LogIn, LogOut, User, ShieldCheck, UserCircle, BarChart3, Camera, Key, Edit3, Save, X } from 'lucide-react';
+import { Crown, Sparkles, Info, CreditCard, Bot, Shield, LogIn, LogOut, User, ShieldCheck, UserCircle, BarChart3, Camera, Key, Edit3, Save, X, Users } from 'lucide-react';
 import { Link } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -377,10 +377,16 @@ export default function CryptoAccount() {
                   <h3 className="text-lg font-bold text-purple-300">Admin Panel</h3>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  <Link href="/dev/analytics">
+                  <Link href="/admin">
                     <Button className="bg-purple-600 hover:bg-purple-700" data-testid="button-dev-analytics">
                       <BarChart3 className="w-4 h-4 mr-2" />
-                      Developer Analytics
+                      Analytics Dashboard
+                    </Button>
+                  </Link>
+                  <Link href="/admin/users">
+                    <Button className="bg-indigo-600 hover:bg-indigo-700" data-testid="button-admin-users">
+                      <Users className="w-4 h-4 mr-2" />
+                      User Management
                     </Button>
                   </Link>
                   <Link href="/dev/sandbox">

@@ -1929,6 +1929,13 @@ export function ChartFullscreenPage({
       event.preventDefault();
     };
 
+    // If the pointer leaves the window (or touch is cancelled) while dragging, end
+    // the drag so that resumeChartPanZoom() is called and the chart does not stay frozen.
+    const onPointerLeaveOrCancel = () => {
+      if (!dragEditStateRef.current) return;
+      endDrawingDrag();
+    };
+
     container.addEventListener('mousedown', onMouseDown);
     container.addEventListener('touchstart', onTouchStart, { passive: false });
     container.addEventListener('click', onClickCapture, true);
@@ -1936,6 +1943,9 @@ export function ChartFullscreenPage({
     window.addEventListener('touchmove', onTouchMove, { passive: false });
     window.addEventListener('mouseup', onPointerEnd);
     window.addEventListener('touchend', onPointerEnd);
+    document.addEventListener('mouseleave', onPointerLeaveOrCancel);
+    window.addEventListener('touchcancel', onPointerLeaveOrCancel);
+    window.addEventListener('blur', onPointerLeaveOrCancel);
 
     return () => {
       container.removeEventListener('mousedown', onMouseDown);
@@ -1945,6 +1955,9 @@ export function ChartFullscreenPage({
       window.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener('mouseup', onPointerEnd);
       window.removeEventListener('touchend', onPointerEnd);
+      document.removeEventListener('mouseleave', onPointerLeaveOrCancel);
+      window.removeEventListener('touchcancel', onPointerLeaveOrCancel);
+      window.removeEventListener('blur', onPointerLeaveOrCancel);
     };
   }, [beginDrawingDrag, updateDrawingDrag, endDrawingDrag]);
 
@@ -2146,6 +2159,15 @@ export function ChartFullscreenPage({
   useEffect(() => { activeToolRef.current = activeTool; }, [activeTool]);
   useEffect(() => { freeDrawModeRef.current = freeDrawMode; }, [freeDrawMode]);
 
+  // Resume pan/zoom whenever activeTool changes (including when cancelled via Escape or
+  // tool-switch). This unblocks the chart if pauseChartPanZoom() was called mid-stroke
+  // but resumeChartPanZoom() was never reached due to the interrupted interaction.
+  useEffect(() => {
+    resumeChartPanZoom();
+    dragEditStateRef.current = null;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTool]);
+
   const modalHelpers = useFullscreenModalHelpers({
     selectedDrawingId: drawingInteraction.selectedDrawingId,
     drawings,
@@ -2310,6 +2332,11 @@ export function ChartFullscreenPage({
       window.removeEventListener('touchmove', onTouchMove);
       window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('touchend', onTouchEnd);
+      // If the effect tears down mid-stroke (e.g. tool switched away), unlock pan/zoom.
+      if (isDrawing) {
+        isDrawing = false;
+        resumeChartPanZoom();
+      }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   // The effect uses refs (chartRef, candleSeriesRef, freeDrawModeRef) and stable
