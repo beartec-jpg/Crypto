@@ -8371,6 +8371,12 @@ CRITICAL DATA RULES:
     try {
       const { userId } = req.params;
       const { bonusAi = 0, bonusElliott = 0 } = req.body as { bonusAi?: number; bonusElliott?: number };
+      if (typeof bonusAi !== 'number' || bonusAi < 0 || !Number.isInteger(bonusAi)) {
+        return res.status(400).json({ error: 'bonusAi must be a non-negative integer' });
+      }
+      if (typeof bonusElliott !== 'number' || bonusElliott < 0 || !Number.isInteger(bonusElliott)) {
+        return res.status(400).json({ error: 'bonusElliott must be a non-negative integer' });
+      }
       const { db } = await import('./db');
       const { cryptoSubscriptions: subsTable } = await import('@shared/schema');
       const { eq, sql: drizzleSql } = await import('drizzle-orm');

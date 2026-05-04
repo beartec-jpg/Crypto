@@ -290,11 +290,16 @@ function UserRow({ user }: { user: AdminUser }) {
     },
     onSuccess: (data) => {
       const link = data.url || data.token;
-      navigator.clipboard.writeText(link).catch(() => {});
-      toast({
-        title: 'Reset link generated',
-        description: 'The one-time sign-in link has been copied to your clipboard.',
-      });
+      navigator.clipboard.writeText(link).then(
+        () => toast({
+          title: 'Reset link generated',
+          description: 'The one-time sign-in link has been copied to your clipboard.',
+        }),
+        () => toast({
+          title: 'Reset link generated',
+          description: `Copy this link manually: ${link}`,
+        }),
+      );
     },
     onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
   });
@@ -335,7 +340,7 @@ function UserRow({ user }: { user: AdminUser }) {
         </td>
         <td className="py-3 px-4">
           {(user.customToolAccess?.length ?? 0) > 0 ? (
-            <Badge className="bg-indigo-600 text-white text-xs">{user.customToolAccess!.length} tools</Badge>
+            <Badge className="bg-indigo-600 text-white text-xs">{user.customToolAccess?.length} tools</Badge>
           ) : (
             <span className="text-slate-500 text-xs">—</span>
           )}
