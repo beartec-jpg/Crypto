@@ -101,9 +101,10 @@ import { useManualTrades } from '@/hooks/useManualTrades';
 import { TradePanel } from '@/components/trading/TradePanel';
 import { TradeZoneRenderer } from '@/components/chart/TradeZoneRenderer';
 // Types and constants
-import type { Drawing, ChartDrawingTool } from '@/types/drawing';
+import type { Drawing, ChartDrawingTool, FreeDrawMode } from '@/types/drawing';
 import type { DivergencePoint, MAConfig } from '@/types/chart.types';
 import type { Candle } from '@/types/chart';
+import { simplifyForLine, simplifyForCurve } from '@/lib/drawingUtils';
 
 interface ChartFullscreenPageProps {
   onClose: () => void;
@@ -113,6 +114,9 @@ interface ChartFullscreenPageProps {
 }
 
 const TOTAL_CONFLUENCE_REFRESH_MS = 2 * 60 * 1000;
+
+/** When free-draw mode is 'free', capture every Nth pixel point to limit array size */
+const FREE_MODE_POINT_INTERVAL = 3;
 
 // All possible oscillator panel IDs (must match OscillatorSelectorModal)
 const ALL_OSCILLATOR_IDS = [
@@ -220,6 +224,8 @@ export function ChartFullscreenPage({
   const [symbol, setSymbol] = useState(initialSymbol);
   const [timeframe, setTimeframe] = useState(initialTimeframe);
   const [activeTool, setActiveTool] = useState<ChartDrawingTool>(null);
+  const [freeDrawMode, setFreeDrawMode] = useState<FreeDrawMode>('line_assisted');
+  const freeDrawModeRef = useRef<FreeDrawMode>('line_assisted');
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [drawingsVisible, setDrawingsVisible] = useState(true);
   const [activeEdit, setActiveEdit] = useState<{ drawingId: string; pointIndex: number; originalDrawing: Drawing } | null>(null);
@@ -1958,7 +1964,7 @@ export function ChartFullscreenPage({
   }, [drawingInteraction.selectedDrawingId, toast]);
 
   const handleDrawingComplete = useCallback((tool: Exclude<ChartDrawingTool, null>) => {
-    const repeatPlaceTools: ChartDrawingTool[] = ['trendline', 'horizontal', 'rectangle', 'channel'];
+    const repeatPlaceTools: ChartDrawingTool[] = ['trendline', 'horizontal', 'rectangle', 'channel', 'number_label'];
     setTempDrawing(null);
 
     if (repeatPlaceTools.includes(tool)) {
@@ -2108,7 +2114,7 @@ export function ChartFullscreenPage({
 
   // Hooks - Gesture controller
   const gestureController = useChartGestures({
-    enabled: activeTool !== null,
+    enabled: activeTool !== null && activeTool !== 'free_draw',
     data: candles as unknown as { time: Time; open: number; high: number; low: number; close: number }[],
     onPointCommit: (point) => onPointCommitRef.current?.(point),
     onCrosshairModeChange: () => {},
@@ -2138,6 +2144,7 @@ export function ChartFullscreenPage({
 
   // Update refs
   useEffect(() => { activeToolRef.current = activeTool; }, [activeTool]);
+  useEffect(() => { freeDrawModeRef.current = freeDrawMode; }, [freeDrawMode]);
 
   const modalHelpers = useFullscreenModalHelpers({
     selectedDrawingId: drawingInteraction.selectedDrawingId,
@@ -2174,6 +2181,142 @@ export function ChartFullscreenPage({
     }
     elliottWaveController.handleSelectTool(tool);
   }, [elliottWaveController]);
+
+  /** Returns the next sequential number for a number_label drawing. */
+  const getNextNumberLabel = useCallback(() => {
+    const max = drawings.reduce((acc, d) => {
+      if (d.type === 'number_label') {
+        const n = parseInt(d.style?.text ?? '0', 10);
+        return Number.isFinite(n) ? Math.max(acc, n) : acc;
+      }
+      return acc;
+    }, 0);
+    return max + 1;
+  }, [drawings]);
+
+  // ── Free draw capture ──────────────────────────────────────────────────────
+  // When free_draw tool is active, capture raw pixel points on drag and convert
+  // to time/price after the stroke ends, then apply the selected sub-mode algorithm.
+  useEffect(() => {
+    if (activeTool !== 'free_draw') return;
+    const container = chartContainerRef.current;
+    if (!container) return;
+
+    let isDrawing = false;
+    const rawPx: { x: number; y: number }[] = [];
+
+    const getLocalXY = (clientX: number, clientY: number) => {
+      const rect = container.getBoundingClientRect();
+      return { x: clientX - rect.left, y: clientY - rect.top };
+    };
+
+    const onStart = (clientX: number, clientY: number) => {
+      isDrawing = true;
+      rawPx.length = 0;
+      pauseChartPanZoom();
+      rawPx.push(getLocalXY(clientX, clientY));
+    };
+
+    const onMove = (clientX: number, clientY: number) => {
+      if (!isDrawing) return;
+      rawPx.push(getLocalXY(clientX, clientY));
+    };
+
+    const onEnd = () => {
+      if (!isDrawing) return;
+      isDrawing = false;
+      resumeChartPanZoom();
+
+      if (rawPx.length < 2 || !chartRef.current || !candleSeriesRef.current) return;
+
+      // Convert every raw pixel to (time, price)
+      const allPoints: { time: number; price: number }[] = [];
+      for (const px of rawPx) {
+        const logical = chartRef.current.timeScale().coordinateToLogical(px.x);
+        const price = candleSeriesRef.current.coordinateToPrice(px.y);
+        if (logical === null || price === null) continue;
+        allPoints.push({ time: logicalToTime(logical), price });
+      }
+      if (allPoints.length < 2) return;
+
+      // Apply sub-mode algorithm
+      let finalPoints: { time: number; price: number }[];
+      const currentMode = freeDrawModeRef.current;
+      if (currentMode === 'free') {
+        // Thin the raw points by taking every Nth point to avoid enormous arrays
+        finalPoints = rawPx
+          .filter((_, i) => i % FREE_MODE_POINT_INTERVAL === 0 || i === rawPx.length - 1)
+          .map((px) => {
+            const logical = chartRef.current!.timeScale().coordinateToLogical(px.x);
+            const price = candleSeriesRef.current!.coordinateToPrice(px.y);
+            if (logical === null || price === null) return null;
+            return { time: logicalToTime(logical), price };
+          })
+          .filter((p): p is { time: number; price: number } => p !== null);
+      } else if (currentMode === 'line_assisted') {
+        const indices = simplifyForLine(rawPx);
+        // indices are guaranteed within [0, allPoints.length-1] by simplifyForLine
+        finalPoints = indices.map((i) => allPoints[i]).filter(Boolean);
+      } else {
+        // curve_assisted
+        const indices = simplifyForCurve(rawPx);
+        // indices are guaranteed within [0, allPoints.length-1] by simplifyForCurve
+        finalPoints = indices.map((i) => allPoints[i]).filter(Boolean);
+      }
+
+      if (finalPoints.length < 2) return;
+
+      const newDrawing: Drawing = {
+        id: `drawing-${Date.now()}`,
+        type: 'free_draw',
+        points: finalPoints,
+        style: {
+          color: '#3b82f6',
+          lineWidth: 2,
+          drawSubMode: currentMode,
+        },
+        timeframe,
+      };
+
+      setDrawings((d: Drawing[]) => [...d, newDrawing]);
+      saveDrawingWithUndo(newDrawing);
+      toast({ title: 'Drawing Saved', description: 'Free draw added to chart' });
+    };
+
+    const onMouseDown = (e: MouseEvent) => { onStart(e.clientX, e.clientY); };
+    const onMouseMove = (e: MouseEvent) => { onMove(e.clientX, e.clientY); };
+    const onMouseUp = () => { onEnd(); };
+    const onTouchStart = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (t) { e.preventDefault(); onStart(t.clientX, t.clientY); }
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (t) { e.preventDefault(); onMove(t.clientX, t.clientY); }
+    };
+    const onTouchEnd = () => { onEnd(); };
+
+    container.addEventListener('mousedown', onMouseDown);
+    container.addEventListener('touchstart', onTouchStart, { passive: false });
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('touchend', onTouchEnd);
+
+    return () => {
+      container.removeEventListener('mousedown', onMouseDown);
+      container.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('touchend', onTouchEnd);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // The effect uses refs (chartRef, candleSeriesRef, freeDrawModeRef) and stable
+  // callbacks (pauseChartPanZoom, resumeChartPanZoom, saveDrawingWithUndo, toast,
+  // setDrawings, logicalToTime) that do not need to re-run the effect.
+  // Only activeTool and timeframe drive re-binding of event listeners.
+  }, [activeTool, timeframe]);
 
   useFullscreenKeyboardShortcuts({
     activeTool,
@@ -2400,6 +2543,8 @@ export function ChartFullscreenPage({
         <FullscreenChartActionToolbar
           activeTool={activeTool}
           onSelectTool={handleSelectToolWithMemory}
+          freeDrawMode={freeDrawMode}
+          onFreeDrawModeChange={setFreeDrawMode}
           selectedOscillators={oscillatorPanel.selectedOscillators}
           onToggleOscillator={oscillatorPanel.toggleOscillator}
           onOpenOscillators={() => oscillatorPanel.setShowSelector(true)}
@@ -2649,7 +2794,7 @@ export function ChartFullscreenPage({
 
         {/* Drawing Renderer */}
         <DrawingRenderer
-          drawingMode={activeTool ? 'draw' : 'off'}
+          drawingMode={activeTool && activeTool !== 'free_draw' ? 'draw' : 'off'}
           activeTool={activeTool}
           activeToolRef={activeToolRef}
           autoColorEnabledRef={autoColorEnabledRef}
@@ -2661,6 +2806,7 @@ export function ChartFullscreenPage({
           onPointCommitRef={onPointCommitRef}
           drawingDefaultsByTool={drawingDefaultsByTool}
           onDrawingComplete={handleDrawingComplete}
+          getNextNumberLabel={getNextNumberLabel}
           onElliottWavePoint={elliottWave.isActive && elliottWave.isDrawing
             ? (p: GesturePoint) => {
                 elliottWave.placePoint(p.time as number, p.price, p.snapType);

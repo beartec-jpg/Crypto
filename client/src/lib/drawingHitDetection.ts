@@ -401,6 +401,41 @@ function getDistanceToDrawing(
       return minDistance === Infinity ? null : minDistance;
     }
     
+    case 'number_label': {
+      if (drawing.points.length < 1) return null;
+      const nx = timeScale.timeToCoordinate(drawing.points[0].time as Time);
+      const ny = series.priceToCoordinate(drawing.points[0].price);
+      if (nx === null || ny === null) return null;
+      // Hit radius matches the rendered circle radius (~14 px)
+      return Math.sqrt((clickX - nx) ** 2 + (clickY - ny) ** 2);
+    }
+
+    case 'free_draw': {
+      if (drawing.points.length < 2) return null;
+      let minDistance = Infinity;
+      for (let i = 0; i < drawing.points.length - 1; i++) {
+        const p1 = drawing.points[i];
+        const p2 = drawing.points[i + 1];
+        const x1 = timeScale.timeToCoordinate(p1.time as Time);
+        const y1 = series.priceToCoordinate(p1.price);
+        const x2 = timeScale.timeToCoordinate(p2.time as Time);
+        const y2 = series.priceToCoordinate(p2.price);
+        if (x1 === null || y1 === null || x2 === null || y2 === null) continue;
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const lengthSquared = dx * dx + dy * dy;
+        if (lengthSquared === 0) {
+          minDistance = Math.min(minDistance, Math.sqrt((clickX - x1) ** 2 + (clickY - y1) ** 2));
+          continue;
+        }
+        const t = Math.max(0, Math.min(1, ((clickX - x1) * dx + (clickY - y1) * dy) / lengthSquared));
+        const projX = x1 + t * dx;
+        const projY = y1 + t * dy;
+        minDistance = Math.min(minDistance, Math.sqrt((clickX - projX) ** 2 + (clickY - projY) ** 2));
+      }
+      return minDistance === Infinity ? null : minDistance;
+    }
+
     case 'elliott_wave': {
       if (drawing.points.length < 2) return null;
 

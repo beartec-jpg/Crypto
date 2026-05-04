@@ -44,6 +44,8 @@ interface DrawingStyle {
   backgroundColor?: string;
   showBackground?: boolean;
   __openColorPicker?: string | null;
+  /** For free_draw drawings: the rendering sub-mode */
+  drawSubMode?: 'free' | 'line_assisted' | 'curve_assisted';
 }
 
 type RequestUpdateCallback = () => void;
@@ -1646,7 +1648,7 @@ export class ChannelPrimitive implements ISeriesPrimitive<Time> {
   }
 }
 
-export type DrawingPrimitive = TrendLinePrimitive | HorizontalLinePrimitive | RectanglePrimitive | FibRetracementPrimitive | TrendFibPrimitive | ChannelPrimitive | TextLabelPrimitive | VerticalLinePrimitive;
+export type DrawingPrimitive = TrendLinePrimitive | HorizontalLinePrimitive | RectanglePrimitive | FibRetracementPrimitive | TrendFibPrimitive | ChannelPrimitive | TextLabelPrimitive | VerticalLinePrimitive | NumberLabelPrimitive | FreeDrawPrimitive;
 
 // ── Vertical Line ─────────────────────────────────────────────────────────────
 
@@ -1792,7 +1794,7 @@ export class VerticalLinePrimitive implements ISeriesPrimitive<Time> {
 
 export function createDrawingPrimitive(
   id: string,
-  type: 'trendline' | 'horizontal' | 'vertical' | 'text' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel',
+  type: 'trendline' | 'horizontal' | 'vertical' | 'text' | 'number_label' | 'free_draw' | 'rectangle' | 'fib_retracement' | 'trend_fib' | 'channel',
   points: DrawingPoint[],
   style: DrawingStyle
 ): DrawingPrimitive | null {
@@ -1815,6 +1817,11 @@ export function createDrawingPrimitive(
     case 'text':
       if (points.length >= 1) {
         return new TextLabelPrimitive(id, points[0], style);
+      }
+      break;
+    case 'number_label':
+      if (points.length >= 1) {
+        return new NumberLabelPrimitive(id, points[0], style);
       }
       break;
     case 'rectangle':
@@ -1842,6 +1849,335 @@ export function createDrawingPrimitive(
         return new ChannelPrimitive(id, points, style);
       }
       break;
+    case 'free_draw':
+      if (points.length >= 2) {
+        return new FreeDrawPrimitive(id, points, style);
+      }
+      break;
   }
   return null;
 }
+
+// ── Number Label ──────────────────────────────────────────────────────────────
+
+/** Minimum radius (px) for a number label circle, ensuring legibility */
+const NUMBER_LABEL_MIN_RADIUS = 14;
+
+class NumberLabelRenderer implements IPrimitivePaneRenderer {
+  private _point: DrawingPoint;
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null;
+  private _chart: IChartApi | null;
+  private _isSelected: boolean;
+
+  constructor(
+    point: DrawingPoint,
+    style: DrawingStyle,
+    series: ISeriesApi<SeriesType> | null,
+    chart: IChartApi | null,
+    isSelected: boolean
+  ) {
+    this._point = point;
+    this._style = style;
+    this._series = series;
+    this._chart = chart;
+    this._isSelected = isSelected;
+  }
+
+  draw(target: any) {
+    if (!this._series || !this._chart) return;
+
+    const timeScale = this._chart.timeScale();
+    const x = timeScale.timeToCoordinate(this._point.time as Time);
+    const y = this._series.priceToCoordinate(this._point.price);
+    if (x === null || y === null) return;
+
+    target.useMediaCoordinateSpace((scope: any) => {
+      const ctx = scope.context;
+      const text = this._style.text || '1';
+      const fontSize = this._style.fontSize || 13;
+      const opacity = this._style.opacity !== undefined ? this._style.opacity : 1;
+      const radius = Math.max(fontSize, NUMBER_LABEL_MIN_RADIUS);
+      const color = this._style.color || '#3b82f6';
+      const fillColor = applyOpacity(color, opacity);
+
+      // Draw filled circle
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = fillColor;
+      ctx.fill();
+
+      // White border when selected
+      if (this._isSelected) {
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+
+      // Draw number text centered
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${fontSize}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, x, y);
+    });
+  }
+}
+
+class NumberLabelPaneView implements IPrimitivePaneView {
+  private _primitive: NumberLabelPrimitive;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+
+  constructor(primitive: NumberLabelPrimitive) {
+    this._primitive = primitive;
+  }
+
+  update(series: ISeriesApi<SeriesType> | null, chart: IChartApi | null) {
+    this._series = series;
+    this._chart = chart;
+  }
+
+  zOrder(): 'normal' { return 'normal'; }
+
+  renderer() {
+    return new NumberLabelRenderer(
+      this._primitive.getPoint(),
+      this._primitive.getStyle(),
+      this._series,
+      this._chart,
+      this._primitive.isSelected()
+    );
+  }
+}
+
+export class NumberLabelPrimitive implements ISeriesPrimitive<Time> {
+  private _paneViews: NumberLabelPaneView[];
+  private _point: DrawingPoint;
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+  private _selected: boolean = false;
+  private _id: string;
+  private _requestUpdate?: RequestUpdateCallback;
+
+  constructor(id: string, point: DrawingPoint, style: DrawingStyle) {
+    this._id = id;
+    this._point = point;
+    this._style = style;
+    this._paneViews = [new NumberLabelPaneView(this)];
+  }
+
+  attached(param: SeriesAttachedParameter<Time>) {
+    this._series = param.series;
+    this._chart = param.chart;
+    this._requestUpdate = param.requestUpdate;
+  }
+
+  detached() {
+    this._series = null;
+    this._chart = null;
+    this._requestUpdate = undefined;
+  }
+
+  updateAllViews() {
+    this._paneViews.forEach((pv) => pv.update(this._series, this._chart));
+  }
+
+  paneViews() { return this._paneViews; }
+  getId() { return this._id; }
+  getPoint() { return this._point; }
+  getStyle() { return this._style; }
+  isSelected() { return this._selected; }
+
+  setSelected(selected: boolean) {
+    this._selected = selected;
+    this._requestUpdate?.();
+  }
+
+  updatePoint(point: DrawingPoint) {
+    this._point = point;
+    this._requestUpdate?.();
+  }
+
+  updateStyle(style: DrawingStyle) {
+    this._style = style;
+    this._requestUpdate?.();
+  }
+}
+
+// ── Free Draw ─────────────────────────────────────────────────────────────────
+
+class FreeDrawRenderer implements IPrimitivePaneRenderer {
+  private _points: DrawingPoint[];
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null;
+  private _chart: IChartApi | null;
+  private _isSelected: boolean;
+
+  constructor(
+    points: DrawingPoint[],
+    style: DrawingStyle,
+    series: ISeriesApi<SeriesType> | null,
+    chart: IChartApi | null,
+    isSelected: boolean
+  ) {
+    this._points = points;
+    this._style = style;
+    this._series = series;
+    this._chart = chart;
+    this._isSelected = isSelected;
+  }
+
+  draw(target: any) {
+    if (!this._series || !this._chart || this._points.length < 2) return;
+
+    const timeScale = this._chart.timeScale();
+    const coords: Array<{ x: number; y: number }> = [];
+
+    for (const p of this._points) {
+      const x = timeScale.timeToCoordinate(p.time as Time);
+      const y = this._series.priceToCoordinate(p.price);
+      if (x !== null && y !== null) {
+        coords.push({ x, y });
+      }
+    }
+
+    if (coords.length < 2) return;
+
+    const opacity = this._style.opacity !== undefined ? this._style.opacity : 1;
+    const color = applyOpacity(this._style.color || '#3b82f6', opacity);
+    const lineWidth = this._style.lineWidth || 2;
+    const drawSubMode = this._style.drawSubMode;
+
+    target.useMediaCoordinateSpace((scope: any) => {
+      const ctx = scope.context;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.setLineDash([]);
+
+      ctx.beginPath();
+
+      if (drawSubMode === 'curve_assisted' && coords.length >= 3) {
+        // Catmull-Rom spline rendered as cubic bezier segments
+        ctx.moveTo(coords[0].x, coords[0].y);
+        for (let i = 0; i < coords.length - 1; i++) {
+          const p0 = coords[Math.max(0, i - 1)];
+          const p1 = coords[i];
+          const p2 = coords[i + 1];
+          const p3 = coords[Math.min(coords.length - 1, i + 2)];
+
+          const cp1x = p1.x + (p2.x - p0.x) / 6;
+          const cp1y = p1.y + (p2.y - p0.y) / 6;
+          const cp2x = p2.x - (p3.x - p1.x) / 6;
+          const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+          ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+        }
+      } else {
+        // Polyline (free / line_assisted)
+        ctx.moveTo(coords[0].x, coords[0].y);
+        for (let i = 1; i < coords.length; i++) {
+          ctx.lineTo(coords[i].x, coords[i].y);
+        }
+      }
+
+      ctx.stroke();
+
+      // Selection endpoint handles
+      if (this._isSelected) {
+        ctx.fillStyle = '#22c55e';
+        [coords[0], coords[coords.length - 1]].forEach(pt => {
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+    });
+  }
+}
+
+class FreeDrawPaneView implements IPrimitivePaneView {
+  private _primitive: FreeDrawPrimitive;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+
+  constructor(primitive: FreeDrawPrimitive) {
+    this._primitive = primitive;
+  }
+
+  update(series: ISeriesApi<SeriesType> | null, chart: IChartApi | null) {
+    this._series = series;
+    this._chart = chart;
+  }
+
+  zOrder(): 'normal' { return 'normal'; }
+
+  renderer() {
+    return new FreeDrawRenderer(
+      this._primitive.getPoints(),
+      this._primitive.getStyle(),
+      this._series,
+      this._chart,
+      this._primitive.isSelected()
+    );
+  }
+}
+
+export class FreeDrawPrimitive implements ISeriesPrimitive<Time> {
+  private _paneViews: FreeDrawPaneView[];
+  private _points: DrawingPoint[];
+  private _style: DrawingStyle;
+  private _series: ISeriesApi<SeriesType> | null = null;
+  private _chart: IChartApi | null = null;
+  private _selected: boolean = false;
+  private _id: string;
+  private _requestUpdate?: RequestUpdateCallback;
+
+  constructor(id: string, points: DrawingPoint[], style: DrawingStyle) {
+    this._id = id;
+    this._points = points;
+    this._style = style;
+    this._paneViews = [new FreeDrawPaneView(this)];
+  }
+
+  attached(param: SeriesAttachedParameter<Time>) {
+    this._series = param.series;
+    this._chart = param.chart;
+    this._requestUpdate = param.requestUpdate;
+  }
+
+  detached() {
+    this._series = null;
+    this._chart = null;
+    this._requestUpdate = undefined;
+  }
+
+  updateAllViews() {
+    this._paneViews.forEach((pv) => pv.update(this._series, this._chart));
+  }
+
+  paneViews() { return this._paneViews; }
+  getId() { return this._id; }
+  getPoints() { return this._points; }
+  getStyle() { return this._style; }
+  isSelected() { return this._selected; }
+
+  setSelected(selected: boolean) {
+    this._selected = selected;
+    this._requestUpdate?.();
+  }
+
+  updatePoints(points: DrawingPoint[]) {
+    this._points = points;
+    this._requestUpdate?.();
+  }
+
+  updateStyle(style: DrawingStyle) {
+    this._style = style;
+    this._requestUpdate?.();
+  }
+}
+
