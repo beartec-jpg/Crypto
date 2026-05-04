@@ -115,6 +115,9 @@ interface ChartFullscreenPageProps {
 
 const TOTAL_CONFLUENCE_REFRESH_MS = 2 * 60 * 1000;
 
+/** When free-draw mode is 'free', capture every Nth pixel point to limit array size */
+const FREE_MODE_POINT_INTERVAL = 3;
+
 // All possible oscillator panel IDs (must match OscillatorSelectorModal)
 const ALL_OSCILLATOR_IDS = [
   'rsi', 'macd', 'waddah', 'cmf', 'volume', 'stochRsi', 'tsi',
@@ -2240,9 +2243,9 @@ export function ChartFullscreenPage({
       let finalPoints: { time: number; price: number }[];
       const currentMode = freeDrawModeRef.current;
       if (currentMode === 'free') {
-        // Thin the raw points by taking every 3rd to avoid enormous arrays
+        // Thin the raw points by taking every Nth point to avoid enormous arrays
         finalPoints = rawPx
-          .filter((_, i) => i % 3 === 0 || i === rawPx.length - 1)
+          .filter((_, i) => i % FREE_MODE_POINT_INTERVAL === 0 || i === rawPx.length - 1)
           .map((px) => {
             const logical = chartRef.current!.timeScale().coordinateToLogical(px.x);
             const price = candleSeriesRef.current!.coordinateToPrice(px.y);
@@ -2252,15 +2255,13 @@ export function ChartFullscreenPage({
           .filter((p): p is { time: number; price: number } => p !== null);
       } else if (currentMode === 'line_assisted') {
         const indices = simplifyForLine(rawPx);
-        finalPoints = indices
-          .map((i) => allPoints[Math.min(i, allPoints.length - 1)])
-          .filter(Boolean);
+        // indices are guaranteed within [0, allPoints.length-1] by simplifyForLine
+        finalPoints = indices.map((i) => allPoints[i]).filter(Boolean);
       } else {
         // curve_assisted
         const indices = simplifyForCurve(rawPx);
-        finalPoints = indices
-          .map((i) => allPoints[Math.min(i, allPoints.length - 1)])
-          .filter(Boolean);
+        // indices are guaranteed within [0, allPoints.length-1] by simplifyForCurve
+        finalPoints = indices.map((i) => allPoints[i]).filter(Boolean);
       }
 
       if (finalPoints.length < 2) return;
@@ -2311,6 +2312,10 @@ export function ChartFullscreenPage({
       window.removeEventListener('touchend', onTouchEnd);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // The effect uses refs (chartRef, candleSeriesRef, freeDrawModeRef) and stable
+  // callbacks (pauseChartPanZoom, resumeChartPanZoom, saveDrawingWithUndo, toast,
+  // setDrawings, logicalToTime) that do not need to re-run the effect.
+  // Only activeTool and timeframe drive re-binding of event listeners.
   }, [activeTool, timeframe]);
 
   useFullscreenKeyboardShortcuts({

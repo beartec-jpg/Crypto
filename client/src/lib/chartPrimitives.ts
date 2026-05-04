@@ -44,6 +44,8 @@ interface DrawingStyle {
   backgroundColor?: string;
   showBackground?: boolean;
   __openColorPicker?: string | null;
+  /** For free_draw drawings: the rendering sub-mode */
+  drawSubMode?: 'free' | 'line_assisted' | 'curve_assisted';
 }
 
 type RequestUpdateCallback = () => void;
@@ -1858,6 +1860,9 @@ export function createDrawingPrimitive(
 
 // ── Number Label ──────────────────────────────────────────────────────────────
 
+/** Minimum radius (px) for a number label circle, ensuring legibility */
+const NUMBER_LABEL_MIN_RADIUS = 14;
+
 class NumberLabelRenderer implements IPrimitivePaneRenderer {
   private _point: DrawingPoint;
   private _style: DrawingStyle;
@@ -1892,7 +1897,7 @@ class NumberLabelRenderer implements IPrimitivePaneRenderer {
       const text = this._style.text || '1';
       const fontSize = this._style.fontSize || 13;
       const opacity = this._style.opacity !== undefined ? this._style.opacity : 1;
-      const radius = Math.max(fontSize, 14);
+      const radius = Math.max(fontSize, NUMBER_LABEL_MIN_RADIUS);
       const color = this._style.color || '#3b82f6';
       const fillColor = applyOpacity(color, opacity);
 
@@ -2043,7 +2048,7 @@ class FreeDrawRenderer implements IPrimitivePaneRenderer {
     const opacity = this._style.opacity !== undefined ? this._style.opacity : 1;
     const color = applyOpacity(this._style.color || '#3b82f6', opacity);
     const lineWidth = this._style.lineWidth || 2;
-    const drawSubMode = (this._style as any).drawSubMode as string | undefined;
+    const drawSubMode = this._style.drawSubMode;
 
     target.useMediaCoordinateSpace((scope: any) => {
       const ctx = scope.context;

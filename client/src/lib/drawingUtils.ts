@@ -8,7 +8,7 @@ export interface Point2D {
 }
 
 // ---------------------------------------------------------------------------
-// Ramer-Douglas-Peucker polyline simplification
+// Ramer-Douglas-Peucker polyline simplification (index-based, no float equality)
 // ---------------------------------------------------------------------------
 
 function perpendicularDistance(point: Point2D, lineStart: Point2D, lineEnd: Point2D): number {
@@ -22,31 +22,49 @@ function perpendicularDistance(point: Point2D, lineStart: Point2D, lineEnd: Poin
 }
 
 /**
- * Ramer-Douglas-Peucker polyline simplification.
- * Returns the subset of points that represent the polyline within epsilon pixels.
+ * Internal: Ramer-Douglas-Peucker operating on a slice of the original index array.
+ * Returns the indices (into `points`) that should be kept.
  */
-export function rdpSimplify(points: Point2D[], epsilon: number): Point2D[] {
-  if (points.length < 3) return [...points];
+function rdpIndices(points: Point2D[], startIdx: number, endIdx: number, epsilon: number, result: number[]): void {
+  if (endIdx <= startIdx + 1) return;
 
   let maxDist = 0;
-  let maxIndex = 0;
-  const first = points[0];
-  const last = points[points.length - 1];
+  let maxIdx = startIdx;
 
-  for (let i = 1; i < points.length - 1; i++) {
-    const dist = perpendicularDistance(points[i], first, last);
+  for (let i = startIdx + 1; i < endIdx; i++) {
+    const dist = perpendicularDistance(points[i], points[startIdx], points[endIdx]);
     if (dist > maxDist) {
       maxDist = dist;
-      maxIndex = i;
+      maxIdx = i;
     }
   }
 
   if (maxDist > epsilon) {
-    const left = rdpSimplify(points.slice(0, maxIndex + 1), epsilon);
-    const right = rdpSimplify(points.slice(maxIndex), epsilon);
-    return [...left.slice(0, -1), ...right];
+    rdpIndices(points, startIdx, maxIdx, epsilon, result);
+    result.push(maxIdx);
+    rdpIndices(points, maxIdx, endIdx, epsilon, result);
   }
-  return [first, last];
+}
+
+/**
+ * Ramer-Douglas-Peucker polyline simplification.
+ * Returns the indices into `points` that form the simplified polyline.
+ */
+export function rdpSimplifyIndices(points: Point2D[], epsilon: number): number[] {
+  if (points.length < 2) return points.map((_, i) => i);
+  const result: number[] = [0];
+  rdpIndices(points, 0, points.length - 1, epsilon, result);
+  result.push(points.length - 1);
+  result.sort((a, b) => a - b);
+  return result;
+}
+
+/**
+ * Ramer-Douglas-Peucker polyline simplification.
+ * Returns the subset of points that represent the polyline within epsilon pixels.
+ */
+export function rdpSimplify(points: Point2D[], epsilon: number): Point2D[] {
+  return rdpSimplifyIndices(points, epsilon).map(i => points[i]);
 }
 
 // ---------------------------------------------------------------------------
@@ -110,63 +128,35 @@ export function catmullRomToBezier(
   return [cp1, cp2];
 }
 
+// ---------------------------------------------------------------------------
+// Public simplification helpers used by ChartFullscreenPage
+// ---------------------------------------------------------------------------
+
 /**
- * Apply curve simplification to a stroke:
- * 1. RDP simplify the raw pixel points with a generous epsilon.
- * 2. Return the subset indices into the original time/price array.
- *
- * The caller maps those indices back to their (time, price) counterparts.
+ * Apply curve simplification to a stroke.
+ * Returns indices into `rawPx` that form the simplified curve anchor points.
  */
 export function simplifyForCurve(rawPx: Point2D[], epsilon = 6): number[] {
   if (rawPx.length < 2) return rawPx.map((_, i) => i);
-
-  // RDP on raw points - returns the simplified Point2Ds
-  const simplified = rdpSimplify(rawPx, epsilon);
-
-  // Map simplified points back to original indices
-  const indices: number[] = [];
-  let searchFrom = 0;
-  for (const sp of simplified) {
-    for (let i = searchFrom; i < rawPx.length; i++) {
-      if (rawPx[i].x === sp.x && rawPx[i].y === sp.y) {
-        indices.push(i);
-        searchFrom = i + 1;
-        break;
-      }
-    }
-  }
-  return indices;
+  return rdpSimplifyIndices(rawPx, epsilon);
 }
 
 /**
  * Apply line-assisted simplification:
  * 1. RDP simplify.
- * 2. Detect angle-based breakpoints.
- * 3. Return the union of breakpoints (these are the anchor vertices of straight segments).
+ * 2. Detect angle-based breakpoints within the simplified set.
+ * 3. Return the original indices of those breakpoints.
  */
 export function simplifyForLine(rawPx: Point2D[], rdpEpsilon = 4, angleThresholdDeg = 25): number[] {
   if (rawPx.length < 2) return rawPx.map((_, i) => i);
 
-  const simplified = rdpSimplify(rawPx, rdpEpsilon);
-
-  // Map simplified points back to original indices
-  const simplifiedIndices: number[] = [];
-  let searchFrom = 0;
-  for (const sp of simplified) {
-    for (let i = searchFrom; i < rawPx.length; i++) {
-      if (rawPx[i].x === sp.x && rawPx[i].y === sp.y) {
-        simplifiedIndices.push(i);
-        searchFrom = i + 1;
-        break;
-      }
-    }
-  }
-
+  const simplifiedIndices = rdpSimplifyIndices(rawPx, rdpEpsilon);
   if (simplifiedIndices.length < 3) return simplifiedIndices;
 
-  // Now find breakpoints within the simplified set
+  // Build the simplified sub-array for break detection
   const simplifiedPoints = simplifiedIndices.map(i => rawPx[i]);
   const breakPositions = findBreakIndices(simplifiedPoints, angleThresholdDeg);
-  // breakPositions are indices into simplifiedIndices array
+  // breakPositions are positions within simplifiedIndices array; map back to rawPx indices
   return breakPositions.map(pos => simplifiedIndices[pos]);
 }
+
