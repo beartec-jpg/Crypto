@@ -154,7 +154,7 @@ export function useCryptoAuth() {
   if (isDevelopment) {
     const devUser = getDevUser();
     const devSubscription = getDevSubscription();
-    const isDevAdmin = devUser.email === ADMIN_EMAIL;
+    const isDevAdmin = devUser.email === ADMIN_EMAIL || devUser.email.endsWith('@beartec.uk');
     const eliteSubscription: CryptoSubscription = {
       ...devSubscription,
       ...(subscription || {}),
@@ -188,8 +188,8 @@ export function useCryptoAuth() {
     profileImageUrl: (user as any).imageUrl || (user as any).profileImageUrl || undefined,
   } : null;
 
-  // Admin email gets unrestricted elite access
-  const isAdmin = cryptoUser?.email === ADMIN_EMAIL;
+  // Any @beartec.uk account gets unrestricted elite access
+  const isAdmin = cryptoUser?.email === ADMIN_EMAIL || (cryptoUser?.email?.endsWith('@beartec.uk') ?? false);
   
   if (isAdmin) {
     return {

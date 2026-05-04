@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import { BarChart3, Users, Activity, DollarSign, Clock, TrendingUp, Zap, Eye, Mo
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart as RechartsPie, Pie, Cell, LineChart, Line } from 'recharts';
 import { useLocation } from 'wouter';
 import { Helmet } from 'react-helmet-async';
+import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 
 const COLORS = ['#00c4b4', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#10b981', '#6366f1', '#ec4899'];
 
@@ -74,6 +75,14 @@ interface ApiCostBreakdown {
 export default function DevAnalytics() {
   const [, setLocation] = useLocation();
   const [timeRange, setTimeRange] = useState('7d');
+  const { isAdmin, isLoading: authLoading } = useCryptoAuth();
+
+  // Redirect non-admin users before the page renders
+  useEffect(() => {
+    if (!authLoading && !isAdmin) {
+      setLocation('/crypto/account');
+    }
+  }, [isAdmin, authLoading, setLocation]);
   
   const { data: dashboard, isLoading: dashboardLoading } = useQuery<AnalyticsDashboard>({
     queryKey: ['/api/analytics/dashboard', timeRange],

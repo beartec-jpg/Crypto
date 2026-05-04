@@ -80,6 +80,9 @@ export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
   aiCreditsResetAt: timestamp("ai_credits_reset_at"), // When credits were last reset (monthly)
   elliottAiCredits: integer("elliott_ai_credits").default(0), // Remaining Elliott Wave AI credits (monthly: Elite 150, Add-on 50)
   elliottAiCreditsResetAt: timestamp("elliott_ai_credits_reset_at"), // When Elliott credits were last reset (monthly)
+  bonusAiCredits: integer("bonus_ai_credits").default(0), // Admin-granted bonus AI credits (added on top of tier)
+  bonusElliottCredits: integer("bonus_elliott_credits").default(0), // Admin-granted bonus Elliott credits
+  customToolAccess: jsonb("custom_tool_access").$type<string[]>(), // Admin-granted custom tool/indicator IDs
   pushSubscription: jsonb("push_subscription"), // Store push subscription data
   stripeSubscriptionId: varchar("stripe_subscription_id"),
   subscriptionStatus: varchar("subscription_status").default("active"),
@@ -106,6 +109,9 @@ export const insertCryptoSubscriptionSchema = z.object({
   aiCreditsResetAt: z.date().optional().nullable(),
   elliottAiCredits: z.number().int().optional().default(0),
   elliottAiCreditsResetAt: z.date().optional().nullable(),
+  bonusAiCredits: z.number().int().optional().default(0),
+  bonusElliottCredits: z.number().int().optional().default(0),
+  customToolAccess: z.array(z.string()).optional().nullable(),
   pushSubscription: z.any().optional().nullable(),
   stripeSubscriptionId: z.string().optional().nullable(),
   subscriptionStatus: z.string().optional().default("active"),
