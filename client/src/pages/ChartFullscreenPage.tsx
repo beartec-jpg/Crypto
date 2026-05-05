@@ -101,6 +101,8 @@ import { useManualTrades } from '@/hooks/useManualTrades';
 import { TradePanel } from '@/components/trading/TradePanel';
 import { TradeZoneRenderer } from '@/components/chart/TradeZoneRenderer';
 import { FreeDrawToolbar } from '@/components/drawings/FreeDrawToolbar';
+import { ChartPickOverlay } from '@/components/trading/ChartPickOverlay';
+import type { TradePickField } from '@/components/trading/ChartPickOverlay';
 // Types and constants
 import type { Drawing, ChartDrawingTool, FreeDrawMode } from '@/types/drawing';
 import type { DivergencePoint, MAConfig } from '@/types/chart.types';
@@ -300,6 +302,10 @@ export function ChartFullscreenPage({
 
   // Trade tool state (data computed after effectiveCandles is available)
   const [showTradePanel, setShowTradePanel] = useState(false);
+  const [tradePickMode, setTradePickMode] = useState<TradePickField | null>(null);
+  const tradePickModeRef = useRef<TradePickField | null>(null);
+  /** Incremented each time the user clicks the chart in pick mode; TradePanel watches this object reference */
+  const [chartPickValue, setChartPickValue] = useState<{ price: number; time: number } | null>(null);
 
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -2367,6 +2373,45 @@ export function ChartFullscreenPage({
     onRedo: handleRedo,
   });
 
+  // Keep pick-mode ref in sync so the click handler (registered via addEventListener) can read it
+  useEffect(() => { tradePickModeRef.current = tradePickMode; }, [tradePickMode]);
+
+  // Escape cancels chart-pick mode
+  useEffect(() => {
+    if (!tradePickMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setTradePickMode(null);
+        tradePickModeRef.current = null;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [tradePickMode]);
+
+  // Single click on chart resolves the pick
+  useEffect(() => {
+    if (!tradePickMode) return;
+    const container = chartContainerRef.current;
+    if (!container) return;
+
+    const onClick = (e: MouseEvent) => {
+      const field = tradePickModeRef.current;
+      if (!field) return;
+      const pt = getChartPointFromClient(e.clientX, e.clientY);
+      if (!pt) return;
+      const time = logicalToTime(pt.logical);
+      setChartPickValue({ price: pt.price, time });
+      setTradePickMode(null);
+      tradePickModeRef.current = null;
+    };
+
+    // Use capture so it fires before chart's own click handlers
+    container.addEventListener('click', onClick, true);
+    return () => container.removeEventListener('click', onClick, true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tradePickMode]);
+
   // Elliott Wave: auto-save the wave immediately when all points are placed and valid
   useEffect(() => {
     if (elliottWave.isComplete && elliottWave.isValid) {
@@ -2913,8 +2958,24 @@ export function ChartFullscreenPage({
               onDeleteTrade={deleteManualTrade}
               onUpdateTrade={updateManualTrade}
               onClose={() => setShowTradePanel(false)}
+              activePickField={tradePickMode}
+              onRequestChartPick={(field) => {
+                setTradePickMode(field);
+                tradePickModeRef.current = field;
+                // Clear any stale result so the useEffect in TradePanel fires on next pick
+                setChartPickValue(null);
+              }}
+              chartPickValue={chartPickValue}
             />
           </div>
+        )}
+
+        {/* Chart-pick instruction overlay */}
+        {tradePickMode && (
+          <ChartPickOverlay
+            field={tradePickMode}
+            onCancel={() => { setTradePickMode(null); tradePickModeRef.current = null; }}
+          />
         )}
       </div>
       

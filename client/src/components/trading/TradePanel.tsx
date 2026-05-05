@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import { X, TrendingUp, TrendingDown, Trash2, LogOut, History, Edit2, Check } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, TrendingUp, TrendingDown, Trash2, LogOut, History, Edit2, Check, Crosshair } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import type { ManualTrade } from '@/lib/chartPrimitives/TradePrimitive';
+import type { TradePickField } from './ChartPickOverlay';
 
 interface TradePanelProps {
   currentPrice: number;
@@ -24,6 +25,12 @@ interface TradePanelProps {
   onDeleteTrade: (id: string) => void;
   onUpdateTrade?: (id: string, updates: Partial<Pick<ManualTrade, 'slPrice' | 'tpPrice'>>) => void;
   onClose: () => void;
+  /** Currently active chart-pick field (set by parent when user clicked a pick button) */
+  activePickField?: TradePickField | null;
+  /** Called when the user clicks a crosshair button to start picking a field from the chart */
+  onRequestChartPick?: (field: TradePickField) => void;
+  /** Called by the parent once the user has clicked the chart; populates the relevant field */
+  chartPickValue?: { price: number; time: number } | null;
 }
 
 type View = 'main' | 'open' | 'results' | 'history';
@@ -62,6 +69,9 @@ export function TradePanel({
   onDeleteTrade,
   onUpdateTrade,
   onClose,
+  activePickField,
+  onRequestChartPick,
+  chartPickValue,
 }: TradePanelProps) {
   const [view, setView] = useState<View>('main');
   const [direction, setDirection] = useState<'LONG' | 'SHORT'>('LONG');
@@ -80,6 +90,19 @@ export function TradePanel({
 
   // Inline editing state for pending trades: maps tradeId → { sl, tp }
   const [editingTrade, setEditingTrade] = useState<{ id: string; sl: string; tp: string } | null>(null);
+
+  // Populate the relevant form field when the parent delivers a chart-pick result
+  useEffect(() => {
+    if (!chartPickValue || !activePickField) return;
+    const fmtPrice = String(chartPickValue.price);
+    const fmtDate = tsToDatetimeLocal(chartPickValue.time);
+    if (activePickField === 'entry') setEntryInput(fmtPrice);
+    else if (activePickField === 'sl') setSlInput(fmtPrice);
+    else if (activePickField === 'tp') setTpInput(fmtPrice);
+    else if (activePickField === 'entryDate') setHistEntryDate(fmtDate);
+    else if (activePickField === 'exitDate') setHistExitDate(fmtDate);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartPickValue]);
 
   const handleCreate = () => {
     const entry = parseFloat(entryInput);
@@ -232,31 +255,77 @@ export function TradePanel({
               >
                 Mkt
               </Button>
+              {onRequestChartPick && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  title="Pick from chart"
+                  className={cn(
+                    'h-8 w-8 p-0 border-slate-600 hover:text-white',
+                    activePickField === 'entry' ? 'text-blue-400 border-blue-500 bg-blue-900/30' : 'text-slate-400',
+                  )}
+                  onClick={() => onRequestChartPick('entry')}
+                >
+                  <Crosshair className="h-3.5 w-3.5" />
+                </Button>
+              )}
             </div>
           </div>
 
           {/* SL */}
           <div>
             <Label className="text-slate-400 text-xs">Stop Loss</Label>
-            <Input
-              type="number"
-              value={slInput}
-              onChange={e => setSlInput(e.target.value)}
-              className="mt-1 h-8 bg-slate-800 border-slate-600 text-white text-xs"
-              placeholder={direction === 'LONG' ? 'Below entry' : 'Above entry'}
-            />
+            <div className="flex gap-1 mt-1">
+              <Input
+                type="number"
+                value={slInput}
+                onChange={e => setSlInput(e.target.value)}
+                className="flex-1 h-8 bg-slate-800 border-slate-600 text-white text-xs"
+                placeholder={direction === 'LONG' ? 'Below entry' : 'Above entry'}
+              />
+              {onRequestChartPick && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  title="Pick from chart"
+                  className={cn(
+                    'h-8 w-8 p-0 border-slate-600 hover:text-white',
+                    activePickField === 'sl' ? 'text-blue-400 border-blue-500 bg-blue-900/30' : 'text-slate-400',
+                  )}
+                  onClick={() => onRequestChartPick('sl')}
+                >
+                  <Crosshair className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* TP */}
           <div>
             <Label className="text-slate-400 text-xs">Take Profit</Label>
-            <Input
-              type="number"
-              value={tpInput}
-              onChange={e => setTpInput(e.target.value)}
-              className="mt-1 h-8 bg-slate-800 border-slate-600 text-white text-xs"
-              placeholder={direction === 'LONG' ? 'Above entry' : 'Below entry'}
-            />
+            <div className="flex gap-1 mt-1">
+              <Input
+                type="number"
+                value={tpInput}
+                onChange={e => setTpInput(e.target.value)}
+                className="flex-1 h-8 bg-slate-800 border-slate-600 text-white text-xs"
+                placeholder={direction === 'LONG' ? 'Above entry' : 'Below entry'}
+              />
+              {onRequestChartPick && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  title="Pick from chart"
+                  className={cn(
+                    'h-8 w-8 p-0 border-slate-600 hover:text-white',
+                    activePickField === 'tp' ? 'text-blue-400 border-blue-500 bg-blue-900/30' : 'text-slate-400',
+                  )}
+                  onClick={() => onRequestChartPick('tp')}
+                >
+                  <Crosshair className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="flex gap-2 pt-1">
@@ -344,61 +413,141 @@ export function TradePanel({
           {/* Entry date */}
           <div>
             <Label className="text-slate-400 text-xs">Entry Date &amp; Time</Label>
-            <Input
-              type="datetime-local"
-              value={histEntryDate}
-              onChange={e => setHistEntryDate(e.target.value)}
-              className="mt-1 h-8 bg-slate-800 border-slate-600 text-white text-xs"
-            />
+            <div className="flex gap-1 mt-1">
+              <Input
+                type="datetime-local"
+                value={histEntryDate}
+                onChange={e => setHistEntryDate(e.target.value)}
+                className="flex-1 h-8 bg-slate-800 border-slate-600 text-white text-xs"
+              />
+              {onRequestChartPick && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  title="Pick from chart"
+                  className={cn(
+                    'h-8 w-8 p-0 border-slate-600 hover:text-white shrink-0',
+                    activePickField === 'entryDate' ? 'text-blue-400 border-blue-500 bg-blue-900/30' : 'text-slate-400',
+                  )}
+                  onClick={() => onRequestChartPick('entryDate')}
+                >
+                  <Crosshair className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Exit date – only shown when trade is closed */}
           {!histStillActive && (
             <div>
               <Label className="text-slate-400 text-xs">Exit Date &amp; Time</Label>
-              <Input
-                type="datetime-local"
-                value={histExitDate}
-                onChange={e => setHistExitDate(e.target.value)}
-                className="mt-1 h-8 bg-slate-800 border-slate-600 text-white text-xs"
-              />
+              <div className="flex gap-1 mt-1">
+                <Input
+                  type="datetime-local"
+                  value={histExitDate}
+                  onChange={e => setHistExitDate(e.target.value)}
+                  className="flex-1 h-8 bg-slate-800 border-slate-600 text-white text-xs"
+                />
+                {onRequestChartPick && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    title="Pick from chart"
+                    className={cn(
+                      'h-8 w-8 p-0 border-slate-600 hover:text-white shrink-0',
+                      activePickField === 'exitDate' ? 'text-blue-400 border-blue-500 bg-blue-900/30' : 'text-slate-400',
+                    )}
+                    onClick={() => onRequestChartPick('exitDate')}
+                  >
+                    <Crosshair className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
             </div>
           )}
 
           {/* Entry price */}
           <div>
             <Label className="text-slate-400 text-xs">Entry Price</Label>
-            <Input
-              type="number"
-              value={histEntry}
-              onChange={e => setHistEntry(e.target.value)}
-              className="mt-1 h-8 bg-slate-800 border-slate-600 text-white text-xs"
-              placeholder="Entry price"
-            />
+            <div className="flex gap-1 mt-1">
+              <Input
+                type="number"
+                value={histEntry}
+                onChange={e => setHistEntry(e.target.value)}
+                className="flex-1 h-8 bg-slate-800 border-slate-600 text-white text-xs"
+                placeholder="Entry price"
+              />
+              {onRequestChartPick && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  title="Pick from chart"
+                  className={cn(
+                    'h-8 w-8 p-0 border-slate-600 hover:text-white shrink-0',
+                    activePickField === 'entry' ? 'text-blue-400 border-blue-500 bg-blue-900/30' : 'text-slate-400',
+                  )}
+                  onClick={() => onRequestChartPick('entry')}
+                >
+                  <Crosshair className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* SL */}
           <div>
             <Label className="text-slate-400 text-xs">Stop Loss</Label>
-            <Input
-              type="number"
-              value={histSl}
-              onChange={e => setHistSl(e.target.value)}
-              className="mt-1 h-8 bg-slate-800 border-slate-600 text-white text-xs"
-              placeholder="SL price"
-            />
+            <div className="flex gap-1 mt-1">
+              <Input
+                type="number"
+                value={histSl}
+                onChange={e => setHistSl(e.target.value)}
+                className="flex-1 h-8 bg-slate-800 border-slate-600 text-white text-xs"
+                placeholder="SL price"
+              />
+              {onRequestChartPick && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  title="Pick from chart"
+                  className={cn(
+                    'h-8 w-8 p-0 border-slate-600 hover:text-white shrink-0',
+                    activePickField === 'sl' ? 'text-blue-400 border-blue-500 bg-blue-900/30' : 'text-slate-400',
+                  )}
+                  onClick={() => onRequestChartPick('sl')}
+                >
+                  <Crosshair className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* TP */}
           <div>
             <Label className="text-slate-400 text-xs">Take Profit</Label>
-            <Input
-              type="number"
-              value={histTp}
-              onChange={e => setHistTp(e.target.value)}
-              className="mt-1 h-8 bg-slate-800 border-slate-600 text-white text-xs"
-              placeholder="TP price"
-            />
+            <div className="flex gap-1 mt-1">
+              <Input
+                type="number"
+                value={histTp}
+                onChange={e => setHistTp(e.target.value)}
+                className="flex-1 h-8 bg-slate-800 border-slate-600 text-white text-xs"
+                placeholder="TP price"
+              />
+              {onRequestChartPick && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  title="Pick from chart"
+                  className={cn(
+                    'h-8 w-8 p-0 border-slate-600 hover:text-white shrink-0',
+                    activePickField === 'tp' ? 'text-blue-400 border-blue-500 bg-blue-900/30' : 'text-slate-400',
+                  )}
+                  onClick={() => onRequestChartPick('tp')}
+                >
+                  <Crosshair className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="flex gap-2 pt-1">
