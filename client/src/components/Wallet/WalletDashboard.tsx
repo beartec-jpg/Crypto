@@ -54,6 +54,7 @@ const CHAIN_CONFIG: Record<Chain, { symbol: string; color: string; bgColor: stri
   ethereum: { symbol: 'ETH', color: 'text-blue-400', bgColor: 'bg-blue-500/20' },
   bitcoin: { symbol: 'BTC', color: 'text-orange-400', bgColor: 'bg-orange-500/20' },
   bsc: { symbol: 'BNB', color: 'text-yellow-400', bgColor: 'bg-yellow-500/20' },
+  bsc_testnet: { symbol: 'tBNB', color: 'text-yellow-300', bgColor: 'bg-yellow-500/10' },
   xrp: { symbol: 'XRP', color: 'text-gray-300', bgColor: 'bg-gray-500/20' },
   solana: { symbol: 'SOL', color: 'text-purple-400', bgColor: 'bg-purple-500/20' },
   qbtc: { symbol: 'QBTC', color: 'text-cyan-400', bgColor: 'bg-cyan-500/20' },

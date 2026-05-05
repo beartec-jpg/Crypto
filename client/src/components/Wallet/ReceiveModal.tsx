@@ -43,6 +43,12 @@ const CHAIN_CONFIG: Record<Chain, { name: string; symbol: string; color: string;
     color: 'bg-yellow-400',
     warning: 'Only send BNB or BEP-20 tokens to this address.'
   },
+  bsc_testnet: {
+    name: 'BNB Smart Chain (Testnet)',
+    symbol: 'tBNB',
+    color: 'bg-yellow-300',
+    warning: 'Testnet only — tBNB has no real value.'
+  },
   xrp: { 
     name: 'XRP Ledger', 
     symbol: 'XRP', 
