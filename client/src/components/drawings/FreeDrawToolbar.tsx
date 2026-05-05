@@ -30,7 +30,7 @@ const PRESET_COLORS = [
 const LINE_WIDTHS = [
   { width: 1, label: '—', title: 'Thin' },
   { width: 2, label: '━', title: 'Medium' },
-  { width: 3, label: '┅', title: 'Thick' },
+  { width: 3, label: '━━', title: 'Thick' },
 ];
 
 /**

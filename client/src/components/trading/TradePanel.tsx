@@ -22,7 +22,7 @@ interface TradePanelProps {
   ) => void;
   onExitTrade: (id: string, exitTime: number) => void;
   onDeleteTrade: (id: string) => void;
-  onUpdateTrade?: (id: string, updates: Partial<Pick<ManualTrade, 'slPrice' | 'tpPrice' | 'entryPrice'>>) => void;
+  onUpdateTrade?: (id: string, updates: Partial<Pick<ManualTrade, 'slPrice' | 'tpPrice'>>) => void;
   onClose: () => void;
 }
 
@@ -544,8 +544,9 @@ export function TradePanel({
                       </div>
                       <Button
                         size="sm"
-                        className="w-full h-6 bg-blue-600 hover:bg-blue-700 text-white text-[10px] px-2"
+                        className="w-full h-6 bg-blue-600 hover:bg-blue-700 text-white text-[10px] px-2 disabled:opacity-50"
                         onClick={handleSaveEdit}
+                        disabled={isNaN(parseFloat(editingTrade.sl)) || isNaN(parseFloat(editingTrade.tp))}
                       >
                         <Check className="h-3 w-3 mr-1" /> Save
                       </Button>
