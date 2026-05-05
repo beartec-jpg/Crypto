@@ -2,6 +2,16 @@ import { useEffect, useRef } from 'react';
 import type { Time } from 'lightweight-charts';
 import { generateFutureWhitespace, getFutureBarCount } from '@/lib/chart/timeUtils';
 
+/** Snapshot of the last candle used to detect real data changes between renders. */
+interface CandleSnapshot {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  length: number; // total candles array length at snapshot time
+}
+
 interface UseFullscreenChartLifecycleParams {
   candleSeriesRef: React.MutableRefObject<any>;
   chartRef: React.MutableRefObject<any>;
@@ -39,6 +49,12 @@ export function useFullscreenChartLifecycle({
   // candles arrive in the same render (cached data) — ensures fitContent() is always
   // called on timeframe/symbol switch rather than inheriting a stale visible range.
   const lastSymbolTimeframeRef = useRef(`${symbol}:${timeframe}`);
+
+  // Snapshot of the candle data that was last pushed to the chart series.
+  // Used to skip redundant setData calls (e.g. periodic polls that return
+  // unchanged data) which would otherwise call setVisibleLogicalRange and
+  // cancel any in-progress kinetic scroll animation, causing visible glitches.
+  const lastRenderedCandleRef = useRef<CandleSnapshot | null>(null);
 
   useEffect(() => {
     if (!candleSeriesRef.current) return;
@@ -84,7 +100,40 @@ export function useFullscreenChartLifecycle({
       candleSeriesRef.current.setData(chartData);
       fitContent(candles.length, timeframe);
       chartRef.current?.timeScale().applyOptions({ rightOffset: 50 });
+
+      // Record what we just rendered so subsequent live updates can diff against it.
+      const lc = candles[candles.length - 1];
+      lastRenderedCandleRef.current = lc
+        ? { time: lc.time as number, open: lc.open, high: lc.high, low: lc.low, close: lc.close, length: candles.length }
+        : null;
     } else {
+      // Live-update path (same symbol/timeframe, periodic refresh).
+      //
+      // Calling setData() + setVisibleLogicalRange() on every poll tick —
+      // even when the candle data has not changed — cancels lightweight-charts'
+      // internal kinetic scroll animation, producing the flicker/jump the user
+      // sees while scrolling or zooming.  Skip the update when nothing changed.
+      const lc = candles[candles.length - 1];
+      const prev = lastRenderedCandleRef.current;
+      const dataChanged =
+        prev === null ||
+        prev.length !== candles.length ||
+        prev.time !== (lc?.time as number) ||
+        prev.close !== lc?.close ||
+        prev.high !== lc?.high ||
+        prev.low !== lc?.low ||
+        prev.open !== lc?.open;
+
+      if (!dataChanged) {
+        // Nothing new — leave the chart untouched so scroll animations aren't disrupted.
+        return;
+      }
+
+      // Update the snapshot before touching the series.
+      lastRenderedCandleRef.current = lc
+        ? { time: lc.time as number, open: lc.open, high: lc.high, low: lc.low, close: lc.close, length: candles.length }
+        : null;
+
       const currentLogicalRange = chartRef.current?.timeScale().getVisibleLogicalRange();
       candleSeriesRef.current.setData(chartData);
       if (currentLogicalRange) {
@@ -94,7 +143,14 @@ export function useFullscreenChartLifecycle({
         }
       }
     }
-  }, [candles, rewindPosition, candleSeriesRef, fitContent, timeframe, symbol, isLoading, chartRef]);
+  // NOTE: `isLoading` is intentionally omitted from the deps array.
+  // Including it would cause the effect to run twice per poll cycle — once when
+  // loading starts (stale data) and again when data arrives — triggering an extra
+  // setData + setVisibleLogicalRange that interrupts in-progress scroll animations.
+  // The `isLoading` value is still read inside the effect (for the isNewPair branch)
+  // via closure; it just doesn't need to *trigger* a re-run on its own.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candles, rewindPosition, candleSeriesRef, fitContent, timeframe, symbol, chartRef]);
 
   useEffect(() => {
     const chartElement = chartContainerRef.current;
