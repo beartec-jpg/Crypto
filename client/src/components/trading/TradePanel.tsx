@@ -99,6 +99,9 @@ export function TradePanel({
     if (activePickField === 'entry') setEntryInput(fmtPrice);
     else if (activePickField === 'sl') setSlInput(fmtPrice);
     else if (activePickField === 'tp') setTpInput(fmtPrice);
+    else if (activePickField === 'histEntry') setHistEntry(fmtPrice);
+    else if (activePickField === 'histSl') setHistSl(fmtPrice);
+    else if (activePickField === 'histTp') setHistTp(fmtPrice);
     else if (activePickField === 'entryDate') setHistEntryDate(fmtDate);
     else if (activePickField === 'exitDate') setHistExitDate(fmtDate);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -484,9 +487,9 @@ export function TradePanel({
                   title="Pick from chart"
                   className={cn(
                     'h-8 w-8 p-0 border-slate-600 hover:text-white shrink-0',
-                    activePickField === 'entry' ? 'text-blue-400 border-blue-500 bg-blue-900/30' : 'text-slate-400',
+                    activePickField === 'histEntry' ? 'text-blue-400 border-blue-500 bg-blue-900/30' : 'text-slate-400',
                   )}
-                  onClick={() => onRequestChartPick('entry')}
+                  onClick={() => onRequestChartPick('histEntry')}
                 >
                   <Crosshair className="h-3.5 w-3.5" />
                 </Button>
@@ -512,9 +515,9 @@ export function TradePanel({
                   title="Pick from chart"
                   className={cn(
                     'h-8 w-8 p-0 border-slate-600 hover:text-white shrink-0',
-                    activePickField === 'sl' ? 'text-blue-400 border-blue-500 bg-blue-900/30' : 'text-slate-400',
+                    activePickField === 'histSl' ? 'text-blue-400 border-blue-500 bg-blue-900/30' : 'text-slate-400',
                   )}
-                  onClick={() => onRequestChartPick('sl')}
+                  onClick={() => onRequestChartPick('histSl')}
                 >
                   <Crosshair className="h-3.5 w-3.5" />
                 </Button>
@@ -540,9 +543,9 @@ export function TradePanel({
                   title="Pick from chart"
                   className={cn(
                     'h-8 w-8 p-0 border-slate-600 hover:text-white shrink-0',
-                    activePickField === 'tp' ? 'text-blue-400 border-blue-500 bg-blue-900/30' : 'text-slate-400',
+                    activePickField === 'histTp' ? 'text-blue-400 border-blue-500 bg-blue-900/30' : 'text-slate-400',
                   )}
-                  onClick={() => onRequestChartPick('tp')}
+                  onClick={() => onRequestChartPick('histTp')}
                 >
                   <Crosshair className="h-3.5 w-3.5" />
                 </Button>

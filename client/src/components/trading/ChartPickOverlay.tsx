@@ -1,11 +1,14 @@
 import { Crosshair, X } from 'lucide-react';
 
-export type TradePickField = 'entry' | 'sl' | 'tp' | 'entryDate' | 'exitDate';
+export type TradePickField = 'entry' | 'sl' | 'tp' | 'histEntry' | 'histSl' | 'histTp' | 'entryDate' | 'exitDate';
 
 const FIELD_LABELS: Record<TradePickField, string> = {
   entry: 'Entry price',
   sl: 'Stop Loss price',
   tp: 'Take Profit price',
+  histEntry: 'Entry price',
+  histSl: 'Stop Loss price',
+  histTp: 'Take Profit price',
   entryDate: 'Entry date & time',
   exitDate: 'Exit date & time',
 };

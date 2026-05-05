@@ -2401,6 +2401,7 @@ export function ChartFullscreenPage({
       const pt = getChartPointFromClient(e.clientX, e.clientY);
       if (!pt) return;
       const time = logicalToTime(pt.logical);
+      if (!time) return;
       setChartPickValue({ price: pt.price, time });
       setTradePickMode(null);
       tradePickModeRef.current = null;
