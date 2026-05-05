@@ -1351,9 +1351,10 @@ function V2SwapActions({
   const canClaimBtc =
     (isMaker && swap.status === 'SIDE_B_LOCKED' && swap.quoteChain === 'BTC') ||
     (isTaker && swap.status === 'COMPLETE' && swap.baseChain === 'BTC' && !!swap.secret && !btcAlreadyClaimed);
-  // canClaimBnb: XRP/BNB maker claims BNB (SIDE_B_LOCKED) OR BNB/XRP taker claims BNB (COMPLETE + secret)
+  // canClaimBnb: XRP/BNB maker claims BNB (SIDE_B_LOCKED or COMPLETE — server can advance before UI refreshes)
+  //              BNB/XRP taker claims BNB (COMPLETE + secret revealed by maker)
   const canClaimBnb =
-    (isMaker && swap.status === 'SIDE_B_LOCKED' && swap.quoteChain === 'BNB') ||
+    (isMaker && (swap.status === 'SIDE_B_LOCKED' || swap.status === 'COMPLETE') && swap.quoteChain === 'BNB' && !bnbAlreadyClaimed) ||
     (isTaker && swap.status === 'COMPLETE' && swap.baseChain === 'BNB' && !!swap.secret && !bnbAlreadyClaimed);
   // canLockQbtc: maker locking QBTC (QBTC/X) OR taker locking QBTC (X/QBTC)
   const canLockQbtc =
@@ -1776,7 +1777,24 @@ function V2SwapActions({
         const secretEntry = secrets[swap.secretHash];
         if (!secretEntry) throw new Error('Secret not found — was this offer created on this device?');
         const secret: string = typeof secretEntry === 'string' ? secretEntry : secretEntry.secret;
-        const claimTxHash = await evmAdapter.claimFunds({ signerKey: bnbSigner, lockId: bnbLockId, secret });
+        let claimTxHash: string;
+        try {
+          claimTxHash = await evmAdapter.claimFunds({ signerKey: bnbSigner, lockId: bnbLockId, secret });
+        } catch (claimErr: any) {
+          // If already withdrawn on-chain (status=COMPLETE but bnbClaimedKey not set locally), mark done
+          const msg = String(claimErr?.message || claimErr?.reason || '');
+          if (/already|withdrawn|duplicate|HTLC_ALREADY/i.test(msg)) {
+            localStorage.setItem(bnbClaimedKey, '1');
+            setBnbAlreadyClaimed(true);
+            setActionStatus('done');
+            setPassword('');
+            onRefresh();
+            return;
+          }
+          throw claimErr;
+        }
+        localStorage.setItem(bnbClaimedKey, '1');
+        setBnbAlreadyClaimed(true);
         try {
           const ts = Math.floor(Date.now() / 1000);
           const msg = `QBTC_SWAP_V2:CLAIM_SIDE_B:${swap.baseChain}:${swap.quoteChain}:${swap.publicId}:${claimTxHash}:${ts}`;
@@ -2971,7 +2989,10 @@ export default function MarketplaceTab({
       const btcClaimedKey  = `v2_btc_claimed_${s.publicId}`;
       const bnbClaimedKey  = `v2_bnb_claimed_${s.publicId}`;
       const qbtcClaimedKey = `v2_qbtc_claimed_${s.publicId}`;
-      if ((isTaker || isMaker) && s.baseChain === 'XRP' && !localStorage.getItem(xrpClaimedKey)) return true;
+      // Taker claiming XRP at COMPLETE (XRP/BNB, XRP/ETH, XRP/BTC etc.)
+      if (isTaker && s.baseChain === 'XRP' && !localStorage.getItem(xrpClaimedKey)) return true;
+      // XRP/BNB maker claiming BNB at COMPLETE (server advances before UI updates)
+      if (isMaker && s.baseChain === 'XRP' && s.quoteChain === 'BNB' && !localStorage.getItem(bnbClaimedKey)) return true;
       if (isTaker && s.baseChain === 'ETH'  && !localStorage.getItem(ethClaimedKey))  return true;
       if (isTaker && s.baseChain === 'BTC'  && !localStorage.getItem(btcClaimedKey))  return true;
       if (isTaker && s.baseChain === 'BNB'  && !localStorage.getItem(bnbClaimedKey))  return true;
