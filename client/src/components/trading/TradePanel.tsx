@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, TrendingUp, TrendingDown, Trash2, LogOut, History } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, Trash2, LogOut, History, Edit2, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,6 +22,7 @@ interface TradePanelProps {
   ) => void;
   onExitTrade: (id: string, exitTime: number) => void;
   onDeleteTrade: (id: string) => void;
+  onUpdateTrade?: (id: string, updates: Partial<Pick<ManualTrade, 'slPrice' | 'tpPrice' | 'entryPrice'>>) => void;
   onClose: () => void;
 }
 
@@ -59,6 +60,7 @@ export function TradePanel({
   onAddTrade,
   onExitTrade,
   onDeleteTrade,
+  onUpdateTrade,
   onClose,
 }: TradePanelProps) {
   const [view, setView] = useState<View>('main');
@@ -76,6 +78,9 @@ export function TradePanel({
   const [histEntryDate, setHistEntryDate] = useState(tsToDatetimeLocal(Math.min(currentTime, Math.floor(Date.now() / 1000)) - 86400));
   const [histExitDate, setHistExitDate] = useState(tsToDatetimeLocal(Math.min(currentTime, Math.floor(Date.now() / 1000))));
 
+  // Inline editing state for pending trades: maps tradeId → { sl, tp }
+  const [editingTrade, setEditingTrade] = useState<{ id: string; sl: string; tp: string } | null>(null);
+
   const handleCreate = () => {
     const entry = parseFloat(entryInput);
     const sl = parseFloat(slInput);
@@ -85,6 +90,15 @@ export function TradePanel({
     setView('main');
     setSlInput('');
     setTpInput('');
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingTrade || !onUpdateTrade) return;
+    const sl = parseFloat(editingTrade.sl);
+    const tp = parseFloat(editingTrade.tp);
+    if (isNaN(sl) || isNaN(tp)) return;
+    onUpdateTrade(editingTrade.id, { slPrice: sl, tpPrice: tp });
+    setEditingTrade(null);
   };
 
   const handleAddHistorical = () => {
@@ -465,6 +479,22 @@ export function TradePanel({
                       )}
                     </div>
                     <div className="flex items-center gap-1">
+                      {/* Edit TP/SL – only for pending trades */}
+                      {!trade.outcome && onUpdateTrade && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 p-0 text-slate-500 hover:text-blue-400 shrink-0"
+                          onClick={() => setEditingTrade(
+                            editingTrade?.id === trade.id
+                              ? null
+                              : { id: trade.id, sl: String(trade.slPrice), tp: String(trade.tpPrice) }
+                          )}
+                          title="Edit SL / TP"
+                        >
+                          <Edit2 className="h-3 w-3" />
+                        </Button>
+                      )}
                       {/* Exit button – only for pending (open) trades */}
                       {!trade.outcome && (
                         <Button
@@ -491,6 +521,36 @@ export function TradePanel({
                   <div className="text-[10px] text-slate-400">
                     E:{trade.entryPrice} SL:{trade.slPrice} TP:{trade.tpPrice}
                   </div>
+                  {/* Inline SL/TP editor */}
+                  {editingTrade?.id === trade.id && (
+                    <div className="space-y-1 pt-1 border-t border-slate-700">
+                      <div className="flex gap-1 items-center">
+                        <span className="text-[10px] text-slate-400 w-6">SL</span>
+                        <Input
+                          type="number"
+                          value={editingTrade.sl}
+                          onChange={e => setEditingTrade(prev => prev ? { ...prev, sl: e.target.value } : null)}
+                          className="flex-1 h-6 bg-slate-700 border-slate-600 text-white text-[10px] px-1"
+                        />
+                      </div>
+                      <div className="flex gap-1 items-center">
+                        <span className="text-[10px] text-slate-400 w-6">TP</span>
+                        <Input
+                          type="number"
+                          value={editingTrade.tp}
+                          onChange={e => setEditingTrade(prev => prev ? { ...prev, tp: e.target.value } : null)}
+                          className="flex-1 h-6 bg-slate-700 border-slate-600 text-white text-[10px] px-1"
+                        />
+                      </div>
+                      <Button
+                        size="sm"
+                        className="w-full h-6 bg-blue-600 hover:bg-blue-700 text-white text-[10px] px-2"
+                        onClick={handleSaveEdit}
+                      >
+                        <Check className="h-3 w-3 mr-1" /> Save
+                      </Button>
+                    </div>
+                  )}
                   <div className="text-[10px] text-slate-500 flex items-center gap-2">
                     <span
                       className="bg-slate-700 text-slate-300 px-1 rounded"
