@@ -19,6 +19,7 @@ function getChainSymbol(chain: Chain): string {
     ethereum: 'ETH',
     bitcoin: 'BTC',
     bsc: 'BNB',
+    bsc_testnet: 'tBNB',
     xrp: 'XRP',
     solana: 'SOL',
     qbtc: 'QBTC',

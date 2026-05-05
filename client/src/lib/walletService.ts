@@ -481,6 +481,7 @@ export async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
     ethereum: '',
     bitcoin: '',
     bsc: '',
+    bsc_testnet: '',
     xrp: '',
     solana: '',
     qbtc: '',

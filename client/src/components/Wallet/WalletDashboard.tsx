@@ -491,6 +491,7 @@ export default function WalletDashboard({
       bsc: isTestnet
         ? `https://testnet.bscscan.com/tx/${hash}`
         : `https://bscscan.com/tx/${hash}`,
+      bsc_testnet: `https://testnet.bscscan.com/tx/${hash}`,
       xrp: `https://xrpscan.com/tx/${hash}`,
       solana: `https://solscan.io/tx/${hash}`,
       qbtc: `/qbtc-scan?q=${encodeURIComponent(hash)}`,

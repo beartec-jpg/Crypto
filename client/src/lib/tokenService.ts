@@ -870,6 +870,7 @@ export async function ensureNativeTokens(walletId: string, network: TokenNetwork
     ethereum: { symbol: 'ETH', name: 'Ethereum', decimals: 18 },
     bitcoin: { symbol: 'BTC', name: 'Bitcoin', decimals: 8 },
     bsc: { symbol: 'BNB', name: 'BNB', decimals: 18 },
+    bsc_testnet: { symbol: 'tBNB', name: 'BNB (Testnet)', decimals: 18 },
     xrp: { symbol: 'XRP', name: 'XRP', decimals: 6 },
     solana: { symbol: 'SOL', name: 'Solana', decimals: 9 },
     qbtc: { symbol: 'QBTC', name: 'QuantumBTC', decimals: 8 },
