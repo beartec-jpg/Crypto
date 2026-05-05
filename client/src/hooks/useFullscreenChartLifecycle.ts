@@ -76,6 +76,11 @@ export function useFullscreenChartLifecycle({
         lastSymbolTimeframeRef.current = currentKey;
         isInitialDataLoad.current = false;
       }
+      // Re-enable price scale auto-scaling before loading the new symbol's candles.
+      // Without this, the price scale stays locked to the previous symbol's range
+      // (e.g. BTC's 64000–90000) and the new candles (e.g. VET at ~0.03) render
+      // far outside the visible area.
+      chartRef.current?.applyOptions({ rightPriceScale: { autoScale: true } });
       candleSeriesRef.current.setData(chartData);
       fitContent(candles.length, timeframe);
       chartRef.current?.timeScale().applyOptions({ rightOffset: 50 });
