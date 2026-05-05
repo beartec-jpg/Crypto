@@ -9,6 +9,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { useLocation } from 'wouter';
 import { Helmet } from 'react-helmet-async';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
+import { getQueryFn } from '@/lib/queryClient';
 
 const COLORS = ['#00c4b4', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#10b981', '#6366f1', '#ec4899'];
 
@@ -86,6 +87,7 @@ export default function DevAnalytics() {
   
   const { data: dashboard, isLoading: dashboardLoading } = useQuery<AnalyticsDashboard>({
     queryKey: ['/api/analytics/dashboard', timeRange],
+    queryFn: getQueryFn({ on401: 'throw', url: `/api/analytics/dashboard?timeRange=${timeRange}` }),
     refetchInterval: 30000,
   });
   
@@ -96,22 +98,27 @@ export default function DevAnalytics() {
   
   const { data: topFeatures } = useQuery<TopFeature[]>({
     queryKey: ['/api/analytics/top', 'features'],
+    queryFn: getQueryFn({ on401: 'throw', url: '/api/analytics/top?type=features' }),
   });
   
   const { data: topPages } = useQuery<TopPage[]>({
     queryKey: ['/api/analytics/top', 'pages'],
+    queryFn: getQueryFn({ on401: 'throw', url: '/api/analytics/top?type=pages' }),
   });
   
   const { data: topSymbols } = useQuery<TopSymbol[]>({
     queryKey: ['/api/analytics/top', 'symbols'],
+    queryFn: getQueryFn({ on401: 'throw', url: '/api/analytics/top?type=symbols' }),
   });
   
   const { data: topClicks } = useQuery<TopClick[]>({
     queryKey: ['/api/analytics/top', 'clicks'],
+    queryFn: getQueryFn({ on401: 'throw', url: '/api/analytics/top?type=clicks' }),
   });
   
   const { data: apiCosts } = useQuery<ApiCostBreakdown>({
     queryKey: ['/api/analytics/api-costs', timeRange],
+    queryFn: getQueryFn({ on401: 'throw', url: `/api/analytics/api-costs?timeRange=${timeRange}` }),
   });
   
   if (dashboard?.error === 'Dev access only') {
