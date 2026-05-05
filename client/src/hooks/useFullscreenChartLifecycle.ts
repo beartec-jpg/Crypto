@@ -12,6 +12,17 @@ interface CandleSnapshot {
   length: number; // total candles array length at snapshot time
 }
 
+function makeCandleSnapshot(candle: any, length: number): CandleSnapshot {
+  return {
+    time: candle.time as number,
+    open: candle.open,
+    high: candle.high,
+    low: candle.low,
+    close: candle.close,
+    length,
+  };
+}
+
 interface UseFullscreenChartLifecycleParams {
   candleSeriesRef: React.MutableRefObject<any>;
   chartRef: React.MutableRefObject<any>;
@@ -103,9 +114,7 @@ export function useFullscreenChartLifecycle({
 
       // Record what we just rendered so subsequent live updates can diff against it.
       const lc = candles[candles.length - 1];
-      lastRenderedCandleRef.current = lc
-        ? { time: lc.time as number, open: lc.open, high: lc.high, low: lc.low, close: lc.close, length: candles.length }
-        : null;
+      lastRenderedCandleRef.current = lc ? makeCandleSnapshot(lc, candles.length) : null;
     } else {
       // Live-update path (same symbol/timeframe, periodic refresh).
       //
@@ -114,15 +123,18 @@ export function useFullscreenChartLifecycle({
       // internal kinetic scroll animation, producing the flicker/jump the user
       // sees while scrolling or zooming.  Skip the update when nothing changed.
       const lc = candles[candles.length - 1];
+      // Guard: candles.length === 0 is handled above, but be explicit for type safety.
+      if (!lc) return;
+
       const prev = lastRenderedCandleRef.current;
       const dataChanged =
         prev === null ||
         prev.length !== candles.length ||
-        prev.time !== (lc?.time as number) ||
-        prev.close !== lc?.close ||
-        prev.high !== lc?.high ||
-        prev.low !== lc?.low ||
-        prev.open !== lc?.open;
+        prev.time !== (lc.time as number) ||
+        prev.close !== lc.close ||
+        prev.high !== lc.high ||
+        prev.low !== lc.low ||
+        prev.open !== lc.open;
 
       if (!dataChanged) {
         // Nothing new — leave the chart untouched so scroll animations aren't disrupted.
@@ -130,9 +142,7 @@ export function useFullscreenChartLifecycle({
       }
 
       // Update the snapshot before touching the series.
-      lastRenderedCandleRef.current = lc
-        ? { time: lc.time as number, open: lc.open, high: lc.high, low: lc.low, close: lc.close, length: candles.length }
-        : null;
+      lastRenderedCandleRef.current = makeCandleSnapshot(lc, candles.length);
 
       const currentLogicalRange = chartRef.current?.timeScale().getVisibleLogicalRange();
       candleSeriesRef.current.setData(chartData);
