@@ -55,8 +55,9 @@ export async function apiRequest(
 type UnauthorizedBehavior = "returnNull" | "throw";
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
+  url?: string;
 }) => QueryFunction<T> =
-  ({ on401: unauthorizedBehavior }) =>
+  ({ on401: unauthorizedBehavior, url: overrideUrl }) =>
   async ({ queryKey }) => {
     const headers: Record<string, string> = {};
     
@@ -67,7 +68,8 @@ export const getQueryFn: <T>(options: {
       }
     }
     
-    const res = await fetch(queryKey.join("/") as string, {
+    const fetchUrl = overrideUrl ?? (queryKey.join("/") as string);
+    const res = await fetch(fetchUrl, {
       credentials: "include",
       headers,
     });

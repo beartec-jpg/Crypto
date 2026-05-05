@@ -8177,7 +8177,7 @@ CRITICAL DATA RULES:
   });
 
   // Get analytics dashboard data (dev access only)
-  app.get("/api/analytics/dashboard", async (req: Request, res: Response) => {
+  app.get("/api/analytics/dashboard", requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
     try {
       // Check if user is dev (beartec@beartec.uk)
       const userEmail = req.cryptoUser?.email || '';
@@ -8208,7 +8208,7 @@ CRITICAL DATA RULES:
   });
 
   // Get real-time stats (dev access only)
-  app.get("/api/analytics/realtime", async (req: Request, res: Response) => {
+  app.get("/api/analytics/realtime", requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
     try {
       const userEmail = req.cryptoUser?.email || '';
       const isDev = userEmail.endsWith('@beartec.uk');
@@ -8226,7 +8226,7 @@ CRITICAL DATA RULES:
   });
 
   // Get top features/pages/symbols (dev access only)
-  app.get("/api/analytics/top", async (req: Request, res: Response) => {
+  app.get("/api/analytics/top", requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
     try {
       const userEmail = req.cryptoUser?.email || '';
       const isDev = userEmail.endsWith('@beartec.uk');
@@ -8245,7 +8245,7 @@ CRITICAL DATA RULES:
   });
 
   // Get API cost breakdown (dev access only)
-  app.get("/api/analytics/api-costs", async (req: Request, res: Response) => {
+  app.get("/api/analytics/api-costs", requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
     try {
       const userEmail = req.cryptoUser?.email || '';
       const isDev = userEmail.endsWith('@beartec.uk');
@@ -8302,12 +8302,58 @@ CRITICAL DATA RULES:
     return next();
   }
 
+  // TTL cache so the Clerk user-list sync only runs at most once every 5 minutes
+  let clerkSyncLastRun = 0;
+  const CLERK_SYNC_TTL_MS = 5 * 60 * 1000;
+
   // GET /api/admin/users — list all users with their subscription details
+  // Syncs any Clerk-registered users who haven't yet hit an authenticated route
   app.get('/api/admin/users', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
     try {
       const { db } = await import('./db');
       const { cryptoUsers: usersTable, cryptoSubscriptions: subsTable } = await import('@shared/schema');
       const { eq } = await import('drizzle-orm');
+
+      // Sync all Clerk users into the local DB so they appear even before their first app request.
+      // Throttled to at most once every 5 minutes to avoid hammering the Clerk API.
+      const secretKey = process.env.CLERK_SECRET_KEY;
+      if (secretKey && Date.now() - clerkSyncLastRun > CLERK_SYNC_TTL_MS) {
+        try {
+          const { createClerkClient } = await import('@clerk/backend');
+          const clerk = createClerkClient({ secretKey });
+          const clerkUsers = await clerk.users.getUserList({ limit: 500 });
+
+          const userRows = clerkUsers.data
+            .filter(u => {
+              if (!u.emailAddresses[0]?.emailAddress) {
+                console.warn(`Clerk user ${u.id} has no email address — skipping sync`);
+                return false;
+              }
+              return true;
+            })
+            .map(u => ({
+              id: u.id,
+              email: u.emailAddresses[0].emailAddress,
+              firstName: u.firstName || undefined,
+              lastName: u.lastName || undefined,
+              profileImageUrl: u.imageUrl || undefined,
+            }));
+
+          if (userRows.length > 0) {
+            await db.insert(usersTable).values(userRows).onConflictDoNothing();
+            const subRows = userRows.map(u => ({
+              userId: u.id,
+              tier: 'free' as const,
+              selectedTickers: ['XRPUSDT', 'BTCUSDT', 'ETHUSDT'],
+            }));
+            await db.insert(subsTable).values(subRows).onConflictDoNothing();
+          }
+
+          clerkSyncLastRun = Date.now();
+        } catch (syncErr: any) {
+          console.error('Clerk user sync error (non-fatal):', syncErr.message);
+        }
+      }
 
       const rows = await db
         .select({
