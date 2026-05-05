@@ -180,34 +180,73 @@ Maker                    Server               Taker
 
 ---
 
-## BNB/BSC Implementation Status
+## BNB/ETH Implementation Status — ✅ COMPLETE
 
-BNB ↔ XRP swaps use **identical protocol** to ETH ↔ XRP. BNB uses the same `HashedTimelockETH` contract deployed on BSC, same HTLC flow, same EVM signing.
+BNB ↔ ETH swaps use **identical protocol** to XRP ↔ ETH. BNB uses the same `HashedTimelockETH` contract deployed on BSC Testnet, same HTLC flow, same EVM signing via `EvmAdapter`.
 
-### Server (✅ Complete)
-- `EvmMonitor` polls BSC for `BNB` swaps (configured via `BNB_RPC_URL` + `BNB_HTLC_CONTRACT`)
-- `verifyLockOnChain('BNB', ...)` uses `_verifyEvmLock` — identical to ETH path
-- `BNB_RPC_URL` already set on VPS: `https://data-seed-prebsc-1-s1.bnbchain.org:8545`
+### Deployed Contracts
+| Chain | Contract | Address |
+|-------|----------|---------|
+| BSC Testnet (chainId 97) | HashedTimelockETH | `0xa11c00B5847Ee2FB35446765EDbD63aa2DFe4099` |
 
-### Client (✅ Complete as of this report)
-- `EvmAdapter` already supports `BNB` via `getEvmAdapterConfig('BNB')`
-- `canLockBnb`, `canClaimBnb`, `handleLockBnb`, `handleClaimBnb` added to `MarketplaceTab.tsx`
-- BNB lock/claim buttons added (yellow theme, same layout as ETH buttons)
-
-### ⚠️ One step required before testing BNB/XRP
-Deploy `HashedTimelockETH.sol` on **BSC Testnet (chainId 97)** and set:
+### Env Config
 ```
-# In client env (Vercel)
-VITE_BNB_HTLC_CONTRACT=0x<deployed_address>
+VITE_BNB_HTLC_CONTRACT=0xa11c00B5847Ee2FB35446765EDbD63aa2DFe4099
 VITE_BNB_RPC_URL=https://data-seed-prebsc-1-s1.bnbchain.org:8545
 VITE_BNB_CHAIN_ID=97
-
-# On VPS swap server
-BNB_HTLC_CONTRACT=0x<deployed_address>
-BNB_RPC_URL=https://data-seed-prebsc-1-s1.bnbchain.org:8545
+# (same values on VPS: BNB_HTLC_CONTRACT, BNB_RPC_URL)
 ```
 
-Get BSC testnet BNB: https://www.bnbchain.org/en/testnet-faucet
+### Bugs Fixed During BNB Testing
+| # | Bug | Fix |
+|---|-----|-----|
+| 1 | `BNB/ETH` pair not in `SUPPORTED_PAIRS` | Added to `IChainAdapter.ts` |
+| 2 | EvmAdapter locktime drift (`timelockSecs` calculated relative to `now` twice) | `lockFunds` accepts `absoluteLocktime` param; `handleLockBnb/handleLockEth` pass it directly |
+| 3 | Taker "Claim BNB" button disappeared after maker claimed ETH | `v2ActiveSwaps` filter was missing `bsc` and `qbtc` chains — added `bnbClaimedKey` check |
+| 4 | Portfolio showed single "BNB Smart Chain" row using testnet RPC | `fetchAllBalances` already fetches both networks; added separate `bsc_testnet` `ChainSection` row |
+
+### Completed BNB/ETH Swaps (Testnet — On-chain Verified ✅)
+
+#### Swap 6 — BNB/ETH (Wallet B sells BNB, Wallet A buys with ETH)
+| Field | Value |
+|-------|-------|
+| **Swap ID** | `c66b93d8-30b3-4560-9212-25cbfc329752` |
+| **Direction** | BNB → ETH |
+| **Amounts** | 0.025 BNB ↔ 0.006613 ETH |
+| **Maker (Side A)** | `0x4f6019...` — locked 0.025 BNB on BSC Testnet |
+| **Taker (Side B)** | `0xE4016D...` — locked 0.006613 ETH on Sepolia |
+| **BNB HTLC Lock ID** | `0x2a584c7c55654030d841174cac004b118e1d084b4fc763a06a6abe4869bd2b5e` |
+| **ETH HTLC Lock ID** | `0x2c0f26a2b68714b58ee1541df069b2c656f9536670416b38d76944d7d0f32c3a` |
+| **BSC Explorer** | [View BNB lock](https://testnet.bscscan.com/address/0xa11c00B5847Ee2FB35446765EDbD63aa2DFe4099) |
+| **Sepolia Explorer** | [View ETH lock](https://sepolia.etherscan.io/address/0x66fB849eb255E3e7bCfcD439dd0521acF2458B64) |
+| **Started** | 2026-05-05 11:16 UTC |
+| **Final Status** | `COMPLETE` ✅ — both sides `withdrawn=true` |
+
+#### Swap 7 — BNB/ETH (Wallet B sells BNB, Wallet A buys with ETH)
+| Field | Value |
+|-------|-------|
+| **Swap ID** | `c7ef0b33-94ed-49a1-9974-e70b6e29861b` |
+| **Direction** | BNB → ETH |
+| **Amounts** | 0.04 BNB ↔ 0.010589 ETH |
+| **Maker (Side A)** | `0xE4016D...` — locked 0.04 BNB on BSC Testnet |
+| **Taker (Side B)** | `0x4f6019...` — locked 0.010589 ETH on Sepolia |
+| **BNB HTLC Lock ID** | `0xe13a6af6743a59ad06ce5d9edc65634c1b2e8c567290fc845a7e01a4dd54b916` |
+| **ETH HTLC Lock ID** | `0x748779bf13b161267b446ed285c1c581c24ac5d24a7300790c13d47ba0b5403a` |
+| **Started** | 2026-05-05 11:21 UTC |
+| **Final Status** | `COMPLETE` ✅ — both sides `withdrawn=true` |
+
+#### Swap 8 — ETH/BNB (Wallet B sells ETH, Wallet A buys with BNB)
+| Field | Value |
+|-------|-------|
+| **Swap ID** | `045f2f4d-2e1a-4857-a4dd-736d7c0632f6` |
+| **Direction** | ETH → BNB |
+| **Amounts** | 0.8 ETH ↔ 0.04 BNB |
+| **Maker (Side A)** | `0xE4016D...` — locked 0.8 ETH on Sepolia |
+| **Taker (Side B)** | `0x4f6019...` — locked 0.04 BNB on BSC Testnet |
+| **ETH HTLC Lock ID** | `0xa2372047ac043b95ff3abac433d99b00c6065d1b041a251aebe06ef18ff05199` |
+| **BNB HTLC Lock ID** | `0x30a969618ee93c2342704362d8f460e830a5686790e019cedbd29a584c75fc08` |
+| **Started** | 2026-05-05 11:24 UTC |
+| **Final Status** | `COMPLETE` ✅ — both sides `withdrawn=true` |
 
 ---
 
@@ -215,11 +254,15 @@ Get BSC testnet BNB: https://www.bnbchain.org/en/testnet-faucet
 
 | Metric | Value |
 |--------|-------|
-| Total swaps completed | **5** |
+| Total swaps completed | **8** |
 | ETH/XRP direction | 2 |
 | XRP/ETH direction | 3 |
-| Total ETH transacted | ~2.28 ETH (testnet) |
+| BNB/ETH direction | 2 |
+| ETH/BNB direction | 1 |
+| Total ETH transacted | ~2.28 ETH + 0.017202 ETH (testnet) |
 | Total XRP transacted | ~2,044 XRP (testnet) |
-| Average completion time | ~2.4 minutes |
+| Total BNB transacted | ~0.105 BNB (BSC testnet) |
+| Average completion time | ~2–4 minutes |
 | Failed/stuck swaps | 1 (tecUNFUNDED — XRP wallet drained, no funds at risk) |
 | Protocol security model | Non-custodial HTLC — funds auto-refund if swap abandoned |
+| BNB on-chain verification | ✅ All 3 BNB swaps — both sides `withdrawn=true`, `refunded=false` |
