@@ -87,6 +87,7 @@ export default function WalletDashboard({
     ethereum: true,
     bitcoin: false,
     bsc: false,
+    bsc_testnet: false,
     xrp: false,
     solana: false,
     qbtc: false,
@@ -582,7 +583,7 @@ To: ${tx.to}`;
               onRemoveToken={handleRemoveToken}
             />
 
-            {/* BSC */}
+            {/* BSC Mainnet */}
             <ChainSection
               chain="bsc"
               nativeBalance={getChainBalance('bsc')?.balance || '0'}
@@ -593,6 +594,20 @@ To: ${tx.to}`;
               hideBalances={hideBalances}
               onToggleExpand={() => toggleChainExpansion('bsc')}
               onAddToken={() => setAddTokenChain('bsc')}
+              onSelectToken={handleSelectToken}
+              onRemoveToken={handleRemoveToken}
+            />
+
+            {/* BSC Testnet — always shown so users can distinguish testnet gas from real BNB */}
+            <ChainSection
+              chain="bsc_testnet"
+              nativeBalance={getChainBalance('bsc_testnet')?.balance || '0'}
+              nativeUsdValue={0}
+              tokens={[]}
+              isExpanded={expandedChains.bsc_testnet}
+              hideBalances={hideBalances}
+              onToggleExpand={() => toggleChainExpansion('bsc_testnet')}
+              onAddToken={() => {}}
               onSelectToken={handleSelectToken}
               onRemoveToken={handleRemoveToken}
             />
