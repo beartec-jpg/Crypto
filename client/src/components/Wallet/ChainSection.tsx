@@ -49,6 +49,15 @@ const CHAIN_CONFIG = {
     explorer: 'https://bscscan.com',
     supportsTokens: true,
   },
+  bsc_testnet: {
+    name: 'BNB Smart Chain (Testnet)',
+    symbol: 'tBNB',
+    color: 'text-yellow-300',
+    bgColor: 'bg-yellow-500/5',
+    borderColor: 'border-yellow-500/20',
+    explorer: 'https://testnet.bscscan.com',
+    supportsTokens: false,
+  },
   xrp: {
     name: 'XRP Ledger',
     symbol: 'XRP',
@@ -91,7 +100,8 @@ export default function ChainSection({
   onSelectToken,
   onRemoveToken,
 }: ChainSectionProps) {
-  const config = CHAIN_CONFIG[chain];
+  const config = CHAIN_CONFIG[chain] ?? CHAIN_CONFIG['ethereum'];
+  if (!CHAIN_CONFIG[chain]) console.warn('[ChainSection] unknown chain:', chain);
   const [hoveredToken, setHoveredToken] = useState<string | null>(null);
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [selectedModalToken, setSelectedModalToken] = useState<Token | null>(null);

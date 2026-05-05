@@ -86,10 +86,10 @@ export default function ConfirmationTimer({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(Date.now());
 
-  const minutes = TIME_STEPS[stepIndex];
+  const minutes = TIME_STEPS[stepIndex] ?? TIME_STEPS[4];
   const targetConfirmations = minutesToConfirmations(minutes);
   const securityLevel = getSecurityLevel(targetConfirmations);
-  const config = SECURITY_CONFIG[securityLevel];
+  const config = SECURITY_CONFIG[securityLevel] ?? SECURITY_CONFIG['low'];
 
   // Notify parent of target changes
   useEffect(() => {
