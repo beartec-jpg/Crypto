@@ -2626,8 +2626,11 @@ function V2SwapActions({
           <Loader2 size={10} className="animate-spin ml-1" /> Waiting for confirmation…
         </p>
       )}
-      {isMaker && swap.status === 'PENDING_SIDE_A' && (
+      {isMaker && (swap.status === 'PENDING_SIDE_A' || swap.status === 'SIDE_A_LOCKED') && (
         <div className="pt-1 border-t border-slate-700/40">
+          {swap.status === 'SIDE_A_LOCKED' && (
+            <p className="text-xs text-amber-400/80 mb-1">Your funds are locked on-chain. Cancelling will let you reclaim them once the timelock expires.</p>
+          )}
           {cancelSwapError && <p className="text-xs text-red-300 mb-1">{cancelSwapError}</p>}
           <button
             onClick={handleCancelSwap}

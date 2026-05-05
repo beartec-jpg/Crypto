@@ -9,7 +9,7 @@ import { QBTCChain } from './qbtcService';
 import type { TokenNetwork } from './tokenService';
 import { getChainNetworkAddress, type WalletAddresses } from './networkAddress';
 
-export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana' | 'qbtc';
+export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'bsc_testnet' | 'xrp' | 'solana' | 'qbtc';
 
 export interface ChainBalance {
   chain: Chain;
@@ -163,36 +163,46 @@ export async function fetchBitcoinBalance(address: string, network: TokenNetwork
  * Supports mainnet and Chapel testnet
  */
 export async function fetchBSCBalance(address: string, network: TokenNetwork = 'mainnet'): Promise<string> {
-  try {
-    // BSC mainnet: https://bsc-dataseed.binance.org/
-    // BSC testnet (Chapel): https://data-seed-prebsc-1-s1.binance.org:8545/
-    const rpcUrl = network === 'testnet'
-      ? 'https://data-seed-prebsc-1-s1.binance.org:8545/'
-      : 'https://bsc-dataseed.binance.org/';
-    const networkLabel = network === 'testnet' ? 'TESTNET (Chapel)' : 'MAINNET';
-    console.log(`🔍 Fetching BNB balance from ${networkLabel} for:`, address);
-    
-    const response = await axios.post(rpcUrl, {
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'eth_getBalance',
-      params: [address, 'latest'],
-    }, { timeout: 10000 });
+  const networkLabel = network === 'testnet' ? 'TESTNET (Chapel)' : 'MAINNET';
+  // Mainnet: publicnode first (CORS-friendly), then Ankr, then official Binance nodes as fallback
+  // Testnet: official Chapel testnet node
+  const rpcUrls = network === 'testnet'
+    ? [
+        'https://data-seed-prebsc-1-s1.bnbchain.org:8545/',
+        'https://data-seed-prebsc-1-s1.binance.org:8545/',
+        'https://data-seed-prebsc-2-s1.binance.org:8545/',
+      ]
+    : [
+        'https://bsc-rpc.publicnode.com',
+        'https://rpc.ankr.com/bsc',
+        'https://bsc-dataseed1.bnbchain.org/',
+        'https://bsc-dataseed.binance.org/',
+      ];
 
-    console.log('📦 BNB RPC Response:', response.data);
+  console.log(`🔍 Fetching BNB balance from ${networkLabel} for:`, address);
 
-    if (response.data.result) {
-      const balanceWei = parseInt(response.data.result, 16);
-      const balanceBNB = balanceWei / 1e18;
-      console.log(`✅ BNB Balance (${networkLabel}):`, balanceBNB, 'BNB');
-      return balanceBNB.toFixed(6);
+  for (const rpcUrl of rpcUrls) {
+    try {
+      const response = await axios.post(rpcUrl, {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_getBalance',
+        params: [address, 'latest'],
+      }, { timeout: 8000 });
+
+      if (response.data?.result) {
+        const balanceWei = parseInt(response.data.result, 16);
+        const balanceBNB = balanceWei / 1e18;
+        console.log(`✅ BNB Balance (${networkLabel}) via ${rpcUrl}:`, balanceBNB, 'BNB');
+        return balanceBNB.toFixed(6);
+      }
+    } catch (err: any) {
+      console.warn(`⚠️ BSC RPC ${rpcUrl} failed:`, err.message);
     }
-    
-    return '0';
-  } catch (error: any) {
-    console.error('❌ Failed to fetch BSC balance:', error.message);
-    return '0';
   }
+
+  console.error(`❌ All BSC ${networkLabel} RPCs failed`);
+  return '0';
 }
 
 /**
@@ -342,16 +352,16 @@ export async function fetchBlockNumber(chain: Chain, network: TokenNetwork = 'ma
       }
 
       case 'bsc': {
-        const rpcUrl = network === 'testnet'
-          ? 'https://data-seed-prebsc-1-s1.binance.org:8545/'
-          : 'https://bsc-dataseed.binance.org/';
-        const response = await axios.post(rpcUrl, {
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'eth_blockNumber',
-          params: [],
-        }, { timeout: 5000 });
-        return parseInt(response.data.result, 16);
+        const bscRpcs = network === 'testnet'
+          ? ['https://data-seed-prebsc-1-s1.bnbchain.org:8545/', 'https://data-seed-prebsc-1-s1.binance.org:8545/']
+          : ['https://bsc-rpc.publicnode.com', 'https://rpc.ankr.com/bsc', 'https://bsc-dataseed1.bnbchain.org/', 'https://bsc-dataseed.binance.org/'];
+        for (const rpcUrl of bscRpcs) {
+          try {
+            const response = await axios.post(rpcUrl, { jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: [] }, { timeout: 5000 });
+            if (response.data?.result) return parseInt(response.data.result, 16);
+          } catch { /* try next */ }
+        }
+        return 0;
       }
 
       case 'xrp': {
@@ -438,10 +448,16 @@ export async function fetchAllBalances(
       qbtc: getChainNetworkAddress(addresses, 'qbtc', network),
     };
 
-    const [ethBalance, btcBalance, bscBalance, xrpBalance, solBalance, qbtcBalance] = await Promise.all([
+    // Always fetch both BSC mainnet AND testnet so users can see both balances
+    // regardless of which network the swap UI is using
+    const bscAddress = getChainNetworkAddress(addresses, 'bsc', 'mainnet');
+    const bscTestnetAddress = getChainNetworkAddress(addresses, 'bsc', 'testnet');
+
+    const [ethBalance, btcBalance, bscBalance, bscTestnetBalance, xrpBalance, solBalance, qbtcBalance] = await Promise.all([
       chainAddresses.ethereum ? fetchEthereumBalance(chainAddresses.ethereum, network) : Promise.resolve('0'),
       chainAddresses.bitcoin ? fetchBitcoinBalance(chainAddresses.bitcoin, network) : Promise.resolve('0'),
-      chainAddresses.bsc ? fetchBSCBalance(chainAddresses.bsc, network) : Promise.resolve('0'),
+      bscAddress ? fetchBSCBalance(bscAddress, 'mainnet') : Promise.resolve('0'),
+      bscTestnetAddress ? fetchBSCBalance(bscTestnetAddress, 'testnet') : Promise.resolve('0'),
       chainAddresses.xrp ? fetchXRPBalance(chainAddresses.xrp, network) : Promise.resolve('0'),
       chainAddresses.solana ? fetchSolanaBalance(chainAddresses.solana, network) : Promise.resolve('0'),
       chainAddresses.qbtc ? fetchQBTCBalance(chainAddresses.qbtc) : Promise.resolve('0'),
@@ -465,9 +481,16 @@ export async function fetchAllBalances(
       {
         chain: 'bsc',
         balance: bscBalance,
-        usdValue: shouldValueInUsd ? parseFloat(bscBalance) * prices.binancecoin.usd : 0,
-        usdPrice: shouldValueInUsd ? prices.binancecoin.usd : 0,
-        priceChange24h: shouldValueInUsd ? prices.binancecoin.usd_24h_change : 0,
+        usdValue: parseFloat(bscBalance) * prices.binancecoin.usd,
+        usdPrice: prices.binancecoin.usd,
+        priceChange24h: prices.binancecoin.usd_24h_change,
+      },
+      {
+        chain: 'bsc_testnet',
+        balance: bscTestnetBalance,
+        usdValue: 0,
+        usdPrice: 0,
+        priceChange24h: 0,
       },
       {
         chain: 'xrp',
