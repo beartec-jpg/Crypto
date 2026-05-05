@@ -1496,9 +1496,14 @@ function V2SwapActions({
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       const isNotFunded = /account not found|actnotfound|account.*not.*exist/i.test(msg);
+      const isUnderfunded = /tecUNFUNDED/i.test(msg);
       if (isNotFunded && isTestnet) {
         setXrpNotFunded(true);
         setErrorMsg('Your XRP testnet account is not activated — it needs test XRP to exist on the ledger.');
+      } else if (isUnderfunded) {
+        const lockAmount = (isMaker && swap.baseChain === 'XRP') ? swap.sideAAmount : swap.sideBAmount;
+        const needed = parseFloat(lockAmount || '0') + 12; // 10 XRP base reserve + 2 XRP owner reserve
+        setErrorMsg(`Insufficient XRP: locking ${lockAmount} XRP requires ~${needed.toFixed(2)} XRP total (amount + 10 XRP base reserve + 2 XRP owner reserve). Add more XRP to your wallet.`);
       } else {
         setErrorMsg(msg);
       }

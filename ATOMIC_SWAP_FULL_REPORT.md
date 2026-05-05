@@ -1,7 +1,8 @@
-# XRP ↔ ETH Atomic Swap — Implementation & Test Report
-**Date:** 2026-04-29  
+# P2P Atomic Swap — Full Implementation & Test Report
+**Date:** 2026-04-29 → 2026-05-05  
 **Network:** Testnet (Sepolia + XRPL Testnet + BSC Testnet)  
-**Protocol:** QBTC V2 Atomic Swap — HTLC-based, non-custodial, trustless
+**Protocol:** QBTC V2 Atomic Swap — HTLC-based, non-custodial, trustless  
+**Pairs Tested:** XRP/ETH · ETH/XRP · BNB/ETH · ETH/BNB
 
 ---
 
