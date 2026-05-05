@@ -14,8 +14,9 @@ interface TradeZoneRendererProps {
 export function TradeZoneRenderer({ chart, candleSeries, trades, currentTime, timeframe }: TradeZoneRendererProps) {
   const primitiveRef = useRef<TradePrimitive | null>(null);
 
-  // Only render trades that belong to the current timeframe
-  const timeframeTrades = trades.filter(t => t.timeframe === timeframe);
+  // Render trades that belong to the current timeframe.
+  // Also include legacy trades that pre-date the timeframe field so they remain visible.
+  const timeframeTrades = trades.filter(t => !t.timeframe || t.timeframe === timeframe);
 
   useEffect(() => {
     if (!chart || !candleSeries) return;
@@ -24,17 +25,19 @@ export function TradeZoneRenderer({ chart, candleSeries, trades, currentTime, ti
     try {
       candleSeries.attachPrimitive(primitive);
       primitiveRef.current = primitive;
+      // Explicitly trigger an update after attachment so the primitive redraws
+      // with the current trades in case _requestUpdate was not yet available
+      // during construction.
+      primitive.update(timeframeTrades, currentTime);
     } catch (e) {
       console.error('Failed to attach TradePrimitive:', e);
     }
 
     return () => {
-      if (primitiveRef.current) {
-        try { candleSeries.detachPrimitive(primitiveRef.current); } catch (e) {
-          console.warn('Failed to detach TradePrimitive:', e);
-        }
-        primitiveRef.current = null;
+      try { candleSeries.detachPrimitive(primitive); } catch (e) {
+        console.warn('Failed to detach TradePrimitive:', e);
       }
+      if (primitiveRef.current === primitive) primitiveRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chart, candleSeries]);

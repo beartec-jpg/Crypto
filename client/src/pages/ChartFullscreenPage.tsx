@@ -100,6 +100,9 @@ import { Button } from '@/components/ui/button';
 import { useManualTrades } from '@/hooks/useManualTrades';
 import { TradePanel } from '@/components/trading/TradePanel';
 import { TradeZoneRenderer } from '@/components/chart/TradeZoneRenderer';
+import { FreeDrawToolbar } from '@/components/drawings/FreeDrawToolbar';
+import { ChartPickOverlay } from '@/components/trading/ChartPickOverlay';
+import type { TradePickField } from '@/components/trading/ChartPickOverlay';
 // Types and constants
 import type { Drawing, ChartDrawingTool, FreeDrawMode } from '@/types/drawing';
 import type { DivergencePoint, MAConfig } from '@/types/chart.types';
@@ -226,6 +229,10 @@ export function ChartFullscreenPage({
   const [activeTool, setActiveTool] = useState<ChartDrawingTool>(null);
   const [freeDrawMode, setFreeDrawMode] = useState<FreeDrawMode>('line_assisted');
   const freeDrawModeRef = useRef<FreeDrawMode>('line_assisted');
+  const [freeDrawColor, setFreeDrawColor] = useState('#3b82f6');
+  const [freeDrawLineWidth, setFreeDrawLineWidth] = useState(2);
+  const freeDrawColorRef = useRef('#3b82f6');
+  const freeDrawLineWidthRef = useRef(2);
   const [drawings, setDrawings] = useState<Drawing[]>([]);
   const [drawingsVisible, setDrawingsVisible] = useState(true);
   const [activeEdit, setActiveEdit] = useState<{ drawingId: string; pointIndex: number; originalDrawing: Drawing } | null>(null);
@@ -295,6 +302,10 @@ export function ChartFullscreenPage({
 
   // Trade tool state (data computed after effectiveCandles is available)
   const [showTradePanel, setShowTradePanel] = useState(false);
+  const [tradePickMode, setTradePickMode] = useState<TradePickField | null>(null);
+  const tradePickModeRef = useRef<TradePickField | null>(null);
+  /** Incremented each time the user clicks the chart in pick mode; TradePanel watches this object reference */
+  const [chartPickValue, setChartPickValue] = useState<{ price: number; time: number } | null>(null);
 
   // Refs
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -499,7 +510,7 @@ export function ChartFullscreenPage({
     })),
     [effectiveCandles],
   );
-  const { trades: manualTrades, addTrade: addManualTrade, exitTrade: exitManualTrade, deleteTrade: deleteManualTrade } = useManualTrades(symbol, timeframe, tradeCandleData);
+  const { trades: manualTrades, addTrade: addManualTrade, exitTrade: exitManualTrade, deleteTrade: deleteManualTrade, updateTrade: updateManualTrade } = useManualTrades(symbol, timeframe, tradeCandleData);
   const latestTradeCandle = tradeCandleData[tradeCandleData.length - 1];
   const currentTradePrice = latestTradeCandle?.close ?? 0;
   const currentTradeTime = latestTradeCandle?.time ?? 0;
@@ -1704,8 +1715,10 @@ export function ChartFullscreenPage({
 
     const opts = chart.options() as any;
     chartPanZoomRestoreRef.current = {
-      handleScroll: opts.handleScroll,
-      handleScale: opts.handleScale,
+      // Default to true so that if lightweight-charts returns undefined for an
+      // option that was never explicitly set, we still re-enable scroll/scale.
+      handleScroll: opts.handleScroll ?? true,
+      handleScale: opts.handleScale ?? true,
     };
 
     chart.applyOptions({
@@ -2142,6 +2155,7 @@ export function ChartFullscreenPage({
     candles,
     timeframe,
     symbol,
+    isLoading,
     fitContent,
     handleChartClick: drawingInteraction.handleChartClick as EventListener,
     handleTouchEnd: drawingInteraction.handleTouchEnd as EventListener,
@@ -2158,6 +2172,8 @@ export function ChartFullscreenPage({
   // Update refs
   useEffect(() => { activeToolRef.current = activeTool; }, [activeTool]);
   useEffect(() => { freeDrawModeRef.current = freeDrawMode; }, [freeDrawMode]);
+  useEffect(() => { freeDrawColorRef.current = freeDrawColor; }, [freeDrawColor]);
+  useEffect(() => { freeDrawLineWidthRef.current = freeDrawLineWidth; }, [freeDrawLineWidth]);
 
   // Resume pan/zoom whenever activeTool changes (including when cancelled via Escape or
   // tool-switch). This unblocks the chart if pauseChartPanZoom() was called mid-stroke
@@ -2293,8 +2309,8 @@ export function ChartFullscreenPage({
         type: 'free_draw',
         points: finalPoints,
         style: {
-          color: '#3b82f6',
-          lineWidth: 2,
+          color: freeDrawColorRef.current,
+          lineWidth: freeDrawLineWidthRef.current,
           drawSubMode: currentMode,
         },
         timeframe,
@@ -2356,6 +2372,46 @@ export function ChartFullscreenPage({
     onUndo: handleUndo,
     onRedo: handleRedo,
   });
+
+  // Keep pick-mode ref in sync so the click handler (registered via addEventListener) can read it
+  useEffect(() => { tradePickModeRef.current = tradePickMode; }, [tradePickMode]);
+
+  // Escape cancels chart-pick mode
+  useEffect(() => {
+    if (!tradePickMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setTradePickMode(null);
+        tradePickModeRef.current = null;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [tradePickMode]);
+
+  // Single click on chart resolves the pick
+  useEffect(() => {
+    if (!tradePickMode) return;
+    const container = chartContainerRef.current;
+    if (!container) return;
+
+    const onClick = (e: MouseEvent) => {
+      const field = tradePickModeRef.current;
+      if (!field) return;
+      const pt = getChartPointFromClient(e.clientX, e.clientY);
+      if (!pt) return;
+      const time = logicalToTime(pt.logical);
+      if (!time) return;
+      setChartPickValue({ price: pt.price, time });
+      setTradePickMode(null);
+      tradePickModeRef.current = null;
+    };
+
+    // Use capture so it fires before chart's own click handlers
+    container.addEventListener('click', onClick, true);
+    return () => container.removeEventListener('click', onClick, true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tradePickMode]);
 
   // Elliott Wave: auto-save the wave immediately when all points are placed and valid
   useEffect(() => {
@@ -2868,6 +2924,18 @@ export function ChartFullscreenPage({
           selectedDrawingTimeframe={drawings.find(d => d.id === drawingInteraction.selectedDrawingId)?.timeframe}
         />
 
+        {/* Free draw on-screen toolbar – shown whenever free_draw tool is active */}
+        {activeTool === 'free_draw' && (
+          <FreeDrawToolbar
+            mode={freeDrawMode}
+            onModeChange={(m) => { setFreeDrawMode(m); freeDrawModeRef.current = m; }}
+            color={freeDrawColor}
+            onColorChange={(c) => { setFreeDrawColor(c); freeDrawColorRef.current = c; }}
+            lineWidth={freeDrawLineWidth}
+            onLineWidthChange={(w) => { setFreeDrawLineWidth(w); freeDrawLineWidthRef.current = w; }}
+          />
+        )}
+
         {/* Trade zone overlay */}
         <TradeZoneRenderer
           chart={chartRef.current}
@@ -2889,9 +2957,26 @@ export function ChartFullscreenPage({
               onAddTrade={addManualTrade}
               onExitTrade={exitManualTrade}
               onDeleteTrade={deleteManualTrade}
+              onUpdateTrade={updateManualTrade}
               onClose={() => setShowTradePanel(false)}
+              activePickField={tradePickMode}
+              onRequestChartPick={(field) => {
+                setTradePickMode(field);
+                tradePickModeRef.current = field;
+                // Clear any stale result so the useEffect in TradePanel fires on next pick
+                setChartPickValue(null);
+              }}
+              chartPickValue={chartPickValue}
             />
           </div>
+        )}
+
+        {/* Chart-pick instruction overlay */}
+        {tradePickMode && (
+          <ChartPickOverlay
+            field={tradePickMode}
+            onCancel={() => { setTradePickMode(null); tradePickModeRef.current = null; }}
+          />
         )}
       </div>
       

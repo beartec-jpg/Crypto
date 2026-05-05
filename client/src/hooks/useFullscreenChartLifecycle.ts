@@ -9,6 +9,7 @@ interface UseFullscreenChartLifecycleParams {
   candles: any[];
   timeframe: string;
   symbol: string;
+  isLoading: boolean;
   fitContent: (barCount?: number, timeframe?: string) => void;
   handleChartClick: EventListener;
   handleTouchEnd: EventListener;
@@ -26,6 +27,7 @@ export function useFullscreenChartLifecycle({
   candles,
   timeframe,
   symbol,
+  isLoading,
   fitContent,
   handleChartClick,
   handleTouchEnd,
@@ -64,12 +66,19 @@ export function useFullscreenChartLifecycle({
 
     // Fit content on initial load or any symbol/timeframe change so we never carry
     // over a stale visible range from a different bar density.
+    // Only commit the new pair key once we have fresh candles (isLoading=false).
+    // While isLoading, we still render whatever data we have but keep the key
+    // "pending" so that fitContent() fires again when the actual new candles arrive.
     if (isInitialDataLoad.current || isNewPair) {
-      lastSymbolTimeframeRef.current = currentKey;
+      if (!isLoading) {
+        // Candles are fresh for this pair — lock in the key so subsequent renders
+        // (auto-refresh) go through the else branch (preserve user's scroll position).
+        lastSymbolTimeframeRef.current = currentKey;
+        isInitialDataLoad.current = false;
+      }
       candleSeriesRef.current.setData(chartData);
       fitContent(candles.length, timeframe);
       chartRef.current?.timeScale().applyOptions({ rightOffset: 50 });
-      isInitialDataLoad.current = false;
     } else {
       const currentLogicalRange = chartRef.current?.timeScale().getVisibleLogicalRange();
       candleSeriesRef.current.setData(chartData);
@@ -80,7 +89,7 @@ export function useFullscreenChartLifecycle({
         }
       }
     }
-  }, [candles, rewindPosition, candleSeriesRef, fitContent, timeframe, symbol, chartRef]);
+  }, [candles, rewindPosition, candleSeriesRef, fitContent, timeframe, symbol, isLoading, chartRef]);
 
   useEffect(() => {
     const chartElement = chartContainerRef.current;

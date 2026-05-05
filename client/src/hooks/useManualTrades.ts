@@ -140,7 +140,17 @@ export function useManualTrades(symbol: string, timeframe: string, candles: Arra
     setTrades(prev => prev.filter(t => t.id !== id));
   }, []);
 
+  const updateTrade = useCallback((id: string, updates: Partial<Pick<ManualTrade, 'slPrice' | 'tpPrice'>>) => {
+    setTrades(prev => prev.map(t => {
+      if (t.id !== id || t.outcome) return t;
+      const updated = { ...t, ...updates };
+      // Re-scan from the entry candle with the new SL/TP levels
+      lastCheckedCandleRef.current.delete(id);
+      return updated;
+    }));
+  }, []);
+
   const symbolTrades = trades.filter(t => t.symbol === symbol);
 
-  return { trades: symbolTrades, addTrade, exitTrade, deleteTrade };
+  return { trades: symbolTrades, addTrade, exitTrade, deleteTrade, updateTrade };
 }
