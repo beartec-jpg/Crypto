@@ -1097,6 +1097,7 @@ function V2SwapActions({
   const [xrpAddrInput, setXrpAddrInput] = useState('');
   const [actionStatus, setActionStatus] = useState<'idle' | 'busy' | 'done' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
+  const [consolidationStatus, setConsolidationStatus] = useState('');
   const [cancellingSwap, setCancellingSwap] = useState(false);
   const [cancelSwapError, setCancelSwapError] = useState('');
   const [xrpNotFunded, setXrpNotFunded] = useState(false);
@@ -1881,6 +1882,9 @@ function V2SwapActions({
           timelockSecs: 0, // ignored when absoluteLocktime is set
           counterpartyAddress: qbtcAddress,
           refundAddress: qbtcAddress,
+          onConsolidationProgress: ({ pass, remainingUtxos }) => {
+            setConsolidationStatus(`Consolidating UTXOs (pass ${pass}, ~${remainingUtxos} remaining)…`);
+          },
         });
         lockId = result.lockId;
         lockAddress = result.lockAddress;
@@ -1912,16 +1916,19 @@ function V2SwapActions({
         localStorage.removeItem(pendingQbtcLockKey);
         localStorage.removeItem(pollCountKey);
         setHasPendingQbtcLock(false);
+        setConsolidationStatus('');
         setActionStatus('done');
         setPassword('');
         onRefresh();
       } catch (serverErr: unknown) {
         // TX was broadcast but not yet confirmed — poller will retry
         const msg = serverErr instanceof Error ? serverErr.message : String(serverErr);
+        setConsolidationStatus('');
         setErrorMsg(msg);
         setActionStatus('error');
       }
     } catch (e: unknown) {
+      setConsolidationStatus('');
       setErrorMsg(e instanceof Error ? e.message : String(e));
       setActionStatus('error');
     }
@@ -2621,11 +2628,16 @@ function V2SwapActions({
           className="w-full py-2 rounded-lg text-sm font-medium bg-cyan-700 hover:bg-cyan-600 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
         >
           {actionStatus === 'busy'
-            ? <><Loader2 size={14} className="animate-spin" /> Locking QBTC…</>
+            ? <><Loader2 size={14} className="animate-spin" /> {consolidationStatus ? 'Consolidating…' : 'Locking QBTC…'}</>
             : hasPendingQbtcLock
             ? <><Loader2 size={14} className="animate-spin" /> Awaiting confirmation…</>
             : <><Lock size={14} /> Lock {(isMaker && swap.baseChain === 'QBTC') ? swap.sideAAmount : swap.sideBAmount} QBTC</>}
         </button>
+      )}
+      {consolidationStatus && actionStatus === 'busy' && (
+        <p className="text-xs text-cyan-400/80 flex items-center gap-1">
+          <Loader2 size={10} className="animate-spin" /> {consolidationStatus}
+        </p>
       )}
       {canClaimQbtc && (
         <button

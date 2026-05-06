@@ -57,6 +57,11 @@ export interface LockParams {
    * Not needed for EVM (uses address) or XRP (uses Condition).
    */
   counterpartyPubKeyHex?: string;
+  /**
+   * QBTC only: called during auto-consolidation passes to report progress.
+   * Receives { pass, txid, remainingUtxos } after each consolidation tx.
+   */
+  onConsolidationProgress?: (info: { pass: number; txid: string; remainingUtxos: number }) => void;
 }
 
 export interface LockResult {

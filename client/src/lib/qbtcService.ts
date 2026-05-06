@@ -842,6 +842,132 @@ export class QBTCChain {
     return this.rpcCall<string>('sendrawtransaction', [rawHex]);
   }
 
+  /**
+   * Auto-consolidate a fragmented wallet before sending.
+   *
+   * Each block mined creates one coinbase UTXO, so a mining wallet accumulates
+   * thousands of UTXOs over time. With hybrid Falcon-512 witnesses (~1,720 bytes
+   * per input) this quickly breaches the 100KB MAX_STANDARD_TX_SIZE limit.
+   *
+   * This method repeatedly builds "consolidation" transactions that sweep up to
+   * BATCH_SIZE UTXOs back to the same address until the wallet can fund the target
+   * amount in a single transaction.
+   *
+   * Each consolidation tx: BATCH_SIZE inputs → 1 output (self).
+   * After N passes the UTXO count shrinks from K → K/BATCH_SIZE → K/BATCH_SIZE² …
+   * until selectUtxos can pick enough value without hitting the input cap.
+   *
+   * onProgress (optional): called after each consolidation tx with
+   *   { pass, txid, remainingUtxos } so the UI can show progress.
+   */
+  async autoConsolidateAndSend(
+    keyPair: QBTCKeyPair,
+    toAddress: string,
+    amount: string,
+    signMode: 'hybrid' | 'ecdsa' = 'hybrid',
+    onProgress?: (info: { pass: number; txid: string; remainingUtxos: number }) => void,
+  ): Promise<{ txid: string; fee: number; consolidationPasses: number }> {
+    const fromAddress = keyPair.getAddress(this.settings.network);
+    const network     = QBTC_NETWORKS[this.settings.network];
+    const feeRate     = Math.max(5, Number(this.settings.feeRate || 5));
+    const maxInputs   = maxInputsForMode(signMode);
+    // Leave headroom: consolidate in batches slightly below the cap
+    const BATCH_SIZE  = Math.max(2, maxInputs - 2);
+    const COINBASE_MATURITY = 100;
+    let consolidationPasses = 0;
+
+    // Inner helper: fetch live UTXOs (respecting coinbase maturity)
+    const fetchUtxos = async (): Promise<QBTCUtxo[]> => {
+      const scan = await this.rpcCall<{
+        height: number;
+        unspents: Array<{ txid: string; vout: number; amount: number; height: number; scriptPubKey: string }>;
+      }>('scantxoutset', ['start', [{ desc: addressToRawDescriptor(fromAddress, network) }]]);
+      const chainHeight = scan?.height ?? 0;
+      return (scan?.unspents ?? [])
+        .filter(u => (chainHeight - u.height) >= COINBASE_MATURITY)
+        .map(u => ({ txid: u.txid, vout: u.vout, amount: u.amount, address: fromAddress, scriptPubKey: u.scriptPubKey }));
+    };
+
+    // Inner helper: build + sign a consolidation tx consuming `batch` UTXOs → self
+    const consolidateBatch = async (batch: QBTCUtxo[]): Promise<string> => {
+      const totalSats  = batch.reduce((s, u) => s + toSats(u.amount), 0);
+      const outputCount = 1;
+      const vSize = estimateTxVSize(batch.length, outputCount, signMode);
+      const fee   = Math.max(1, Math.ceil(vSize * feeRate));
+      const outSats = totalSats - fee;
+      if (outSats <= DUST_THRESHOLD) throw new Error('Consolidation batch output below dust threshold');
+
+      const hybridHash = keyPair.getHybridHash();
+      const scriptCode = bitcoin.payments.p2pkh({ hash: hybridHash, network }).output;
+      if (!scriptCode) throw new Error('Failed to build QBTC scriptCode for consolidation');
+
+      const tx = new bitcoin.Transaction();
+      tx.version = 2;
+      for (const utxo of batch) {
+        tx.addInput(Buffer.from(utxo.txid, 'hex').reverse(), utxo.vout, 0xfffffffd);
+      }
+      tx.addOutput(bitcoin.address.toOutputScript(fromAddress, network), outSats);
+
+      for (const [idx, utxo] of batch.entries()) {
+        const digest = tx.hashForWitnessV0(idx, scriptCode, toSats(utxo.amount), bitcoin.Transaction.SIGHASH_ALL);
+        if (signMode === 'ecdsa') {
+          const w = keyPair.signDigestECDSAOnly(digest);
+          tx.setWitness(idx, [w.ecdsaSignature, w.ecdsaPublicKey, w.dilithiumPublicKey]);
+        } else {
+          const w = keyPair.signDigestForWitness(digest);
+          tx.setWitness(idx, [w.ecdsaSignature, w.ecdsaPublicKey, w.dilithiumSignature, w.dilithiumPublicKey]);
+        }
+      }
+
+      const hex = tx.toHex();
+      return this.rpcCall<string>('sendrawtransaction', [hex]);
+    };
+
+    // Consolidation loop: keep going until the wallet can fit the target send in one tx
+    const MAX_PASSES = 500; // safety cap to avoid infinite loops
+    for (let pass = 1; pass <= MAX_PASSES; pass++) {
+      const utxos    = await fetchUtxos();
+      const amtSats  = toSats(Number(amount));
+      const feeEst   = Math.max(1, Math.ceil(estimateTxVSize(1, 2, signMode) * feeRate));
+
+      // Try selectUtxos — if it succeeds we're done consolidating
+      try {
+        selectUtxos(utxos, amtSats, feeRate, signMode);
+        break; // can fund the send; exit loop
+      } catch {
+        // Still too fragmented — run one more consolidation pass
+      }
+
+      if (pass > MAX_PASSES) {
+        throw new Error(`Auto-consolidation: still fragmented after ${MAX_PASSES} passes`);
+      }
+
+      // Pick the BATCH_SIZE largest UTXOs that aren't needed for the actual send amount
+      // (largest-first so each batch removes the most dust)
+      const sorted = [...utxos].sort((a, b) => b.amount - a.amount);
+      // Check if we have enough total — if not, just consolidate everything available
+      const totalAvail = sorted.reduce((s, u) => s + toSats(u.amount), 0);
+      if (totalAvail < amtSats + feeEst) {
+        throw new Error(
+          `Insufficient QBTC: have ${(totalAvail / 1e8).toFixed(8)}, need ${((amtSats + feeEst) / 1e8).toFixed(8)}`
+        );
+      }
+
+      const batch = sorted.slice(0, BATCH_SIZE);
+      const txid  = await consolidateBatch(batch);
+      consolidationPasses++;
+      onProgress?.({ pass, txid, remainingUtxos: utxos.length - BATCH_SIZE + 1 });
+
+      // Brief pause to let the mempool accept the consolidation tx before re-scanning
+      await new Promise(r => setTimeout(r, 1500));
+    }
+
+    // Now run the actual send
+    const { hex, fee } = await this.createAndSignTransaction(keyPair, toAddress, amount, signMode);
+    const txid = await this.broadcastRawTransaction(hex);
+    return { txid, fee, consolidationPasses };
+  }
+
   async sendTransaction(
     keyPair: QBTCKeyPair,
     toAddress: string,

@@ -412,10 +412,16 @@ export class BitcoinAdapter implements IChainAdapter {
     });
     const htlcAddress = getHTLCAddress(htlcScript, this.qbtcNetwork);
 
-    // Fetch UTXOs for the locker's address via QBTC RPC proxy
+    // Fetch UTXOs for the locker's address via QBTC RPC proxy.
+    // autoConsolidateAndSend handles fragmented wallets (many small mining UTXOs)
+    // by sweeping batches back to self before the final send.
     const { QBTCChain } = await import('../qbtcService.ts');
     const chain = new QBTCChain({ network: this.qbtcNetwork, rpcUrl: this.rpcProxyUrl });
-    const { txid } = await chain.sendTransaction(keyPair, htlcAddress, String(params.amount));
+    const { txid } = await chain.autoConsolidateAndSend(
+      keyPair, htlcAddress, String(params.amount),
+      'hybrid',
+      params.onConsolidationProgress,
+    );
 
     return {
       lockId: txid,
