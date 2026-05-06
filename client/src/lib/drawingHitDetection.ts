@@ -285,6 +285,7 @@ function getDistanceToDrawing(
       
       const priceDiff = drawing.points[1].price - drawing.points[0].price;
       const hiddenLevels = drawing.style?.hiddenLevels || [];
+      const customValues = drawing.style?.customValues || {};
       
       // Check distance to each visible fib level
       let minDistance = Infinity;
@@ -295,8 +296,11 @@ function getDistanceToDrawing(
           continue;
         }
         
+        // Use custom value if set, otherwise use default level
+        const actualLevel = customValues[level] !== undefined ? customValues[level] : level;
+        
         // Calculate level price
-        const levelPrice = drawing.points[1].price - priceDiff * level;
+        const levelPrice = drawing.points[1].price - priceDiff * actualLevel;
         const levelY = series.priceToCoordinate(levelPrice);
         
         if (levelY === null) continue;
@@ -326,6 +330,7 @@ function getDistanceToDrawing(
       
       const waveDiff = drawing.points[1].price - drawing.points[0].price;
       const hiddenLevels = drawing.style?.hiddenLevels || [];
+      const customValues = drawing.style?.customValues || {};
       
       // Check distance to each visible trend fib level
       let minDistance = Infinity;
@@ -336,8 +341,11 @@ function getDistanceToDrawing(
           continue;
         }
         
+        // Use custom value if set, otherwise use default level
+        const actualLevel = customValues[level] !== undefined ? customValues[level] : level;
+        
         // Calculate level price
-        const levelPrice = drawing.points[2].price + waveDiff * level;
+        const levelPrice = drawing.points[2].price + waveDiff * actualLevel;
         const levelY = series.priceToCoordinate(levelPrice);
         
         if (levelY === null) continue;

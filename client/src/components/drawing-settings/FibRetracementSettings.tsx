@@ -1,5 +1,6 @@
 import { ColorPicker } from './shared/ColorPicker';
 import { OpacitySlider } from './shared/OpacitySlider';
+import { useFibLevelValues } from './shared/useFibLevelValues';
 
 interface FibRetracementSettingsProps {
   drawing: any;
@@ -12,6 +13,7 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
   const hiddenLevels = drawing.style?.hiddenLevels || [];
   const customLabels = drawing.style?.customLabels || {};
   const levelColors = drawing.style?.levelColors || {};
+  const customValues = drawing.style?.customValues || {};
   const opacity = drawing.style?.opacity ?? 1;
   const hideLabels = drawing.style?.hideLabels || false;
 
@@ -20,6 +22,11 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
     console.log('[FibRetracementSettings] Updating with:', styleUpdates);
     onUpdate({ style: { ...drawing.style, ...styleUpdates } });
   };
+
+  const { getLevelDisplayPct, onDraftChange, commitLevelValue } = useFibLevelValues(
+    customValues,
+    (newCustomValues) => handleUpdate({ customValues: newCustomValues })
+  );
 
   const roundLevel = (n: number) => Math.round(n * 10000) / 10000;
   const isLevelHidden = (level: number) => 
@@ -49,7 +56,18 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
                   }}
                   className="rounded border-slate-600 w-4 h-4"
                 />
-                <span className="text-gray-400 w-12">{(level * 100).toFixed(1)}%</span>
+                <input
+                  type="number"
+                  value={getLevelDisplayPct(level)}
+                  onChange={(e) => {
+                    onDraftChange(level, e.target.value);
+                  }}
+                  onBlur={() => commitLevelValue(level)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
+                  className="w-16 bg-slate-800 border border-slate-600 rounded px-1 py-1 text-xs text-white text-right"
+                  step="0.1"
+                />
+                <span className="text-gray-500 -ml-1">%</span>
                 
                 <ColorPicker
                   color={levelColor}
