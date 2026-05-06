@@ -1883,7 +1883,7 @@ function V2SwapActions({
           counterpartyAddress: qbtcAddress,
           refundAddress: qbtcAddress,
           onConsolidationProgress: ({ pass, remainingUtxos }) => {
-            setConsolidationStatus(`Consolidating UTXOs (pass ${pass}, ~${remainingUtxos} remaining)…`);
+            setConsolidationStatus(`Round ${pass}: merged to ~${remainingUtxos} UTXOs — waiting for block…`);
           },
         });
         lockId = result.lockId;

@@ -871,12 +871,14 @@ export class QBTCChain {
     const network     = QBTC_NETWORKS[this.settings.network];
     const feeRate     = Math.max(5, Number(this.settings.feeRate || 5));
     const maxInputs   = maxInputsForMode(signMode);
-    // Leave headroom: consolidate in batches slightly below the cap
-    const BATCH_SIZE  = Math.max(2, maxInputs - 2);
+    // Leave 2 inputs of headroom for the final send overhead
+    const BATCH_SIZE     = Math.max(2, maxInputs - 2);
     const COINBASE_MATURITY = 100;
+    // Max concurrent consolidation txs per round – avoids hammering the node with thousands of RPCs
+    const PARALLEL_LIMIT = 50;
     let consolidationPasses = 0;
 
-    // Inner helper: fetch live UTXOs (respecting coinbase maturity)
+    // Inner helper: fetch confirmed UTXOs (scantxoutset returns confirmed only)
     const fetchUtxos = async (): Promise<QBTCUtxo[]> => {
       const scan = await this.rpcCall<{
         height: number;
@@ -888,13 +890,12 @@ export class QBTCChain {
         .map(u => ({ txid: u.txid, vout: u.vout, amount: u.amount, address: fromAddress, scriptPubKey: u.scriptPubKey }));
     };
 
-    // Inner helper: build + sign a consolidation tx consuming `batch` UTXOs → self
+    // Inner helper: build + sign + broadcast one consolidation tx consuming `batch` UTXOs → self
     const consolidateBatch = async (batch: QBTCUtxo[]): Promise<string> => {
-      const totalSats  = batch.reduce((s, u) => s + toSats(u.amount), 0);
-      const outputCount = 1;
-      const vSize = estimateTxVSize(batch.length, outputCount, signMode);
-      const fee   = Math.max(1, Math.ceil(vSize * feeRate));
-      const outSats = totalSats - fee;
+      const totalSats = batch.reduce((s, u) => s + toSats(u.amount), 0);
+      const vSize     = estimateTxVSize(batch.length, 1, signMode);
+      const fee       = Math.max(1, Math.ceil(vSize * feeRate));
+      const outSats   = totalSats - fee;
       if (outSats <= DUST_THRESHOLD) throw new Error('Consolidation batch output below dust threshold');
 
       const hybridHash = keyPair.getHybridHash();
@@ -923,60 +924,97 @@ export class QBTCChain {
       return this.rpcCall<string>('sendrawtransaction', [hex]);
     };
 
-    // Consolidation loop: keep going until the wallet can fit the target send in one tx
-    const MAX_PASSES = 500; // safety cap to avoid infinite loops
-    for (let pass = 1; pass <= MAX_PASSES; pass++) {
-      const utxos    = await fetchUtxos();
-      const amtSats  = toSats(Number(amount));
-      const feeEst   = Math.max(1, Math.ceil(estimateTxVSize(1, 2, signMode) * feeRate));
-
-      // Try selectUtxos — if it succeeds we're done consolidating
-      try {
-        selectUtxos(utxos, amtSats, feeRate, signMode);
-        break; // can fund the send; exit loop
-      } catch {
-        // Still too fragmented — run one more consolidation pass
+    // Wait for the next QBTC block to be mined (so scantxoutset picks up consolidation outputs).
+    // scantxoutset only returns CONFIRMED UTXOs, so each consolidation round must wait for a block
+    // before the newly-created change outputs become visible for the next round.
+    const waitForNextBlock = async (): Promise<void> => {
+      const startHeight = await this.rpcCall<number>('getblockcount', []);
+      const deadline = Date.now() + 600_000; // 10-minute hard timeout
+      while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 4000));
+        const newHeight = await this.rpcCall<number>('getblockcount', []);
+        if (newHeight > startHeight) return;
       }
+      throw new Error('Timed out waiting for QBTC block during consolidation (>10 min). Mining may have stopped.');
+    };
 
-      if (pass > MAX_PASSES) {
-        throw new Error(`Auto-consolidation: still fragmented after ${MAX_PASSES} passes`);
-      }
+    // Parallel-batch consolidation rounds.
+    // Each round: partition ALL confirmed UTXOs into non-overlapping BATCH_SIZE groups,
+    // broadcast ALL groups simultaneously, then wait for ONE block.
+    // This reduces the UTXO count geometrically: O(log_BATCH_SIZE(N)) rounds instead of O(N/BATCH_SIZE).
+    // Example: 47 000 UTXOs → round 1: ~839 parallel txs → ~839 UTXOs → round 2: ~15 → round 3: send works.
+    const ROUND_LIMIT = 20;
+    for (let round = 1; round <= ROUND_LIMIT; round++) {
+      const utxos     = await fetchUtxos();
+      const amtSats   = toSats(Number(amount));
+      const feeEst    = Math.max(1, Math.ceil(estimateTxVSize(maxInputs, 2, signMode) * feeRate));
+      const totalAvail = utxos.reduce((s, u) => s + toSats(u.amount), 0);
 
-      // Pick the BATCH_SIZE largest UTXOs that aren't needed for the actual send amount
-      // (largest-first so each batch removes the most dust)
-      const sorted = [...utxos].sort((a, b) => b.amount - a.amount);
-      // Check if we have enough total — if not, just consolidate everything available
-      const totalAvail = sorted.reduce((s, u) => s + toSats(u.amount), 0);
       if (totalAvail < amtSats + feeEst) {
         throw new Error(
           `Insufficient QBTC: have ${(totalAvail / 1e8).toFixed(8)}, need ${((amtSats + feeEst) / 1e8).toFixed(8)}`
         );
       }
 
-      const batch = sorted.slice(0, BATCH_SIZE);
-      const txid  = await consolidateBatch(batch);
-      consolidationPasses++;
-      onProgress?.({ pass, txid, remainingUtxos: utxos.length - BATCH_SIZE + 1 });
+      // Check whether we can already fund the send
+      try {
+        selectUtxos(utxos, amtSats, feeRate, signMode);
+        break; // wallet fits in one tx – exit consolidation loop
+      } catch {
+        // Still too fragmented – run a parallel consolidation round
+      }
 
-      // Brief pause to let the mempool accept the consolidation tx before re-scanning
-      await new Promise(r => setTimeout(r, 1500));
+      if (round === ROUND_LIMIT) {
+        throw new Error(`Auto-consolidation failed after ${ROUND_LIMIT} rounds — wallet may be too large`);
+      }
+
+      // Sort largest-first so high-value UTXOs are used first
+      const sorted  = [...utxos].sort((a, b) => b.amount - a.amount);
+      const batches: QBTCUtxo[][] = [];
+      for (let i = 0; i < sorted.length; i += BATCH_SIZE) {
+        batches.push(sorted.slice(i, i + BATCH_SIZE));
+      }
+
+      // Broadcast all batches, PARALLEL_LIMIT at a time
+      let lastTxid = '';
+      let successCount = 0;
+      for (let i = 0; i < batches.length; i += PARALLEL_LIMIT) {
+        const group   = batches.slice(i, i + PARALLEL_LIMIT);
+        const results = await Promise.allSettled(group.map(b => consolidateBatch(b)));
+        for (const r of results) {
+          if (r.status === 'fulfilled') { successCount++; lastTxid = r.value; }
+        }
+      }
+
+      consolidationPasses++;
+      // remainingUtxos = number of consolidation outputs created (≈ new UTXO count after block)
+      onProgress?.({ pass: round, txid: lastTxid, remainingUtxos: successCount });
+
+      // Wait for one block so the consolidated outputs become confirmed and visible to scantxoutset
+      await waitForNextBlock();
     }
 
-    // Now run the actual send
+    // Execute the actual send now that the wallet is consolidated
     const { hex, fee } = await this.createAndSignTransaction(keyPair, toAddress, amount, signMode);
     const txid = await this.broadcastRawTransaction(hex);
     return { txid, fee, consolidationPasses };
   }
 
+  /**
+   * Send QBTC with automatic consolidation.
+   * Automatically merges fragmented UTXOs before sending when needed.
+   */
   async sendTransaction(
     keyPair: QBTCKeyPair,
     toAddress: string,
     amount: string,
-    signMode: 'hybrid' | 'ecdsa' = 'hybrid'
+    signMode: 'hybrid' | 'ecdsa' = 'hybrid',
+    onConsolidationProgress?: (info: { pass: number; txid: string; remainingUtxos: number }) => void,
   ): Promise<{ txid: string; fee: number; falconCompatibilityProof?: QBTCFalconCompatibilityProof }> {
-    const { hex, fee, falconCompatibilityProof } = await this.createAndSignTransaction(keyPair, toAddress, amount, signMode);
-    const txid = await this.broadcastRawTransaction(hex);
-    return { txid, fee, falconCompatibilityProof };
+    const { txid, fee } = await this.autoConsolidateAndSend(
+      keyPair, toAddress, amount, signMode, onConsolidationProgress,
+    );
+    return { txid, fee };
   }
 
   async getTransactionConfirmations(txid: string): Promise<number> {

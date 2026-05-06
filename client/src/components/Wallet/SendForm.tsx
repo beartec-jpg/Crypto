@@ -120,6 +120,7 @@ export default function SendForm({
   const [estimatedFeeUsd, setEstimatedFeeUsd] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [transactionStep, setTransactionStep] = useState<'estimating' | 'signing' | 'broadcasting' | 'verifying' | null>(null);
+  const [qbtcConsolidationStatus, setQbtcConsolidationStatus] = useState<string | null>(null);
   const [balance, setBalance] = useState<string>('0');
   const [qbtcSource, setQbtcSource] = useState<'hot' | 'vault'>('hot');
   const [balanceUsd, setBalanceUsd] = useState<number>(0);
@@ -561,7 +562,15 @@ export default function SendForm({
         const signMode = isVault ? 'hybrid' : 'ecdsa';
 
         setTransactionStep('broadcasting');
-        const { txid, fee: feeSats } = await qbtcChain.sendTransaction(keyPair, recipient, amount, signMode);
+        const { txid, fee: feeSats } = await qbtcChain.sendTransaction(
+          keyPair, recipient, amount, signMode,
+          (info) => {
+            setQbtcConsolidationStatus(
+              `Round ${info.pass}: merging to ~${info.remainingUtxos} UTXOs — waiting for block…`
+            );
+          }
+        );
+        setQbtcConsolidationStatus(null);
         const feeQbtc = (feeSats / 1e8).toFixed(8);
 
         if (onAddPendingTransaction) {
@@ -844,6 +853,7 @@ export default function SendForm({
     } finally {
       setIsProcessing(false);
       setTransactionStep(null);
+      setQbtcConsolidationStatus(null);
     }
   };
 
@@ -852,6 +862,7 @@ export default function SendForm({
     setPasswordError(null);
     setIsProcessing(false);
     setTransactionStep(null);
+    setQbtcConsolidationStatus(null);
   };
 
   const handleSuccessClose = () => {
@@ -1419,15 +1430,19 @@ export default function SendForm({
       {/* Transaction Step Indicator */}
       {transactionStep && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-2xl p-8 text-center">
+          <div className="bg-gray-800 rounded-2xl p-8 text-center max-w-sm mx-4">
             <div className="w-16 h-16 mx-auto mb-4 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
             <h3 className="text-xl font-semibold mb-2">
               {transactionStep === 'estimating' && 'Estimating Fees...'}
               {transactionStep === 'signing' && 'Signing Transaction...'}
-              {transactionStep === 'broadcasting' && 'Broadcasting & Verifying...'}
+              {transactionStep === 'broadcasting' && (qbtcConsolidationStatus ? 'Consolidating QBTC...' : 'Broadcasting & Verifying...')}
               {transactionStep === 'verifying' && 'Verifying...'}
             </h3>
-            <p className="text-gray-400">Please wait</p>
+            {qbtcConsolidationStatus ? (
+              <p className="text-cyan-400 text-xs mt-1">{qbtcConsolidationStatus}</p>
+            ) : (
+              <p className="text-gray-400">Please wait</p>
+            )}
           </div>
         </div>
       )}
