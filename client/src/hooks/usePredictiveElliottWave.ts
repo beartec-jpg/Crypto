@@ -375,12 +375,12 @@ export function useElliottWave(): UseElliottWaveResult {
       //   Expanding:   W1 < W3 < W5 and W2 < W4 (trendlines diverge)
       if (n >= 4) {
         const w1Len = Math.abs(p[1] - p[0]);
-        const w2Len = Math.abs(p[2] - p[1]);
         const w3Len = Math.abs(p[3] - p[2]);
         const isExpandingDiag = w3Len > w1Len;
 
         // W4 vs W2 monotonicity
         if (n >= 5) {
+          const w2Len = Math.abs(p[2] - p[1]);
           const w4Len = Math.abs(p[4] - p[3]);
           if (isExpandingDiag) {
             if (w4Len <= w2Len) {
