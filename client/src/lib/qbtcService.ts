@@ -162,6 +162,23 @@ function fromSats(sats: number): string {
   return (sats / 100000000).toFixed(8);
 }
 
+// Maximum standard transaction size (QBTC node policy, matches Bitcoin Core default).
+const MAX_STANDARD_TX_SIZE = 100_000;
+// Per-input raw byte cost: non-witness (41) + witness stack.
+// Witness stacks include a varint prefix per item; items > 252 bytes need a 3-byte varint.
+// hybrid (4 items): 1 + (1+73) + (1+33) + (3+DILITHIUM_SIG_SIZE) + (3+DILITHIUM_PK_SIZE)
+// ecdsa  (3 items): 1 + (1+73) + (1+33)                           + (3+DILITHIUM_PK_SIZE)
+function rawBytesPerInput(signMode: 'hybrid' | 'ecdsa'): number {
+  const witnessSig = signMode === 'hybrid' ? (3 + DILITHIUM_SIG_SIZE) : 0;
+  const witnessStack = 1 + (1 + 73) + (1 + 33) + witnessSig + (3 + DILITHIUM_PK_SIZE);
+  return 41 + witnessStack;
+}
+// Tx base overhead: version(4)+marker(1)+flag(1)+varint_in(1)+varint_out(1)+2 outputs×31+locktime(4) = 74
+const TX_BASE_OVERHEAD = 74;
+function maxInputsForMode(signMode: 'hybrid' | 'ecdsa'): number {
+  return Math.floor((MAX_STANDARD_TX_SIZE - TX_BASE_OVERHEAD) / rawBytesPerInput(signMode));
+}
+
 function estimateTxVSize(inputCount: number, outputCount: number, signMode: 'hybrid' | 'ecdsa' = 'hybrid'): number {
   const baseBytes = 10 + (inputCount * 41) + (outputCount * 31);
   // 3-element ECDSA: [ecdsaSig(73) + ecdsaPub(34) + dilPub(1312)] + stack size byte
@@ -182,8 +199,22 @@ function selectUtxos(utxos: QBTCUtxo[], amountSats: number, feeRate: number, sig
   const sorted = [...utxos].sort((a, b) => b.amount - a.amount);
   const selected: QBTCUtxo[] = [];
   let totalInput = 0;
+  const maxInputs = maxInputsForMode(signMode);
 
   for (const utxo of sorted) {
+    if (selected.length >= maxInputs) {
+      // We've hit the tx-size limit. If we still haven't funded the amount it means the
+      // wallet is too fragmented — the user must consolidate UTXOs first.
+      const needed = (amountSats / 1e8).toFixed(8);
+      const have   = (totalInput / 1e8).toFixed(8);
+      throw new Error(
+        `Wallet is too fragmented: need ${needed} QBTC but only ${have} QBTC can fit in a single ` +
+        `transaction (${maxInputs} UTXO limit in ${signMode} mode). ` +
+        `Run a UTXO consolidation pass first (e.g. sendtoaddress to yourself in small batches ` +
+        `using the QBTC node RPC, or the /tmp/consolidate2.py script on the server).`
+      );
+    }
+
     selected.push(utxo);
     totalInput += toSats(utxo.amount);
 
@@ -790,6 +821,16 @@ export class QBTCChain {
     }
 
     const hex = tx.toHex();
+
+    // Safety check: ensure the raw tx doesn't exceed the node's standard tx size limit.
+    // selectUtxos already enforces the input cap, but this catches any unexpected overhead.
+    if (hex.length / 2 > MAX_STANDARD_TX_SIZE) {
+      throw new Error(
+        `Transaction too large (${hex.length / 2} bytes > ${MAX_STANDARD_TX_SIZE} byte limit). ` +
+        `Consolidate UTXOs first before sending.`
+      );
+    }
+
     const falconCompatibilityProof = signMode === 'hybrid'
       ? await keyPair.createFalconCompatibilityProof(sha256(hexToBytes(hex)))
       : undefined;
