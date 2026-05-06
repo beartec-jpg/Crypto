@@ -257,11 +257,46 @@ export function validatePattern(points: WavePoint[], patternType: string): {
       warnings.push('B wave retracement is deep - consider if this is a flat instead');
     }
   } else if (patternType === 'diagonal') {
-    // Diagonal: wave 4 CAN overlap wave 1
-    if (points.length >= 5) {
-      // Just warn if structure looks off
-      if (wave2Range > wave1Range * 0.95) {
-        warnings.push('Wave 2 is very deep for a diagonal');
+    // Diagonal: W4 CAN overlap W1 territory (both contracting and expanding)
+    // Contracting diagonal: W1 > W3 > W5, W2 > W4 (trendlines converge)
+    // Expanding diagonal:   W1 < W3 < W5, W2 < W4 (trendlines diverge)
+
+    // Warn if W2 is unusually deep (applies regardless of diagonal type)
+    if (points.length >= 3 && wave2Range > wave1Range * 0.95) {
+      warnings.push('Wave 2 is very deep for a diagonal');
+    }
+
+    if (points.length >= 4) {
+      const p3 = points[3];
+      const wave3Range = Math.abs(p3.price - p2.price);
+      const isExpandingDiag = wave3Range > wave1Range;
+
+      if (points.length >= 5) {
+        const p4 = points[4];
+        const wave4Range = Math.abs(p4.price - p3.price);
+        if (isExpandingDiag) {
+          if (wave4Range <= wave2Range) {
+            errors.push('W4 must be longer than W2 for an expanding diagonal');
+          }
+        } else {
+          if (wave4Range >= wave2Range) {
+            errors.push('W4 must be shorter than W2 for a contracting diagonal');
+          }
+        }
+      }
+
+      if (points.length >= 6) {
+        const p4b = points[4], p5 = points[5];
+        const wave5Range = Math.abs(p5.price - p4b.price);
+        if (isExpandingDiag) {
+          if (wave5Range <= wave3Range) {
+            errors.push('W5 must be longer than W3 for an expanding diagonal');
+          }
+        } else {
+          if (wave5Range >= wave3Range) {
+            errors.push('W5 must be shorter than W3 for a contracting diagonal');
+          }
+        }
       }
     }
   }
