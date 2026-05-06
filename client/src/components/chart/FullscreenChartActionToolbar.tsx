@@ -6,7 +6,7 @@ import { TradingSystemsMenu } from '@/components/tradingSystems/TradingSystemsMe
 import type { TradingSystemId } from '@/types/tradingSystems';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Trash2 } from 'lucide-react';
 
 interface ConfluenceSnapshot {
   score: number;
@@ -69,6 +69,7 @@ interface FullscreenChartActionToolbarProps {
   onToggleDrawingMode: () => void;
   drawingsVisible: boolean;
   onToggleDrawingsVisible: () => void;
+  onDeleteAllDrawings: () => void;
   onDisableAllIndicators: () => void;
 
   canUndo: boolean;
@@ -148,6 +149,7 @@ export function FullscreenChartActionToolbar({
   onToggleDrawingMode,
   drawingsVisible,
   onToggleDrawingsVisible,
+  onDeleteAllDrawings,
   onDisableAllIndicators,
   canUndo,
   onUndo,
@@ -276,6 +278,17 @@ export function FullscreenChartActionToolbar({
       >
         {drawingsVisible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
         <span className="ml-1 hidden sm:inline">{drawingsVisible ? 'Hide' : 'Show'}</span>
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onDeleteAllDrawings}
+        className="h-7 px-1.5 text-[11px] font-semibold bg-slate-800/90 text-gray-300 hover:bg-red-700 hover:text-white transition-all"
+        title="Delete all drawings for this timeframe"
+      >
+        <Trash2 className="h-3 w-3" />
+        <span className="ml-1 hidden sm:inline">Clear</span>
       </Button>
 
       <Button

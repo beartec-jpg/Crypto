@@ -2005,6 +2005,12 @@ export function ChartFullscreenPage({
     setDrawingsVisible((visible: boolean) => !visible);
   }, []);
 
+  const handleClearAllDrawings = useCallback(() => {
+    if (!window.confirm('Delete all drawings for this timeframe? This cannot be undone.')) return;
+    setDrawings([]);
+    drawingsPersistence.clearDrawings();
+  }, [drawingsPersistence]);
+
   const handleDisableAllIndicators = useCallback(() => {
     indicators.ema.setShow(false);
     indicators.sma.setShow(false);
@@ -2731,6 +2737,7 @@ export function ChartFullscreenPage({
           }}
           drawingsVisible={drawingsVisible}
           onToggleDrawingsVisible={handleToggleDrawingsVisible}
+          onDeleteAllDrawings={handleClearAllDrawings}
           onDisableAllIndicators={handleDisableAllIndicators}
           canUndo={canUndo}
           onUndo={handleUndo}
