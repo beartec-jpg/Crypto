@@ -1804,7 +1804,7 @@ function V2SwapActions({
           // Non-fatal: EvmMonitor will detect the withdrawal and set COMPLETE
         }
       } else {
-        if (!swap.secret) throw new Error('Secret not yet available — maker must claim XRP first');
+        if (!swap.secret) throw new Error('Secret not yet available — maker must claim their side first');
         await evmAdapter.claimFunds({ signerKey: bnbSigner, lockId: bnbLockId, secret: swap.secret });
         localStorage.setItem(bnbClaimedKey, '1');
         setBnbAlreadyClaimed(true);
@@ -2991,8 +2991,8 @@ export default function MarketplaceTab({
       const qbtcClaimedKey = `v2_qbtc_claimed_${s.publicId}`;
       // Taker claiming XRP at COMPLETE (XRP/BNB, XRP/ETH, XRP/BTC etc.)
       if (isTaker && s.baseChain === 'XRP' && !localStorage.getItem(xrpClaimedKey)) return true;
-      // XRP/BNB maker claiming BNB at COMPLETE (server advances before UI updates)
-      if (isMaker && s.baseChain === 'XRP' && s.quoteChain === 'BNB' && !localStorage.getItem(bnbClaimedKey)) return true;
+      // QBTC/BNB or XRP/BNB maker claiming BNB at COMPLETE (server advances before UI updates)
+      if (isMaker && s.quoteChain === 'BNB' && !localStorage.getItem(bnbClaimedKey)) return true;
       if (isTaker && s.baseChain === 'ETH'  && !localStorage.getItem(ethClaimedKey))  return true;
       if (isTaker && s.baseChain === 'BTC'  && !localStorage.getItem(btcClaimedKey))  return true;
       if (isTaker && s.baseChain === 'BNB'  && !localStorage.getItem(bnbClaimedKey))  return true;
