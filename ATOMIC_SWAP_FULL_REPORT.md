@@ -2,7 +2,7 @@
 **Date:** 2026-04-29 → 2026-05-05  
 **Network:** Testnet (Sepolia + XRPL Testnet + BSC Testnet)  
 **Protocol:** QBTC V2 Atomic Swap — HTLC-based, non-custodial, trustless  
-**Pairs Tested:** XRP/ETH · ETH/XRP · BNB/ETH · ETH/BNB
+**Pairs Tested:** XRP/ETH · ETH/XRP · BNB/ETH · ETH/BNB · XRP/BNB
 
 ---
 
@@ -251,19 +251,65 @@ VITE_BNB_CHAIN_ID=97
 
 ---
 
+## XRP/BNB Implementation Status — ✅ COMPLETE
+
+XRP ↔ BNB swaps combine the XRP native escrow (XRPL `EscrowCreate`/`EscrowFinish`) with the BNB HTLC contract on BSC Testnet. Same HTLC protocol — XRP side uses SHA-256 condition/fulfillment, BNB side uses `HashedTimelockETH` with the same secret hash.
+
+### Completed XRP/BNB Swaps (Testnet — On-chain Verified ✅)
+
+#### Swap 9 — XRP/BNB (Wallet B maker sells XRP, Wallet A taker buys with BNB)
+| Field | Value |
+|-------|-------|
+| **Swap ID** | `8ff8d3be-7ecc-4474-8c17-f351e50d556b` |
+| **Direction** | XRP → BNB |
+| **Amounts** | 100 XRP ↔ 0.022422 BNB |
+| **Maker (Side A)** | `0xE4016D...` / `rfNqtAM...` — locked 100 XRP on XRPL Testnet |
+| **Taker (Side B)** | `0x4f6019...` — locked 0.022422 BNB on BSC Testnet |
+| **XRP Escrow** | `rfNqtAMnoZ44FXnEoWaeTzjRLLuaCM2cqk:16898489` |
+| **BNB HTLC Lock ID** | `0x98bdf89776aed882e1aeb8c19616573f0ec3c0eec08c9efac904df040f9a8061` |
+| **Secret** | `8dc01fbd1ea932a555b3002a901f1d85bad21c9f19d78469ac38e92a4e398aae` |
+| **Started** | 2026-05-05 12:26 UTC |
+| **Final Status** | `COMPLETE` ✅ — BNB `withdrawn=true`, XRP escrow finished |
+
+#### Swap 10 — XRP/BNB (Wallet A maker sells XRP, Wallet B taker buys with BNB)
+| Field | Value |
+|-------|-------|
+| **Swap ID** | `dafa7ad2-68ec-421c-83cb-f77804ba4cc3` |
+| **Direction** | XRP → BNB |
+| **Amounts** | 10 XRP ↔ 0.022434 BNB |
+| **Maker (Side A)** | `0x4f6019...` / `rPvDE8u...` — locked 10 XRP on XRPL Testnet |
+| **Taker (Side B)** | `0xE4016D...` — locked 0.022434 BNB on BSC Testnet |
+| **XRP Escrow** | `rPvDE8ukCC1oBYQXMVi6KhYwNmpWXgZNBT:16904426` |
+| **BNB HTLC Lock ID** | `0xe792b2b1ca2c43b3abf23f8ab64bee8c4263ae568f94022a4332d8faf23d1658` |
+| **Secret** | `e79a8d7fb470e2c5c004cb68a549329b79bbf5053a723a246c5e61589a2d7445` |
+| **Started** | 2026-05-05 12:22 UTC |
+| **Final Status** | `COMPLETE` ✅ — BNB `withdrawn=true`, XRP escrow finished |
+
+### Bugs Fixed During XRP/BNB Testing
+| # | Bug | Fix |
+|---|-----|-----|
+| 1 | `canClaimBnb` only checked `SIDE_B_LOCKED` — after server advanced to `COMPLETE` the claim button vanished | Extended condition to also allow maker claim at `COMPLETE` |
+| 2 | Maker's `bnbClaimedKey` never set in localStorage — swap stuck as active forever | `handleClaimBnb` now sets `bnbClaimedKey` after successful maker claim |
+| 3 | `v2ActiveSwaps` used `xrpClaimedKey` for XRP/BNB maker — never set, so showed "Waiting..." permanently | Split XRP COMPLETE check: taker uses `xrpClaimedKey`, XRP/BNB maker uses `bnbClaimedKey` |
+| 4 | Cancel button only showed for `PENDING_SIDE_A` — maker stuck with locked funds if taker can't afford | Cancel button now also shows at `SIDE_A_LOCKED` (server already accepted this status) |
+
+---
+
 ## Summary
 
 | Metric | Value |
 |--------|-------|
-| Total swaps completed | **8** |
+| Total swaps completed | **10** |
 | ETH/XRP direction | 2 |
 | XRP/ETH direction | 3 |
 | BNB/ETH direction | 2 |
 | ETH/BNB direction | 1 |
+| XRP/BNB direction | 2 |
 | Total ETH transacted | ~2.28 ETH + 0.017202 ETH (testnet) |
-| Total XRP transacted | ~2,044 XRP (testnet) |
-| Total BNB transacted | ~0.105 BNB (BSC testnet) |
+| Total XRP transacted | ~2,154 XRP (testnet) |
+| Total BNB transacted | ~0.149856 BNB (BSC testnet) |
 | Average completion time | ~2–4 minutes |
 | Failed/stuck swaps | 1 (tecUNFUNDED — XRP wallet drained, no funds at risk) |
 | Protocol security model | Non-custodial HTLC — funds auto-refund if swap abandoned |
-| BNB on-chain verification | ✅ All 3 BNB swaps — both sides `withdrawn=true`, `refunded=false` |
+| BNB on-chain verification | ✅ All 5 BNB swaps — both sides `withdrawn=true`, `refunded=false` |
+| XRP/BNB on-chain verification | ✅ Both swaps — BNB `withdrawn=true`, XRP escrows finished |
