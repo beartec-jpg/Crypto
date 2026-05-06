@@ -238,10 +238,11 @@ export function useElliottWave(): UseElliottWaveResult {
       }
       if (n === 3) {
         // After W2: project W3 trend-based extension using W1 length projected from W2
-        // Diagonals: W3 must be < W1 so targets are 61.8–100% of W1; standard impulse uses 161.8%+
+        // Diagonals: show full range covering both contracting (61.8–100%) and expanding (100–161.8%) targets
+        // Standard impulse uses 161.8%+
         const w1Length = Math.abs(p[1] - p[0]);
         const direction = p[1] > p[0] ? 1 : -1;
-        const w3Ratios = isDiagonal ? [0.618, 0.786, 1.0] : [1.618, 2.0, 2.618];
+        const w3Ratios = isDiagonal ? [0.618, 0.786, 1.0, 1.272, 1.618] : [1.618, 2.0, 2.618];
         return w3Ratios.map(ratio => ({
           ratio,
           price: p[2] + direction * w1Length * ratio,
@@ -266,13 +267,17 @@ export function useElliottWave(): UseElliottWaveResult {
       }
       if (n === 5) {
         // After W4: project W5 trend-based extension
-        // Diagonals: W5 must be < W3, so use W3 length with 61.8–100% targets
+        // Diagonals: use W3 length as base, with targets adjusted for contracting vs expanding type
         // Standard impulse: use W1+W3 combined length
         const w1Length = Math.abs(p[1] - p[0]);
         const w3Length = Math.abs(p[3] - p[2]);
         const direction = p[1] > p[0] ? 1 : -1;
         if (isDiagonal) {
-          const w5Ratios = [0.618, 0.786, 1.0];
+          // Determine diagonal type: expanding if W3 > W1, contracting if W3 < W1
+          const isExpandingDiag = w3Length > w1Length;
+          // Contracting: W5 must be < W3 → targets 61.8–100% of W3
+          // Expanding:   W5 must be > W3 → targets 100–161.8% of W3
+          const w5Ratios = isExpandingDiag ? [1.0, 1.272, 1.618] : [0.618, 0.786, 1.0];
           return w5Ratios.map(ratio => ({
             ratio,
             price: p[4] + direction * w3Length * ratio,
@@ -365,20 +370,41 @@ export function useElliottWave(): UseElliottWaveResult {
     }
 
     if (isDiagonalType) {
-      // W3 must be shorter than W1
+      // Determine diagonal type once W3 is placed (n >= 4):
+      //   Contracting: W1 > W3 > W5 and W2 > W4 (trendlines converge)
+      //   Expanding:   W1 < W3 < W5 and W2 < W4 (trendlines diverge)
       if (n >= 4) {
         const w1Len = Math.abs(p[1] - p[0]);
+        const w2Len = Math.abs(p[2] - p[1]);
         const w3Len = Math.abs(p[3] - p[2]);
-        if (w3Len >= w1Len) {
-          errors.push('W3 must be shorter than W1 for a diagonal wave');
+        const isExpandingDiag = w3Len > w1Len;
+
+        // W4 vs W2 monotonicity
+        if (n >= 5) {
+          const w4Len = Math.abs(p[4] - p[3]);
+          if (isExpandingDiag) {
+            if (w4Len <= w2Len) {
+              errors.push('W4 must be longer than W2 for an expanding diagonal');
+            }
+          } else {
+            if (w4Len >= w2Len) {
+              errors.push('W4 must be shorter than W2 for a contracting diagonal');
+            }
+          }
         }
-      }
-      // W5 must be shorter than W3
-      if (n >= 6) {
-        const w3Len = Math.abs(p[3] - p[2]);
-        const w5Len = Math.abs(p[5] - p[4]);
-        if (w5Len >= w3Len) {
-          errors.push('W5 must be shorter than W3 for a diagonal wave');
+
+        // W5 vs W3 monotonicity
+        if (n >= 6) {
+          const w5Len = Math.abs(p[5] - p[4]);
+          if (isExpandingDiag) {
+            if (w5Len <= w3Len) {
+              errors.push('W5 must be longer than W3 for an expanding diagonal');
+            }
+          } else {
+            if (w5Len >= w3Len) {
+              errors.push('W5 must be shorter than W3 for a contracting diagonal');
+            }
+          }
         }
       }
       // Invalidation at P0 origin
