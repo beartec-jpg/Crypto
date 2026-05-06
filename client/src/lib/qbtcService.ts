@@ -874,8 +874,6 @@ export class QBTCChain {
     // Leave 2 inputs of headroom for the final send overhead
     const BATCH_SIZE     = Math.max(2, maxInputs - 2);
     const COINBASE_MATURITY = 100;
-    // Max concurrent consolidation txs per round – avoids hammering the node with thousands of RPCs
-    const PARALLEL_LIMIT = 50;
     let consolidationPasses = 0;
 
     // Inner helper: fetch confirmed UTXOs (scantxoutset returns confirmed only)
@@ -939,58 +937,98 @@ export class QBTCChain {
     };
 
     // Parallel-batch consolidation rounds.
-    // Each round: partition ALL confirmed UTXOs into non-overlapping BATCH_SIZE groups,
-    // broadcast ALL groups simultaneously, then wait for ONE block.
-    // This reduces the UTXO count geometrically: O(log_BATCH_SIZE(N)) rounds instead of O(N/BATCH_SIZE).
-    // Example: 47 000 UTXOs → round 1: ~839 parallel txs → ~839 UTXOs → round 2: ~15 → round 3: send works.
-    const ROUND_LIMIT = 20;
+    // Key insight: we only need to consolidate ENOUGH UTXOs to make the target send fit in
+    // one tx — not the entire wallet. For a target of 1000 QBTC at 10 QBTC/block reward,
+    // often just 1–3 batches suffice regardless of how many UTXOs exist.
+    //
+    // Algorithm per round:
+    //   1. Simulate how many BATCH_SIZE batches K are needed so that the resulting
+    //      K large outputs + remaining UTXOs gives selectUtxos enough to cover amount.
+    //   2. Only sign and broadcast those K batches (capped at MAX_BATCHES_PER_ROUND).
+    //   3. Wait for one block (scantxoutset only sees confirmed outputs).
+    //   4. Repeat until selectUtxos succeeds.
+    //
+    // This keeps per-round CPU work to MAX_BATCHES_PER_ROUND × BATCH_SIZE Falcon signatures
+    // instead of N_total_utxos, preventing browser freeze.
+    const MAX_BATCHES_PER_ROUND = 10; // 10 × 56 = 560 Falcon sigs per round ≈ 5–10s CPU
+    const ROUND_LIMIT = 30;
+
+    // Simulate how many batches of the sorted UTXOs need to be consolidated
+    // so that the top maxInputs UTXOs after that consolidation can cover amtSats.
+    const minBatchesNeeded = (sortedUtxos: QBTCUtxo[], amtSats: number): number => {
+      for (let k = 1; k <= Math.ceil(sortedUtxos.length / BATCH_SIZE); k++) {
+        const consolidatedValues: number[] = [];
+        for (let i = 0; i < k; i++) {
+          const batch = sortedUtxos.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
+          if (batch.length === 0) break;
+          const batchSats = batch.reduce((s, u) => s + toSats(u.amount), 0);
+          const batchFee  = Math.max(1, Math.ceil(estimateTxVSize(batch.length, 1, signMode) * feeRate));
+          const out = batchSats - batchFee;
+          if (out > 0) consolidatedValues.push(out);
+        }
+        const remaining = sortedUtxos.slice(k * BATCH_SIZE);
+        const allValues  = [
+          ...consolidatedValues,
+          ...remaining.map(u => toSats(u.amount)),
+        ].sort((a, b) => b - a).slice(0, maxInputs);
+        const total   = allValues.reduce((s, v) => s + v, 0);
+        const feeEst  = Math.max(1, Math.ceil(estimateTxVSize(allValues.length, 2, signMode) * feeRate));
+        if (total >= amtSats + feeEst) return k;
+      }
+      return Math.ceil(sortedUtxos.length / BATCH_SIZE);
+    };
+
     for (let round = 1; round <= ROUND_LIMIT; round++) {
       const utxos     = await fetchUtxos();
       const amtSats   = toSats(Number(amount));
-      const feeEst    = Math.max(1, Math.ceil(estimateTxVSize(maxInputs, 2, signMode) * feeRate));
       const totalAvail = utxos.reduce((s, u) => s + toSats(u.amount), 0);
+      const worstFee  = Math.max(1, Math.ceil(estimateTxVSize(maxInputs, 2, signMode) * feeRate));
 
-      if (totalAvail < amtSats + feeEst) {
+      if (totalAvail < amtSats + worstFee) {
         throw new Error(
-          `Insufficient QBTC: have ${(totalAvail / 1e8).toFixed(8)}, need ${((amtSats + feeEst) / 1e8).toFixed(8)}`
+          `Insufficient QBTC: have ${(totalAvail / 1e8).toFixed(8)}, need ${((amtSats + worstFee) / 1e8).toFixed(8)}`
         );
       }
 
-      // Check whether we can already fund the send
+      // Check whether we can already fund the send without consolidating
       try {
         selectUtxos(utxos, amtSats, feeRate, signMode);
-        break; // wallet fits in one tx – exit consolidation loop
+        break; // fits in one tx – exit consolidation loop
       } catch {
-        // Still too fragmented – run a parallel consolidation round
+        // Still too fragmented – run a targeted consolidation round
       }
 
       if (round === ROUND_LIMIT) {
-        throw new Error(`Auto-consolidation failed after ${ROUND_LIMIT} rounds — wallet may be too large`);
+        throw new Error(`Auto-consolidation failed after ${ROUND_LIMIT} rounds — please try again`);
       }
 
-      // Sort largest-first so high-value UTXOs are used first
-      const sorted  = [...utxos].sort((a, b) => b.amount - a.amount);
+      // Sort largest-first, then find minimum batches needed and cap for browser safety
+      const sorted     = [...utxos].sort((a, b) => b.amount - a.amount);
+      const needed     = minBatchesNeeded(sorted, amtSats);
+      const batchCount = Math.min(needed, MAX_BATCHES_PER_ROUND);
+
       const batches: QBTCUtxo[][] = [];
-      for (let i = 0; i < sorted.length; i += BATCH_SIZE) {
-        batches.push(sorted.slice(i, i + BATCH_SIZE));
+      for (let i = 0; i < batchCount; i++) {
+        const slice = sorted.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
+        if (slice.length > 0) batches.push(slice);
       }
 
-      // Broadcast all batches, PARALLEL_LIMIT at a time
+      // Broadcast all batches in parallel (they use non-overlapping UTXOs)
       let lastTxid = '';
       let successCount = 0;
-      for (let i = 0; i < batches.length; i += PARALLEL_LIMIT) {
-        const group   = batches.slice(i, i + PARALLEL_LIMIT);
-        const results = await Promise.allSettled(group.map(b => consolidateBatch(b)));
-        for (const r of results) {
-          if (r.status === 'fulfilled') { successCount++; lastTxid = r.value; }
-        }
+      const results = await Promise.allSettled(batches.map(b => consolidateBatch(b)));
+      for (const r of results) {
+        if (r.status === 'fulfilled') { successCount++; lastTxid = r.value; }
+      }
+
+      if (successCount === 0) {
+        throw new Error('All consolidation transactions were rejected by the node');
       }
 
       consolidationPasses++;
-      // remainingUtxos = number of consolidation outputs created (≈ new UTXO count after block)
-      onProgress?.({ pass: round, txid: lastTxid, remainingUtxos: successCount });
+      onProgress?.({ pass: round, txid: lastTxid, remainingUtxos: utxos.length - batchCount * BATCH_SIZE + successCount });
 
-      // Wait for one block so the consolidated outputs become confirmed and visible to scantxoutset
+      // Wait for one block so consolidated outputs are confirmed and visible to scantxoutset
       await waitForNextBlock();
     }
 
