@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import { ColorPicker } from './shared/ColorPicker';
 import { OpacitySlider } from './shared/OpacitySlider';
+import { useFibLevelValues } from './shared/useFibLevelValues';
 
 interface FibRetracementSettingsProps {
   drawing: any;
@@ -17,53 +17,20 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
   const opacity = drawing.style?.opacity ?? 1;
   const hideLabels = drawing.style?.hideLabels || false;
 
-  // Track draft percentage strings while user is actively typing (keyed by original level)
-  const [draftValues, setDraftValues] = useState<Record<number, string>>({});
-
   // Helper to wrap updates in { style: { ... } } format
   const handleUpdate = (styleUpdates: any) => {
     console.log('[FibRetracementSettings] Updating with:', styleUpdates);
     onUpdate({ style: { ...drawing.style, ...styleUpdates } });
   };
 
+  const { getLevelDisplayPct, onDraftChange, commitLevelValue } = useFibLevelValues(
+    customValues,
+    (newCustomValues) => handleUpdate({ customValues: newCustomValues })
+  );
+
   const roundLevel = (n: number) => Math.round(n * 10000) / 10000;
   const isLevelHidden = (level: number) => 
     hiddenLevels.some((h: number) => roundLevel(h) === roundLevel(level));
-
-  // Get the display percentage string for a level
-  const getLevelDisplayPct = (level: number): string => {
-    if (draftValues[level] !== undefined) return draftValues[level];
-    const actualLevel = customValues[level] !== undefined ? customValues[level] : level;
-    return (actualLevel * 100).toFixed(1);
-  };
-
-  // Commit an edited level value on blur or Enter
-  const commitLevelValue = (level: number) => {
-    const draft = draftValues[level];
-    if (draft === undefined) return;
-
-    const parsed = parseFloat(draft);
-    const newCustomValues = { ...customValues };
-
-    if (!isNaN(parsed)) {
-      const newDecimal = parsed / 100;
-      if (Math.abs(newDecimal - level) < 0.000001) {
-        // Matches default – remove override so default is used
-        delete newCustomValues[level];
-      } else {
-        newCustomValues[level] = newDecimal;
-      }
-    }
-    // On invalid input, leave existing customValue unchanged
-
-    setDraftValues(prev => {
-      const next = { ...prev };
-      delete next[level];
-      return next;
-    });
-
-    handleUpdate({ customValues: newCustomValues });
-  };
 
   return (
     <div className="space-y-4 p-4 bg-slate-900 rounded-lg">
@@ -93,7 +60,7 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
                   type="number"
                   value={getLevelDisplayPct(level)}
                   onChange={(e) => {
-                    setDraftValues(prev => ({ ...prev, [level]: e.target.value }));
+                    onDraftChange(level, e.target.value);
                   }}
                   onBlur={() => commitLevelValue(level)}
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
