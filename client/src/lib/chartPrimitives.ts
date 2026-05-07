@@ -88,13 +88,31 @@ function applyLineStyle(ctx: CanvasRenderingContext2D, lineStyle?: 'solid' | 'da
 
 /**
  * Extrapolate a timestamp to an x-coordinate using the visible time range.
- * Returns null if the time scale boundaries cannot be determined.
+ * Uses getVisibleRange() + timeToCoordinate() as the primary strategy so that
+ * charts with future whitespace (where coordinateToTime() at the right edge
+ * returns null) don't cause off-screen anchor points to vanish or jump during
+ * scroll. Falls back to coordinateToTime() when getVisibleRange() is unavailable.
  */
 function extrapolateTimeToX(
   timestamp: number,
   timeScale: ReturnType<IChartApi['timeScale']>,
   chartWidth: number
 ): number | null {
+  // Primary: getVisibleRange() is always reliable when data is loaded; the
+  // matching timeToCoordinate() calls for the range boundaries always succeed.
+  const visibleRange = timeScale.getVisibleRange();
+  if (visibleRange !== null) {
+    const fromTime = visibleRange.from as number;
+    const toTime = visibleRange.to as number;
+    if (toTime !== fromTime) {
+      const fromX = timeScale.timeToCoordinate(visibleRange.from);
+      const toX = timeScale.timeToCoordinate(visibleRange.to);
+      if (fromX !== null && toX !== null) {
+        return fromX + (timestamp - fromTime) / (toTime - fromTime) * (toX - fromX);
+      }
+    }
+  }
+  // Fallback: coordinateToTime at screen edges (fails when edge is in whitespace).
   const leftTime = timeScale.coordinateToTime(0);
   const rightTime = timeScale.coordinateToTime(chartWidth);
   if (leftTime === null || rightTime === null) return null;
@@ -144,14 +162,8 @@ class TrendLineRenderer implements IPrimitivePaneRenderer {
       const chartWidth = scope.mediaSize.width;
 
       // Extrapolate x coordinate for off-chart timestamps using visible time range
-      const extrapolateX = (timestamp: number): number | null => {
-        const leftTime = timeScale.coordinateToTime(0);
-        const rightTime = timeScale.coordinateToTime(chartWidth);
-        if (leftTime === null || rightTime === null) return null;
-        const timeRange = (rightTime as number) - (leftTime as number);
-        if (timeRange === 0) return null;
-        return ((timestamp - (leftTime as number)) / timeRange) * chartWidth;
-      };
+      const extrapolateX = (timestamp: number): number | null =>
+        extrapolateTimeToX(timestamp, timeScale, chartWidth);
 
       // Handle extend left/right from style
       const extendLeft = this._style.extendLeft ?? false;
