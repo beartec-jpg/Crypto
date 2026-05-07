@@ -2188,8 +2188,8 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
       [
         fibBonus !== 0 && `Fib ${fibBonus > 0 ? '+' : ''}${fibBonus} pts`,
         divBonus !== 0 && `Div ${divBonus > 0 ? '+' : ''}${divBonus} pts`,
-        liqBonus !== 0 && `Liq +${liqBonus} pts`,
-        inducementBonus !== 0 && `Inducement +${inducementBonus} pts`,
+        liqBonus !== 0 && `Liq ${liqBonus > 0 ? '+' : ''}${liqBonus} pts`,
+        inducementBonus !== 0 && `Inducement ${inducementBonus > 0 ? '+' : ''}${inducementBonus} pts`,
       ].filter(Boolean).join(', ') || `Confluence Bonuses: ${confluencePtsTotal > 0 ? '+' : ''}${confluencePtsTotal} pts`,
       isCounterTrend
         ? `Counter-Trend Multiplier: ${counterTrendMultiplier.toFixed(2)}x (no trend bonus${divergenceAlignsWithCounterTrend ? ', divergence boost' : ''})`

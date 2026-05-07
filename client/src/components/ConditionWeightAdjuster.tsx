@@ -11,7 +11,7 @@ const WEIGHT_LABELS: Record<WeightLevel, string> = {
   0: 'Disabled',
   1: 'Normal importance',
   2: 'High importance',
-  3: 'Critical importance – larger bonus when met, larger penalty when not met',
+  3: 'Critical importance',
 };
 
 export function ConditionWeightAdjuster({ systemId, condition, onWeightChange }: Props) {
@@ -83,7 +83,7 @@ export function ConditionWeightAdjuster({ systemId, condition, onWeightChange }:
       </div>
       {condition.weight === 3 && (
         <div className="text-[10px] text-red-400/80 mt-0.5">
-          ⚠️ Penalty active if condition not met
+          ⚠️ Maximum impact — bonus conditions (Fib/Div/Liq) penalise heavily if not met
         </div>
       )}
     </div>
