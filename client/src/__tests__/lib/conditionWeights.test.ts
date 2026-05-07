@@ -72,8 +72,8 @@ describe('conditionWeights', () => {
   describe('smart-money defaults', () => {
     it('returns non-zero defaults for all smart-money entry zones', () => {
       const weights = getConditionWeights('smart-money');
-      expect(weights.fvgProximity).toBe(3);
-      expect(weights.orderBlockTouch).toBe(3);
+      expect(weights.fvgProximity).toBe(1);
+      expect(weights.orderBlockTouch).toBe(1);
       expect(weights.breakerBlockProximity).toBe(1);
       expect(weights.liquiditySweep).toBe(1);
       expect(weights.divergenceConfluence).toBe(1);

@@ -42,7 +42,7 @@ export function SMCDebugTable({ evaluation, scoringInput }: SMCDebugTableProps) 
           <span className="font-semibold text-slate-300">📊 FINAL SCORE</span>
           <span className={`font-mono text-sm ${getScoreTierColor(evaluation.score)}`}>
             {evaluation.score > 0 ? '+' : ''}{evaluation.score}
-            {Math.abs(evaluation.score) >= 120 && <span className="ml-1">🔥</span>}
+            {Math.abs(evaluation.score) >= 200 && <span className="ml-1">🔥</span>}
           </span>
         </div>
 
@@ -137,9 +137,9 @@ interface ConditionDebugProps {
 
 function getScoreTierColor(score: number): string {
   const abs = Math.abs(score);
-  if (abs >= 150) return 'text-emerald-400 font-extrabold animate-pulse';
-  if (abs >= 120) return 'text-teal-400 font-bold';
-  if (abs >= 100) return 'text-green-400 font-semibold';
+  if (abs >= 250) return 'text-emerald-400 font-extrabold animate-pulse';
+  if (abs >= 200) return 'text-teal-400 font-bold';
+  if (abs >= 150) return 'text-green-400 font-semibold';
   if (abs >= 80) return 'text-green-500';
   if (abs >= 50) return 'text-lime-500';
   if (abs >= 20) return 'text-yellow-400';

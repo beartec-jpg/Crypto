@@ -508,13 +508,12 @@ describe('SMC Scoring - Uncapped Scores', () => {
     vi.useFakeTimers();
     localStorage.clear();
     resetWeightsToDefault('smart-money');
-    setConditionWeight('smart-money', 'fvgProximity', 3);
-    setConditionWeight('smart-money', 'orderBlockTouch', 3);
+    // Use default weight=1 for all zones (new model: zones contribute full score at weight≥1)
     setConditionWeight('smart-money', 'liquiditySweep', 3);
   });
 
   it('should allow scores >100 with FVG+OB overlap, liquidity sweep, and 6 MSS', () => {
-    // FVG + OB inside zone (both score ~100) + swept liquidity zone + 6 MSS (1.5x)
+    // FVG (~100) + OB (~100) = base 200, liq sweep weight-3 bonus (+40 max), trend 1.5x → far above 100
     const input: ScoringInput = {
       ...baseInput,
       fvgs: [BULLISH_FVG_INSIDE],
@@ -532,7 +531,6 @@ describe('SMC Scoring - Uncapped Scores', () => {
     };
 
     const result = scoreSmartMoney(input);
-    // Base ~100, sweep boost (+30%), trend 1.5x → ~195
     expect(result.score).toBeGreaterThan(100);
   });
 
@@ -560,35 +558,209 @@ describe('SMC Scoring - Uncapped Scores', () => {
   });
 });
 
+// ─── New additive scoring model tests ─────────────────────────────────────────
+
+describe('SMC Scoring - Additive Zone Model', () => {
+  // Fib levels: 0%=93.82, 100%=103.82 → price 100 is at 61.8% (OTE)
+  const FIB_PRICE_AT_618: FibSetResult = {
+    start: { index: 0, time: 0, price: 93.82 },
+    end: { index: 1, time: 2000, price: 103.82 },
+    levels: [
+      { level: '0',   percentage: '0%',   price: 93.82,  isExtension: false, isGolden: false, isFrozen: false },
+      { level: '100', percentage: '100%', price: 103.82, isExtension: false, isGolden: false, isFrozen: false },
+    ],
+    color: '#FF8C00',
+    showLabels: true,
+    labelPosition: 'right',
+    extendRight: true,
+  };
+
+  // Fib levels where price 100 is at ~10% (above 50% penalty zone → pct < 50%)
+  const FIB_PRICE_PENALTY: FibSetResult = {
+    start: { index: 0, time: 0, price: 99 },
+    end: { index: 1, time: 2000, price: 109 },
+    levels: [
+      { level: '0',   percentage: '0%',   price: 99,  isExtension: false, isGolden: false, isFrozen: false },
+      { level: '100', percentage: '100%', price: 109, isExtension: false, isGolden: false, isFrozen: false },
+    ],
+    color: '#FF8C00',
+    showLabels: true,
+    labelPosition: 'right',
+    extendRight: true,
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    localStorage.clear();
+    resetWeightsToDefault('smart-money'); // all weights = 1 now
+  });
+
+  it('FVG-only active → score ≈ 100 (not diluted by disabled OB and BB)', () => {
+    // Disable OB and BB so only FVG contributes
+    setConditionWeight('smart-money', 'orderBlockTouch', 0);
+    setConditionWeight('smart-money', 'breakerBlockProximity', 0);
+
+    const input: ScoringInput = {
+      ...baseInput,
+      fvgs: [BULLISH_FVG_INSIDE],
+    };
+    const result = scoreSmartMoney(input);
+    // FVG alone scores ~100, trend ≈ 1.0x, no bonuses → score ≈ 100
+    expect(result.score).toBeGreaterThan(80);
+    expect(result.score).toBeLessThanOrEqual(105); // allow small trend multiplier variance
+  });
+
+  it('FVG + OB + BB all active and qualifying → score ≈ 300 (triple additive)', () => {
+    const input: ScoringInput = {
+      ...baseInput,
+      fvgs: [BULLISH_FVG_INSIDE],
+      orderBlocks: [{ high: 100.5, low: 99.5, type: 'bullish', mitigated: false }],
+      breakers: [{ high: 100.5, low: 99.5, type: 'bullish' }],
+    };
+    const result = scoreSmartMoney(input);
+    // Base: FVG(~100) + OB(~100) + BB(~100) = ~300, trend ~1.0x
+    expect(result.score).toBeGreaterThanOrEqual(250);
+  });
+
+  it('FVG + OB active, fib at 61.8% (weight 1) → score adds ~30 pts bonus', () => {
+    // Base: FVG + OB ≈ 200; fib at OTE (score=100) with weight 1 → +30 pts bonus
+    const input: ScoringInput = {
+      ...baseInput,
+      fvgs: [BULLISH_FVG_INSIDE],
+      orderBlocks: [{ high: 100.5, low: 99.5, type: 'bullish', mitigated: false }],
+      autoFibResult: { primary: FIB_PRICE_AT_618, secondary: null },
+    };
+    setConditionWeight('smart-money', 'autoFibConfluence', 1);
+    const resultWithFib = scoreSmartMoney(input);
+
+    // Without fib:
+    setConditionWeight('smart-money', 'autoFibConfluence', 0);
+    const resultNoFib = scoreSmartMoney({ ...input, autoFibResult: undefined });
+
+    // With fib at OTE → noticeably higher score
+    expect(resultWithFib.score).toBeGreaterThan(resultNoFib.score);
+    // The fib bonus adds ~30 pts (weight 1, autoFibScore=100 → 30 pts)
+    expect(resultWithFib.score - resultNoFib.score).toBeGreaterThanOrEqual(20);
+  });
+
+  it('FVG + OB active, fib above 50% with weight 3 → score significantly penalised', () => {
+    // Penalty zone: fib pct < 50 → autoFibScore is negative
+    const input: ScoringInput = {
+      ...baseInput,
+      fvgs: [BULLISH_FVG_INSIDE],
+      orderBlocks: [{ high: 100.5, low: 99.5, type: 'bullish', mitigated: false }],
+      autoFibResult: { primary: FIB_PRICE_PENALTY, secondary: null },
+    };
+    setConditionWeight('smart-money', 'autoFibConfluence', 3);
+    const resultPenalty = scoreSmartMoney(input);
+
+    // Without fib active:
+    setConditionWeight('smart-money', 'autoFibConfluence', 0);
+    const resultNoFib = scoreSmartMoney({ ...input, autoFibResult: undefined });
+
+    // Weight-3 fib penalty should significantly reduce the score
+    expect(resultPenalty.score).toBeLessThan(resultNoFib.score);
+    // At weight 3, max penalty is 50 pts → substantial reduction from ~200 base
+    expect(resultNoFib.score - resultPenalty.score).toBeGreaterThanOrEqual(20);
+  });
+
+  it('bonus conditions show additive pts in score field (not raw 0-100 signal)', () => {
+    const input: ScoringInput = {
+      ...baseInput,
+      fvgs: [BULLISH_FVG_INSIDE],
+      autoFibResult: { primary: FIB_PRICE_AT_618, secondary: null },
+    };
+    setConditionWeight('smart-money', 'autoFibConfluence', 1);
+    const result = scoreSmartMoney(input);
+
+    const fibCond = result.conditions.find(c => c.id === 'autoFibConfluence');
+    expect(fibCond).toBeDefined();
+    // Fib score should be the actual pts bonus (≤50), not the raw autoFibScore (100)
+    expect(fibCond!.score).toBeLessThanOrEqual(50);
+    expect(fibCond!.score).toBeGreaterThan(0);
+    // Value should show "+X pts" format
+    expect(fibCond!.value).toMatch(/\+\d+ pts/);
+  });
+
+  it('liquidity sweep contributes additive pts bonus (no penalty)', () => {
+    const inputWithSweep: ScoringInput = {
+      ...baseInput,
+      fvgs: [BULLISH_FVG_INSIDE],
+      liquidityZones: [{ price: 99.0, type: 'low', swept: true, sweptIndex: 19 }],
+    };
+    const inputNoSweep: ScoringInput = {
+      ...baseInput,
+      fvgs: [BULLISH_FVG_INSIDE],
+    };
+    setConditionWeight('smart-money', 'liquiditySweep', 1);
+    const withSweep = scoreSmartMoney(inputWithSweep);
+    const noSweep = scoreSmartMoney(inputNoSweep);
+
+    // Sweep is a pure bonus — score with sweep should be higher
+    expect(withSweep.score).toBeGreaterThan(noSweep.score);
+
+    const liqCond = withSweep.conditions.find(c => c.id === 'liquiditySweep');
+    expect(liqCond).toBeDefined();
+    expect(liqCond!.score).toBeGreaterThan(0);
+    expect(liqCond!.value).toMatch(/\+\d+ pts/);
+  });
+
+  it('divergence penalty reduces score when opposing setup direction', () => {
+    // Bullish structure + bullish FVG + bearish divergence → penalty
+    const BEARISH_DIV_POINT = { time: -3000, price: 101, type: 'bearish' as const, count: 7, indicators: ['rsi', 'macd'] };
+
+    const inputNoDivConfig: ScoringInput = {
+      ...baseInput,
+      fvgs: [BULLISH_FVG_INSIDE],
+    };
+    const inputWithDiv: ScoringInput = {
+      ...baseInput,
+      fvgs: [BULLISH_FVG_INSIDE],
+      divergencePoints: [BEARISH_DIV_POINT],
+    };
+    setConditionWeight('smart-money', 'divergenceConfluence', 1);
+    const noDivResult = scoreSmartMoney({ ...inputNoDivConfig, divergencePoints: [] });
+    const divResult = scoreSmartMoney(inputWithDiv);
+
+    // Opposing divergence (bearish div + bullish setup) → penalty reduces score
+    expect(divResult.score).toBeLessThan(noDivResult.score);
+
+    const divCond = divResult.conditions.find(c => c.id === 'divergenceConfluence');
+    expect(divCond).toBeDefined();
+    expect(divCond!.score).toBeLessThan(0); // negative pts penalty
+  });
+});
+
+
 describe('SMC Scoring - Extended Signal Labels', () => {
-  it('should return LEGENDARY LONG for scores >=150', () => {
-    expect(getExtendedSignalLabel(150).label).toBe('LEGENDARY LONG');
-    expect(getExtendedSignalLabel(200).label).toBe('LEGENDARY LONG');
+  it('should return LEGENDARY LONG for scores >=250', () => {
+    expect(getExtendedSignalLabel(250).label).toBe('LEGENDARY LONG');
+    expect(getExtendedSignalLabel(300).label).toBe('LEGENDARY LONG');
   });
 
-  it('should return OUTSTANDING LONG for scores 120-149', () => {
-    expect(getExtendedSignalLabel(120).label).toBe('OUTSTANDING LONG');
-    expect(getExtendedSignalLabel(149).label).toBe('OUTSTANDING LONG');
+  it('should return OUTSTANDING LONG for scores 200-249', () => {
+    expect(getExtendedSignalLabel(200).label).toBe('OUTSTANDING LONG');
+    expect(getExtendedSignalLabel(249).label).toBe('OUTSTANDING LONG');
   });
 
-  it('should return EXCELLENT LONG for scores 100-119', () => {
-    expect(getExtendedSignalLabel(100).label).toBe('EXCELLENT LONG');
-    expect(getExtendedSignalLabel(119).label).toBe('EXCELLENT LONG');
+  it('should return EXCELLENT LONG for scores 150-199', () => {
+    expect(getExtendedSignalLabel(150).label).toBe('EXCELLENT LONG');
+    expect(getExtendedSignalLabel(199).label).toBe('EXCELLENT LONG');
   });
 
-  it('should return LEGENDARY SHORT for scores <=-150', () => {
-    expect(getExtendedSignalLabel(-150).label).toBe('LEGENDARY SHORT');
-    expect(getExtendedSignalLabel(-200).label).toBe('LEGENDARY SHORT');
+  it('should return LEGENDARY SHORT for scores <=-250', () => {
+    expect(getExtendedSignalLabel(-250).label).toBe('LEGENDARY SHORT');
+    expect(getExtendedSignalLabel(-300).label).toBe('LEGENDARY SHORT');
   });
 
-  it('should return OUTSTANDING SHORT for scores -120 to -149', () => {
-    expect(getExtendedSignalLabel(-120).label).toBe('OUTSTANDING SHORT');
-    expect(getExtendedSignalLabel(-149).label).toBe('OUTSTANDING SHORT');
+  it('should return OUTSTANDING SHORT for scores -200 to -249', () => {
+    expect(getExtendedSignalLabel(-200).label).toBe('OUTSTANDING SHORT');
+    expect(getExtendedSignalLabel(-249).label).toBe('OUTSTANDING SHORT');
   });
 
-  it('should return EXCELLENT SHORT for scores -100 to -119', () => {
-    expect(getExtendedSignalLabel(-100).label).toBe('EXCELLENT SHORT');
-    expect(getExtendedSignalLabel(-119).label).toBe('EXCELLENT SHORT');
+  it('should return EXCELLENT SHORT for scores -150 to -199', () => {
+    expect(getExtendedSignalLabel(-150).label).toBe('EXCELLENT SHORT');
+    expect(getExtendedSignalLabel(-199).label).toBe('EXCELLENT SHORT');
   });
 
   it('should return standard labels for scores in normal -100..+100 range', () => {

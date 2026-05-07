@@ -71,10 +71,10 @@ export function getExtendedSignalLabel(
   const buyBuildingThreshold = buyThreshold * 0.625;
   const sellBuildingThreshold = sellThreshold * 0.625;
 
-  // Extended positive ranges (>100)
-  if (score >= 150) return { label: 'LEGENDARY LONG', color: '#10b981' };  // Emerald-500
-  if (score >= 120) return { label: 'OUTSTANDING LONG', color: '#14b8a6' }; // Teal-500
-  if (score >= 100) return { label: 'EXCELLENT LONG', color: '#22c55e' };   // Green-500
+  // Extended positive ranges (stacked confluence, beyond single zone max of 100)
+  if (score >= 250) return { label: 'LEGENDARY LONG', color: '#10b981' };   // Triple-zone + max bonuses
+  if (score >= 200) return { label: 'OUTSTANDING LONG', color: '#14b8a6' }; // Double-zone + bonuses
+  if (score >= 150) return { label: 'EXCELLENT LONG', color: '#22c55e' };   // Single zone + bonuses
 
   // Standard positive ranges
   if (score >= buyThreshold) return { label: 'BUY SIGNAL', color: '#22c55e' };
@@ -88,11 +88,11 @@ export function getExtendedSignalLabel(
   if (score > -sellBuildingThreshold) return { label: 'WEAK BEARISH', color: '#fb923c' };
   if (score > -sellThreshold) return { label: 'BEARISH SETUP', color: '#f97316' };
 
-  // Extended negative ranges (<-100)
-  if (score > -100) return { label: 'SELL SIGNAL', color: '#ef4444' };
-  if (score > -120) return { label: 'EXCELLENT SHORT', color: '#ef4444' };
-  if (score > -150) return { label: 'OUTSTANDING SHORT', color: '#dc2626' }; // Red-600
-  return { label: 'LEGENDARY SHORT', color: '#b91c1c' };                     // Red-700
+  // Extended negative ranges (below standard SELL SIGNAL)
+  if (score > -150) return { label: 'SELL SIGNAL', color: '#ef4444' };       // -80 to -149
+  if (score > -200) return { label: 'EXCELLENT SHORT', color: '#ef4444' };   // -150 to -199
+  if (score > -250) return { label: 'OUTSTANDING SHORT', color: '#dc2626' }; // -200 to -249
+  return { label: 'LEGENDARY SHORT', color: '#b91c1c' };                     // ≤-250
 }
 
 /** Clamp a value to [-100, 100]. */
@@ -1895,11 +1895,11 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     return true;  // Both with-trend AND counter-trend zones are included
   });
 
-  // Derive setup direction from weighted zone bias so mixed zones do not cause false counter-trend states.
-  const weightedZoneBias = validZones.reduce((sum, z) => sum + (z.score * z.weight), 0);
+  // Derive setup direction from zone bias (no weight divisor in new additive model).
+  const zoneBias = validZones.reduce((sum, z) => sum + z.score, 0);
   const setupDirection: 'bullish' | 'bearish' | null =
-    validZones.length > 0 && weightedZoneBias !== 0
-      ? (weightedZoneBias > 0 ? 'bullish' : 'bearish')
+    validZones.length > 0 && zoneBias !== 0
+      ? (zoneBias > 0 ? 'bullish' : 'bearish')
       : null;
 
   // Counter-trend is based on dominant setup direction vs primary trend direction.
@@ -1946,72 +1946,78 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
     ? scoreAutoFibConfluence(fibSetToUse, currentPrice)
     : 0;
 
-  // Calculate total possible weight from ALL enabled zones (weight>0), not just active ones.
-  // This ensures a single active zone cannot score 100% when multiple zones are configured.
-  const totalPossibleWeight = allZones
-    .filter(z => z.weight > 0)
-    .reduce((sum, z) => sum + z.weight, 0);
+  // ── New additive scoring model ────────────────────────────────────────────
+  // Each valid zone contributes its full raw score (no weight divisor).
+  // Bonus items (Fib, Div, Liq, Inducement) add or subtract fixed point amounts.
 
-  // Calculate base entry score (weighted sum of active zones / total possible weight), or 0 when none qualify
-  let baseEntryScore = 0;
-  let boostedScore = 0;
+  // Base entry score: sum of all active zone raw scores (signed: +ve bullish, -ve bearish).
+  const baseEntryScore = validZones.length > 0
+    ? validZones.reduce((sum, z) => sum + z.score, 0)
+    : 0;
 
-  if (validZones.length > 0 && totalPossibleWeight > 0) {
-    baseEntryScore = validZones.reduce((sum, z) => sum + (z.score * z.weight), 0) / totalPossibleWeight;
+  // Direction sign used to apply signed bonuses that increase or decrease score magnitude.
+  const directionSign = setupDirection === 'bullish' ? 1 : setupDirection === 'bearish' ? -1 : 0;
 
-    // Apply confluence boosters (multiply base score instead of adding)
-    boostedScore = baseEntryScore;
+  // Additive bonus/penalty point amounts for each confluence factor.
+  let fibBonus = 0;
+  let divBonus = 0;
+  let liqBonus = 0;
+  let inducementBonus = 0;
 
-    if ((weights.liquiditySweep ?? 0) > 0 && Math.abs(liquidityScore) >= 40) {
-      const sweepBoost = (Math.abs(liquidityScore) / 100) * 0.3;
-      boostedScore *= (1 + sweepBoost);
+  if (validZones.length > 0 && directionSign !== 0) {
+    // ── Auto-Fib confluence: additive points based on fib position ──────────
+    // OTE bonus:   Weight 1 = +30 pts max, Weight 2 = +45 pts max, Weight 3 = +50 pts max
+    // Above-50% penalty: Weight 1 = −5 pts max, Weight 2 = −15 pts max, Weight 3 = −50 pts max
+    if (autoFibWeight > 0) {
+      const MAX_FIB_BONUS    = ([0, 30, 45, 50] as const)[autoFibWeight] ?? 50;
+      const MAX_FIB_PENALTY  = ([0,  5, 15, 50] as const)[autoFibWeight] ?? 50;
+      if (autoFibScore >= 0) {
+        // Positive autoFibScore (0–100) → proportional bonus
+        fibBonus = directionSign * Math.round((autoFibScore / 100) * MAX_FIB_BONUS);
+      } else {
+        // Negative autoFibScore (−5..−30) → normalise against −30 worst-case for penalty
+        fibBonus = -directionSign * Math.round((Math.abs(autoFibScore) / 30) * MAX_FIB_PENALTY);
+      }
     }
 
+    // ── Divergence confluence: additive bonus when aligned, penalty when opposing ──
+    // Aligned bonus:   Weight 1 = +15 pts, Weight 2 = +30 pts, Weight 3 = +50 pts
+    // Opposing penalty: Weight 1 = −15 pts, Weight 2 = −35 pts, Weight 3 = −60 pts
     const divWeight = weights.divergenceConfluence ?? 0;
     if (divWeight > 0 && Math.abs(divergenceFinalScore) >= 20) {
+      const MAX_DIV_BONUS    = ([0, 15, 30, 50] as const)[divWeight] ?? 50;
+      const MAX_DIV_PENALTY  = ([0, 15, 35, 60] as const)[divWeight] ?? 60;
+      const strength = divergenceStrengthPct / 100;
       const structureIsBullish = activeSetupDirection === 'bullish';
       const divergenceIsBullish = divergenceFinalScore > 0;
       const isAligned = activeSetupDirection
         ? structureIsBullish === divergenceIsBullish
         : true;
-
-      const divergenceFactor = divergenceStrengthPct / 100;
       if (isAligned) {
-        // Weight 1: +20% max, Weight 2: +40% max, Weight 3: +60% max
-        const divBoost = divergenceFactor * 0.2 * divWeight;
-        boostedScore *= (1 + divBoost);
+        divBonus = directionSign * Math.round(strength * MAX_DIV_BONUS);
       } else {
-        // Weight 1: -35% max, Weight 2: -70% max, Weight 3: -100% max (capped)
-        const basePenalty = divergenceFactor * 0.35;
-        const scaledPenalty = Math.min(1.0, basePenalty * divWeight);
-        boostedScore *= Math.max(0, 1 - scaledPenalty);
+        divBonus = -directionSign * Math.round(strength * MAX_DIV_PENALTY);
       }
     }
 
-    if (autoFibWeight > 0) {
-      // Weight multiplier: 1 = 1x, 2 = 2x, 3 = 3x
-      const weightMultiplier = autoFibWeight;
-
-      if (autoFibScore >= 40) {
-        // OTE zone (61.8-78.6%): strong boost, scaled by weight
-        // Weight 1: +15%, Weight 2: +30%, Weight 3: +45%
-        const fibBoost = (autoFibScore / 100) * 0.15 * weightMultiplier;
-        boostedScore *= (1 + fibBoost);
-      } else if (autoFibScore < 0) {
-        // Above 50% zone: penalty scaled by weight
-        // Weight 1: -12%, Weight 2: -24%, Weight 3: -50% (capped)
-        const basePenalty = (Math.abs(autoFibScore) / 100) * 0.12;
-        const scaledPenalty = Math.min(0.5, basePenalty * weightMultiplier);
-        boostedScore *= Math.max(0.5, 1 - scaledPenalty);
-      }
+    // ── Liquidity sweep: pure additive bonus (no penalty) ───────────────────
+    // Weight 1 = +15 pts, Weight 2 = +25 pts, Weight 3 = +40 pts (scaled by sweep strength)
+    const liqWeight = weights.liquiditySweep ?? 0;
+    if (liqWeight > 0 && Math.abs(liquidityScore) >= 40) {
+      const MAX_LIQ_BONUS = ([0, 15, 25, 40] as const)[liqWeight] ?? 40;
+      const strength = Math.abs(liquidityScore) / 100;
+      liqBonus = directionSign * Math.round(strength * MAX_LIQ_BONUS);
     }
 
-    // Inducement sequence (sweep → MSS/CHoCH → zone): highest-conviction bonus, up to +25%
+    // ── Inducement sequence bonus: proportional to base score, up to +25% ──
     if (Math.abs(inducementScore) >= 40) {
-      const inducementBoost = (Math.abs(inducementScore) / 100) * 0.25;
-      boostedScore *= (1 + inducementBoost);
+      inducementBonus = directionSign * Math.round(
+        Math.abs(baseEntryScore) * 0.25 * (Math.abs(inducementScore) / 100),
+      );
     }
   }
+
+  const boostedScore = baseEntryScore + fibBonus + divBonus + liqBonus + inducementBonus;
 
   // Counter-trend entries get a 0.8x penalty instead of the trend strength bonus.
   // Boost to 0.9x when divergence aligns with the counter-trend direction (Phase 3).
@@ -2099,79 +2105,79 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
         weight: zone.weight,
         score: Math.round(zone.score),
         userWeight: zone.weight,
-        weightedScore: isValidZone ? Math.round(zone.score) * zone.weight : 0,
+        weightedScore: isValidZone ? Math.round(zone.score) : 0,
         value: `${Math.abs(Math.round(zone.score))}/100`,
         description: isValidZone
-          ? `Active entry zone (weight: ${zone.weight})`
+          ? `Contributing ${Math.abs(Math.round(zone.score))} pts to total`
           : `Not qualifying (score: ${Math.round(zone.score)}/100)`,
       };
     }),
     {
       id: 'liquiditySweep',
       name: 'Liquidity Sweep',
-      met: Math.abs(liquidityScore) >= 40,
+      met: liqBonus !== 0,
       weight: (weights.liquiditySweep ?? 0) as WeightLevel,
-      score: Math.round(liquidityScore),
+      score: liqBonus,
       userWeight: (weights.liquiditySweep ?? 0) as WeightLevel,
-      weightedScore: Math.round(liquidityScore) * (weights.liquiditySweep ?? 0),
-      value: liquidityScore !== 0 ? `${Math.abs(Math.round(liquidityScore))}/100` : undefined,
-      description: liquidityScore > 0
-        ? `Low sweep (bullish): +${Math.round((Math.abs(liquidityScore) / 100) * 30)}% boost`
-        : liquidityScore < 0
-        ? `High sweep (bearish): +${Math.round((Math.abs(liquidityScore) / 100) * 30)}% boost`
-        : 'No active liquidity sweeps',
+      weightedScore: liqBonus,
+      value: liqBonus !== 0 ? `${liqBonus > 0 ? '+' : ''}${liqBonus} pts` : undefined,
+      description: liqBonus !== 0
+        ? `Sweep present → +${Math.abs(liqBonus)} pts bonus (weight ${weights.liquiditySweep ?? 0})`
+        : Math.abs(liquidityScore) >= 40
+          ? 'Sweep detected but weight is 0 (disabled)'
+          : 'No active liquidity sweeps',
     },
     {
       id: 'divergenceConfluence',
       name: 'Divergence Confluence',
-      met: Math.abs(divergenceFinalScore) >= 40,
+      met: divBonus !== 0,
       weight: (weights.divergenceConfluence ?? 0) as WeightLevel,
-      score: Math.round(divergenceFinalScore),
+      score: divBonus,
       userWeight: (weights.divergenceConfluence ?? 0) as WeightLevel,
-      weightedScore: Math.round(divergenceFinalScore) * (weights.divergenceConfluence ?? 0),
-      value: divergenceFinalScore !== 0 ? `${Math.round(divergenceStrengthPct)}%` : undefined,
+      weightedScore: divBonus,
+      value: divBonus !== 0 ? `${divBonus > 0 ? '+' : ''}${divBonus} pts` : undefined,
       description:
-        divergenceFinalScore === 0
+        divBonus === 0 && Math.abs(divergenceFinalScore) < 20
           ? 'No active divergence'
-          : activeSetupDirection &&
-            ((activeSetupDirection === 'bullish' && divergenceFinalScore < 0) ||
-              (activeSetupDirection === 'bearish' && divergenceFinalScore > 0))
-          ? `${divergenceSource} (active context: ${activeSetupDirection}; trend-opposing, up to -${Math.round(Math.min(100, (divergenceStrengthPct / 100) * 35 * (weights.divergenceConfluence ?? 0)))}% penalty)`
-          : `${divergenceSource} (active context: ${activeSetupDirection ?? 'neutral'}; trend-aligned, +${Math.round((divergenceStrengthPct / 100) * 20 * (weights.divergenceConfluence ?? 0))}% boost)`,
+          : divBonus === 0
+          ? 'Divergence detected but weight is 0 (disabled)'
+          : divBonus > 0
+          ? `${divergenceSource} (trend-aligned, +${Math.abs(divBonus)} pts bonus)`
+          : `${divergenceSource} (trend-opposing, ${divBonus} pts penalty)`,
     },
     {
       id: 'autoFibConfluence',
       name: 'Auto-Fib Confluence',
-      met: autoFibScore >= 40,
+      met: fibBonus > 0,
       weight: autoFibWeight as WeightLevel,
-      score: Math.round(autoFibScore),
+      score: fibBonus,
       userWeight: autoFibWeight as WeightLevel,
-      weightedScore: Math.round(autoFibScore) * autoFibWeight,
-      value: autoFibScore > 0 ? `${Math.round(autoFibScore)}/100` : undefined,
-      description: autoFibScore >= 40
-        ? `${isCounterTrend ? 'Secondary' : 'Primary'} fib in OTE region (+${Math.round((autoFibScore / 100) * 15 * autoFibWeight)}% boost)`
-        : autoFibScore < 0
-        ? `${isCounterTrend ? 'Secondary' : 'Primary'} fib above 50% retracement (up to -${Math.round(Math.min(50, (Math.abs(autoFibScore) / 100) * 12 * autoFibWeight))}% penalty)`
-        : `${isCounterTrend ? 'Secondary' : 'Primary'} fib neutral`,
+      weightedScore: fibBonus,
+      value: fibBonus !== 0 ? `${fibBonus > 0 ? '+' : ''}${fibBonus} pts` : undefined,
+      description: fibBonus > 0
+        ? `${isCounterTrend ? 'Secondary' : 'Primary'} fib in OTE zone (+${fibBonus} pts bonus)`
+        : fibBonus < 0
+        ? `${isCounterTrend ? 'Secondary' : 'Primary'} fib above 50% retracement (${fibBonus} pts penalty)`
+        : autoFibWeight > 0
+          ? `${isCounterTrend ? 'Secondary' : 'Primary'} fib neutral (no bonus/penalty)`
+          : `${isCounterTrend ? 'Secondary' : 'Primary'} fib disabled (weight 0)`,
     },
     {
       id: 'inducementSequence',
       name: 'Inducement Sequence',
-      met: Math.abs(inducementScore) >= 40,
+      met: inducementBonus !== 0,
       weight: 2 as WeightLevel,
-      score: Math.round(inducementScore),
+      score: inducementBonus,
       userWeight: 2 as WeightLevel,
-      weightedScore: Math.round(inducementScore) * 2,
-      value: Math.abs(inducementScore) >= 40 ? `${Math.abs(Math.round(inducementScore))}/100` : undefined,
-      description: Math.abs(inducementScore) >= 40
-        ? `Sweep → MSS/CHoCH → Zone confirmed (${inducementScore > 0 ? 'bullish' : 'bearish'}) (+${Math.round((Math.abs(inducementScore) / 100) * 25)}% boost)`
+      weightedScore: inducementBonus,
+      value: inducementBonus !== 0 ? `+${Math.abs(inducementBonus)} pts` : undefined,
+      description: inducementBonus !== 0
+        ? `Sweep → MSS/CHoCH → Zone confirmed (${inducementScore > 0 ? 'bullish' : 'bearish'}) (+${Math.abs(inducementBonus)} pts bonus)`
         : 'No inducement sequence detected',
     },
   ];
 
-  const confluenceBoostPct = baseEntryScore !== 0
-    ? Math.round((boostedScore / baseEntryScore - 1) * 100)
-    : 0;
+  const confluencePtsTotal = fibBonus + divBonus + liqBonus + inducementBonus;
 
   const reasoning: string[] = validZones.length === 0
     ? [latestStructureDirection
@@ -2179,10 +2185,15 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
         : 'No valid market structure detected']
     : [
       `Base Entry: ${Math.round(baseEntryScore)} (${validZones.map(z => z.name).join(' + ')})`,
-      `Confluence Boosts: +${confluenceBoostPct}%` + (Math.abs(inducementScore) >= 40 ? ` (incl. Inducement +${Math.round((Math.abs(inducementScore) / 100) * 25)}%)` : ''),
+      [
+        fibBonus !== 0 && `Fib ${fibBonus > 0 ? '+' : ''}${fibBonus} pts`,
+        divBonus !== 0 && `Div ${divBonus > 0 ? '+' : ''}${divBonus} pts`,
+        liqBonus !== 0 && `Liq +${liqBonus} pts`,
+        inducementBonus !== 0 && `Inducement +${inducementBonus} pts`,
+      ].filter(Boolean).join(', ') || `Confluence Bonuses: ${confluencePtsTotal > 0 ? '+' : ''}${confluencePtsTotal} pts`,
       isCounterTrend
         ? `Counter-Trend Multiplier: ${counterTrendMultiplier.toFixed(2)}x (no trend bonus${divergenceAlignsWithCounterTrend ? ', divergence boost' : ''})`
-        : `Trend Multiplier: ${trendMultiplier.toFixed(2)}x (${consecutiveMSSCount} consecutive shifts)`,
+        : `Trend Multiplier: ${effectiveTrendMultiplier.toFixed(2)}x (${consecutiveMSSCount} consecutive shifts)`,
       `Final Score: ${finalScore}`,
     ];
 
