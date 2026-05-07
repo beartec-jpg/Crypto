@@ -95,7 +95,7 @@ export default function SendForm({ utxos, fromAddress, keyPair, network, onBack,
           <Row label="Amount" value={`${amountNum.toFixed(8)} qBTC`} />
           <Row label="Fee" value={`${buildResult?.fee.toFixed(8)} qBTC (${feeEstimate} sat/vbyte)`} />
           <Row label="Total" value={`${(amountNum + (buildResult?.fee ?? 0)).toFixed(8)} qBTC`} />
-          {step === 'error' || errorMsg ? (
+          {errorMsg ? (
             <p className="text-red-400 text-sm">{errorMsg}</p>
           ) : null}
         </div>

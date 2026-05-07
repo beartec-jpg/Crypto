@@ -18,7 +18,7 @@ export async function deriveVaultKey(pin: string, saltHex: string): Promise<Cryp
     ['deriveBits', 'deriveKey'],
   );
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: salt.slice(), iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
     baseKey,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -38,7 +38,7 @@ export async function encryptSeed(
   vaultKey: CryptoKey,
 ): Promise<{ encryptedSeed: string; seedIv: string }> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, vaultKey, masterSeed);
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, vaultKey, masterSeed.slice());
   return {
     encryptedSeed: bytesToBase64(new Uint8Array(ciphertext)),
     seedIv: bytesToBase64(iv),
@@ -53,7 +53,7 @@ export async function decryptSeed(
 ): Promise<Uint8Array> {
   const iv = base64ToBytes(seedIv);
   const ciphertext = base64ToBytes(encryptedSeed);
-  const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, vaultKey, ciphertext);
+  const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv.slice() }, vaultKey, ciphertext.slice());
   return new Uint8Array(plaintext);
 }
 

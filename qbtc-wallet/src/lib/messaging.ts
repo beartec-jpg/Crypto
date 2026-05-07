@@ -16,7 +16,7 @@ export async function deriveSharedKey(
 ): Promise<CryptoKey> {
   const theirPublicKey = await crypto.subtle.importKey(
     'raw',
-    theirPublicKeyRaw,
+    theirPublicKeyRaw.slice(),
     { name: 'ECDH', namedCurve: 'P-256' },
     false,
     [],
