@@ -458,6 +458,11 @@ function BuyView({
   const [sortMode, setSortMode]     = useState<SortMode>('amount_desc');
   const [acceptTarget, setAcceptTarget] = useState<V2Offer | null>(null);
 
+  const refreshQuoteBalance = useCallback((quoteChain: ChainId) => {
+    fetchChainBalance(quoteChain, walletEvmAddress, walletXrpAddress, walletAddress, walletBtcAddress)
+      .then(() => { /* balance refreshed in background */ });
+  }, [walletEvmAddress, walletXrpAddress, walletAddress, walletBtcAddress]);
+
   const loadOffers = useCallback(async () => {
     setLoading(true);
     try {
@@ -626,7 +631,11 @@ function BuyView({
           walletBtcPubKey={walletBtcPubKey}
           walletBtcAddress={walletBtcAddress}
           onClose={() => setAcceptTarget(null)}
-          onAccepted={loadOffers}
+          onAccepted={() => {
+            loadOffers();
+            if (acceptTarget) refreshQuoteBalance(acceptTarget.quoteChain as ChainId);
+            setAcceptTarget(null);
+          }}
         />
       )}
     </div>
@@ -696,13 +705,20 @@ function SellView({
   }, [base, quote]);
 
   // Fetch balance when base changes
-  useEffect(() => {
+  const refreshBalance = useCallback(() => {
     setBalance(null);
     setBalanceLoading(true);
     fetchChainBalance(base, walletEvmAddress, walletXrpAddress, walletAddress, walletBtcAddress)
       .then(b => setBalance(b))
       .finally(() => setBalanceLoading(false));
   }, [base, walletEvmAddress, walletXrpAddress, walletAddress, walletBtcAddress]);
+
+  useEffect(() => {
+    refreshBalance();
+    // Auto-refresh every 30s so balance doesn't go stale
+    const interval = setInterval(refreshBalance, 30_000);
+    return () => clearInterval(interval);
+  }, [refreshBalance]);
 
   // Auto-populate quote amount from market rate
   useEffect(() => {
@@ -735,6 +751,7 @@ function SellView({
     try {
       await cancelV2Offer(offer, walletId, password, signWithWallet);
       await loadMyListings();
+      refreshBalance();
     } catch (e: unknown) {
       setCancelError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -799,7 +816,8 @@ function SellView({
       setSubmitStatus('done');
       setBaseAmount(''); setQuoteAmount(''); setPassword('');
       quoteEditedRef.current = false;
-      loadMyListings();
+      void loadMyListings();
+      void refreshBalance();
     } catch (e: unknown) {
       setErrorMsg(e instanceof Error ? e.message : String(e));
       setSubmitStatus('error');
