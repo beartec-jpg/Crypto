@@ -12,6 +12,7 @@ import BitcoinSendModal from '@/components/Wallet/BitcoinSendModal';
 import SolanaSendModal from '@/components/Wallet/SolanaSendModal';
 import PasskeyAuthModal from '@/components/Wallet/PasskeyAuthModal';
 import ColdSignerInstallButton from '@/components/Wallet/ColdSignerInstallButton';
+import QbtcWalletPWAButton from '@/components/Wallet/QbtcWalletPWAButton';
 import PinEntryModal from '@/components/Wallet/PinEntryModal';
 import SecuritySettings from '@/components/Wallet/SecuritySettings';
 import SecurityEducationCenter from '@/components/Security/SecurityEducationCenter';
@@ -543,6 +544,10 @@ export default function WalletPage() {
                   label="Install Cold Signer app before unlocking"
                   className="mt-4 inline-flex items-center gap-2 text-sm text-cyan-300 hover:text-cyan-200 transition-colors"
                 />
+                <QbtcWalletPWAButton
+                  qbtcAddress={sovereignWallet?.addresses?.qbtc}
+                  className="mt-2 inline-flex items-center gap-2 text-sm text-cyan-300 hover:text-cyan-200 transition-colors"
+                />
               </div>
             ) : (
               <div className="bg-gray-800 rounded-2xl p-8 mb-8">
@@ -573,6 +578,10 @@ export default function WalletPage() {
                   <ColdSignerInstallButton
                     label="Install Cold Signer on your offline device first"
                     className="text-center text-sm text-cyan-300 hover:text-cyan-200 transition-colors"
+                  />
+                  <QbtcWalletPWAButton
+                    qbtcAddress={sovereignWallet?.addresses?.qbtc}
+                    className="text-center text-sm text-cyan-300 hover:text-cyan-200 transition-colors inline-flex items-center gap-2"
                   />
                 </div>
 

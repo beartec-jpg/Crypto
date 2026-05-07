@@ -1324,17 +1324,14 @@ function scoreAutoFibConfluence(
     return 0;
   }
 
-  const levels = fibSet.levels;
-  if (!levels || levels.length === 0) return 0;
-
-  const getLevelPrice = (target: string): number | null => {
-    const level = levels.find(l => l.level === target || l.percentage === `${target}%`);
-    return level?.price ?? null;
-  };
-
-  const level0 = getLevelPrice('0');
-  const level100 = getLevelPrice('100');
-  if (level0 === null || level100 === null || level0 === level100) return 0;
+  // Derive level0 (0%) and level100 (100%) directly from the swing anchor points.
+  // For an upswing  (start=low, end=high): 0% = end.price (high), 100% = start.price (low)
+  // For a downswing (start=high, end=low): 0% = end.price (low),  100% = start.price (high)
+  // In both cases: level0 = end.price, level100 = start.price.
+  // This avoids dependency on levels '0'/'100' being enabled in the user's visual settings.
+  const level0 = fibSet.end.price;
+  const level100 = fibSet.start.price;
+  if (level0 === level100) return 0;
 
   // Normalize current price to fib percentage scale where 0%=level0 and 100%=level100.
   const fibPct = ((currentPrice - level0) / (level100 - level0)) * 100;

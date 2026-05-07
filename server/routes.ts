@@ -9428,6 +9428,65 @@ CRITICAL DATA RULES:
     }
   });
 
+  // ── qBTC PWA message relay ────────────────────────────────────────────────
+  // Simple in-memory relay; the server only sees ciphertext (AES-256-GCM).
+  // Messages are TTL-expired after 7 days to prevent unbounded memory growth.
+  const MSG_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+  interface RelayMessage {
+    id: string;
+    from: string;
+    to: string;
+    payload: string;
+    timestamp: number;
+  }
+
+  const relayStore = new Map<string, RelayMessage[]>(); // key = recipient address
+
+  // Prune messages older than TTL
+  function pruneRelayMessages() {
+    const cutoff = Date.now() - MSG_TTL_MS;
+    for (const [addr, msgs] of relayStore.entries()) {
+      const filtered = msgs.filter(m => m.timestamp > cutoff);
+      if (filtered.length === 0) relayStore.delete(addr);
+      else relayStore.set(addr, filtered);
+    }
+  }
+
+  app.post('/api/qbtc/messages/send', (req: Request, res: Response) => {
+    const { from, to, payload } = req.body as Record<string, unknown>;
+    if (
+      typeof from !== 'string' || typeof to !== 'string' || typeof payload !== 'string' ||
+      from.length > 128 || to.length > 128 || payload.length > 65536
+    ) {
+      res.status(400).json({ error: 'Invalid request' });
+      return;
+    }
+    pruneRelayMessages();
+    const msg: RelayMessage = {
+      id: crypto.randomUUID(),
+      from,
+      to,
+      payload,
+      timestamp: Date.now(),
+    };
+    const existing = relayStore.get(to) ?? [];
+    relayStore.set(to, [...existing, msg]);
+    res.json({ id: msg.id });
+  });
+
+  app.get('/api/qbtc/messages/poll', (req: Request, res: Response) => {
+    const { to, since } = req.query as Record<string, string>;
+    if (!to || typeof to !== 'string' || to.length > 128) {
+      res.status(400).json({ error: 'Invalid request' });
+      return;
+    }
+    const sinceTs = parseInt(since ?? '0', 10) || 0;
+    const msgs = (relayStore.get(to) ?? []).filter(m => m.timestamp > sinceTs);
+    res.json({ messages: msgs });
+  });
+  // ─────────────────────────────────────────────────────────────────────────
+
   // QuantumBTC RPC proxy (avoids browser CORS/auth limitations)
   app.post('/api/qbtc/rpc', async (req: Request, res: Response) => {
     // Allowlist of safe read/write methods the client may invoke.
