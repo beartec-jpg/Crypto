@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { Lock, Shield, Key, AlertTriangle, Eye, EyeOff, Check, X, Import, Plus, QrCode } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import ColdSignerInstallButton from '@/components/Wallet/ColdSignerInstallButton';
+import QbtcWalletPWAButton from '@/components/Wallet/QbtcWalletPWAButton';
 import { storeHotShare } from '@/lib/coldSignerService';
 import { 
   createWallet, 
@@ -807,6 +808,9 @@ export default function PasskeyAuthModal({ onClose, onSuccess, userId }: Passkey
                 <ColdSignerInstallButton
                   label="Install Cold Signer app (offline device)"
                   className="text-sm text-cyan-400 hover:text-cyan-300 transition-colors block w-full"
+                />
+                <QbtcWalletPWAButton
+                  className="text-sm text-cyan-400 hover:text-cyan-300 transition-colors flex items-center justify-center gap-2 w-full"
                 />
                 <button
                   onClick={() => setMode('create')}
