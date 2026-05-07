@@ -111,7 +111,9 @@ export function ActiveSystemMonitor({
   const { score, conditions, signalLabel } = evaluation;
   const sentimentLabel = getSentimentLabel(score);
   const scorePrefix = score > 0 ? '+' : '';
-  const absPct = Math.abs(score);
+  // Scale bar against 300-point max (triple-zone confluence ceiling).
+  const SCORE_BAR_MAX = 300;
+  const absPct = Math.min(100, (Math.abs(score) / SCORE_BAR_MAX) * 100);
   const metCount = conditions.filter(c => c.met).length;
 
   const weightedConditions = useMemo(

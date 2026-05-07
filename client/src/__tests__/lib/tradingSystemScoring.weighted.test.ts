@@ -158,3 +158,84 @@ describe('scoreSmartMoney MSS direction scoring', () => {
     expect(evaluation.score).toBe(0);
   });
 });
+
+describe('scoreSmartMoney additive model — new scoring', () => {
+  const BULLISH_MSS = {
+    breakTime: 90,
+    breakIndex: 90,
+    direction: 'bullish' as const,
+    type: 'mss' as const,
+    swept: false,
+    brokenLevel: 90,
+    confirmed: true,
+  };
+
+  const BASE = {
+    latestClose: 100,
+    previousClose: 101,
+    htfBullish: 0,
+    htfBearish: 0,
+    currentCandleIndex: 100,
+    currentTime: 100,
+    structureBreaks: [BULLISH_MSS],
+    swingPoints: [],
+  };
+
+  const BULLISH_FVG = { high: 99.9, low: 99.5, filled: false, type: 'bullish' as const };
+  const BULLISH_OB  = { high: 99.9, low: 99.5, type: 'bullish' as const, mitigated: false };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    localStorage.clear();
+    resetWeightsToDefault('smart-money'); // all 1
+  });
+
+  it('single zone active → score ≈ raw zone score (not diluted)', () => {
+    setConditionWeight('smart-money', 'orderBlockTouch', 0);
+    setConditionWeight('smart-money', 'breakerBlockProximity', 0);
+    const result = scoreSmartMoney({ ...BASE, fvgs: [BULLISH_FVG] });
+    expect(result.score).toBeGreaterThan(50);
+    // Should be close to the raw FVG zone score (≈100), not diluted
+    expect(result.score).toBeGreaterThanOrEqual(80);
+  });
+
+  it('two zones active and qualifying → score ≈ sum of both zone scores', () => {
+    setConditionWeight('smart-money', 'breakerBlockProximity', 0);
+    const result = scoreSmartMoney({ ...BASE, fvgs: [BULLISH_FVG], orderBlocks: [BULLISH_OB] });
+    // With additive model: FVG(~100) + OB(~100) = ~200 (before trend multiplier)
+    expect(result.score).toBeGreaterThan(150);
+  });
+
+  it('two zones score higher than one zone alone', () => {
+    setConditionWeight('smart-money', 'breakerBlockProximity', 0);
+    const oneZone = scoreSmartMoney({ ...BASE, fvgs: [BULLISH_FVG] });
+    const twoZones = scoreSmartMoney({ ...BASE, fvgs: [BULLISH_FVG], orderBlocks: [BULLISH_OB] });
+    expect(twoZones.score).toBeGreaterThan(oneZone.score);
+    // Two zones should be roughly double one zone
+    expect(twoZones.score).toBeGreaterThan(oneZone.score * 1.5);
+  });
+
+  it('zone conditions show raw 0-100 score, not additive pts', () => {
+    const result = scoreSmartMoney({ ...BASE, fvgs: [BULLISH_FVG] });
+    const fvgCond = result.conditions.find(c => c.id === 'fvgProximity');
+    expect(fvgCond).toBeDefined();
+    // Zone score is the raw proximity score (0-100 range)
+    expect(Math.abs(fvgCond!.score!)).toBeGreaterThanOrEqual(50);
+    expect(Math.abs(fvgCond!.score!)).toBeLessThanOrEqual(100);
+  });
+
+  it('liquidity bonus is additive pts in condition score field', () => {
+    const input = {
+      ...BASE,
+      fvgs: [BULLISH_FVG],
+      liquidityZones: [{ price: 99.0, type: 'low' as const, swept: true, sweptIndex: 99 }],
+    };
+    setConditionWeight('smart-money', 'liquiditySweep', 2);
+    const result = scoreSmartMoney(input);
+    const liqCond = result.conditions.find(c => c.id === 'liquiditySweep');
+    expect(liqCond).toBeDefined();
+    // Should show additive pts (≤40 max at weight 2 = +25 pts max)
+    expect(liqCond!.score).toBeGreaterThan(0);
+    expect(liqCond!.score).toBeLessThanOrEqual(40);
+  });
+});

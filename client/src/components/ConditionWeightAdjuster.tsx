@@ -81,12 +81,18 @@ export function ConditionWeightAdjuster({ systemId, condition, onWeightChange }:
 
         <ScoreBar score={condition.score} />
       </div>
+      {condition.weight === 3 && (
+        <div className="text-[10px] text-red-400/80 mt-0.5">
+          ⚠️ Maximum impact — bonus conditions (Fib/Div/Liq) penalise heavily if not met
+        </div>
+      )}
     </div>
   );
 }
 
 function ScoreBar({ score }: { score: number }) {
-  const percentage = Math.abs(score);
+  // Bonus/penalty scores are in additive pts (max ~60), so normalise to 100% width at ±100.
+  const percentage = Math.min(100, Math.abs(score));
   const color = score >= 0 ? 'bg-green-500' : 'bg-red-500';
 
   return (
