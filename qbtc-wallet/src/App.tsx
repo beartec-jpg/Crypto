@@ -26,20 +26,20 @@ export default function App() {
   const [msgPrivKey, setMsgPrivKey] = useState<CryptoKey | null>(null);
   const [msgPubKeyRaw, setMsgPubKeyRaw] = useState<Uint8Array | null>(null);
 
-  // PWA install prompt
-  const installPromptRef = useRef<any>(null);
-  const [installable, setInstallable] = useState(false);
+  // PWA install prompt — event may fire before React mounts, captured in index.html
+  const installPromptRef = useRef<any>((window as any).deferredInstallPrompt ?? null);
+  const [installable, setInstallable] = useState(() => !!(window as any).deferredInstallPrompt);
   const [installedDismissed, setInstallDismissed] = useState(false);
 
   useEffect(() => {
-    const handler = (e: Event) => {
-      e.preventDefault();
-      installPromptRef.current = e;
+    // In case it fires after mount
+    const onReady = () => {
+      installPromptRef.current = (window as any).deferredInstallPrompt;
       setInstallable(true);
     };
-    window.addEventListener('beforeinstallprompt', handler);
+    window.addEventListener('installpromptready', onReady);
     window.addEventListener('appinstalled', () => setInstallable(false));
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('installpromptready', onReady);
   }, []);
 
   async function handleInstall() {

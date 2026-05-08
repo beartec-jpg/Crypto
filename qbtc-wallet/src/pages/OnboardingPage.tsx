@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { generateMnemonic, mnemonicToSeed } from 'bip39';
-import { CheckCircle, Copy, AlertTriangle, Wallet } from 'lucide-react';
+import { CheckCircle, Copy, AlertTriangle, Wallet, Download } from 'lucide-react';
 import PinSetup from '../components/PinSetup';
 import {
   generateSaltHex,
@@ -272,6 +272,15 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
   }
 
   // ── intro ─────────────────────────────────────────────────────────────────
+  const deferredPrompt = (window as any).deferredInstallPrompt;
+
+  async function handleInstall() {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    (window as any).deferredInstallPrompt = null;
+  }
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 px-6">
       <div className="w-full max-w-sm text-center flex flex-col gap-6">
@@ -283,6 +292,16 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
           <p className="text-slate-400 text-sm mt-2">Quantum-resistant Bitcoin on your device</p>
         </div>
         <div className="flex flex-col gap-3">
+          {/* Install to home screen — shown if browser supports it */}
+          {deferredPrompt && (
+            <button
+              onClick={handleInstall}
+              className="w-full py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-base flex items-center justify-center gap-2"
+            >
+              <Download size={20} />
+              Install App
+            </button>
+          )}
           {hasMainWallet && (
             <button
               onClick={() => setStep('import-password')}
@@ -307,6 +326,12 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
           <p className="text-xs text-slate-500">
             "Use My Existing Wallet" imports your qBTC keys using your BearTec wallet password.
             No new seed phrase needed.
+          </p>
+        )}
+        {/* iOS fallback — no beforeinstallprompt support */}
+        {!deferredPrompt && (
+          <p className="text-xs text-slate-600">
+            On iPhone? Tap <span className="text-slate-400">Share →  Add to Home Screen</span> to install.
           </p>
         )}
       </div>
