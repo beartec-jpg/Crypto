@@ -28,7 +28,7 @@ export default function ProductionAuthGate({ children }: ProductionAuthGateProps
       if (!isLoaded) {
         setLoadTimeout(true);
       }
-    }, 5000);
+    }, 15000);
     return () => clearTimeout(timer);
   }, [isLoaded]);
 
@@ -65,10 +65,10 @@ export default function ProductionAuthGate({ children }: ProductionAuthGateProps
             <AlertTriangle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
             <h2 className="text-xl font-bold text-white mb-2">Authentication Error</h2>
             <p className="text-gray-400 mb-4">
-              Unable to connect to the login service. This may be a configuration issue.
+              Unable to connect to the login service. This may be a network issue or a temporary service disruption.
             </p>
             <p className="text-gray-500 text-sm mb-4">
-              Please try refreshing the page or contact support if the problem persists.
+              Please check your internet connection and try refreshing the page. Contact support if the problem persists.
             </p>
             <button 
               onClick={() => window.location.reload()}
@@ -91,7 +91,8 @@ export default function ProductionAuthGate({ children }: ProductionAuthGateProps
   }
 
   if (!isSignedIn) {
-    return <RedirectToSignIn />;
+    const redirectUrl = window.location.pathname + window.location.search;
+    return <RedirectToSignIn redirectUrl={redirectUrl} />;
   }
 
   if (isBootstrapping) {
