@@ -1,3 +1,4 @@
+import { Lock, AlertTriangle } from 'lucide-react';
 import type { ContactRecord } from '../storage/db';
 import type { MessageRecord } from '../storage/db';
 
@@ -9,6 +10,7 @@ interface ContactCardProps {
 
 export default function ContactCard({ contact, lastMessage, onClick }: ContactCardProps) {
   const initials = contact.name.slice(0, 2).toUpperCase();
+  const hasKey = Boolean(contact.pubKeyHex);
 
   return (
     <button
@@ -19,7 +21,14 @@ export default function ContactCard({ contact, lastMessage, onClick }: ContactCa
         <span className="text-sm font-semibold text-cyan-400">{initials}</span>
       </div>
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-slate-100 text-sm truncate">{contact.name}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="font-medium text-slate-100 text-sm truncate">{contact.name}</p>
+          {hasKey ? (
+            <Lock size={11} className="text-emerald-400 shrink-0" aria-label="Messaging ready" />
+          ) : (
+            <AlertTriangle size={11} className="text-amber-400 shrink-0" aria-label="Messaging key missing" />
+          )}
+        </div>
         {lastMessage ? (
           <p className="text-xs text-slate-400 truncate">
             {lastMessage.direction === 'sent' ? 'You: ' : ''}
