@@ -51,11 +51,15 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
     setImportError('');
     try {
       const record = await getMainWalletRecord();
-      if (!record) throw new Error('No wallet found');
-      const mn = await decryptMainWalletMnemonic(record, importPassword);
+      if (!record) {
+        setImportError('No BearTec wallet found. Make sure you are logged into the main app first.');
+        return;
+      }
+      const mn = await decryptMainWalletMnemonic(record, importPassword.trim());
       setPendingMnemonic(mn);
       setStep('pin');
-    } catch {
+    } catch (err) {
+      console.error('Import failed:', err);
       setImportError('Incorrect password — please try again');
     } finally {
       setImportLoading(false);

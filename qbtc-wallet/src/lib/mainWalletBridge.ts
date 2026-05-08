@@ -28,9 +28,25 @@ export async function mainWalletExists(): Promise<boolean> {
 export async function getMainWalletRecord(): Promise<MainWalletRecord | null> {
   try {
     const all = await getAllMainWallets();
+    console.log('[bridge] getAllMainWallets returned', all.length, 'record(s)');
     if (all.length === 0) return null;
-    return all.sort((a, b) => (b.id > a.id ? 1 : -1))[0];
-  } catch {
+    // Filter to records that have the required fields
+    const valid = all.filter(r => r && typeof r.encryptedMnemonic === 'string' && typeof r.salt === 'string');
+    console.log('[bridge] valid records (have encryptedMnemonic + salt):', valid.length);
+    if (valid.length === 0) {
+      console.warn('[bridge] No records have encryptedMnemonic/salt — field names may not match:', Object.keys(all[0] || {}));
+      return null;
+    }
+    // Sort by createdAt descending if available, otherwise by id
+    valid.sort((a: any, b: any) => {
+      if (a.createdAt && b.createdAt) return a.createdAt > b.createdAt ? -1 : 1;
+      return b.id > a.id ? 1 : -1;
+    });
+    const chosen = valid[0];
+    console.log('[bridge] chosen record id:', chosen.id, 'userId:', chosen.userId);
+    return chosen;
+  } catch (err) {
+    console.error('[bridge] getMainWalletRecord error:', err);
     return null;
   }
 }
@@ -73,8 +89,16 @@ export async function decryptMainWalletMnemonic(
   record: MainWalletRecord,
   password: string,
 ): Promise<string> {
+  console.log('[bridge] attempting decrypt, encryptedMnemonic length:', record.encryptedMnemonic?.length, 'salt length:', record.salt?.length);
   const salt = hexToBytes(record.salt);
-  return decryptData(record.encryptedMnemonic, password, salt);
+  try {
+    const result = await decryptData(record.encryptedMnemonic, password, salt);
+    console.log('[bridge] decryption succeeded');
+    return result;
+  } catch (err) {
+    console.error('[bridge] decryption failed:', err);
+    throw err;
+  }
 }
 
 // ── internal (mirrors walletService.ts decryptData exactly) ───────────────
