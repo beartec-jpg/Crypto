@@ -9485,6 +9485,38 @@ CRITICAL DATA RULES:
     const msgs = (relayStore.get(to) ?? []).filter(m => m.timestamp > sinceTs);
     res.json({ messages: msgs });
   });
+
+  // ── qBTC pub key registry ─────────────────────────────────────────────────
+  // Stores each address's ECDH P-256 messaging public key (hex) so contacts
+  // can look each other up without out-of-band key exchange.
+  const pubKeyRegistry = new Map<string, string>(); // address → pubKeyHex
+
+  app.post('/api/qbtc/pubkey/publish', (req: Request, res: Response) => {
+    const { address, pubKeyHex } = req.body as Record<string, unknown>;
+    if (
+      typeof address !== 'string' || typeof pubKeyHex !== 'string' ||
+      address.length > 128 || pubKeyHex.length > 200
+    ) {
+      res.status(400).json({ error: 'Invalid request' });
+      return;
+    }
+    pubKeyRegistry.set(address, pubKeyHex);
+    res.json({ ok: true });
+  });
+
+  app.get('/api/qbtc/pubkey/:address', (req: Request, res: Response) => {
+    const address = req.params.address;
+    if (!address || address.length > 128) {
+      res.status(400).json({ error: 'Invalid address' });
+      return;
+    }
+    const pubKeyHex = pubKeyRegistry.get(address);
+    if (!pubKeyHex) {
+      res.status(404).json({ error: 'Public key not found' });
+      return;
+    }
+    res.json({ address, pubKeyHex });
+  });
   // ─────────────────────────────────────────────────────────────────────────
 
   // QuantumBTC RPC proxy (avoids browser CORS/auth limitations)

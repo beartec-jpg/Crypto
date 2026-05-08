@@ -117,3 +117,32 @@ export async function pollRelayMessages(
   const data = await response.json() as { messages?: RelayMessage[] };
   return data.messages ?? [];
 }
+
+// ── pub key registry ───────────────────────────────────────────────────────
+
+/** Publish our ECDH P-256 public key so contacts can look us up. */
+export async function publishPubKey(address: string, pubKeyRaw: Uint8Array): Promise<void> {
+  const pubKeyHex = Array.from(pubKeyRaw).map(b => b.toString(16).padStart(2, '0')).join('');
+  await fetch('/api/qbtc/pubkey/publish', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ address, pubKeyHex }),
+  });
+}
+
+/**
+ * Fetch a contact's ECDH P-256 public key from the relay registry.
+ * Returns the raw bytes, or null if not found.
+ */
+export async function fetchContactPubKey(address: string): Promise<Uint8Array | null> {
+  const response = await fetch(`/api/qbtc/pubkey/${encodeURIComponent(address)}`);
+  if (!response.ok) return null;
+  const data = await response.json() as { pubKeyHex?: string };
+  if (!data.pubKeyHex) return null;
+  const hex = data.pubKeyHex;
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+  }
+  return bytes;
+}

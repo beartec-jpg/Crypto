@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Send, UserPlus, ArrowLeft, MoreVertical } from 'lucide-react';
 import { useMessages } from '../hooks/useMessages';
 import { useContacts } from '../hooks/useContacts';
-import { getContact } from '../storage/contactStore';
+import { getContact, addContact as storeAddContact } from '../storage/contactStore';
+import { fetchContactPubKey } from '../lib/messaging';
 import type { MessageRecord } from '../storage/db';
 import ContactCard from '../components/ContactCard';
 import ChatBubble from '../components/ChatBubble';
@@ -12,6 +13,7 @@ interface MessengerTabProps {
   myPrivateKey: CryptoKey | null;
   myPublicKeyRaw: Uint8Array | null;
   getContactPubKey: (address: string) => Uint8Array | undefined;
+  setContactPubKey: (address: string, key: Uint8Array) => void;
 }
 
 type View = 'list' | 'chat' | 'add-contact';
@@ -21,6 +23,7 @@ export default function MessengerTab({
   myPrivateKey,
   myPublicKeyRaw,
   getContactPubKey,
+  setContactPubKey,
 }: MessengerTabProps) {
   const [view, setView] = useState<View>('list');
   const [activePeer, setActivePeer] = useState<string | null>(null);
@@ -34,7 +37,7 @@ export default function MessengerTab({
   const [addError, setAddError] = useState('');
 
   const bottomRef = useRef<HTMLDivElement>(null);
-  const { contacts, add: addContact, refresh: refreshContacts } = useContacts();
+  const { contacts, refresh: refreshContacts } = useContacts();
 
   const getContactPublicKeyFn = useCallback(
     (address: string) => getContactPubKey(address),
@@ -82,12 +85,30 @@ export default function MessengerTab({
   async function handleAddContact(e: React.FormEvent) {
     e.preventDefault();
     if (!newAddress.trim() || !newName.trim()) { setAddError('Name and address required'); return; }
+    setAddError('');
     try {
-      await addContact(newAddress.trim(), newName.trim());
+      // Attempt to fetch their messaging public key from the relay
+      const address = newAddress.trim();
+      const pubKeyBytes = await fetchContactPubKey(address);
+      const pubKeyHex = pubKeyBytes
+        ? Array.from(pubKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('')
+        : undefined;
+
+      await storeAddContact({ address, name: newName.trim(), addedAt: Date.now(), pubKeyHex });
+
+      if (pubKeyBytes) {
+        setContactPubKey(address, pubKeyBytes);
+      }
+
+      await refreshContacts();
       setNewAddress('');
       setNewName('');
-      setAddError('');
       setView('list');
+
+      if (!pubKeyHex) {
+        // Contact saved, but they haven't opened the app yet — can still message once they do
+        setAddError('');
+      }
     } catch {
       setAddError('Failed to add contact');
     }

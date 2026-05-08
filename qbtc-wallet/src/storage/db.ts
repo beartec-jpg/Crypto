@@ -14,6 +14,7 @@ export interface ContactRecord {
   name: string;
   addedAt: number;
   lastSeen?: number;
+  pubKeyHex?: string;      // ECDH P-256 public key (hex) for E2E messaging
 }
 
 export interface MessageRecord {
