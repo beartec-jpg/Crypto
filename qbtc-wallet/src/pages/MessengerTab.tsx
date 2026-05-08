@@ -19,6 +19,14 @@ function toHex(bytes: Uint8Array): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+function fromHex(hex: string): Uint8Array {
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    out[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+  }
+  return out;
+}
+
 interface MessengerQRPayload {
   v: number;
   addr: string;
@@ -29,7 +37,11 @@ interface MessengerQRPayload {
 function parseQRPayload(raw: string): MessengerQRPayload | null {
   try {
     const obj = JSON.parse(raw) as Record<string, unknown>;
-    if (obj?.v === 1 && typeof obj.addr === 'string' && typeof obj.msgKey === 'string') {
+    if (
+      typeof obj?.v === 'number' && obj.v === 1 &&
+      typeof obj.addr === 'string' &&
+      typeof obj.msgKey === 'string'
+    ) {
       return { v: 1, addr: obj.addr, msgKey: obj.msgKey };
     }
     return null;
@@ -160,6 +172,11 @@ export default function MessengerTab({
       setAddError('Messaging key must be valid hex characters');
       return;
     }
+    // P-256 uncompressed public key is 65 bytes = 130 hex chars
+    if (rawMsgKey && rawMsgKey.length !== 130) {
+      setAddError('Messaging key should be 130 hex characters (P-256 uncompressed public key)');
+      return;
+    }
 
     setAddError('');
     try {
@@ -168,10 +185,7 @@ export default function MessengerTab({
 
       if (pubKeyHex) {
         // Use the key from QR scan or manual paste directly
-        pubKeyBytes = new Uint8Array(pubKeyHex.length / 2);
-        for (let i = 0; i < pubKeyHex.length; i += 2) {
-          pubKeyBytes[i / 2] = parseInt(pubKeyHex.slice(i, i + 2), 16);
-        }
+        pubKeyBytes = fromHex(pubKeyHex);
       } else {
         // Fall back to relay lookup (works once the contact has opened the app)
         const fetched = await fetchContactPubKey(address);
@@ -251,7 +265,6 @@ export default function MessengerTab({
         onScan={handleScanResult}
         onClose={() => {
           setShowScanner(false);
-          if (!scannedPayload) setScanError('No code scanned — try entering manually.');
         }}
       />
     );
