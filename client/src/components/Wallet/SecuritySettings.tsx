@@ -11,7 +11,6 @@ import {
   getWalletType,
   getWalletCredentialId,
   migrateToPasskey,
-  getLegacyWallet,
   type Wallet,
 } from '@/lib/walletService';
 import {
@@ -35,7 +34,7 @@ const HTLC_ETH_ABI = [{"inputs":[{"internalType":"address payable","name":"recei
 
 export default function SecuritySettings({ userId, walletId, walletEvmAddress, masterSeed }: SecuritySettingsProps) {
   const [walletType, setWalletType] = useState<'passkey' | 'watch-only' | 'legacy' | null>(null);
-  const [legacyWallet, setLegacyWallet] = useState<Wallet | null>(null);
+  const [migratePassword, setMigratePassword] = useState('');
   const [migrating, setMigrating] = useState(false);
   const [migrateError, setMigrateError] = useState('');
   const [migrateSuccess, setMigrateSuccess] = useState(false);
@@ -67,7 +66,6 @@ export default function SecuritySettings({ userId, walletId, walletEvmAddress, m
 
   useEffect(() => {
     getWalletType(userId).then(setWalletType);
-    getLegacyWallet(userId).then(setLegacyWallet);
   }, [userId]);
 
   useEffect(() => {
@@ -98,9 +96,10 @@ export default function SecuritySettings({ userId, walletId, walletEvmAddress, m
     try {
       const rpId = window.location.hostname.split('.').slice(-2).join('.') || window.location.hostname;
       const { credentialId, masterSeed: newSeed } = await registerPasskeyWithPRF(userId);
-      await migrateToPasskey(userId, newSeed, credentialId, rpId);
+      await migrateToPasskey(userId, newSeed, credentialId, rpId, migratePassword);
       setMigrateSuccess(true);
       setWalletType('passkey');
+      setMigratePassword('');
     } catch (e) {
       setMigrateError(e instanceof Error ? e.message : 'Migration failed');
     } finally {
@@ -221,23 +220,33 @@ export default function SecuritySettings({ userId, walletId, walletEvmAddress, m
             <div>
               <p className="font-semibold text-amber-300">Legacy wallet detected</p>
               <p className="text-sm text-amber-200/70 mt-0.5">
-                Your wallet uses a seed phrase + password. Upgrade to passkey for one-tap
-                unlock backed by your Google or Apple account — no more passwords.
+                Upgrade to passkey — your existing addresses are kept, no need to move funds.
+                The passkey replaces your password as the unlock method.
               </p>
             </div>
           </div>
           {migrateSuccess ? (
             <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium">
-              <CheckCircle className="w-4 h-4" /> Upgraded! New passkey addresses are active. Move funds from old addresses at your convenience.
+              <CheckCircle className="w-4 h-4" /> Done! Same addresses, now secured by passkey.
             </div>
           ) : (
             <>
               {migrateError && (
                 <p className="text-xs text-red-400 bg-red-900/20 rounded-xl p-3">{migrateError}</p>
               )}
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Current wallet password</label>
+                <input
+                  type="password"
+                  value={migratePassword}
+                  onChange={e => setMigratePassword(e.target.value)}
+                  placeholder="Enter your password"
+                  className="w-full px-3 py-2 rounded-xl bg-gray-900 border border-gray-700 focus:border-amber-500 focus:outline-none text-sm"
+                />
+              </div>
               <button
                 onClick={handleMigrate}
-                disabled={migrating}
+                disabled={migrating || !migratePassword}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
               >
                 <Fingerprint className="w-4 h-4" />
@@ -245,63 +254,12 @@ export default function SecuritySettings({ userId, walletId, walletEvmAddress, m
                 {!migrating && <ArrowRight className="w-4 h-4" />}
               </button>
               <p className="text-xs text-amber-200/50">
-                This creates new addresses from your passkey. Your old wallet stays intact until you move your funds.
+                Enter your password, then touch your fingerprint / Face ID.
               </p>
             </>
           )}
         </div>
       ) : null}
-
-      {/* ── Old wallet fund migration notice (shown after upgrade) ─────────── */}
-      {legacyWallet && (walletType === 'passkey' || masterSeed) && (
-        <div className="p-5 rounded-2xl bg-amber-900/20 border border-amber-700/40 space-y-3">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold text-amber-300">Move funds from old wallet</p>
-              <p className="text-sm text-amber-200/70 mt-0.5">
-                You have an old BIP39 wallet with addresses below. Send any remaining funds
-                to your new passkey addresses shown in the dashboard.
-              </p>
-            </div>
-          </div>
-          <div className="space-y-1.5 text-xs font-mono">
-            {legacyWallet.addresses.ethereum && (
-              <div className="flex items-center gap-2 bg-gray-900/60 rounded-lg px-3 py-1.5">
-                <span className="text-gray-500 shrink-0">ETH/BSC</span>
-                <span className="text-amber-200/80 break-all">{legacyWallet.addresses.ethereum}</span>
-              </div>
-            )}
-            {legacyWallet.addresses.bitcoin && (
-              <div className="flex items-center gap-2 bg-gray-900/60 rounded-lg px-3 py-1.5">
-                <span className="text-gray-500 shrink-0">BTC</span>
-                <span className="text-amber-200/80 break-all">{legacyWallet.addresses.bitcoin}</span>
-              </div>
-            )}
-            {legacyWallet.addresses.xrp && (
-              <div className="flex items-center gap-2 bg-gray-900/60 rounded-lg px-3 py-1.5">
-                <span className="text-gray-500 shrink-0">XRP</span>
-                <span className="text-amber-200/80 break-all">{legacyWallet.addresses.xrp}</span>
-              </div>
-            )}
-            {legacyWallet.addresses.solana && (
-              <div className="flex items-center gap-2 bg-gray-900/60 rounded-lg px-3 py-1.5">
-                <span className="text-gray-500 shrink-0">SOL</span>
-                <span className="text-amber-200/80 break-all">{legacyWallet.addresses.solana}</span>
-              </div>
-            )}
-            {legacyWallet.addresses.qbtc && (
-              <div className="flex items-center gap-2 bg-gray-900/60 rounded-lg px-3 py-1.5">
-                <span className="text-gray-500 shrink-0">qBTC</span>
-                <span className="text-amber-200/80 break-all">{legacyWallet.addresses.qbtc}</span>
-              </div>
-            )}
-          </div>
-          <p className="text-xs text-amber-200/40">
-            To access the old wallet's private keys, use your original seed phrase.
-          </p>
-        </div>
-      )}
 
       {/* ── Security scan ──────────────────────────────────────────────────── */}
       <div className="pt-4 border-t border-gray-700">

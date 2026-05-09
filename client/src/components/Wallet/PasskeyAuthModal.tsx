@@ -33,15 +33,16 @@ interface PasskeyAuthModalProps {
   onSuccess: (masterSeed: Uint8Array | null, wallet: Wallet) => void;
 }
 
-type Step = 'choose' | 'creating' | 'unlocking' | 'scanning' | 'done' | 'error';
+type Step = 'choose' | 'migrate-password' | 'creating' | 'unlocking' | 'scanning' | 'done' | 'error';
 
 export default function PasskeyAuthModal({ userId, onClose, onSuccess }: PasskeyAuthModalProps) {
   const [step, setStep] = useState<Step>('choose');
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+  const [legacyPassword, setLegacyPassword] = useState('');
 
   // ── Create hot wallet ───────────────────────────────────────────────────────
-  async function handleCreateWallet() {
+  async function handleCreateWallet(migrateWithPassword?: string) {
     setError('');
     setStep('creating');
     setStatus('Touch your fingerprint or face sensor…');
@@ -67,10 +68,12 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
       setStatus('Registering passkey…');
       const { credentialId, masterSeed } = await registerPasskeyWithPRF(userId);
 
-      // 3a. Legacy wallet: migrate (mark old addresses, create new passkey wallet)
+      // 3a. Legacy wallet: migrate in-place (same addresses, re-encrypted with PRF)
       if (existingType === 'legacy') {
-        setStatus('Migrating to passkey…');
-        const wallet = await migrateToPasskey(userId, masterSeed, credentialId, rpId);
+        const pwd = migrateWithPassword ?? legacyPassword;
+        if (!pwd) throw new Error('Password required for migration');
+        setStatus('Re-encrypting wallet with passkey…');
+        const wallet = await migrateToPasskey(userId, masterSeed, credentialId, rpId, pwd);
         setStep('done');
         onSuccess(masterSeed, wallet);
         return;
@@ -136,6 +139,46 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
   }
 
   // ── Spinner ─────────────────────────────────────────────────────────────────
+  if (step === 'migrate-password') {
+    return (
+      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+        <div className="bg-gray-900 rounded-2xl max-w-sm w-full p-6 flex flex-col gap-5">
+          <div className="flex items-center gap-3">
+            <Fingerprint size={24} className="text-amber-400" />
+            <div>
+              <p className="text-white font-semibold">Migrate to Passkey</p>
+              <p className="text-xs text-gray-400">Enter your current password, then touch your sensor</p>
+            </div>
+          </div>
+          <p className="text-sm text-amber-200/70">
+            Your existing addresses are kept — no need to move funds. The passkey simply replaces the password as your unlock method.
+          </p>
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Current wallet password</label>
+            <input
+              type="password"
+              autoFocus
+              value={legacyPassword}
+              onChange={e => setLegacyPassword(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && legacyPassword) handleCreateWallet(legacyPassword); }}
+              placeholder="Enter your password"
+              className="w-full px-3 py-2.5 rounded-xl bg-gray-800 border border-gray-700 focus:border-amber-500 focus:outline-none text-sm"
+            />
+          </div>
+          {error && <p className="text-xs text-red-400">{error}</p>}
+          <button
+            onClick={() => handleCreateWallet(legacyPassword)}
+            disabled={!legacyPassword}
+            className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white font-semibold flex items-center justify-center gap-2"
+          >
+            <Fingerprint size={18} /> Continue — Touch Sensor
+          </button>
+          <button onClick={() => { setStep('choose'); setError(''); setLegacyPassword(''); }} className="text-gray-500 text-xs text-center">Back</button>
+        </div>
+      </div>
+    );
+  }
+
   if (step === 'creating' || step === 'unlocking') {
     return (
       <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
@@ -241,7 +284,15 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
         <div className="p-6 flex flex-col gap-4">
           {/* Primary — passkey create/unlock */}
           <button
-            onClick={handleCreateWallet}
+            onClick={async () => {
+              // Check if this is a legacy wallet — needs password before biometric
+              const type = await getWalletType(userId);
+              if (type === 'legacy') {
+                setStep('migrate-password');
+              } else {
+                handleCreateWallet();
+              }
+            }}
             className="w-full flex items-start gap-4 p-5 rounded-2xl bg-gradient-to-br from-emerald-900/60 to-cyan-900/60
                        hover:from-emerald-800/60 hover:to-cyan-800/60 border border-emerald-700/40 text-left transition-colors"
           >

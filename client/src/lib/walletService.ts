@@ -32,9 +32,11 @@ interface WalletDB extends DBSchema {
       encryptedMnemonic?: string;
       salt?: string;
       mnemonicBackedUp?: boolean;
-      // passkey wallets only:
+      // passkey wallets: PRF-encrypted mnemonic (migration preserves BIP39 keys)
       credentialIdB64?: string;
       rpId?: string;
+      prfEncryptedMnemonic?: string; // AES-GCM ciphertext hex, encrypted with PRF masterSeed
+      prfEncryptedMnemonicIv?: string; // 12-byte IV hex
       addresses: {
         ethereum: string;
         bitcoin: string;
@@ -1773,6 +1775,41 @@ export async function createWatchOnlyWallet(
  * Unlock a passkey wallet — derive private keys from PRF masterSeed in memory.
  * masterSeed comes from authenticateWithPasskeyPRF().
  */
+/**
+ * Encrypt a mnemonic using an AES-GCM key derived from the PRF masterSeed.
+ * Returns { encryptedHex, ivHex }.
+ */
+async function encryptMnemonicWithPRF(
+  mnemonic: string,
+  masterSeed: Uint8Array,
+): Promise<{ encryptedHex: string; ivHex: string }> {
+  // Derive a 256-bit AES key from masterSeed via HMAC-SHA512 (first 32 bytes)
+  const keyBytes = hmac(sha512, masterSeed, new TextEncoder().encode('BEARTEC-MNEMONIC-ENC-V1')).slice(0, 32);
+  const aesKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, new TextEncoder().encode(mnemonic));
+  return {
+    encryptedHex: Buffer.from(ciphertext).toString('hex'),
+    ivHex: Buffer.from(iv).toString('hex'),
+  };
+}
+
+/**
+ * Decrypt a PRF-encrypted mnemonic.
+ */
+async function decryptMnemonicWithPRF(
+  encryptedHex: string,
+  ivHex: string,
+  masterSeed: Uint8Array,
+): Promise<string> {
+  const keyBytes = hmac(sha512, masterSeed, new TextEncoder().encode('BEARTEC-MNEMONIC-ENC-V1')).slice(0, 32);
+  const aesKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  const iv = Buffer.from(ivHex, 'hex');
+  const ciphertext = Buffer.from(encryptedHex, 'hex');
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, ciphertext);
+  return new TextDecoder().decode(plain);
+}
+
 export async function unlockWalletWithPasskey(
   walletId: string,
   masterSeed: Uint8Array,
@@ -1781,12 +1818,29 @@ export async function unlockWalletWithPasskey(
   const wallet = await db.get('wallets', walletId);
   if (!wallet) throw new Error('Wallet not found');
 
-  const { addresses, privateKeys } = await deriveAddressesFromPRFSeed(masterSeed);
+  // Migrated legacy wallet: decrypt BIP39 mnemonic with PRF key → same addresses
+  if (wallet.prfEncryptedMnemonic && wallet.prfEncryptedMnemonicIv) {
+    const mnemonic = await decryptMnemonicWithPRF(
+      wallet.prfEncryptedMnemonic,
+      wallet.prfEncryptedMnemonicIv,
+      masterSeed,
+    );
+    const { addresses: derivedAddresses, privateKeys } = await deriveKeysFromMnemonic(mnemonic);
+    return {
+      id: wallet.id,
+      addresses: wallet.addresses,
+      mnemonic,
+      privateKeys,
+      createdAt: wallet.createdAt,
+    };
+  }
 
+  // Brand-new passkey wallet: derive keys from HMAC-SHA512 chains
+  const { addresses, privateKeys } = await deriveAddressesFromPRFSeed(masterSeed);
   return {
     id: wallet.id,
     addresses: wallet.addresses,
-    mnemonic: '',  // no mnemonic in passkey wallets
+    mnemonic: '',
     privateKeys,
     createdAt: wallet.createdAt,
   };
@@ -1829,34 +1883,104 @@ export function getXRPSeedFromMasterSeed(masterSeed: Uint8Array, testnet: boolea
 }
 
 /**
+ * Derive private keys from a BIP39 mnemonic (in-memory only, not stored).
+ * Used during passkey migration to keep existing keys.
+ */
+async function deriveKeysFromMnemonic(mnemonic: string): Promise<{
+  addresses: Wallet['addresses'];
+  privateKeys: UnlockedWallet['privateKeys'];
+}> {
+  const seed = await bip39.mnemonicToSeed(mnemonic);
+  const root = HDKey.fromMasterSeed(seed);
+
+  const ethNode = derivePath(root, DERIVATION_PATHS.ethereum);
+  const btcNode = derivePath(root, DERIVATION_PATHS.bitcoin);
+  const btcTestnetNode = derivePath(root, DERIVATION_PATHS.bitcoinTestnet);
+  const xrpNode = derivePath(root, DERIVATION_PATHS.xrp);
+  const xrpTestnetNode = derivePath(root, DERIVATION_PATHS.xrpTestnet);
+  const solNode = derivePath(root, DERIVATION_PATHS.solana);
+  const solTestnetNode = derivePath(root, DERIVATION_PATHS.solanaTestnet);
+  const qbtcKeyPair = await QBTCKeyPair.fromMasterSeed(seed, 0);
+  const vaultKeyPair = await QBTCKeyPair.fromMasterSeed(seed, 1);
+
+  const privateKeys: UnlockedWallet['privateKeys'] = {
+    ethereum: ethNode.privateKey ? Buffer.from(ethNode.privateKey).toString('hex') : '',
+    bitcoin: btcNode.privateKey ? Buffer.from(btcNode.privateKey).toString('hex') : '',
+    bitcoinTestnet: btcTestnetNode.privateKey ? Buffer.from(btcTestnetNode.privateKey).toString('hex') : '',
+    bsc: ethNode.privateKey ? Buffer.from(ethNode.privateKey).toString('hex') : '',
+    xrp: xrpNode.privateKey ? Buffer.from(xrpNode.privateKey).toString('hex') : '',
+    xrpTestnet: xrpTestnetNode.privateKey ? Buffer.from(xrpTestnetNode.privateKey).toString('hex') : '',
+    solana: solNode.privateKey ? Buffer.from(solNode.privateKey).toString('hex') : '',
+    qbtc: qbtcKeyPair.ecdsaPrivateKeyHex,
+    qbtcVault: vaultKeyPair.ecdsaPrivateKeyHex,
+  };
+
+  const ethAddr = deriveEthereumAddress(ethNode.privateKey!);
+  const addresses: Wallet['addresses'] = {
+    ethereum: ethAddr,
+    bitcoin: deriveBitcoinAddress(btcNode.privateKey!, 'mainnet'),
+    bitcoinTestnet: deriveBitcoinAddress(btcTestnetNode.privateKey!, 'testnet'),
+    bsc: ethAddr,
+    xrp: deriveXRPAddress(xrpNode.privateKey!),
+    xrpTestnet: deriveXRPAddress(xrpTestnetNode.privateKey!),
+    solana: deriveSolanaAddress(solNode.privateKey!),
+    solanaTestnet: deriveSolanaAddress(solTestnetNode.privateKey!),
+    qbtc: qbtcKeyPair.getAddress('testnet'),
+    qbtcMainnet: qbtcKeyPair.getAddress('mainnet'),
+    qbtcVault: vaultKeyPair.getAddress('testnet'),
+    qbtcVaultMainnet: vaultKeyPair.getAddress('mainnet'),
+  };
+
+  return { addresses, privateKeys };
+}
+
+/**
  * Migrate an existing legacy (BIP39/password) wallet to passkey security.
- * Creates NEW addresses from the PRF master seed. The old wallet record is
- * preserved as 'legacy' so the user can still access old addresses to move funds.
- * Returns the new passkey wallet.
+ * Re-encrypts the existing mnemonic with the PRF masterSeed — same addresses,
+ * no fund transfer required. Old password-based encryption is replaced.
  */
 export async function migrateToPasskey(
   userId: string,
   masterSeed: Uint8Array,
   credentialId: Uint8Array,
   rpId: string,
+  existingPassword: string,
 ): Promise<Wallet> {
+  const walletId = localStorage.getItem(getUserStorageKey(userId, 'wallet_id'));
+  if (!walletId) throw new Error('No wallet found to migrate');
+
+  // Unlock legacy wallet to get the mnemonic
+  const unlocked = await unlockWallet(walletId, existingPassword);
+  const mnemonic = unlocked.mnemonic;
+  if (!mnemonic) throw new Error('Could not retrieve mnemonic from legacy wallet');
+
+  // Re-encrypt mnemonic with PRF masterSeed (AES-GCM, no PBKDF2)
+  const { encryptedHex, ivHex } = await encryptMnemonicWithPRF(mnemonic, masterSeed);
+
+  const credentialIdB64 = btoa(String.fromCharCode(...credentialId))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+
   const db = await getDB();
+  const existing = await db.get('wallets', walletId);
+  if (!existing) throw new Error('Wallet DB record not found');
 
-  // Mark any existing wallet as legacy (preserve it — user needs it to move funds)
-  const existingWalletId = localStorage.getItem(getUserStorageKey(userId, 'wallet_id'));
-  if (existingWalletId) {
-    const existing = await db.get('wallets', existingWalletId);
-    if (existing && existing.walletType !== 'passkey') {
-      await db.put('wallets', { ...existing, walletType: 'legacy' });
-    }
-  }
+  // Update the wallet record in-place: keep same addresses, add passkey fields
+  await db.put('wallets', {
+    ...existing,
+    walletType: 'passkey',
+    credentialIdB64,
+    rpId,
+    prfEncryptedMnemonic: encryptedHex,
+    prfEncryptedMnemonicIv: ivHex,
+    // Keep encryptedMnemonic + salt for emergency password-based recovery
+  });
 
-  // Clear localStorage wallet pointer so createWalletFromPasskey doesn't see an existing wallet
-  localStorage.removeItem(getUserStorageKey(userId, 'wallet_id'));
-
-  // Create new passkey wallet — will set a new localStorage pointer
-  const wallet = await createWalletFromPasskey(userId, masterSeed, credentialId, rpId);
-  return wallet;
+  return {
+    id: walletId,
+    addresses: existing.addresses,
+    publicKeys: existing.publicKeys,
+    createdAt: existing.createdAt,
+  };
 }
 
 /**
