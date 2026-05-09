@@ -3509,7 +3509,7 @@ export default function MarketplaceTab({
           <SwapCard key={swap.id} swap={swap} walletAddress={walletAddress} walletId={walletId} userId={userId} masterSeed={masterSeed} onRefresh={fetchMySwaps} />
         ))}
 
-        {/* Multi-chain v2 active swaps */}}
+        {/* Multi-chain v2 active swaps */}
         {v2ActiveSwaps.map(swap => {
           const isMaker = swap.authEvmAddressA?.toLowerCase() === walletEvmAddress.toLowerCase();
           return (
