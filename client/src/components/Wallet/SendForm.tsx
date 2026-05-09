@@ -490,7 +490,7 @@ export default function SendForm({
     
     // Passkey wallet: skip password modal, derive keys from masterSeed directly
     if (masterSeed) {
-      handlePasswordSubmit('');
+      await handlePasswordSubmit('');
       return;
     }
 
@@ -863,7 +863,10 @@ export default function SendForm({
       
     } catch (err: any) {
       console.error('Transaction error:', err);
-      setPasswordError(err.message || 'Failed to send transaction');
+      const msg = err.message || 'Failed to send transaction';
+      setPasswordError(msg);
+      // Surface error to main form when password modal is not open (passkey path)
+      if (!showPasswordModal) setError(msg);
     } finally {
       setIsProcessing(false);
       setTransactionStep(null);
