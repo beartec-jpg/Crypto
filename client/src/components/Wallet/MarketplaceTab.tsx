@@ -30,7 +30,7 @@ import {
   type QBTCNetwork,
   type QBTCHtlcParams,
 } from '@/lib/qbtcService';
-import { unlockWallet } from '@/lib/walletService';
+import { unlockWallet, unlockWalletWithPasskey, getXRPSeed, getXRPTestnetSeed, getXRPSeedFromMasterSeed } from '@/lib/walletService';
 import { getSecurityRequirements, type AuthMethod } from '@/lib/securityService';
 import { authenticateWithPasskey, isPasskeyAuthenticated } from '@/lib/passkeyService';
 import PinEntryModal from './PinEntryModal';
@@ -40,7 +40,6 @@ import { fetchV2SwapsByAddress, buildV2Message, postV2LockSideA, postV2LockSideB
 import { BitcoinAdapter, getUtxosBtc } from '@/lib/adapters/BitcoinAdapter';
 import { XrplAdapter, encodeConditionFromHash } from '@/lib/adapters/XrplAdapter';
 import { EvmAdapter, getEvmAdapterConfig } from '@/lib/adapters/EvmAdapter';
-import { getXRPSeed, getXRPTestnetSeed } from '@/lib/walletService';
 import { Wallet as XRPLWallet } from 'xrpl';
 
 const V2_ACTIVE_STATUSES = new Set(['PENDING_SIDE_A', 'SIDE_A_LOCKED', 'SIDE_B_LOCKED']);
@@ -140,6 +139,8 @@ interface MarketplaceTabProps {
   walletXrpAddress?: string; // XRP testnet address
   walletBtcPubKey?: string;  // Compressed BTC pubkey (33-byte hex) for BTC HTLC swaps
   walletBtcAddress?: string; // BTC address for balance display
+  /** PRF master seed — present for passkey wallets; bypasses password prompts */
+  masterSeed?: Uint8Array | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -206,11 +207,13 @@ function SellerLockPanel({
   swap,
   walletId,
   userId,
+  masterSeed,
   onLocked,
 }: {
   swap: AtomicSwap;
   walletId: string;
   userId: string;
+  masterSeed?: Uint8Array | null;
   onLocked: () => void;
 }) {
   const [password, setPassword] = useState('');
@@ -241,7 +244,8 @@ function SellerLockPanel({
   const handlePinSuccess = async () => { setShowPinModal(false); await afterPin(); };
 
   const handleLock = async () => {
-    if (!password.trim()) { setError('Enter your wallet password'); return; }
+    if (!masterSeed && !password.trim()) { setError('Enter your wallet password'); return; }
+    if (masterSeed) { await executeLock(); return; }
     // If we haven't done passkey/pin yet, start the gate
     if (needsPin || (needsPasskey && !isPasskeyAuthenticated() && !passkeyDone)) {
       await startSecurityGate();
@@ -255,9 +259,12 @@ function SellerLockPanel({
     setError('');
     try {
       setStep('unlocking');
-      const wallet = await unlockWallet(walletId, password);
-      if (!wallet.mnemonic) throw new Error('Wallet mnemonic not available. Please ensure your wallet is properly initialized.');
-      const keyPair = await QBTCKeyPair.fromMnemonic(wallet.mnemonic);
+      const wallet = masterSeed
+        ? await unlockWalletWithPasskey(walletId, masterSeed)
+        : await unlockWallet(walletId, password);
+      const keyPair = wallet.mnemonic
+        ? await QBTCKeyPair.fromMnemonic(wallet.mnemonic)
+        : await QBTCKeyPair.fromECDSAPrivateKey(wallet.privateKeys.qbtc!);
 
       setStep('building');
       const htlcParams: QBTCHtlcParams = {
@@ -352,7 +359,7 @@ const HTLC_DEPLOY_ABI = [
   'function getContract(bytes32 contractId) view returns (address sender, address receiver, address tokenContract, uint256 amount, bytes32 hashlock, uint256 timelock, bool withdrawn, bool refunded, bytes32 preimage)',
 ];
 
-function DeployHTLCPanel({ walletId }: { walletId: string }) {
+function DeployHTLCPanel({ walletId, masterSeed }: { walletId: string; masterSeed?: Uint8Array | null }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -360,12 +367,14 @@ function DeployHTLCPanel({ walletId }: { walletId: string }) {
   const [deployedAddress, setDeployedAddress] = useState('');
 
   const handleDeploy = async () => {
-    if (!password.trim()) { setError('Enter your wallet password'); return; }
+    if (!masterSeed && !password.trim()) { setError('Enter your wallet password'); return; }
     setLoading(true);
     setError('');
     try {
       setStep('Unlocking wallet…');
-      const wallet = await unlockWallet(walletId, password);
+      const wallet = masterSeed
+        ? await unlockWalletWithPasskey(walletId, masterSeed)
+        : await unlockWallet(walletId, password);
       const ethPrivateKey = wallet.privateKeys.ethereum;
       if (!ethPrivateKey) throw new Error('Ethereum private key not found in wallet');
 
@@ -454,7 +463,7 @@ const BNB_HTLC_BYTECODE = '0x6080604052348015600e575f5ffd5b506116e88061001c5f395
 
 const BNB_HTLC_DEPLOY_ABI = ['constructor()'];
 
-function DeployBNBHTLCPanel({ walletId }: { walletId: string }) {
+function DeployBNBHTLCPanel({ walletId, masterSeed }: { walletId: string; masterSeed?: Uint8Array | null }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -462,12 +471,14 @@ function DeployBNBHTLCPanel({ walletId }: { walletId: string }) {
   const [deployedAddress, setDeployedAddress] = useState('');
 
   const handleDeploy = async () => {
-    if (!password.trim()) { setError('Enter your wallet password'); return; }
+    if (!masterSeed && !password.trim()) { setError('Enter your wallet password'); return; }
     setLoading(true);
     setError('');
     try {
       setStep('Unlocking wallet…');
-      const wallet = await unlockWallet(walletId, password);
+      const wallet = masterSeed
+        ? await unlockWalletWithPasskey(walletId, masterSeed)
+        : await unlockWallet(walletId, password);
       const ethPrivateKey = wallet.privateKeys.ethereum;
       if (!ethPrivateKey) throw new Error('Ethereum private key not found in wallet');
 
@@ -556,11 +567,13 @@ function BuyerLockPanel({
   swap,
   walletId,
   userId,
+  masterSeed,
   onLocked,
 }: {
   swap: AtomicSwap;
   walletId: string;
   userId: string;
+  masterSeed?: Uint8Array | null;
   onLocked: () => void;
 }) {
   const [password, setPassword] = useState('');
@@ -589,7 +602,8 @@ function BuyerLockPanel({
   const handlePinSuccess = async () => { setShowPinModal(false); await afterPin(); };
 
   const handleLock = async () => {
-    if (!password.trim()) { setError('Enter your wallet password'); return; }
+    if (!masterSeed && !password.trim()) { setError('Enter your wallet password'); return; }
+    if (masterSeed) { await executeLock(); return; }
     if (needsPin || (needsPasskey && !isPasskeyAuthenticated() && !passkeyDone)) {
       await startSecurityGate();
       return;
@@ -602,7 +616,9 @@ function BuyerLockPanel({
     setError('');
     try {
       setStep('Unlocking wallet…');
-      const wallet = await unlockWallet(walletId, password);
+      const wallet = masterSeed
+        ? await unlockWalletWithPasskey(walletId, masterSeed)
+        : await unlockWallet(walletId, password);
       const ethPrivateKey = wallet.privateKeys.ethereum;
       if (!ethPrivateKey) throw new Error('Ethereum private key not found in wallet');
 
@@ -706,11 +722,13 @@ function SellerClaimPanel({
   swap,
   walletId,
   userId,
+  masterSeed,
   onClaimed,
 }: {
   swap: AtomicSwap;
   walletId: string;
   userId: string;
+  masterSeed?: Uint8Array | null;
   onClaimed: () => void;
 }) {
   const [password, setPassword] = useState('');
@@ -740,7 +758,8 @@ function SellerClaimPanel({
   const handlePinSuccess = async () => { setShowPinModal(false); await afterPin(); };
 
   const handleClaim = async () => {
-    if (!password.trim()) return setError('Enter your wallet password');
+    if (!masterSeed && !password.trim()) return setError('Enter your wallet password');
+    if (masterSeed) { await executeClaim(); return; }
     if (needsPin || (needsPasskey && !isPasskeyAuthenticated() && !passkeyDone)) {
       await startSecurityGate();
       return;
@@ -757,7 +776,9 @@ function SellerClaimPanel({
       const { ethers } = await import('ethers');
 
       // 1. Unlock wallet to get seller's EVM private key
-      const wallet = await unlockWallet(walletId, password);
+      const wallet = masterSeed
+        ? await unlockWalletWithPasskey(walletId, masterSeed)
+        : await unlockWallet(walletId, password);
       const ethPrivateKey = wallet.privateKeys.ethereum;
       if (!ethPrivateKey) throw new Error('No Ethereum key in wallet');
 
@@ -959,12 +980,14 @@ function SwapCard({
   walletAddress,
   walletId,
   userId,
+  masterSeed,
   onRefresh,
 }: {
   swap: AtomicSwap;
   walletAddress: string;
   walletId: string;
   userId: string;
+  masterSeed?: Uint8Array | null;
   onRefresh: () => void;
 }) {
   const isSeller = swap.sellerQbtcAddress?.toLowerCase() === walletAddress.toLowerCase();
@@ -1033,9 +1056,9 @@ function SwapCard({
         </div>
       )}
 
-      {needsSellerLock && <SellerLockPanel swap={swap} walletId={walletId} userId={userId} onLocked={onRefresh} />}
-      {needsBuyerLock && <BuyerLockPanel swap={swap} walletId={walletId} userId={userId} onLocked={onRefresh} />}
-      {needsSellerClaim && <SellerClaimPanel swap={swap} walletId={walletId} userId={userId} onClaimed={onRefresh} />}
+      {needsSellerLock && <SellerLockPanel swap={swap} walletId={walletId} userId={userId} masterSeed={masterSeed} onLocked={onRefresh} />}
+      {needsBuyerLock && <BuyerLockPanel swap={swap} walletId={walletId} userId={userId} masterSeed={masterSeed} onLocked={onRefresh} />}
+      {needsSellerClaim && <SellerClaimPanel swap={swap} walletId={walletId} userId={userId} masterSeed={masterSeed} onClaimed={onRefresh} />}
 
       {waitingForOther && (
         <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 flex items-center gap-2">
@@ -1084,6 +1107,7 @@ function V2SwapActions({
   walletEvmAddress,
   walletXrpAddress,
   walletBtcPubKey = '',
+  masterSeed,
   onRefresh,
 }: {
   swap: V2Swap;
@@ -1091,6 +1115,7 @@ function V2SwapActions({
   walletEvmAddress: string;
   walletXrpAddress: string;
   walletBtcPubKey?: string;
+  masterSeed?: Uint8Array | null;
   onRefresh: () => void;
 }) {
   const [password, setPassword] = useState('');
@@ -1400,8 +1425,10 @@ function V2SwapActions({
     try {
       setCancelSwapError('');
       setCancellingSwap(true);
-      if (!password.trim()) throw new Error('Password required to sign cancellation');
-      const unlockedWallet = await unlockWallet(walletId, password);
+      if (!masterSeed && !password.trim()) throw new Error('Password required to sign cancellation');
+      const unlockedWallet = masterSeed
+        ? await unlockWalletWithPasskey(walletId, masterSeed)
+        : await unlockWallet(walletId, password);
       const ethPrivKey = unlockedWallet.privateKeys.ethereum;
       const rpcUrl = import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
       const chainId = Number(import.meta.env.VITE_ETH_CHAIN_ID || 11155111);
@@ -1433,7 +1460,7 @@ function V2SwapActions({
       setXrpNotFunded(false);
       setActionStatus('busy');
 
-      if (!password.trim()) throw new Error('Password required');
+      if (!masterSeed && !password.trim()) throw new Error('Password required');
       if (!takerXrpAddr) throw new Error('XRP address required');
 
       const makerIsLocking = isMaker && swap.baseChain === 'XRP'; // XRP/ETH
@@ -1443,9 +1470,9 @@ function V2SwapActions({
       const timelockSecs = locktimeUnix - Math.floor(Date.now() / 1000);
       if (timelockSecs <= 60) throw new Error('Locktime has expired or is too close to expiry');
 
-      const seed = isTestnet
-        ? await getXRPTestnetSeed(walletId, password)
-        : await getXRPSeed(walletId, password);
+      const seed = masterSeed
+        ? getXRPSeedFromMasterSeed(masterSeed, isTestnet)
+        : (isTestnet ? await getXRPTestnetSeed(walletId, password) : await getXRPSeed(walletId, password));
       const xrplWallet = XRPLWallet.fromSeed(seed);
 
       const xrplAdapter = new XrplAdapter({
@@ -1479,7 +1506,9 @@ function V2SwapActions({
         }));
       }
 
-      const unlockedWallet = await unlockWallet(walletId, password);
+      const unlockedWallet = masterSeed
+        ? await unlockWalletWithPasskey(walletId, masterSeed)
+        : await unlockWallet(walletId, password);
       const ethSigner = new ethers.Wallet('0x' + unlockedWallet.privateKeys.ethereum);
       const ts = Math.floor(Date.now() / 1000);
       if (makerIsLocking) {
@@ -1518,7 +1547,7 @@ function V2SwapActions({
       setErrorMsg('');
       setActionStatus('busy');
 
-      if (!password.trim()) throw new Error('Password required');
+      if (!masterSeed && !password.trim()) throw new Error('Password required');
 
       const takerIsLocking = isTaker && swap.quoteChain === 'ETH'; // XRP/ETH: taker locks side B
       // Amount + locktime + counterparty depend on which side is locking
@@ -1530,7 +1559,9 @@ function V2SwapActions({
       const counterpartyEth = takerIsLocking ? swap.sideAChainAddress : swap.sideBChainAddress;
       if (locktimeUnix - Math.floor(Date.now() / 1000) <= 60) throw new Error('Locktime has expired or is too close to expiry');
 
-      const unlockedWallet = await unlockWallet(walletId, password);
+      const unlockedWallet = masterSeed
+        ? await unlockWalletWithPasskey(walletId, masterSeed)
+        : await unlockWallet(walletId, password);
       const ethPrivKey = unlockedWallet.privateKeys.ethereum;
       const rpcUrl = import.meta.env.VITE_ETH_RPC_URL || (isTestnet ? 'https://ethereum-sepolia-rpc.publicnode.com' : 'https://ethereum-rpc.publicnode.com');
       const chainId = Number(import.meta.env.VITE_ETH_CHAIN_ID || (isTestnet ? 11155111 : 1));
@@ -1577,9 +1608,11 @@ function V2SwapActions({
     try {
       setErrorMsg('');
       setActionStatus('busy');
-      if (!password.trim()) throw new Error('Password required');
+      if (!masterSeed && !password.trim()) throw new Error('Password required');
 
-      const unlockedWallet = await unlockWallet(walletId, password);
+      const unlockedWallet = masterSeed
+        ? await unlockWalletWithPasskey(walletId, masterSeed)
+        : await unlockWallet(walletId, password);
       const ethPrivKey = unlockedWallet.privateKeys.ethereum;
       const rpcUrl = import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
       const chainId = Number(import.meta.env.VITE_ETH_CHAIN_ID || 11155111);
@@ -1631,11 +1664,11 @@ function V2SwapActions({
       setErrorMsg('');
       setXrpNotFunded(false);
       setActionStatus('busy');
-      if (!password.trim()) throw new Error('Password required');
+      if (!masterSeed && !password.trim()) throw new Error('Password required');
 
-      const seed = isTestnet
-        ? await getXRPTestnetSeed(walletId, password)
-        : await getXRPSeed(walletId, password);
+      const seed = masterSeed
+        ? getXRPSeedFromMasterSeed(masterSeed, isTestnet)
+        : (isTestnet ? await getXRPTestnetSeed(walletId, password) : await getXRPSeed(walletId, password));
       const xrplWallet = XRPLWallet.fromSeed(seed);
       const xrplAdapter = new XrplAdapter({
         wsUrl: isTestnet ? 'wss://s.altnet.rippletest.net:51233' : undefined,
@@ -1655,7 +1688,9 @@ function V2SwapActions({
         // Report to server so it stores the secret and marks COMPLETE immediately
         // (XrplMonitor also polls but this is faster)
         try {
-          const unlockedWallet = await unlockWallet(walletId, password);
+          const unlockedWallet = masterSeed
+            ? await unlockWalletWithPasskey(walletId, masterSeed)
+            : await unlockWallet(walletId, password);
           const ethPrivKey = unlockedWallet.privateKeys.ethereum;
           const rpcUrl = import.meta.env.VITE_ETH_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com';
           const chainId = Number(import.meta.env.VITE_ETH_CHAIN_ID || 11155111);
@@ -1704,7 +1739,7 @@ function V2SwapActions({
     try {
       setErrorMsg('');
       setActionStatus('busy');
-      if (!password.trim()) throw new Error('Password required');
+      if (!masterSeed && !password.trim()) throw new Error('Password required');
 
       const takerIsLocking = isTaker && swap.quoteChain === 'BNB';
       const lockAmount    = takerIsLocking ? swap.sideBAmount    : swap.sideAAmount;
@@ -1712,7 +1747,9 @@ function V2SwapActions({
       const counterpartyEth = takerIsLocking ? swap.sideAChainAddress : swap.sideBChainAddress;
       if (locktimeUnix - Math.floor(Date.now() / 1000) <= 60) throw new Error('Locktime has expired or is too close to expiry');
 
-      const unlockedWallet = await unlockWallet(walletId, password);
+      const unlockedWallet = masterSeed
+        ? await unlockWalletWithPasskey(walletId, masterSeed)
+        : await unlockWallet(walletId, password);
       const ethPrivKey = unlockedWallet.privateKeys.ethereum;
       const rpcUrl = import.meta.env.VITE_BNB_RPC_URL || (isTestnet ? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545' : 'https://bsc-dataseed.bnbchain.org');
       const chainId = Number(import.meta.env.VITE_BNB_CHAIN_ID || (isTestnet ? 97 : 56));
@@ -1759,9 +1796,11 @@ function V2SwapActions({
     try {
       setErrorMsg('');
       setActionStatus('busy');
-      if (!password.trim()) throw new Error('Password required');
+      if (!masterSeed && !password.trim()) throw new Error('Password required');
 
-      const unlockedWallet = await unlockWallet(walletId, password);
+      const unlockedWallet = masterSeed
+        ? await unlockWalletWithPasskey(walletId, masterSeed)
+        : await unlockWallet(walletId, password);
       const ethPrivKey = unlockedWallet.privateKeys.ethereum;
       const rpcUrl = import.meta.env.VITE_BNB_RPC_URL || (isTestnet ? 'https://data-seed-prebsc-1-s1.bnbchain.org:8545' : 'https://bsc-dataseed.bnbchain.org');
       const chainId = Number(import.meta.env.VITE_BNB_CHAIN_ID || (isTestnet ? 97 : 56));
@@ -1824,12 +1863,14 @@ function V2SwapActions({
     try {
       setErrorMsg('');
       setActionStatus('busy');
-      if (!password.trim()) throw new Error('Password required');
+      if (!masterSeed && !password.trim()) throw new Error('Password required');
 
       const qbtcNetwork: 'testnet' | 'mainnet' = isTestnet ? 'testnet' : 'mainnet';
       const rpcProxyUrl = import.meta.env.VITE_QBTC_RPC_URL || '/api/qbtc/rpc';
 
-      const unlockedWallet = await unlockWallet(walletId, password);
+      const unlockedWallet = masterSeed
+        ? await unlockWalletWithPasskey(walletId, masterSeed)
+        : await unlockWallet(walletId, password);
       const qbtcAddress = isTestnet ? unlockedWallet.addresses.qbtc : unlockedWallet.addresses.qbtcMainnet;
       if (!qbtcAddress) throw new Error('QBTC address not found in wallet');
 
@@ -1871,7 +1912,9 @@ function V2SwapActions({
       if (!lockId) {
         // Broadcast new tx — compute absoluteLocktime once here to avoid drift
         const absoluteLocktime = locktimeUnix; // pass as absolute to _lockQbtc
-        const keyPair = await QBTCKeyPair.fromMnemonic(unlockedWallet.mnemonic);
+        const keyPair = unlockedWallet.mnemonic
+          ? await QBTCKeyPair.fromMnemonic(unlockedWallet.mnemonic)
+          : await QBTCKeyPair.fromECDSAPrivateKey(unlockedWallet.privateKeys.qbtc!);
         const lockAmount = makerIsLocking ? swap.sideAAmount : swap.sideBAmount;
         const qbtcAdapter = new BitcoinAdapter({ chain: 'QBTC', network: qbtcNetwork, rpcProxyUrl });
         const result = await qbtcAdapter.lockFunds({
@@ -1938,12 +1981,14 @@ function V2SwapActions({
     try {
       setErrorMsg('');
       setActionStatus('busy');
-      if (!password.trim()) throw new Error('Password required');
+      if (!masterSeed && !password.trim()) throw new Error('Password required');
 
       const qbtcNetwork: 'testnet' | 'mainnet' = isTestnet ? 'testnet' : 'mainnet';
       const rpcProxyUrl = import.meta.env.VITE_QBTC_RPC_URL || '/api/qbtc/rpc';
 
-      const unlockedWallet = await unlockWallet(walletId, password);
+      const unlockedWallet = masterSeed
+        ? await unlockWalletWithPasskey(walletId, masterSeed)
+        : await unlockWallet(walletId, password);
       const qbtcAddress = isTestnet
         ? unlockedWallet.addresses.qbtc
         : unlockedWallet.addresses.qbtcMainnet;
@@ -2066,12 +2111,14 @@ function V2SwapActions({
       setActionStatus('busy');
       setPollCheckCount(0);
       localStorage.removeItem(pollCountKey);
-      if (!password.trim()) throw new Error('Password required');
+      if (!masterSeed && !password.trim()) throw new Error('Password required');
 
       const btcNetwork: 'testnet' | 'mainnet' = isTestnet ? 'testnet' : 'mainnet';
       const esploraUrl = isTestnet ? 'https://blockstream.info/testnet' : 'https://blockstream.info';
 
-      const unlockedWallet = await unlockWallet(walletId, password);
+      const unlockedWallet = masterSeed
+        ? await unlockWalletWithPasskey(walletId, masterSeed)
+        : await unlockWallet(walletId, password);
       // Use the key that matches the refundAddress (the address UTXOs will be fetched from).
       // In testnet mode use the testnet HD path (m/44'/1') so the signing key matches the address.
       const btcPrivKeyHex = isTestnet
@@ -2166,12 +2213,14 @@ function V2SwapActions({
     try {
       setErrorMsg('');
       setActionStatus('busy');
-      if (!password.trim()) throw new Error('Password required');
+      if (!masterSeed && !password.trim()) throw new Error('Password required');
 
       const btcNetwork: 'testnet' | 'mainnet' = isTestnet ? 'testnet' : 'mainnet';
       const esploraUrl = isTestnet ? 'https://blockstream.info/testnet' : 'https://blockstream.info';
 
-      const unlockedWallet = await unlockWallet(walletId, password);
+      const unlockedWallet = masterSeed
+        ? await unlockWalletWithPasskey(walletId, masterSeed)
+        : await unlockWallet(walletId, password);
       // Always use the mainnet-path BTC key (m/44'/0'/0'/0/0) because walletBtcPubKey
       // (registered in the HTLC) was derived from publicKeys.bitcoin, which is always
       // the mainnet HD path.  Using bitcoinTestnet (m/44'/1'/0'/0/0) produces a
@@ -2282,12 +2331,14 @@ function V2SwapActions({
     try {
       setErrorMsg('');
       setActionStatus('busy');
-      if (!password.trim()) throw new Error('Password required');
+      if (!masterSeed && !password.trim()) throw new Error('Password required');
 
       const btcNetwork: 'testnet' | 'mainnet' = isTestnet ? 'testnet' : 'mainnet';
       const esploraUrl = isTestnet ? 'https://blockstream.info/testnet' : 'https://blockstream.info';
 
-      const unlockedWallet = await unlockWallet(walletId, password);
+      const unlockedWallet = masterSeed
+        ? await unlockWalletWithPasskey(walletId, masterSeed)
+        : await unlockWallet(walletId, password);
       const btcPrivKeyHex = isTestnet
         ? (unlockedWallet.privateKeys.bitcoinTestnet || unlockedWallet.privateKeys.bitcoin)
         : unlockedWallet.privateKeys.bitcoin;
@@ -2597,7 +2648,7 @@ function V2SwapActions({
         </button>
       )}
       {(canLockBnb || canClaimBnb) && !import.meta.env.VITE_BNB_HTLC_CONTRACT && (
-        <DeployBNBHTLCPanel walletId={walletId} />
+        <DeployBNBHTLCPanel walletId={walletId} masterSeed={masterSeed} />
       )}
       {canLockBnb && !!import.meta.env.VITE_BNB_HTLC_CONTRACT && (
         <button
@@ -2698,6 +2749,7 @@ export default function MarketplaceTab({
   walletXrpAddress = '',
   walletBtcPubKey = '',
   walletBtcAddress = '',
+  masterSeed,
 }: MarketplaceTabProps) {
   const [offers, setOffers] = useState<SwapOffer[]>([]);
   const [buyOffers, setBuyOffers] = useState<SwapOffer[]>([]);
@@ -2793,7 +2845,7 @@ export default function MarketplaceTab({
   }, [fetchV2Swaps]);
 
   // ─── Post offer + lock QBTC in one step ───
-  const canPost = qbtcAmount.trim() !== '' && usdcAmount.trim() !== '' && postPassword.trim() !== '' && walletAddress && walletPubKey && walletEvmAddress;
+  const canPost = qbtcAmount.trim() !== '' && usdcAmount.trim() !== '' && (masterSeed || postPassword.trim() !== '') && walletAddress && walletPubKey && walletEvmAddress;
 
   const handlePost = async () => {
     setPostLoading(true);
@@ -2815,9 +2867,12 @@ export default function MarketplaceTab({
 
       // 2. Unlock wallet
       setPostStep('Unlocking wallet…');
-      const wallet = await unlockWallet(walletId, postPassword);
-      if (!wallet.mnemonic) throw new Error('Wallet mnemonic not available. Please ensure your wallet is properly initialized.');
-      const keyPair = await QBTCKeyPair.fromMnemonic(wallet.mnemonic);
+      const wallet = masterSeed
+        ? await unlockWalletWithPasskey(walletId, masterSeed)
+        : await unlockWallet(walletId, postPassword);
+      const keyPair = wallet.mnemonic
+        ? await QBTCKeyPair.fromMnemonic(wallet.mnemonic)
+        : await QBTCKeyPair.fromECDSAPrivateKey(wallet.privateKeys.qbtc!);
 
       // 3. Build hash-only HTLC (no buyer needed)
       setPostStep('Building HTLC…');
@@ -3056,7 +3111,7 @@ export default function MarketplaceTab({
 
       {/* ─── Deploy HTLC if not configured ─── */}
       {!getSwapNetworkConfig().htlcContractAddress && (
-        <DeployHTLCPanel walletId={walletId} />
+        <DeployHTLCPanel walletId={walletId} masterSeed={masterSeed} />
       )}
 
       {/* ─── Accept Success Banner + Inline USDC Lock ─── */}
@@ -3113,6 +3168,7 @@ export default function MarketplaceTab({
               } satisfies AtomicSwap}
               walletId={walletId}
               userId={userId}
+              masterSeed={masterSeed}
               onLocked={() => {
                 setAcceptSuccess(prev => prev ? { ...prev, evmLocked: true } : null);
                 fetchMySwaps();
@@ -3450,10 +3506,10 @@ export default function MarketplaceTab({
 
         {/* QBTC/USDC active swaps */}
         {activeSwaps.map(swap => (
-          <SwapCard key={swap.id} swap={swap} walletAddress={walletAddress} walletId={walletId} userId={userId} onRefresh={fetchMySwaps} />
+          <SwapCard key={swap.id} swap={swap} walletAddress={walletAddress} walletId={walletId} userId={userId} masterSeed={masterSeed} onRefresh={fetchMySwaps} />
         ))}
 
-        {/* Multi-chain v2 active swaps */}
+        {/* Multi-chain v2 active swaps */}}
         {v2ActiveSwaps.map(swap => {
           const isMaker = swap.authEvmAddressA?.toLowerCase() === walletEvmAddress.toLowerCase();
           return (
@@ -3484,6 +3540,7 @@ export default function MarketplaceTab({
                 walletEvmAddress={walletEvmAddress}
                 walletXrpAddress={walletXrpAddress}
                 walletBtcPubKey={walletBtcPubKey}
+                masterSeed={masterSeed}
                 onRefresh={fetchV2Swaps}
               />
             </div>
@@ -3499,7 +3556,7 @@ export default function MarketplaceTab({
           <div className="space-y-3 pt-4 border-t border-slate-800">
             <h3 className="text-sm font-semibold text-slate-400">Completed / Expired</h3>
             {pastSwaps.map(swap => (
-              <SwapCard key={swap.id} swap={swap} walletAddress={walletAddress} walletId={walletId} userId={userId} onRefresh={fetchMySwaps} />
+              <SwapCard key={swap.id} swap={swap} walletAddress={walletAddress} walletId={walletId} userId={userId} masterSeed={masterSeed} onRefresh={fetchMySwaps} />
             ))}
             {v2PastSwaps.map(swap => {
               const isMaker = swap.authEvmAddressA?.toLowerCase() === walletEvmAddress.toLowerCase();
@@ -3519,6 +3576,7 @@ export default function MarketplaceTab({
                       walletEvmAddress={walletEvmAddress}
                       walletXrpAddress={walletXrpAddress}
                       walletBtcPubKey={walletBtcPubKey}
+                      masterSeed={masterSeed}
                       onRefresh={fetchV2Swaps}
                     />
                   )}
@@ -3541,6 +3599,7 @@ export default function MarketplaceTab({
           walletBtcPubKey={walletBtcPubKey}
           walletBtcAddress={walletBtcAddress}
           walletXrpAddress={walletXrpAddress}
+          masterSeed={masterSeed}
         />
       )}
 

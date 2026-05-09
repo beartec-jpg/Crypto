@@ -761,6 +761,7 @@ export default function WalletPage() {
                   walletXrpAddress={sovereignWallet.addresses?.xrpTestnet || sovereignWallet.addresses?.xrp || ''}
                   walletBtcPubKey={tokenNetwork === 'testnet' ? (sovereignWallet.publicKeys?.bitcoinTestnet || sovereignWallet.publicKeys?.bitcoin || '') : (sovereignWallet.publicKeys?.bitcoin || '')}
                   walletBtcAddress={sovereignWallet.addresses?.bitcoinTestnet || sovereignWallet.addresses?.bitcoin || ''}
+                  masterSeed={masterSeed}
                 />
               )}
             </div>
@@ -1283,6 +1284,7 @@ function SettingsSection({
           userId={userId}
           walletId={sovereignWallet?.id}
           walletEvmAddress={sovereignWallet?.addresses?.ethereum || ''}
+          masterSeed={masterSeed}
         />
       )}
     </div>

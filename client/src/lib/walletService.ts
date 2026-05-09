@@ -1816,3 +1816,42 @@ export async function getWalletCredentialId(userId: string): Promise<string | nu
   const record = await db.get('wallets', wallet.id);
   return record?.credentialIdB64 ?? null;
 }
+
+/**
+ * Get XRP seed string from a PRF master seed (passkey wallet path).
+ * Mirrors the entropy-based generation used in getXRPSeed/getXRPTestnetSeed.
+ */
+export function getXRPSeedFromMasterSeed(masterSeed: Uint8Array, testnet: boolean): string {
+  const label = testnet ? 'BEARTEC-XRP-TESTNET-V1' : 'BEARTEC-XRP-V1';
+  const xrpPriv = hmac(sha512, masterSeed, new TextEncoder().encode(label)).slice(0, 32);
+  const entropy = Buffer.from(xrpPriv.slice(0, 16));
+  return generateSeed({ entropy, algorithm: 'ecdsa-secp256k1' });
+}
+
+/**
+ * Migrate an existing legacy (BIP39/password) wallet to passkey security.
+ * Creates NEW addresses from the PRF master seed. The old wallet record is
+ * preserved as 'legacy' so the user can still access old addresses to move funds.
+ * Returns the new passkey wallet.
+ */
+export async function migrateToPasskey(
+  userId: string,
+  masterSeed: Uint8Array,
+  credentialId: Uint8Array,
+  rpId: string,
+): Promise<Wallet> {
+  const db = await getDB();
+
+  // Mark any existing wallet as legacy (not deleted — user needs it to move funds)
+  const existingWalletId = localStorage.getItem(getUserStorageKey(userId, 'wallet_id'));
+  if (existingWalletId) {
+    const existing = await db.get('wallets', existingWalletId);
+    if (existing && existing.walletType !== 'passkey') {
+      await db.put('wallets', { ...existing, walletType: 'legacy' });
+    }
+  }
+
+  // Create new passkey wallet — overwrites the active wallet pointer
+  const wallet = await createWalletFromPasskey(userId, masterSeed, credentialId, rpId);
+  return wallet;
+}
