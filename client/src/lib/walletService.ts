@@ -8,6 +8,8 @@ import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
 import { pbkdf2 } from '@noble/hashes/pbkdf2';
 import { randomBytes } from '@noble/hashes/utils';
+import { hmac } from '@noble/hashes/hmac';
+import { sha512 } from '@noble/hashes/sha512';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import * as bip39 from 'bip39';
 import { HDKey } from '@scure/bip32';
@@ -25,7 +27,14 @@ interface WalletDB extends DBSchema {
     value: {
       id: string;
       userId: string;
-      encryptedMnemonic: string;
+      walletType?: 'legacy' | 'passkey' | 'watch-only';
+      // legacy wallets only:
+      encryptedMnemonic?: string;
+      salt?: string;
+      mnemonicBackedUp?: boolean;
+      // passkey wallets only:
+      credentialIdB64?: string;
+      rpId?: string;
       addresses: {
         ethereum: string;
         bitcoin: string;
@@ -49,8 +58,6 @@ interface WalletDB extends DBSchema {
         qbtc: string;
       };
       createdAt: string;
-      salt: string;
-      mnemonicBackedUp?: boolean;
     };
     indexes: { userId: string };
   };
@@ -1600,4 +1607,212 @@ export async function getSolanaKeypair(walletId: string, password: string): Prom
     console.error('Failed to get Solana keypair:', error);
     throw error;
   }
+}
+
+// ── Passkey PRF-based wallet ─────────────────────────────────────────────────
+//
+// Derives all chain private keys from a 32-byte PRF seed using HMAC-SHA512.
+// No mnemonic, no password, no BIP39. Same passkey → same addresses forever,
+// backed by Google/Apple account sync.
+
+function hmacSha512(key: Uint8Array, data: Uint8Array): Uint8Array {
+  return hmac(sha512, key, data);
+}
+
+function deriveChainKey(masterSeed: Uint8Array, label: string): Uint8Array {
+  return hmacSha512(masterSeed, new TextEncoder().encode(label)).slice(0, 32);
+}
+
+/**
+ * Derive all multi-chain addresses from a raw 32-byte PRF master seed.
+ * Uses HMAC-SHA512 with chain-specific labels — deterministic, no BIP39.
+ */
+export async function deriveAddressesFromPRFSeed(masterSeed: Uint8Array): Promise<{
+  addresses: Wallet['addresses'];
+  publicKeys: Record<string, string>;
+  privateKeys: UnlockedWallet['privateKeys'];
+}> {
+  // ETH / BSC
+  const ethPriv = deriveChainKey(masterSeed, 'BEARTEC-ETH-V1');
+  const ethAddress = deriveEthereumAddress(ethPriv);
+
+  // BTC mainnet + testnet
+  const btcPriv = deriveChainKey(masterSeed, 'BEARTEC-BTC-V1');
+  const btcAddress = deriveBitcoinAddress(btcPriv, 'mainnet');
+  const btcTestPriv = deriveChainKey(masterSeed, 'BEARTEC-BTC-TESTNET-V1');
+  const btcTestAddress = deriveBitcoinAddress(btcTestPriv, 'testnet');
+
+  // XRP mainnet + testnet
+  const xrpPriv = deriveChainKey(masterSeed, 'BEARTEC-XRP-V1');
+  const xrpAddress = deriveXRPAddress(xrpPriv);
+  const xrpTestPriv = deriveChainKey(masterSeed, 'BEARTEC-XRP-TESTNET-V1');
+  const xrpTestAddress = deriveXRPAddress(xrpTestPriv);
+
+  // Solana mainnet + testnet
+  const solPriv = deriveChainKey(masterSeed, 'BEARTEC-SOL-V1');
+  const solAddress = deriveSolanaAddress(solPriv);
+  const solTestPriv = deriveChainKey(masterSeed, 'BEARTEC-SOL-TESTNET-V1');
+  const solTestAddress = deriveSolanaAddress(solTestPriv);
+
+  // qBTC (uses existing HMAC derivation, pathIndex=0 hot + pathIndex=1 vault)
+  const qbtcKeyPair = await QBTCKeyPair.fromMasterSeed(masterSeed, 0);
+  const qbtcVaultKeyPair = await QBTCKeyPair.fromMasterSeed(masterSeed, 1);
+
+  const addresses: Wallet['addresses'] = {
+    ethereum: ethAddress,
+    bitcoin: btcAddress,
+    bitcoinTestnet: btcTestAddress,
+    bsc: ethAddress,
+    xrp: xrpAddress,
+    xrpTestnet: xrpTestAddress,
+    solana: solAddress,
+    solanaTestnet: solTestAddress,
+    qbtc: qbtcKeyPair.getAddress('testnet'),
+    qbtcMainnet: qbtcKeyPair.getAddress('mainnet'),
+    qbtcVault: qbtcVaultKeyPair.getAddress('testnet'),
+    qbtcVaultMainnet: qbtcVaultKeyPair.getAddress('mainnet'),
+  };
+
+  const publicKeys: Record<string, string> = {
+    ethereum: Buffer.from(secp256k1.getPublicKey(ethPriv, false)).toString('hex'),
+    bitcoin: Buffer.from(secp256k1.getPublicKey(btcPriv, true)).toString('hex'),
+    bitcoinTestnet: Buffer.from(secp256k1.getPublicKey(btcTestPriv, true)).toString('hex'),
+    bsc: Buffer.from(secp256k1.getPublicKey(ethPriv, false)).toString('hex'),
+    xrp: Buffer.from(secp256k1.getPublicKey(xrpPriv, true)).toString('hex'),
+    solana: Buffer.from(solPriv).toString('hex'),
+    qbtc: qbtcKeyPair.ecdsaPublicKeyHex,
+  };
+
+  const privateKeys: UnlockedWallet['privateKeys'] = {
+    ethereum: Buffer.from(ethPriv).toString('hex'),
+    bitcoin: Buffer.from(btcPriv).toString('hex'),
+    bitcoinTestnet: Buffer.from(btcTestPriv).toString('hex'),
+    bsc: Buffer.from(ethPriv).toString('hex'),
+    xrp: Buffer.from(xrpPriv).toString('hex'),
+    xrpTestnet: Buffer.from(xrpTestPriv).toString('hex'),
+    solana: Buffer.from(solPriv).toString('hex'),
+    qbtc: qbtcKeyPair.ecdsaPrivateKeyHex,
+    qbtcVault: qbtcVaultKeyPair.ecdsaPrivateKeyHex,
+  };
+
+  return { addresses, publicKeys, privateKeys };
+}
+
+/**
+ * Create a new passkey-secured wallet. No mnemonic, no password.
+ * masterSeed and credentialId come from registerPasskeyWithPRF().
+ */
+export async function createWalletFromPasskey(
+  userId: string,
+  masterSeed: Uint8Array,
+  credentialId: Uint8Array,
+  rpId: string,
+): Promise<Wallet> {
+  const existing = await getCurrentWallet(userId);
+  if (existing) {
+    throw new Error('Wallet already exists for this account.');
+  }
+
+  const { addresses, publicKeys } = await deriveAddressesFromPRFSeed(masterSeed);
+
+  const db = await getDB();
+  const walletId = `wallet_${userId}_${Date.now()}`;
+  const credentialIdB64 = btoa(String.fromCharCode(...credentialId))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+
+  await db.put('wallets', {
+    id: walletId,
+    userId,
+    walletType: 'passkey',
+    credentialIdB64,
+    rpId,
+    addresses,
+    publicKeys,
+    createdAt: new Date().toISOString(),
+  });
+
+  localStorage.setItem(getUserStorageKey(userId, 'wallet_id'), walletId);
+  localStorage.setItem(getUserStorageKey(userId, 'wallet_created'), 'true');
+
+  return { id: walletId, addresses, publicKeys, createdAt: new Date().toISOString() };
+}
+
+/**
+ * Import a watch-only wallet from cold signer public keys.
+ * No private keys — can view balances, sign via cold signer QR flow.
+ */
+export async function createWatchOnlyWallet(
+  userId: string,
+  addresses: Wallet['addresses'],
+  publicKeys: Record<string, string>,
+): Promise<Wallet> {
+  const existing = await getCurrentWallet(userId);
+  if (existing) {
+    await deleteWallet(existing.id, userId);
+  }
+
+  const db = await getDB();
+  const walletId = `wallet_${userId}_${Date.now()}`;
+
+  await db.put('wallets', {
+    id: walletId,
+    userId,
+    walletType: 'watch-only',
+    addresses,
+    publicKeys,
+    createdAt: new Date().toISOString(),
+  });
+
+  localStorage.setItem(getUserStorageKey(userId, 'wallet_id'), walletId);
+  localStorage.setItem(getUserStorageKey(userId, 'wallet_created'), 'true');
+
+  return { id: walletId, addresses, publicKeys, createdAt: new Date().toISOString() };
+}
+
+/**
+ * Unlock a passkey wallet — derive private keys from PRF masterSeed in memory.
+ * masterSeed comes from authenticateWithPasskeyPRF().
+ */
+export async function unlockWalletWithPasskey(
+  walletId: string,
+  masterSeed: Uint8Array,
+): Promise<UnlockedWallet> {
+  const db = await getDB();
+  const wallet = await db.get('wallets', walletId);
+  if (!wallet) throw new Error('Wallet not found');
+
+  const { addresses, privateKeys } = await deriveAddressesFromPRFSeed(masterSeed);
+
+  return {
+    id: wallet.id,
+    addresses: wallet.addresses,
+    mnemonic: '',  // no mnemonic in passkey wallets
+    privateKeys,
+    createdAt: wallet.createdAt,
+  };
+}
+
+/**
+ * Check if the stored wallet for a user is passkey-type (vs legacy password wallet).
+ */
+export async function getWalletType(
+  userId: string,
+): Promise<'passkey' | 'watch-only' | 'legacy' | null> {
+  const wallet = await getCurrentWallet(userId);
+  if (!wallet) return null;
+  const db = await getDB();
+  const record = await db.get('wallets', wallet.id);
+  if (!record) return null;
+  return (record.walletType as 'passkey' | 'watch-only' | 'legacy') ?? 'legacy';
+}
+
+/**
+ * Get the stored credentialId for an existing passkey wallet.
+ */
+export async function getWalletCredentialId(userId: string): Promise<string | null> {
+  const wallet = await getCurrentWallet(userId);
+  if (!wallet) return null;
+  const db = await getDB();
+  const record = await db.get('wallets', wallet.id);
+  return record?.credentialIdB64 ?? null;
 }

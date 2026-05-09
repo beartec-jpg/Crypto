@@ -79,6 +79,8 @@ interface SendFormProps {
   onChainChange?: (chain: Chain) => void;
   onAddPendingTransaction?: (tx: Parameters<ReturnType<typeof usePendingTransactions>['addPendingTransaction']>[0]) => void;
   sovereignWallet?: any;
+  /** 32-byte PRF master seed — present only for passkey wallets; bypasses password unlock */
+  masterSeed?: Uint8Array | null;
 }
 
 export default function SendForm({
@@ -90,6 +92,7 @@ export default function SendForm({
   onChainChange,
   onAddPendingTransaction,
   sovereignWallet,
+  masterSeed,
 }: SendFormProps) {
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
@@ -452,10 +455,9 @@ export default function SendForm({
       return;
     }
 
-    // Pre-check: EVM send (both native and token) requires the backup to be verified.
-    // Surface this as a clear top-level error rather than letting it appear
-    // inside the password modal after the user has already entered their password.
-    if (SUPPORTED_SEND_CHAINS.includes(selectedChain as any)) {
+    // Pre-check: EVM send requires the backup to be verified.
+    // Skip for passkey wallets — they have no mnemonic backup.
+    if (SUPPORTED_SEND_CHAINS.includes(selectedChain as any) && !masterSeed) {
       const walletId = localStorage.getItem(`wallet_id_${userId}`);
       if (walletId) {
         const backupOk = await isBackupVerified(walletId);
@@ -468,14 +470,14 @@ export default function SendForm({
     
     const requirements = getSecurityRequirements(userId, 'send');
     
-    if (requirements.includes('pin')) {
+    if (requirements.includes('pin') && !masterSeed) {
       setShowPinModal(true);
       return;
     }
     
     const isAlreadyAuthenticated = isPasskeyAuthenticated || passkeyAuthenticatedThisSession;
     
-    if (requirements.includes('passkey') && !isAlreadyAuthenticated) {
+    if (requirements.includes('passkey') && !isAlreadyAuthenticated && !masterSeed) {
       try {
         await authenticateWithPasskey();
         setPasskeyAuthenticatedThisSession(true);
@@ -486,6 +488,12 @@ export default function SendForm({
       }
     }
     
+    // Passkey wallet: skip password modal, derive keys from masterSeed directly
+    if (masterSeed) {
+      handlePasswordSubmit('');
+      return;
+    }
+
     setShowPasswordModal(true);
   };
 
@@ -546,8 +554,10 @@ export default function SendForm({
         }
 
         setTransactionStep('signing');
-        const { unlockWallet } = await import('@/lib/walletService');
-        const wallet = await unlockWallet(walletId, password);
+        const { unlockWallet, unlockWalletWithPasskey } = await import('@/lib/walletService');
+        const wallet = masterSeed
+          ? await unlockWalletWithPasskey(walletId, masterSeed)
+          : await unlockWallet(walletId, password);
 
         const isVault = qbtcSource === 'vault';
         const privateKey = isVault ? wallet.privateKeys.qbtcVault : wallet.privateKeys.qbtc;
@@ -628,8 +638,10 @@ export default function SendForm({
           throw new Error('Wallet ID not found. Please try again.');
         }
         
-        const { unlockWallet } = await import('@/lib/walletService');
-        const wallet = await unlockWallet(walletId, password);
+        const { unlockWallet, unlockWalletWithPasskey } = await import('@/lib/walletService');
+        const wallet = masterSeed
+          ? await unlockWalletWithPasskey(walletId, masterSeed)
+          : await unlockWallet(walletId, password);
         const xrpSeed = wallet.privateKeys.xrp;
         
         if (!xrpSeed) {
@@ -683,8 +695,10 @@ export default function SendForm({
         const walletId = localStorage.getItem(`wallet_id_${userId}`);
         if (!walletId) throw new Error('Wallet ID not found. Please try again.');
 
-        const { unlockWallet } = await import('@/lib/walletService');
-        const wallet = await unlockWallet(walletId, password);
+        const { unlockWallet, unlockWalletWithPasskey } = await import('@/lib/walletService');
+        const wallet = masterSeed
+          ? await unlockWalletWithPasskey(walletId, masterSeed)
+          : await unlockWallet(walletId, password);
         const xrpSeed = wallet.privateKeys.xrp;
         if (!xrpSeed) throw new Error('XRP private key not found in wallet');
 

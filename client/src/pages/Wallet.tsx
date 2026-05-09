@@ -46,6 +46,7 @@ export default function WalletPage() {
   const [hideBalances, setHideBalances] = useState(true);
   const [showPasskeyModal, setShowPasskeyModal] = useState(false);
   const [isPasskeyAuthenticated, setIsPasskeyAuthenticated] = useState(false);
+  const [masterSeed, setMasterSeed] = useState<Uint8Array | null>(null);
   const [selectedChain, setSelectedChain] = useState<Chain>('ethereum');
   const [tokenNetwork, setTokenNetwork] = useState<TokenNetwork>(
     ((import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet' ? 'testnet' : 'mainnet') as TokenNetwork
@@ -122,6 +123,7 @@ export default function WalletPage() {
         setIsWalletUnlocked(false);
         setSovereignWallet(null);
         setPendingWallet(null);
+        setMasterSeed(null);
         console.log('🔒 Wallet auto-locked due to inactivity');
       }
     };
@@ -216,20 +218,16 @@ export default function WalletPage() {
     securityManager.unlockWallet();
   };
 
-  const handlePasskeySuccess = async () => {
+  const handlePasskeySuccess = async (seed: Uint8Array | null, wallet: any) => {
     setShowPasskeyModal(false);
+    if (seed) setMasterSeed(seed);
 
-    if (!userId) {
-      completeWalletUnlock();
-      return;
-    }
-
-    const freshWallet = await getCurrentWallet(userId);
-    if (freshWallet) {
-      setPendingWallet(freshWallet);
-      const walletTokens = await ensureNativeTokens(freshWallet.id, tokenNetwork);
+    const walletToUse = wallet ?? (userId ? await getCurrentWallet(userId) : null);
+    if (walletToUse) {
+      setPendingWallet(walletToUse);
+      const walletTokens = await ensureNativeTokens(walletToUse.id, tokenNetwork);
       setTokens(walletTokens);
-      completeWalletUnlock(freshWallet);
+      completeWalletUnlock(walletToUse);
       return;
     }
 
@@ -292,6 +290,7 @@ export default function WalletPage() {
       setIsPasskeyAuthenticated(false);
       setIsWalletUnlocked(false);
       setPendingWallet(null);
+      setMasterSeed(null);
       setTokens([]);
       setAuthStep('none');
     }
@@ -724,6 +723,7 @@ export default function WalletPage() {
                   onChainChange={setSelectedChain}
                   onAddPendingTransaction={addPendingTransaction}
                   sovereignWallet={sovereignWallet}
+                  masterSeed={masterSeed}
                 />
               )}
 

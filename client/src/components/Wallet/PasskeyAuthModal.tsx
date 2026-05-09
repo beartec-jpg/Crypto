@@ -1,832 +1,276 @@
-// client/src/components/Wallet/PasskeyAuthModal.tsx
-// Passkey authentication modal with create/import wallet options
+// PasskeyAuthModal — single-tap wallet creation + cold signer import.
+// No mnemonic. No password. One biometric tap = wallet ready, backed by Google/Apple.
 
-import { useState, useEffect } from 'react';
-import { Lock, Shield, Key, AlertTriangle, Eye, EyeOff, Check, X, Import, Plus, QrCode } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
-import ColdSignerInstallButton from '@/components/Wallet/ColdSignerInstallButton';
-import QbtcWalletPWAButton from '@/components/Wallet/QbtcWalletPWAButton';
-import { storeHotShare } from '@/lib/coldSignerService';
-import { 
-  createWallet, 
-  importWallet, 
-  validateMnemonic, 
-  markMnemonicBackedUp,
-  hasExistingWallet,
-  removeAllWalletsForUser
+import { useState } from 'react';
+import { Fingerprint, Snowflake, QrCode, X, AlertTriangle, Loader, CheckCircle } from 'lucide-react';
+import { registerPasskeyWithPRF, authenticateWithPasskeyPRF, b64uEncodePasskey } from '@/lib/passkeyService';
+import {
+  createWalletFromPasskey,
+  createWatchOnlyWallet,
+  getWalletType,
+  getWalletCredentialId,
+  getCurrentWallet,
 } from '@/lib/walletService';
-import { reconstructMnemonic, splitMnemonic } from '@/lib/shamirService';
-import { 
-  registerPasskey, 
-  authenticateWithPasskey, 
-  isPasskeyRegistered,
-  isWebAuthnSupported 
-} from '@/lib/passkeyService';
+import type { Wallet } from '@/lib/walletService';
 
-interface PasskeyAuthModalProps {
-  onClose: () => void;
-  onSuccess: () => void;
-  userId: string; // Add this
+// Re-export wallet type for callers
+export type { Wallet };
+
+interface ColdPubKeysPayload {
+  type: 'qbtc-cold-pubkeys';
+  v: 1;
+  address: string;
+  ecdsaPub: string;
+  falconPub: string;
+  network: 'testnet' | 'mainnet';
 }
 
-type ModalMode = 'choose' | 'create' | 'import' | 'backup' | 'authenticate';
+interface PasskeyAuthModalProps {
+  userId: string;
+  onClose: () => void;
+  /** Called on success with the session masterSeed (null for watch-only) and loaded wallet */
+  onSuccess: (masterSeed: Uint8Array | null, wallet: Wallet) => void;
+}
 
-export default function PasskeyAuthModal({ onClose, onSuccess, userId }: PasskeyAuthModalProps) {
-  const [mode, setMode] = useState<ModalMode>('choose');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [webAuthnSupported, setWebAuthnSupported] = useState(true);
-  
-  // Import wallet state
-  const [importMethod, setImportMethod] = useState<'mnemonic' | 'shamir'>('mnemonic');
-  const [mnemonicInput, setMnemonicInput] = useState('');
-  const [shamirShareA, setShamirShareA] = useState('');
-  const [shamirShareB, setShamirShareB] = useState('');
-  const [mnemonicError, setMnemonicError] = useState<string | null>(null);
-  
-  // Backup state (for new wallet creation)
-  const [generatedMnemonic, setGeneratedMnemonic] = useState<string | null>(null);
-  const [mnemonicCopied, setMnemonicCopied] = useState(false);
-  const [backupConfirmed, setBackupConfirmed] = useState(false);
-  const [walletId, setWalletId] = useState<string | null>(null);
-  const [shamirShares, setShamirShares] = useState<string[] | null>(null);
-  const [shamirCopied, setShamirCopied] = useState<number | null>(null);
-  const [showShamirBackup, setShowShamirBackup] = useState(false);
-  const [showShamirQRIndex, setShowShamirQRIndex] = useState<number | null>(1);
+type Step = 'choose' | 'creating' | 'unlocking' | 'scanning' | 'done' | 'error';
 
-  useEffect(() => {
-    // Check WebAuthn support
-    setWebAuthnSupported(isWebAuthnSupported());
-    
-    // Check if passkey already registered (returning user)
-    const checkExisting = async () => {
-      const hasWallet = await hasExistingWallet(userId);
-      if (hasWallet && isPasskeyRegistered()) {
-        setMode('authenticate');
-      }
-    };
-    checkExisting();
-  }, [userId]);
+export default function PasskeyAuthModal({ userId, onClose, onSuccess }: PasskeyAuthModalProps) {
+  const [step, setStep] = useState<Step>('choose');
+  const [status, setStatus] = useState('');
+  const [error, setError] = useState('');
 
-  const validatePassword = (): boolean => {
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
-      return false;
-    }
-    if (mode === 'create' && password !== confirmPassword) {
-      setError('Passwords do not match');
-      return false;
-    }
-    return true;
-  };
-
-  const handleCreateWallet = async () => {
-    if (!validatePassword()) return;
-    
-    setIsLoading(true);
-    setError(null);
-    
+  // ── Create hot wallet ───────────────────────────────────────────────────────
+  async function handleCreateWallet() {
+    setError('');
+    setStep('creating');
+    setStatus('Touch your fingerprint or face sensor…');
     try {
-      // Pass userId to createWallet
-      const wallet = await createWallet(password, userId);
-      
-      // Store for backup step
-      setGeneratedMnemonic(wallet.mnemonic);
-      setWalletId(wallet.id);
-      
-      // Register passkey
-      if (webAuthnSupported) {
-        try {
-          await registerPasskey(userId);
-        } catch (passkeyError) {
-          console.warn('Passkey registration failed, continuing with password-only:', passkeyError);
-        }
-      }
-      
-      // Move to backup step
-      setMode('backup');
-      
-    } catch (err: any) {
-      setError(err.message || 'Failed to create wallet');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      const rpId = window.location.hostname.split('.').slice(-2).join('.') || window.location.hostname;
 
-  const handleImportWallet = async () => {
-    if (!validatePassword()) return;
-
-    let recoveredMnemonic = '';
-    if (importMethod === 'mnemonic') {
-      const validation = validateMnemonic(mnemonicInput);
-      if (!validation.valid) {
-        setMnemonicError(validation.error || 'Invalid recovery phrase');
-        return;
-      }
-      recoveredMnemonic = mnemonicInput;
-    } else {
-      const shareA = shamirShareA.trim();
-      const shareB = shamirShareB.trim();
-      if (!shareA || !shareB) {
-        setMnemonicError('Enter 2 Shamir shares to reconstruct your wallet phrase.');
+      // 1. Check for existing passkey wallet — unlock instead of recreate
+      const existingType = await getWalletType(userId);
+      if (existingType === 'passkey') {
+        setStep('unlocking');
+        setStatus('Authenticating…');
+        const credentialIdB64 = await getWalletCredentialId(userId);
+        if (!credentialIdB64) throw new Error('Credential not found — try removing and recreating wallet');
+        const masterSeed = await authenticateWithPasskeyPRF(credentialIdB64);
+        const wallet = await getCurrentWallet(userId);
+        if (!wallet) throw new Error('Wallet record missing');
+        setStep('done');
+        onSuccess(masterSeed, wallet);
         return;
       }
 
-      try {
-        // Validate share format: secrets.js shares for a mnemonic are ~280+ chars long.
-        // 64-char shares are QBTC ECDSA key splits and cannot reconstruct a mnemonic.
-        if (shareA.length < 100 || shareB.length < 100) {
-          setMnemonicError(
-            `Invalid share format. Shares should be ~280+ characters long (yours are ${shareA.length} and ${shareB.length} chars). ` +
-            `These may be QBTC key shares, not mnemonic recovery shares. Use your written recovery phrase instead.`
-          );
-          return;
-        }
-        recoveredMnemonic = reconstructMnemonic([shareA, shareB]);
-      } catch (error: any) {
-        setMnemonicError(error?.message || 'Failed to reconstruct mnemonic from shares');
-        return;
-      }
+      // 2. Register new passkey + derive master seed via PRF
+      setStatus('Registering passkey…');
+      const { credentialId, masterSeed } = await registerPasskeyWithPRF(userId);
 
-      const validation = validateMnemonic(recoveredMnemonic);
-      if (!validation.valid) {
-        setMnemonicError('Recovered phrase is invalid. Check your shares and try again.');
-        return;
-      }
+      // 3. Derive addresses + store wallet (no mnemonic, no password)
+      setStatus('Deriving addresses…');
+      const wallet = await createWalletFromPasskey(
+        userId,
+        masterSeed,
+        credentialId,
+        rpId,
+      );
+
+      setStep('done');
+      onSuccess(masterSeed, wallet);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Setup failed');
+      setStep('error');
     }
-    
-    setIsLoading(true);
-    setError(null);
-    setMnemonicError(null);
-    
+  }
+
+  // ── Scan cold signer QR ─────────────────────────────────────────────────────
+  async function handleColdScan(raw: string) {
+    setError('');
     try {
-      // Pass userId to importWallet
-      await importWallet(recoveredMnemonic, password, userId);
-      
-      // Register passkey
-      if (webAuthnSupported) {
-        try {
-          await registerPasskey(userId);
-        } catch (passkeyError) {
-          console.warn('Passkey registration failed, continuing with password-only:', passkeyError);
-        }
+      const payload = JSON.parse(raw) as ColdPubKeysPayload;
+      if (payload.type !== 'qbtc-cold-pubkeys' || payload.v !== 1) {
+        throw new Error('Not a valid cold signer QR code');
       }
-      
-      // Clear sensitive data
-      setMnemonicInput('');
-      setShamirShareA('');
-      setShamirShareB('');
-      setPassword('');
-      
-      onSuccess();
-      
-    } catch (err: any) {
-      setError(err.message || 'Failed to import wallet');
-    } finally {
-      setIsLoading(false);
+      setStatus('Saving watch-only wallet…');
+      // Build addresses from cold signer qBTC address only; other chains not applicable
+      const addresses = {
+        ethereum: '',
+        bitcoin: '',
+        bitcoinTestnet: '',
+        bsc: '',
+        xrp: '',
+        xrpTestnet: '',
+        solana: '',
+        solanaTestnet: '',
+        qbtc: payload.address,
+        qbtcMainnet: payload.network === 'mainnet' ? payload.address : '',
+      };
+      const publicKeys = {
+        ethereum: '',
+        bitcoin: '',
+        bsc: '',
+        xrp: '',
+        solana: '',
+        qbtc: payload.ecdsaPub,
+      };
+      const wallet = await createWatchOnlyWallet(userId, addresses, publicKeys);
+      setStep('done');
+      onSuccess(null, wallet);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Invalid QR code');
     }
-  };
+  }
 
-  const handleRemoveWallet = async () => {
-    if (!window.confirm('Remove this wallet from the device? Your funds are safe — you can restore with your recovery phrase. This cannot be undone on this device.')) return;
-    try {
-      await removeAllWalletsForUser(userId);
-      // Reload the page so useEffect re-evaluates with clean state
-      window.location.reload();
-    } catch (err: any) {
-      // Even if cleanup threw, localStorage was already wiped — reload anyway
-      window.location.reload();
-    }
-  };
+  // ── QR Scanner (simple video-based) ────────────────────────────────────────
+  // We use a hidden video + canvas to decode — delegate to jsQR if available
+  // otherwise show manual paste fallback.
+  const [qrInput, setQrInput] = useState('');
+  function handleQrPaste() {
+    if (!qrInput.trim()) return;
+    handleColdScan(qrInput.trim());
+  }
 
-  const handleAuthenticate = async () => {
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      await authenticateWithPasskey();
-      onSuccess();
-    } catch (err: any) {
-      setError(err.message || 'Authentication failed');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleBackupComplete = async () => {
-    if (!backupConfirmed) {
-      setError('Please confirm you have saved your recovery phrase');
-      return;
-    }
-    
-    if (walletId) {
-      await markMnemonicBackedUp(walletId);
-    }
-    
-    // Clear sensitive data
-    setGeneratedMnemonic(null);
-    setPassword('');
-    setConfirmPassword('');
-    
-    onSuccess();
-  };
-
-  const copyMnemonic = () => {
-    if (generatedMnemonic) {
-      navigator.clipboard.writeText(generatedMnemonic);
-      setMnemonicCopied(true);
-      setTimeout(() => setMnemonicCopied(false), 3000);
-    }
-  };
-
-  const renderMnemonicWords = (mnemonic: string) => {
-    const words = mnemonic.split(' ');
+  // ── Spinner ─────────────────────────────────────────────────────────────────
+  if (step === 'creating' || step === 'unlocking') {
     return (
-      <div className="grid grid-cols-3 gap-2 p-4 bg-gray-900 rounded-lg">
-        {words.map((word, index) => (
-          <div 
-            key={index} 
-            className="flex items-center gap-2 p-2 bg-gray-800 rounded text-sm"
-          >
-            <span className="text-gray-500 w-6">{index + 1}.</span>
-            <span className="text-white font-mono">{word}</span>
-          </div>
-        ))}
+      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+        <div className="bg-gray-900 rounded-2xl max-w-sm w-full p-8 text-center flex flex-col items-center gap-5">
+          <Loader size={40} className="text-emerald-400 animate-spin" />
+          <p className="text-gray-300 text-sm">{status}</p>
+        </div>
       </div>
     );
-  };
+  }
 
+  if (step === 'done') {
+    return (
+      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+        <div className="bg-gray-900 rounded-2xl max-w-sm w-full p-8 text-center flex flex-col items-center gap-5">
+          <CheckCircle size={40} className="text-emerald-400" />
+          <p className="text-white font-semibold">Wallet Ready</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'error') {
+    return (
+      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+        <div className="bg-gray-900 rounded-2xl max-w-sm w-full p-8 flex flex-col gap-5">
+          <div className="flex items-center gap-3 text-red-400">
+            <AlertTriangle size={24} />
+            <span className="font-semibold">Setup Failed</span>
+          </div>
+          <p className="text-gray-400 text-sm">{error}</p>
+          {error.includes('PRF') && (
+            <p className="text-xs text-amber-400 bg-amber-900/20 rounded-xl p-3">
+              PRF extension requires Chrome 115+, Safari 17.4+, or Firefox 119+ with a platform
+              authenticator (fingerprint / Face ID). Hardware security keys may not support PRF.
+            </p>
+          )}
+          <button
+            onClick={() => { setStep('choose'); setError(''); }}
+            className="w-full py-3 rounded-xl bg-gray-700 hover:bg-gray-600 text-white"
+          >
+            Try Again
+          </button>
+          <button onClick={onClose} className="text-gray-500 text-sm text-center">Cancel</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'scanning') {
+    return (
+      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+        <div className="bg-gray-900 rounded-2xl max-w-sm w-full flex flex-col">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+            <h2 className="text-white font-semibold text-sm">Scan Cold Signer QR</h2>
+            <button onClick={() => setStep('choose')} className="text-gray-400 hover:text-white">
+              <X size={20} />
+            </button>
+          </div>
+          <div className="p-5 flex flex-col gap-4">
+            <p className="text-gray-400 text-sm">
+              In the cold signer app, press <strong className="text-white">"Export to Web"</strong> to show
+              the QR code, then paste its JSON content below.
+            </p>
+            {error && (
+              <div className="flex items-center gap-2 text-red-400 text-sm bg-red-900/20 rounded-xl p-3">
+                <AlertTriangle size={16} />
+                {error}
+              </div>
+            )}
+            <textarea
+              value={qrInput}
+              onChange={e => setQrInput(e.target.value)}
+              placeholder={'{"type":"qbtc-cold-pubkeys","v":1,...}'}
+              rows={4}
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-300 font-mono focus:outline-none focus:border-cyan-500 resize-none"
+            />
+            <button
+              onClick={handleQrPaste}
+              disabled={!qrInput.trim()}
+              className="w-full py-3 rounded-xl bg-cyan-700 hover:bg-cyan-600 text-white font-semibold disabled:opacity-40"
+            >
+              Import Cold Signer
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Choose ──────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-800 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-gray-900 rounded-2xl max-w-sm w-full flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center">
-              {mode === 'backup' ? <Key className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
-            </div>
-            <div>
-              <h2 className="text-xl font-semibold">
-                {mode === 'choose' && 'Sovereign Wallet'}
-                {mode === 'create' && 'Create New Wallet'}
-                {mode === 'import' && 'Import Wallet'}
-                {mode === 'backup' && 'Backup Recovery Phrase'}
-                {mode === 'authenticate' && 'Unlock Wallet'}
-              </h2>
-              <p className="text-sm text-gray-400">
-                {mode === 'choose' && 'Create or import your wallet'}
-                {mode === 'create' && 'Set a strong password'}
-                {mode === 'import' && 'Enter your 12 or 24 word phrase'}
-                {mode === 'backup' && 'Write down these words safely'}
-                {mode === 'authenticate' && 'Verify your identity'}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5" />
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
+          <h2 className="text-white font-semibold">Secure Wallet</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white">
+            <X size={20} />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-6">
-          {error && (
-            <div className="mb-4 p-3 rounded-lg bg-red-900/30 border border-red-700/50 flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0" />
-              <p className="text-sm text-red-400">{error}</p>
+        <div className="p-6 flex flex-col gap-4">
+          {/* Primary — passkey create/unlock */}
+          <button
+            onClick={handleCreateWallet}
+            className="w-full flex items-start gap-4 p-5 rounded-2xl bg-gradient-to-br from-emerald-900/60 to-cyan-900/60
+                       hover:from-emerald-800/60 hover:to-cyan-800/60 border border-emerald-700/40 text-left transition-colors"
+          >
+            <div className="w-10 h-10 rounded-xl bg-emerald-600/20 flex items-center justify-center shrink-0 mt-0.5">
+              <Fingerprint size={22} className="text-emerald-400" />
             </div>
-          )}
-
-          {/* Choose Mode */}
-          {mode === 'choose' && (
-            <div className="space-y-4">
-              <button
-                onClick={() => setMode('create')}
-                className="w-full p-4 rounded-xl bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 transition-colors flex items-center gap-4"
-              >
-                <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
-                  <Plus className="w-6 h-6" />
-                </div>
-                <div className="text-left">
-                  <p className="font-semibold">Create New Wallet</p>
-                  <p className="text-sm text-white/70">Generate a new multi-chain wallet</p>
-                </div>
-              </button>
-
-              <button
-                onClick={() => setMode('import')}
-                className="w-full p-4 rounded-xl bg-gray-700 hover:bg-gray-600 transition-colors flex items-center gap-4"
-              >
-                <div className="w-12 h-12 rounded-full bg-gray-600 flex items-center justify-center">
-                  <Import className="w-6 h-6" />
-                </div>
-                <div className="text-left">
-                  <p className="font-semibold">Import Existing Wallet</p>
-                  <p className="text-sm text-gray-400">Restore with recovery phrase or Shamir shares</p>
-                </div>
-              </button>
-
-              <div className="mt-6 p-4 rounded-xl bg-gray-900/50 border border-gray-700">
-                <div className="flex items-start gap-3">
-                  <Shield className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
-                  <div className="text-sm text-gray-400">
-                    <p className="font-medium text-emerald-400 mb-1">Your Keys, Your Crypto</p>
-                    <p>
-                      Your private keys are encrypted and stored locally on this device.
-                      We never have access to your funds.
-                    </p>
-                  </div>
-                </div>
-              </div>
+            <div>
+              <p className="text-white font-semibold">Create / Open with Passkey</p>
+              <p className="text-gray-400 text-sm mt-0.5">
+                One biometric tap. Backed by Google or Apple account. No seed phrase.
+              </p>
             </div>
-          )}
+          </button>
 
-          {/* Create Wallet */}
-          {mode === 'create' && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Password
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter a strong password"
-                    className="w-full px-4 py-3 rounded-lg bg-gray-900 border border-gray-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
-                  >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Confirm Password
-                </label>
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm your password"
-                  className="w-full px-4 py-3 rounded-lg bg-gray-900 border border-gray-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
-                />
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={() => setMode('choose')}
-                  className="flex-1 px-4 py-3 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors"
-                >
-                  Back
-                </button>
-                <button
-                  onClick={handleCreateWallet}
-                  disabled={isLoading || !password || !confirmPassword}
-                  className="flex-1 px-4 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-                >
-                  {isLoading ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    <>
-                      <Shield className="w-5 h-5" />
-                      Create Wallet
-                    </>
-                  )}
-                </button>
-              </div>
+          {/* Secondary — cold signer */}
+          <button
+            onClick={() => setStep('scanning')}
+            className="w-full flex items-start gap-4 p-5 rounded-2xl bg-gray-800 hover:bg-gray-750
+                       border border-gray-700 text-left transition-colors"
+          >
+            <div className="w-10 h-10 rounded-xl bg-blue-600/20 flex items-center justify-center shrink-0 mt-0.5">
+              <Snowflake size={22} className="text-blue-400" />
             </div>
-          )}
-
-          {/* Import Wallet */}
-          {mode === 'import' && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2 p-1 rounded-lg bg-gray-900 border border-gray-700">
-                <button
-                  onClick={() => {
-                    setImportMethod('mnemonic');
-                    setMnemonicError(null);
-                  }}
-                  className={`px-3 py-2 rounded-md text-sm transition-colors ${
-                    importMethod === 'mnemonic'
-                      ? 'bg-emerald-600 text-white'
-                      : 'text-gray-300 hover:text-white'
-                  }`}
-                >
-                  Recovery Phrase
-                </button>
-                <button
-                  onClick={() => {
-                    setImportMethod('shamir');
-                    setMnemonicError(null);
-                  }}
-                  className={`px-3 py-2 rounded-md text-sm transition-colors ${
-                    importMethod === 'shamir'
-                      ? 'bg-emerald-600 text-white'
-                      : 'text-gray-300 hover:text-white'
-                  }`}
-                >
-                  Shamir (2 shares)
-                </button>
-              </div>
-
-              {importMethod === 'mnemonic' ? (
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Recovery Phrase
-                </label>
-                <textarea
-                  value={mnemonicInput}
-                  onChange={(e) => {
-                    setMnemonicInput(e.target.value);
-                    setMnemonicError(null);
-                  }}
-                  placeholder="Enter your 12 or 24 word recovery phrase, separated by spaces"
-                  rows={4}
-                  className={`w-full px-4 py-3 rounded-lg bg-gray-900 border ${
-                    mnemonicError ? 'border-red-500' : 'border-gray-700'
-                  } focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none font-mono text-sm`}
-                />
-                {mnemonicError && (
-                  <p className="mt-1 text-sm text-red-400">{mnemonicError}</p>
-                )}
-                <p className="mt-1 text-xs text-gray-500">
-                  Words: {mnemonicInput.trim() ? mnemonicInput.trim().split(/\s+/).length : 0}
-                </p>
-              </div>
-              ) : (
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Shamir Share 1
-                    </label>
-                    <textarea
-                      value={shamirShareA}
-                      onChange={(e) => {
-                        setShamirShareA(e.target.value.trim());
-                        setMnemonicError(null);
-                      }}
-                      placeholder="Paste first Shamir share"
-                      rows={3}
-                      className={`w-full px-4 py-3 rounded-lg bg-gray-900 border ${
-                        mnemonicError ? 'border-red-500' : 'border-gray-700'
-                      } focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none font-mono text-xs`}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Shamir Share 2
-                    </label>
-                    <textarea
-                      value={shamirShareB}
-                      onChange={(e) => {
-                        setShamirShareB(e.target.value.trim());
-                        setMnemonicError(null);
-                      }}
-                      placeholder="Paste second Shamir share"
-                      rows={3}
-                      className={`w-full px-4 py-3 rounded-lg bg-gray-900 border ${
-                        mnemonicError ? 'border-red-500' : 'border-gray-700'
-                      } focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none font-mono text-xs`}
-                    />
-                  </div>
-
-                  {mnemonicError && (
-                    <p className="text-sm text-red-400">{mnemonicError}</p>
-                  )}
-                  <div className="rounded-lg border border-cyan-700/40 bg-cyan-900/20 p-3 text-xs text-cyan-100 space-y-1">
-                    <p className="font-semibold text-cyan-300">Shamir Recovery Help</p>
-                    <p>Use any 2 shares from the same 2-of-3 backup set.</p>
-                    <p>Paste each full share string exactly as saved (no edits).</p>
-                    <p>If reconstruction fails, one share is from a different set or was altered.</p>
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    Enter any 2 valid shares from your 2-of-3 backup set.
-                  </p>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  New Password
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Set a password for this device"
-                    className="w-full px-4 py-3 rounded-lg bg-gray-900 border border-gray-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
-                  >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Confirm Password
-                </label>
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm your password"
-                  className="w-full px-4 py-3 rounded-lg bg-gray-900 border border-gray-700 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
-                />
-              </div>
-
-              <div className="p-3 rounded-lg bg-amber-900/30 border border-amber-700/50">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-300">
-                    Never share your recovery phrase or Shamir shares. Anyone with enough recovery material can access your funds.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={() => {
-                    setMode('choose');
-                    setMnemonicInput('');
-                    setMnemonicError(null);
-                  }}
-                  className="flex-1 px-4 py-3 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors"
-                >
-                  Back
-                </button>
-                <button
-                  onClick={handleImportWallet}
-                  disabled={
-                    isLoading ||
-                    !password ||
-                    !confirmPassword ||
-                    (importMethod === 'mnemonic' ? !mnemonicInput : (!shamirShareA || !shamirShareB))
-                  }
-                  className="flex-1 px-4 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-                >
-                  {isLoading ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      Importing...
-                    </>
-                  ) : (
-                    <>
-                      <Import className="w-5 h-5" />
-                      Import Wallet
-                    </>
-                  )}
-                </button>
-              </div>
+            <div>
+              <p className="text-white font-semibold">Import from Cold Signer</p>
+              <p className="text-gray-400 text-sm mt-0.5">
+                Keys stay offline. Watch balance here, sign on your air-gapped device.
+              </p>
             </div>
-          )}
+          </button>
 
-          {/* Backup Mnemonic */}
-          {mode === 'backup' && generatedMnemonic && (
-            <div className="space-y-4">
-              <div className="p-4 rounded-lg bg-red-900/30 border border-red-700/50">
-                <div className="flex items-start gap-3">
-                  <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium text-red-400">Write these words down!</p>
-                    <p className="text-sm text-red-300 mt-1">
-                      This is the ONLY way to recover your wallet. Store it safely offline.
-                      Never share it with anyone.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {renderMnemonicWords(generatedMnemonic)}
-
-              {/* Shamir Backup Option */}
-              <div className="border border-gray-700 rounded-lg overflow-hidden">
-                <button
-                  onClick={() => {
-                    setShowShamirBackup(v => !v);
-                    if (!shamirShares && generatedMnemonic) {
-                      const generatedShares = splitMnemonic(generatedMnemonic, { shares: 3, threshold: 2 });
-                      setShamirShares(generatedShares);
-                      void storeHotShare(generatedShares[0], password, walletId ?? undefined);
-                      setShowShamirQRIndex(1);
-                    }
-                  }}
-                  className="w-full px-4 py-3 bg-gray-900 hover:bg-gray-800 transition-colors flex items-center justify-between text-sm"
-                >
-                  <span className="flex items-center gap-2 text-emerald-400">
-                    <Shield className="w-4 h-4" />
-                    Generate Shamir Shares (optional)
-                  </span>
-                  <span className="text-gray-500 text-xs">{showShamirBackup ? '▲ hide' : '▼ show'}</span>
-                </button>
-                {showShamirBackup && shamirShares && (
-                  <div className="p-4 space-y-3 bg-gray-900/50">
-                    <p className="text-xs text-gray-400">
-                      Any 2 of these 3 shares can reconstruct your wallet. Store each in a different secure location.
-                    </p>
-                    <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-100">
-                      Share 1 is encrypted with your wallet password and saved on this device. You'll need this password to load it during recovery or rotation.
-                    </div>
-                    <div className="rounded-lg border border-cyan-500/40 bg-cyan-500/10 p-3">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="text-sm font-semibold text-cyan-300">Share 2 QR for Cold Signer</p>
-                          <p className="mt-1 text-xs text-cyan-100">
-                            Scan this from the installed Cold Signer app on the offline device.
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => setShowShamirQRIndex(showShamirQRIndex === 1 ? null : 1)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-cyan-400 px-2.5 py-1.5 text-xs font-semibold text-gray-950 transition-colors hover:bg-cyan-300"
-                        >
-                          <QrCode className="w-3.5 h-3.5" />
-                          {showShamirQRIndex === 1 ? 'Hide QR' : 'Show QR'}
-                        </button>
-                      </div>
-
-                      {showShamirQRIndex === 1 && shamirShares[1] && (
-                        <div className="mt-3 flex flex-col items-center gap-2 rounded-lg bg-white p-4">
-                          <QRCodeSVG
-                            value={shamirShares[1]}
-                            size={220}
-                            bgColor="#ffffff"
-                            fgColor="#000000"
-                            level="M"
-                          />
-                          <p className="text-center text-xs font-medium text-gray-800">
-                            Scan this QR from the installed Cold Signer app to import Share 2
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                    {shamirShares.map((share, i) => (
-                      <div key={i} className="bg-gray-900 rounded-lg p-3 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold text-gray-300">Share {i + 1}{i === 0 ? ' (saved on this device)' : i === 1 ? ' (cold signer device)' : ' (paper backup - hard copy)'}</span>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => setShowShamirQRIndex(showShamirQRIndex === i ? null : i)}
-                              className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
-                            >
-                              <QrCode className="w-3 h-3" />
-                              {showShamirQRIndex === i ? 'Hide QR' : 'QR'}
-                            </button>
-                            <button
-                              onClick={async () => {
-                                await navigator.clipboard.writeText(share);
-                                setShamirCopied(i);
-                                setTimeout(() => setShamirCopied(null), 2000);
-                              }}
-                              className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
-                            >
-                              {shamirCopied === i ? <><Check className="w-3 h-3" /> Copied</> : 'Copy'}
-                            </button>
-                          </div>
-                        </div>
-                        <p className="text-xs font-mono text-gray-400 break-all leading-relaxed">{share}</p>
-                        {showShamirQRIndex === i && (
-                          <div className="flex flex-col items-center gap-2 rounded-lg bg-white p-3">
-                            <QRCodeSVG
-                              value={share}
-                              size={180}
-                              bgColor="#ffffff"
-                              fgColor="#000000"
-                              level="M"
-                            />
-                            <p className="text-center text-[11px] font-medium text-gray-800">
-                              {i === 1 ? 'Cold Signer Share 2 QR' : `Share ${i + 1} QR`}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    <p className="text-xs text-yellow-500">⚠ These shares reconstruct your full wallet. Treat each one like a private key.</p>
-                    <p className="text-xs text-red-400">Share 3 should be written down or printed as a hard copy and stored offline. Do not rely on keeping only a digital copy.</p>
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={copyMnemonic}
-                className="w-full px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors flex items-center justify-center gap-2"
-              >
-                {mnemonicCopied ? (
-                  <>
-                    <Check className="w-4 h-4 text-emerald-400" />
-                    Copied!
-                  </>
-                ) : (
-                  <>
-                    <Key className="w-4 h-4" />
-                    Copy to Clipboard
-                  </>
-                )}
-              </button>
-
-              <label className="flex items-start gap-3 p-4 rounded-lg bg-gray-900 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={backupConfirmed}
-                  onChange={(e) => setBackupConfirmed(e.target.checked)}
-                  className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-800 text-emerald-500 focus:ring-emerald-500"
-                />
-                <span className="text-sm text-gray-300">
-                  I have written down my recovery phrase and stored it in a safe place.
-                  I understand that losing this phrase means losing access to my funds.
-                </span>
-              </label>
-
-              <button
-                onClick={handleBackupComplete}
-                disabled={!backupConfirmed}
-                className="w-full px-4 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-              >
-                <Shield className="w-5 h-5" />
-                I've Backed Up My Phrase
-              </button>
-            </div>
-          )}
-
-          {/* Authenticate */}
-          {mode === 'authenticate' && (
-            <div className="space-y-4">
-              <div className="text-center py-8">
-                <div className="w-20 h-20 mx-auto rounded-full bg-emerald-900/30 border border-emerald-700/50 flex items-center justify-center mb-4">
-                  <Lock className="w-10 h-10 text-emerald-400" />
-                </div>
-                <p className="text-gray-400">
-                  Use your passkey or biometrics to unlock your wallet
-                </p>
-              </div>
-
-              <button
-                onClick={handleAuthenticate}
-                disabled={isLoading}
-                className="w-full px-4 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-              >
-                {isLoading ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Authenticating...
-                  </>
-                ) : (
-                  <>
-                    <Lock className="w-5 h-5" />
-                    Unlock with Passkey
-                  </>
-                )}
-              </button>
-
-              <div className="text-center space-y-2">
-                <button
-                  onClick={() => setMode('import')}
-                  className="text-sm text-gray-400 hover:text-white transition-colors block w-full"
-                >
-                  Restore from recovery options instead
-                </button>
-                <ColdSignerInstallButton
-                  label="Install Cold Signer app (offline device)"
-                  className="text-sm text-cyan-400 hover:text-cyan-300 transition-colors block w-full"
-                />
-                <QbtcWalletPWAButton
-                  className="text-sm text-cyan-400 hover:text-cyan-300 transition-colors flex items-center justify-center gap-2 w-full"
-                />
-                <button
-                  onClick={() => setMode('create')}
-                  className="text-sm text-emerald-500 hover:text-emerald-400 transition-colors block w-full"
-                >
-                  + Start a new wallet
-                </button>
-                <button
-                  onClick={handleRemoveWallet}
-                  className="text-sm text-red-500 hover:text-red-400 transition-colors block w-full pt-2"
-                >
-                  Remove wallet from this device
-                </button>
-              </div>
-            </div>
-          )}
+          <p className="text-center text-gray-600 text-xs mt-2">
+            No seed phrases. No passwords. Nothing to lose.
+          </p>
         </div>
       </div>
     </div>
