@@ -8,7 +8,7 @@ import { listContacts } from './storage/contactStore';
 import OnboardingPage from './pages/OnboardingPage';
 import WalletTab from './pages/WalletTab';
 import MessengerTab from './pages/MessengerTab';
-import PinEntry from './components/PinEntry';
+import PasskeyUnlock from './components/PasskeyUnlock';
 import BottomNav from './components/BottomNav';
 
 type Tab = 'wallet' | 'messenger';
@@ -21,7 +21,7 @@ let _messagingPublicKeyRaw: Uint8Array | null = null;
 const contactPubKeys = new Map<string, Uint8Array>();
 
 export default function App() {
-  const { state, unlock, lock, setUnlocked } = useVault();
+  const { state, unlock, lock, setUnlocked, setWatchOnly, migrateFromPin, unlockError } = useVault();
   const [tab, setTab] = useState<Tab>('wallet');
   const [keyPair, setKeyPair] = useState<QBTCKeyPair | null>(null);
   const [msgPrivKey, setMsgPrivKey] = useState<CryptoKey | null>(null);
@@ -155,11 +155,16 @@ export default function App() {
   ) : null;
 
   // ── onboarding ───────────────────────────────────────────────────────────
-  if (state.status === 'no-wallet') {
+  if (state.status === 'no-wallet' || state.status === 'needs-migration') {
     return (
       <>
         <OnboardingPage
-          onComplete={(masterSeed, qbtcAddress) => setUnlocked(masterSeed, qbtcAddress)}
+          needsMigration={state.status === 'needs-migration'}
+          onHotWalletReady={(masterSeed, qbtcAddress) => setUnlocked(masterSeed, qbtcAddress)}
+          onColdWalletReady={(qbtcAddress, ecdsaPubHex, falconPubHex) =>
+            setWatchOnly(qbtcAddress, ecdsaPubHex, falconPubHex)
+          }
+          onMigrateFromPin={migrateFromPin}
         />
         {updateBanner}
         {installBanner}
@@ -167,14 +172,34 @@ export default function App() {
     );
   }
 
-  // ── locked ───────────────────────────────────────────────────────────────
+  // ── locked — passkey biometric prompt ────────────────────────────────────
   if (state.status === 'locked') {
     return (
       <>
-        <PinEntry onUnlock={unlock} />
+        <PasskeyUnlock onUnlock={unlock} error={unlockError} />
         {updateBanner}
         {installBanner}
       </>
+    );
+  }
+
+  // ── watch-only (cold signer mode) ────────────────────────────────────────
+  if (state.status === 'watch-only') {
+    const { qbtcAddress } = state;
+    return (
+      <div className="flex flex-col h-screen bg-slate-950 safe-top">
+        <div className="flex-1 overflow-hidden">
+          <WalletTab
+            address={qbtcAddress}
+            masterSeed={null}
+            keyPair={null}
+            network="testnet"
+          />
+        </div>
+        <BottomNav active={tab} onChange={setTab} />
+        {updateBanner}
+        {installBanner}
+      </div>
     );
   }
 
