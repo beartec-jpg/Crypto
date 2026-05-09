@@ -863,7 +863,13 @@ export default function SendForm({
       
     } catch (err: any) {
       console.error('Transaction error:', err);
-      const msg = err.message || 'Failed to send transaction';
+      console.error('Transaction error details:', {
+        message: err?.message,
+        name: err?.name,
+        stack: err?.stack,
+        raw: String(err),
+      });
+      const msg = err?.message || (typeof err === 'string' ? err : String(err)) || 'Failed to send transaction';
       setPasswordError(msg);
       // Surface error to main form when password modal is not open (passkey path)
       if (!showPasswordModal) setError(msg);
