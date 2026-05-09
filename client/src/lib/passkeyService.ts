@@ -332,20 +332,26 @@ export async function registerPasskeyWithPRF(
 /**
  * Authenticate with an existing passkey and return the same 32-byte master seed.
  * Deterministic — same passkey + same PRF salt → same seed every time.
+ *
+ * We intentionally omit allowCredentials so the browser uses the discoverable
+ * credential (registered with residentKey:'preferred') and presents the local
+ * biometric prompt directly. Passing a specific credentialId can cause the browser
+ * to fall back to cross-device QR flow when it doesn't find the ID in its local store.
  */
 export async function authenticateWithPasskeyPRF(
-  credentialIdB64: string,
+  _credentialIdB64?: string,
 ): Promise<Uint8Array> {
   if (!window.PublicKeyCredential) throw new Error('WebAuthn not supported');
 
   const challenge = crypto.getRandomValues(new Uint8Array(32));
-  const credentialId = b64uDecode(credentialIdB64);
 
   const assertion = await navigator.credentials.get({
     publicKey: {
       challenge,
       rpId: getApexDomain(),
-      allowCredentials: [{ type: 'public-key', id: credentialId.buffer as ArrayBuffer }],
+      // No allowCredentials — use discoverable credential so the browser shows
+      // biometric directly without falling back to the cross-device QR flow.
+      allowCredentials: [],
       userVerification: 'required',
       extensions: {
         prf: { eval: { first: PRF_SALT } },

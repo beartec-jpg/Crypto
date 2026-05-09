@@ -54,9 +54,7 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
       if (existingType === 'passkey') {
         setStep('unlocking');
         setStatus('Authenticating…');
-        const credentialIdB64 = await getWalletCredentialId(userId);
-        if (!credentialIdB64) throw new Error('Credential not found — try removing and recreating wallet');
-        const masterSeed = await authenticateWithPasskeyPRF(credentialIdB64);
+        const masterSeed = await authenticateWithPasskeyPRF();
         const wallet = await getCurrentWallet(userId);
         if (!wallet) throw new Error('Wallet record missing');
         setStep('done');
