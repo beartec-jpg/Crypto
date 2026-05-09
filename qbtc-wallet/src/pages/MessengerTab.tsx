@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, UserPlus, ArrowLeft, Trash2, Share2, Copy, Check } from 'lucide-react';
+import { Send, UserPlus, ArrowLeft, Trash2, Share2, Copy, Check, X } from 'lucide-react';
+import QRCode from 'qrcode';
 import { useMessages } from '../hooks/useMessages';
 import { useContacts } from '../hooks/useContacts';
 import { getContact, addContact as storeAddContact } from '../storage/contactStore';
@@ -31,15 +32,29 @@ export default function MessengerTab({
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
 
-  async function handleShareMyAddress() {
-    const text = `Add me on qBTC Messenger: ${myAddress}`;
-    if (navigator.share) {
-      try { await navigator.share({ title: 'My qBTC Address', text }); return; } catch { /* cancelled */ return; }
-    }
+  // Render QR code whenever modal opens
+  useEffect(() => {
+    if (!showShareModal || !qrCanvasRef.current) return;
+    QRCode.toCanvas(qrCanvasRef.current, myAddress, {
+      width: 220,
+      margin: 2,
+      color: { dark: '#0f172a', light: '#f8fafc' },
+    }).catch(() => {});
+  }, [showShareModal, myAddress]);
+
+  async function handleCopyAddress() {
     await navigator.clipboard.writeText(myAddress);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function handleNativeShare() {
+    try {
+      await navigator.share({ title: 'My qBTC Address', text: `Add me on qBTC Messenger: ${myAddress}` });
+    } catch { /* cancelled */ }
   }
 
   // Add-contact form
@@ -231,14 +246,67 @@ export default function MessengerTab({
             <p className="text-xs font-mono text-slate-300 truncate">{myAddress}</p>
           </div>
           <button
-            onClick={handleShareMyAddress}
+            onClick={() => setShowShareModal(true)}
             className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-700/60 hover:bg-cyan-600/70 active:bg-cyan-600/70 text-cyan-200 text-xs font-medium transition-colors"
           >
-            {copied ? <Check size={13} /> : (typeof navigator.share === 'function' ? <Share2 size={13} /> : <Copy size={13} />)}
-            {copied ? 'Copied!' : 'Share'}
+            <Share2 size={13} />
+            Share
           </button>
         </div>
       </div>
+
+      {/* QR Share Modal */}
+      {showShareModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/70"
+          onClick={() => setShowShareModal(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-slate-900 rounded-t-2xl px-6 pt-6 pb-8 flex flex-col items-center gap-4"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Handle + close */}
+            <div className="w-10 h-1 rounded-full bg-slate-600 mb-1" />
+            <button
+              onClick={() => setShowShareModal(false)}
+              className="absolute top-4 right-4 p-1 text-slate-400 hover:text-white"
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+
+            <p className="text-white font-semibold text-base">Share My Address</p>
+
+            {/* QR Code */}
+            <div className="bg-slate-50 rounded-xl p-3">
+              <canvas ref={qrCanvasRef} />
+            </div>
+
+            {/* Address text */}
+            <p className="text-xs font-mono text-slate-300 break-all text-center px-2">{myAddress}</p>
+
+            {/* Action buttons */}
+            <div className="flex gap-3 w-full mt-1">
+              <button
+                onClick={handleCopyAddress}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-slate-700 hover:bg-slate-600 active:bg-slate-600 text-white text-sm font-medium transition-colors"
+              >
+                {copied ? <Check size={15} /> : <Copy size={15} />}
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+              {typeof navigator.share === 'function' && (
+                <button
+                  onClick={handleNativeShare}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-cyan-700 hover:bg-cyan-600 active:bg-cyan-600 text-white text-sm font-medium transition-colors"
+                >
+                  <Share2 size={15} />
+                  Share
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto">
         {contacts.length === 0 && (
