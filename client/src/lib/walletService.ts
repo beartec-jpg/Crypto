@@ -18,6 +18,15 @@ import { deriveKeypair, deriveAddress, generateSeed } from 'ripple-keypairs';
 import { Wallet as XRPLWallet } from 'xrpl';
 import { QBTCKeyPair, qbtcAddressFromCompressedPubKey } from './qbtcService';
 
+/**
+ * Encode a credential ID (Uint8Array from credential.rawId) to base64url.
+ * Uses Array.from to avoid spread-into-String.fromCharCode argument-count limits.
+ */
+function credentialIdToB64u(id: Uint8Array): string {
+  return btoa(Array.from(id).map(b => String.fromCharCode(b)).join(''))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
 // Supported chains
 export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana' | 'qbtc';
 
@@ -1719,8 +1728,7 @@ export async function createWalletFromPasskey(
 
   const db = await getDB();
   const walletId = `wallet_${userId}_${Date.now()}`;
-  const credentialIdB64 = btoa(String.fromCharCode(...credentialId))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  const credentialIdB64 = credentialIdToB64u(credentialId);
 
   await db.put('wallets', {
     id: walletId,
@@ -1957,8 +1965,7 @@ export async function migrateToPasskey(
   // Re-encrypt mnemonic with PRF masterSeed (AES-GCM, no PBKDF2)
   const { encryptedHex, ivHex } = await encryptMnemonicWithPRF(mnemonic, masterSeed);
 
-  const credentialIdB64 = btoa(String.fromCharCode(...credentialId))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  const credentialIdB64 = credentialIdToB64u(credentialId);
 
   const db = await getDB();
   const existing = await db.get('wallets', walletId);
