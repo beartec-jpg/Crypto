@@ -10,6 +10,7 @@ import {
   getWalletType,
   getWalletCredentialId,
   getCurrentWallet,
+  migrateToPasskey,
 } from '@/lib/walletService';
 import type { Wallet } from '@/lib/walletService';
 
@@ -66,14 +67,18 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
       setStatus('Registering passkey…');
       const { credentialId, masterSeed } = await registerPasskeyWithPRF(userId);
 
-      // 3. Derive addresses + store wallet (no mnemonic, no password)
+      // 3a. Legacy wallet: migrate (mark old addresses, create new passkey wallet)
+      if (existingType === 'legacy') {
+        setStatus('Migrating to passkey…');
+        const wallet = await migrateToPasskey(userId, masterSeed, credentialId, rpId);
+        setStep('done');
+        onSuccess(masterSeed, wallet);
+        return;
+      }
+
+      // 3b. Watch-only or no wallet: fresh passkey wallet
       setStatus('Deriving addresses…');
-      const wallet = await createWalletFromPasskey(
-        userId,
-        masterSeed,
-        credentialId,
-        rpId,
-      );
+      const wallet = await createWalletFromPasskey(userId, masterSeed, credentialId, rpId);
 
       setStep('done');
       onSuccess(masterSeed, wallet);

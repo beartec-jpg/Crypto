@@ -11,6 +11,7 @@ import {
   getWalletType,
   getWalletCredentialId,
   migrateToPasskey,
+  getLegacyWallet,
   type Wallet,
 } from '@/lib/walletService';
 import {
@@ -34,6 +35,7 @@ const HTLC_ETH_ABI = [{"inputs":[{"internalType":"address payable","name":"recei
 
 export default function SecuritySettings({ userId, walletId, walletEvmAddress, masterSeed }: SecuritySettingsProps) {
   const [walletType, setWalletType] = useState<'passkey' | 'watch-only' | 'legacy' | null>(null);
+  const [legacyWallet, setLegacyWallet] = useState<Wallet | null>(null);
   const [migrating, setMigrating] = useState(false);
   const [migrateError, setMigrateError] = useState('');
   const [migrateSuccess, setMigrateSuccess] = useState(false);
@@ -65,6 +67,7 @@ export default function SecuritySettings({ userId, walletId, walletEvmAddress, m
 
   useEffect(() => {
     getWalletType(userId).then(setWalletType);
+    getLegacyWallet(userId).then(setLegacyWallet);
   }, [userId]);
 
   useEffect(() => {
@@ -248,6 +251,57 @@ export default function SecuritySettings({ userId, walletId, walletEvmAddress, m
           )}
         </div>
       ) : null}
+
+      {/* ── Old wallet fund migration notice (shown after upgrade) ─────────── */}
+      {legacyWallet && (walletType === 'passkey' || masterSeed) && (
+        <div className="p-5 rounded-2xl bg-amber-900/20 border border-amber-700/40 space-y-3">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-amber-300">Move funds from old wallet</p>
+              <p className="text-sm text-amber-200/70 mt-0.5">
+                You have an old BIP39 wallet with addresses below. Send any remaining funds
+                to your new passkey addresses shown in the dashboard.
+              </p>
+            </div>
+          </div>
+          <div className="space-y-1.5 text-xs font-mono">
+            {legacyWallet.addresses.ethereum && (
+              <div className="flex items-center gap-2 bg-gray-900/60 rounded-lg px-3 py-1.5">
+                <span className="text-gray-500 shrink-0">ETH/BSC</span>
+                <span className="text-amber-200/80 break-all">{legacyWallet.addresses.ethereum}</span>
+              </div>
+            )}
+            {legacyWallet.addresses.bitcoin && (
+              <div className="flex items-center gap-2 bg-gray-900/60 rounded-lg px-3 py-1.5">
+                <span className="text-gray-500 shrink-0">BTC</span>
+                <span className="text-amber-200/80 break-all">{legacyWallet.addresses.bitcoin}</span>
+              </div>
+            )}
+            {legacyWallet.addresses.xrp && (
+              <div className="flex items-center gap-2 bg-gray-900/60 rounded-lg px-3 py-1.5">
+                <span className="text-gray-500 shrink-0">XRP</span>
+                <span className="text-amber-200/80 break-all">{legacyWallet.addresses.xrp}</span>
+              </div>
+            )}
+            {legacyWallet.addresses.solana && (
+              <div className="flex items-center gap-2 bg-gray-900/60 rounded-lg px-3 py-1.5">
+                <span className="text-gray-500 shrink-0">SOL</span>
+                <span className="text-amber-200/80 break-all">{legacyWallet.addresses.solana}</span>
+              </div>
+            )}
+            {legacyWallet.addresses.qbtc && (
+              <div className="flex items-center gap-2 bg-gray-900/60 rounded-lg px-3 py-1.5">
+                <span className="text-gray-500 shrink-0">qBTC</span>
+                <span className="text-amber-200/80 break-all">{legacyWallet.addresses.qbtc}</span>
+              </div>
+            )}
+          </div>
+          <p className="text-xs text-amber-200/40">
+            To access the old wallet's private keys, use your original seed phrase.
+          </p>
+        </div>
+      )}
 
       {/* ── Security scan ──────────────────────────────────────────────────── */}
       <div className="pt-4 border-t border-gray-700">

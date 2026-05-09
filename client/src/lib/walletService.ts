@@ -1842,7 +1842,7 @@ export async function migrateToPasskey(
 ): Promise<Wallet> {
   const db = await getDB();
 
-  // Mark any existing wallet as legacy (not deleted — user needs it to move funds)
+  // Mark any existing wallet as legacy (preserve it — user needs it to move funds)
   const existingWalletId = localStorage.getItem(getUserStorageKey(userId, 'wallet_id'));
   if (existingWalletId) {
     const existing = await db.get('wallets', existingWalletId);
@@ -1851,7 +1851,26 @@ export async function migrateToPasskey(
     }
   }
 
-  // Create new passkey wallet — overwrites the active wallet pointer
+  // Clear localStorage wallet pointer so createWalletFromPasskey doesn't see an existing wallet
+  localStorage.removeItem(getUserStorageKey(userId, 'wallet_id'));
+
+  // Create new passkey wallet — will set a new localStorage pointer
   const wallet = await createWalletFromPasskey(userId, masterSeed, credentialId, rpId);
   return wallet;
+}
+
+/**
+ * Find the oldest legacy (BIP39/password) wallet for a user if one exists.
+ * Used in SecuritySettings to prompt the user to move funds to their new passkey addresses.
+ */
+export async function getLegacyWallet(userId: string): Promise<Wallet | null> {
+  const db = await getDB();
+  const all = await db.getAllFromIndex('wallets', 'userId', userId);
+  const legacy = all.filter(
+    (w) => w.walletType === 'legacy' || (!w.walletType && !w.credentialIdB64),
+  );
+  if (!legacy.length) return null;
+  // Return the oldest one
+  legacy.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  return legacy[0] as unknown as Wallet;
 }
