@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Download } from 'lucide-react';
+import { Download, RefreshCw } from 'lucide-react';
 import { useVault } from './hooks/useVault';
 import { deriveKeyPair, deriveMessagingKeyPair } from './lib/keys';
 import type { QBTCKeyPair } from './lib/keys';
@@ -31,6 +31,14 @@ export default function App() {
   const installPromptRef = useRef<any>((window as any).deferredInstallPrompt ?? null);
   const [installable, setInstallable] = useState(() => !!(window as any).deferredInstallPrompt);
   const [installedDismissed, setInstallDismissed] = useState(false);
+
+  // PWA update detection — fires when new SW takes control
+  const [updateReady, setUpdateReady] = useState(false);
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('controllerchange', () => setUpdateReady(true));
+    }
+  }, []);
 
   useEffect(() => {
     // In case it fires after mount
@@ -111,6 +119,20 @@ export default function App() {
     );
   }
 
+  // Update banner (shown when new SW has taken control)
+  const updateBanner = updateReady ? (
+    <div className="fixed top-0 left-0 right-0 z-50 flex items-center gap-3 bg-emerald-700 px-4 py-3 shadow-lg">
+      <RefreshCw size={18} className="shrink-0 text-white" />
+      <span className="flex-1 text-sm text-white font-medium">Update ready</span>
+      <button
+        onClick={() => window.location.reload()}
+        className="px-3 py-1.5 rounded-lg bg-white text-emerald-800 text-sm font-semibold"
+      >
+        Reload
+      </button>
+    </div>
+  ) : null;
+
   // Install banner (shown on any screen if installable)
   const installBanner = installable && !installedDismissed ? (
     <div className="fixed bottom-0 left-0 right-0 z-50 flex items-center gap-3 bg-cyan-700 px-4 py-3 shadow-lg">
@@ -139,6 +161,7 @@ export default function App() {
         <OnboardingPage
           onComplete={(masterSeed, qbtcAddress) => setUnlocked(masterSeed, qbtcAddress)}
         />
+        {updateBanner}
         {installBanner}
       </>
     );
@@ -149,6 +172,7 @@ export default function App() {
     return (
       <>
         <PinEntry onUnlock={unlock} />
+        {updateBanner}
         {installBanner}
       </>
     );
@@ -178,6 +202,7 @@ export default function App() {
         )}
       </div>
       <BottomNav active={tab} onChange={setTab} />
+      {updateBanner}
       {installBanner}
     </div>
   );
