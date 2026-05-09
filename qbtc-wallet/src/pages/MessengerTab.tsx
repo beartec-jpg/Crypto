@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, UserPlus, ArrowLeft, Trash2 } from 'lucide-react';
+import { Send, UserPlus, ArrowLeft, Trash2, Share2, Copy, Check } from 'lucide-react';
 import { useMessages } from '../hooks/useMessages';
 import { useContacts } from '../hooks/useContacts';
 import { getContact, addContact as storeAddContact } from '../storage/contactStore';
@@ -30,6 +30,17 @@ export default function MessengerTab({
   const [chatMessages, setChatMessages] = useState<MessageRecord[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  async function handleShareMyAddress() {
+    const text = `Add me on qBTC Messenger: ${myAddress}`;
+    if (navigator.share) {
+      try { await navigator.share({ title: 'My qBTC Address', text }); return; } catch { /* cancelled */ return; }
+    }
+    await navigator.clipboard.writeText(myAddress);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   // Add-contact form
   const [newAddress, setNewAddress] = useState('');
@@ -212,16 +223,22 @@ export default function MessengerTab({
         </button>
       </header>
 
-      {/* My public key share */}
-      {myPublicKeyRaw && (
-        <div className="px-5 py-3 bg-slate-800/50 border-b border-slate-700/50">
-          <p className="text-xs text-slate-400">
-            Share your messaging key: <span className="font-mono text-cyan-400 break-all">
-              {btoa(String.fromCharCode(...myPublicKeyRaw)).slice(0, 24)}…
-            </span>
-          </p>
+      {/* Share my address */}
+      <div className="px-4 py-3 bg-slate-800/40 border-b border-slate-700/50">
+        <div className="flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-slate-400 mb-0.5">Your qBTC address</p>
+            <p className="text-xs font-mono text-slate-300 truncate">{myAddress}</p>
+          </div>
+          <button
+            onClick={handleShareMyAddress}
+            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-700/60 hover:bg-cyan-600/70 active:bg-cyan-600/70 text-cyan-200 text-xs font-medium transition-colors"
+          >
+            {copied ? <Check size={13} /> : (typeof navigator.share === 'function' ? <Share2 size={13} /> : <Copy size={13} />)}
+            {copied ? 'Copied!' : 'Share'}
+          </button>
         </div>
-      )}
+      </div>
 
       <div className="flex-1 overflow-y-auto">
         {contacts.length === 0 && (
