@@ -1880,6 +1880,24 @@ export async function getWalletCredentialId(userId: string): Promise<string | nu
 }
 
 /**
+ * Update the stored credentialId for a wallet.
+ * Called after a successful PRF authentication so the ID from assertion.rawId
+ * (which Chrome definitely recognises) replaces the ID from registration.
+ */
+export async function updateWalletCredentialId(walletId: string, credentialIdB64: string): Promise<void> {
+  try {
+    const db = await getDB();
+    const record = await db.get('wallets', walletId);
+    if (record) {
+      record.credentialIdB64 = credentialIdB64;
+      await db.put('wallets', record);
+    }
+  } catch (err) {
+    console.warn('Failed to update stored credential ID:', err);
+  }
+}
+
+/**
  * Get XRP seed string from a PRF master seed (passkey wallet path).
  * Mirrors the entropy-based generation used in getXRPSeed/getXRPTestnetSeed.
  */

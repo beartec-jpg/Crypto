@@ -330,17 +330,20 @@ export async function registerPasskeyWithPRF(
 }
 
 /**
- * Authenticate with an existing passkey and return the same 32-byte master seed.
- * Deterministic — same passkey + same PRF salt → same seed every time.
+ * Authenticate with an existing passkey and return the 32-byte master seed
+ * plus the actual credential ID used (from assertion.rawId).
  *
- * We use empty allowCredentials so Chrome shows its local passkey picker
- * (biometric prompt / password manager) instead of falling back to the
- * cross-device QR code flow that happens when a specific ID isn't found locally.
- * The credentialIdB64 param is ignored but kept for API compatibility.
+ * The returned credentialId can be compared with the stored one to detect
+ * when the user picked the wrong passkey from the picker — before any
+ * decryption is attempted, giving a clear "wrong passkey" error instead of
+ * a confusing OperationError.
+ *
+ * We use empty allowCredentials so Chrome shows its local biometric picker
+ * rather than the cross-device QR flow.
  */
 export async function authenticateWithPasskeyPRF(
   _credentialIdB64?: string,
-): Promise<Uint8Array> {
+): Promise<{ masterSeed: Uint8Array; credentialId: Uint8Array }> {
   if (!window.PublicKeyCredential) throw new Error('WebAuthn not supported');
 
   const challenge = crypto.getRandomValues(new Uint8Array(32));
@@ -349,7 +352,7 @@ export async function authenticateWithPasskeyPRF(
     publicKey: {
       challenge,
       rpId: getApexDomain(),
-      allowCredentials: [], // empty = use any locally stored passkey for this domain
+      allowCredentials: [], // empty = show local passkey picker (no QR code)
       userVerification: 'required',
       extensions: {
         prf: { eval: { first: PRF_SALT } },
@@ -366,5 +369,8 @@ export async function authenticateWithPasskeyPRF(
   const prfOutput = extResults?.prf?.results?.first;
   if (!prfOutput) throw new Error('PRF extension not available on this credential');
 
-  return new Uint8Array(prfOutput, 0, 32);
+  return {
+    masterSeed: new Uint8Array(prfOutput, 0, 32),
+    credentialId: new Uint8Array(assertion.rawId),
+  };
 }

@@ -12,6 +12,7 @@ import {
   getCurrentWallet,
   migrateToPasskey,
   unlockWallet,
+  updateWalletCredentialId,
 } from '@/lib/walletService';
 import type { Wallet } from '@/lib/walletService';
 
@@ -74,16 +75,36 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
       if (existingType === 'passkey') {
         setStep('unlocking');
         setStatus('Authenticating…');
-        const credentialIdB64 = await getWalletCredentialId(userId);
+        const storedCredentialIdB64 = await getWalletCredentialId(userId);
         try {
-          const masterSeed = await authenticateWithPasskeyPRF(credentialIdB64 ?? undefined);
+          const { masterSeed, credentialId } = await authenticateWithPasskeyPRF();
+
+          // Verify the user picked the right passkey before attempting decryption.
+          // Compare assertion.rawId (what Chrome actually used) vs stored ID.
+          if (storedCredentialIdB64) {
+            const returnedB64 = b64uEncodePasskey(credentialId);
+            if (returnedB64 !== storedCredentialIdB64) {
+              setError(
+                'Wrong passkey selected. You have multiple passkeys for this site — please select the one you used when setting up this wallet. ' +
+                'You can delete the old one at chrome://password-manager/passkeys and try again, or use your wallet password below.'
+              );
+              setStep('use-password');
+              return;
+            }
+          }
+
           const wallet = await getCurrentWallet(userId);
           if (!wallet) throw new Error('Wallet record missing');
+
+          // Self-heal: store the actual credential ID from this auth so next time matches
+          await updateWalletCredentialId(wallet.id, b64uEncodePasskey(credentialId));
+
           setStep('done');
           onSuccess(masterSeed, wallet);
         } catch (authErr: any) {
-          // OperationError = AES-GCM decryption failed (wrong passkey selected)
-          // NotAllowedError = cancelled
+          // OperationError = AES-GCM decryption failed (wrong passkey — shouldn't reach here
+          //                  now that we check ID first, but kept as safety net)
+          // NotAllowedError = user cancelled the biometric prompt
           if (authErr?.name === 'OperationError') {
             setError('Decryption failed — the selected passkey doesn\'t match this wallet. Use your wallet password instead.');
             setStep('use-password');

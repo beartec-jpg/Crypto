@@ -15,7 +15,6 @@ import {
 } from '@/lib/walletService';
 import {
   registerPasskeyWithPRF,
-  authenticateWithPasskeyPRF,
   b64uEncodePasskey,
 } from '@/lib/passkeyService';
 import { runSecurityScan, type SecurityScanResult } from '@/lib/securityScanner';
