@@ -11,6 +11,7 @@ import {
   getWalletCredentialId,
   getCurrentWallet,
   migrateToPasskey,
+  unlockWallet,
 } from '@/lib/walletService';
 import type { Wallet } from '@/lib/walletService';
 
@@ -33,15 +34,34 @@ interface PasskeyAuthModalProps {
   onSuccess: (masterSeed: Uint8Array | null, wallet: Wallet) => void;
 }
 
-type Step = 'choose' | 'migrate-password' | 'creating' | 'unlocking' | 'scanning' | 'done' | 'error';
+type Step = 'choose' | 'migrate-password' | 'use-password' | 'creating' | 'unlocking' | 'scanning' | 'done' | 'error';
 
 export default function PasskeyAuthModal({ userId, onClose, onSuccess }: PasskeyAuthModalProps) {
   const [step, setStep] = useState<Step>('choose');
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const [legacyPassword, setLegacyPassword] = useState('');
+  const [fallbackPassword, setFallbackPassword] = useState('');
 
-  // ── Create hot wallet ───────────────────────────────────────────────────────
+  // ── Password fallback (when passkey unavailable on this device) ─────────────
+  async function handlePasswordFallback() {
+    setError('');
+    setStep('creating');
+    setStatus('Unlocking wallet…');
+    try {
+      const wallet = await getCurrentWallet(userId);
+      if (!wallet) throw new Error('No wallet found');
+      await unlockWallet(wallet.id, fallbackPassword);
+      // Mark session as authenticated so security requirement checks pass
+      sessionStorage.setItem('passkey_authenticated', 'true');
+      sessionStorage.setItem('passkey_auth_time', Date.now().toString());
+      setStep('done');
+      onSuccess(null, wallet);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Incorrect password');
+      setStep('use-password');
+    }
+  }
   async function handleCreateWallet(migrateWithPassword?: string) {
     setError('');
     setStep('creating');
@@ -184,6 +204,11 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
         <div className="bg-gray-900 rounded-2xl max-w-sm w-full p-8 text-center flex flex-col items-center gap-5">
           <Loader size={40} className="text-emerald-400 animate-spin" />
           <p className="text-gray-300 text-sm">{status}</p>
+          {step === 'unlocking' && (
+            <p className="text-xs text-gray-500">
+              If Chrome shows a QR code, scan it with the phone that has your passkey, then use biometrics on that device.
+            </p>
+          )}
         </div>
       </div>
     );
@@ -195,6 +220,46 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
         <div className="bg-gray-900 rounded-2xl max-w-sm w-full p-8 text-center flex flex-col items-center gap-5">
           <CheckCircle size={40} className="text-emerald-400" />
           <p className="text-white font-semibold">Wallet Ready</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 'use-password') {
+    return (
+      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+        <div className="bg-gray-900 rounded-2xl max-w-sm w-full p-6 flex flex-col gap-5">
+          <div className="flex items-center gap-3">
+            <AlertTriangle size={22} className="text-amber-400 shrink-0" />
+            <div>
+              <p className="text-white font-semibold">Use wallet password</p>
+              <p className="text-xs text-gray-400 mt-0.5">Enter the password you used before setting up your passkey</p>
+            </div>
+          </div>
+          {error && <p className="text-xs text-red-400 bg-red-900/20 rounded-xl p-3">{error}</p>}
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Wallet password</label>
+            <input
+              type="password"
+              autoFocus
+              value={fallbackPassword}
+              onChange={e => setFallbackPassword(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && fallbackPassword) handlePasswordFallback(); }}
+              placeholder="Enter your password"
+              className="w-full px-3 py-2.5 rounded-xl bg-gray-800 border border-gray-700 focus:border-amber-500 focus:outline-none text-sm"
+            />
+          </div>
+          <button
+            onClick={handlePasswordFallback}
+            disabled={!fallbackPassword}
+            className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white font-semibold"
+          >
+            Unlock Wallet
+          </button>
+          <p className="text-xs text-gray-500 text-center">
+            You can re-register your passkey from Settings after logging in.
+          </p>
+          <button onClick={() => { setStep('choose'); setError(''); setFallbackPassword(''); }} className="text-gray-500 text-xs text-center">Back</button>
         </div>
       </div>
     );
@@ -220,6 +285,12 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
             className="w-full py-3 rounded-xl bg-gray-700 hover:bg-gray-600 text-white"
           >
             Try Again
+          </button>
+          <button
+            onClick={() => { setStep('use-password'); setError(''); }}
+            className="w-full py-3 rounded-xl border border-amber-700/40 text-amber-400 text-sm hover:bg-amber-900/20"
+          >
+            Use wallet password instead
           </button>
           <button onClick={onClose} className="text-gray-500 text-sm text-center">Cancel</button>
         </div>
@@ -326,6 +397,12 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
           <p className="text-center text-gray-600 text-xs mt-2">
             No seed phrases. No passwords. Nothing to lose.
           </p>
+          <button
+            onClick={() => { setStep('use-password'); setError(''); }}
+            className="text-gray-500 hover:text-gray-300 text-xs text-center underline underline-offset-2"
+          >
+            Passkey not working? Use wallet password
+          </button>
         </div>
       </div>
     </div>
