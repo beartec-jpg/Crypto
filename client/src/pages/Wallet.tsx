@@ -718,6 +718,10 @@ export default function WalletPage() {
                   userId={userId}
                   isPasskeyAuthenticated={isPasskeyAuthenticated}
                   onRequestPasskey={() => setShowPasskeyModal(true)}
+                  onSessionExpired={() => {
+                    setMasterSeed(null);
+                    setShowPasskeyModal(true);
+                  }}
                   selectedChain={selectedChain}
                   tokenNetwork={tokenNetwork}
                   onChainChange={setSelectedChain}

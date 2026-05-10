@@ -74,6 +74,8 @@ interface SendFormProps {
   userId: string;
   isPasskeyAuthenticated: boolean;
   onRequestPasskey: () => void;
+  /** Called when AES-GCM decryption fails (wrong passkey in session) — clears masterSeed and re-opens auth */
+  onSessionExpired?: () => void;
   selectedChain: Chain;
   tokenNetwork?: TokenNetwork;
   onChainChange?: (chain: Chain) => void;
@@ -87,6 +89,7 @@ export default function SendForm({
   userId,
   isPasskeyAuthenticated,
   onRequestPasskey,
+  onSessionExpired,
   selectedChain,
   tokenNetwork = 'mainnet',
   onChainChange,
@@ -869,6 +872,14 @@ export default function SendForm({
         stack: err?.stack,
         raw: String(err),
       });
+      // OperationError = AES-GCM decryption failed (wrong passkey in session)
+      if (err?.name === 'OperationError') {
+        const msg = 'Session error: the stored passkey session is invalid. Please log out and log back in.';
+        setError(msg);
+        setPasswordError(msg);
+        onSessionExpired?.();
+        return;
+      }
       const msg = err?.message || (typeof err === 'string' ? err : String(err)) || 'Failed to send transaction';
       setPasswordError(msg);
       // Surface error to main form when password modal is not open (passkey path)
