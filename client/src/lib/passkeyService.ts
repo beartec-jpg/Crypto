@@ -333,26 +333,39 @@ export async function registerPasskeyWithPRF(
  * Authenticate with an existing passkey and return the 32-byte master seed
  * plus the actual credential ID used (from assertion.rawId).
  *
- * The returned credentialId can be compared with the stored one to detect
- * when the user picked the wrong passkey from the picker — before any
- * decryption is attempted, giving a clear "wrong passkey" error instead of
- * a confusing OperationError.
- *
- * We use empty allowCredentials so Chrome shows its local biometric picker
- * rather than the cross-device QR flow.
+ * If credentialIdB64 is provided we add it to allowCredentials so Chrome
+ * shows the local PIN / biometric prompt for that specific passkey.
+ * With an empty allowCredentials Chrome on Linux falls back to the
+ * cross-device QR code flow, which is why we need the specific ID.
  */
 export async function authenticateWithPasskeyPRF(
-  _credentialIdB64?: string,
+  credentialIdB64?: string,
 ): Promise<{ masterSeed: Uint8Array; credentialId: Uint8Array }> {
   if (!window.PublicKeyCredential) throw new Error('WebAuthn not supported');
 
   const challenge = crypto.getRandomValues(new Uint8Array(32));
 
+  // Use specific credential ID when available — this tells Chrome to use the
+  // local authenticator (PIN / biometric) for that passkey instead of falling
+  // back to the cross-device QR flow.
+  const allowCredentials: PublicKeyCredentialDescriptor[] = [];
+  if (credentialIdB64) {
+    try {
+      allowCredentials.push({
+        type: 'public-key',
+        id: b64uDecode(credentialIdB64),
+        transports: ['internal', 'hybrid'],
+      });
+    } catch {
+      // malformed stored ID — fall through with empty list
+    }
+  }
+
   const assertion = await navigator.credentials.get({
     publicKey: {
       challenge,
       rpId: getApexDomain(),
-      allowCredentials: [], // empty = show local passkey picker (no QR code)
+      allowCredentials, // specific ID = local PIN prompt; empty = QR
       userVerification: 'required',
       extensions: {
         prf: { eval: { first: PRF_SALT } },

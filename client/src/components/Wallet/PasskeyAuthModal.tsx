@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { Fingerprint, Snowflake, QrCode, X, AlertTriangle, Loader, CheckCircle } from 'lucide-react';
-import { registerPasskeyWithPRF, authenticateWithPasskeyPRF, b64uEncodePasskey, isPlatformAuthenticatorAvailable } from '@/lib/passkeyService';
+import { registerPasskeyWithPRF, authenticateWithPasskeyPRF, b64uEncodePasskey } from '@/lib/passkeyService';
 import {
   createWalletFromPasskey,
   createWatchOnlyWallet,
@@ -66,7 +66,7 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
   async function handleCreateWallet(migrateWithPassword?: string) {
     setError('');
     setStep('creating');
-    setStatus('Checking device…');
+    setStatus('Authenticating…');
     try {
       const rpId = window.location.hostname.split('.').slice(-2).join('.') || window.location.hostname;
 
@@ -76,32 +76,17 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
         setStep('unlocking');
         setStatus('Authenticating…');
 
-        // PRF only works with a local platform authenticator (Touch ID / Windows Hello /
-        // Android biometric). On Linux desktop or any device without one, Chrome falls
-        // back to cross-device QR which does NOT support PRF. Detect this early and
-        // route straight to password so the user isn't shown a useless QR code.
-        const hasPlatformAuth = await isPlatformAuthenticatorAvailable();
-        if (!hasPlatformAuth) {
-          setError(
-            'This device doesn\'t have a biometric authenticator (fingerprint / Face ID). ' +
-            'Passkey PRF requires local biometrics — please use your wallet password on this device.'
-          );
-          setStep('use-password');
-          return;
-        }
-
         const storedCredentialIdB64 = await getWalletCredentialId(userId);
         try {
-          const { masterSeed, credentialId } = await authenticateWithPasskeyPRF();
+          // Pass stored ID so Chrome uses the local PIN prompt instead of QR
+          const { masterSeed, credentialId } = await authenticateWithPasskeyPRF(storedCredentialIdB64 ?? undefined);
 
-          // Verify the user picked the right passkey before attempting decryption.
-          // Compare assertion.rawId (what Chrome actually used) vs stored ID.
+          // Verify the right passkey was used before attempting decryption
           if (storedCredentialIdB64) {
             const returnedB64 = b64uEncodePasskey(credentialId);
             if (returnedB64 !== storedCredentialIdB64) {
               setError(
-                'Wrong passkey selected. You have multiple passkeys for this site — please select the one you used when setting up this wallet. ' +
-                'You can delete the old one at chrome://password-manager/passkeys and try again, or use your wallet password below.'
+                'Wrong passkey selected. Please try again and select the correct passkey, or use your wallet password below.'
               );
               setStep('use-password');
               return;
@@ -117,20 +102,33 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
           setStep('done');
           onSuccess(masterSeed, wallet);
         } catch (authErr: any) {
-          // OperationError = AES-GCM decryption failed (wrong passkey — shouldn't reach here
-          //                  now that we check ID first, but kept as safety net)
-          // NotAllowedError = user cancelled the biometric prompt
           if (authErr?.name === 'OperationError') {
+            // AES-GCM decryption failed — safety net, shouldn't reach here after ID check
             setError('Decryption failed — the selected passkey doesn\'t match this wallet. Use your wallet password instead.');
             setStep('use-password');
+          } else if (authErr?.name === 'NotAllowedError' && storedCredentialIdB64) {
+            // Stored ID caused Chrome to look for a specific passkey it couldn't find
+            // locally (showed QR instead of PIN prompt) and user cancelled.
+            // Retry with empty allowCredentials so user can pick from the full list.
+            setStatus('Retrying — please select your passkey from the list…');
+            try {
+              const { masterSeed: ms2, credentialId: cid2 } = await authenticateWithPasskeyPRF();
+              const wallet2 = await getCurrentWallet(userId);
+              if (!wallet2) throw new Error('Wallet record missing');
+              // Self-heal: store the ID that actually worked
+              await updateWalletCredentialId(wallet2.id, b64uEncodePasskey(cid2));
+              setStep('done');
+              onSuccess(ms2, wallet2);
+            } catch (retryErr: any) {
+              setError('Passkey authentication failed. Use your wallet password instead.');
+              setStep('use-password');
+            }
           } else if (authErr?.name === 'NotAllowedError') {
-            // User cancelled the QR/biometric prompt — go straight to password
             setError('Passkey authentication was cancelled. Use your wallet password instead.');
             setStep('use-password');
           } else if (authErr?.message?.includes('PRF extension not available')) {
-            // Passkey doesn't support PRF (old credential without PRF, or cross-device QR flow)
             setError(
-              'This passkey doesn\'t support the PRF extension required for key derivation. ' +
+              'This passkey doesn\'t support the required PRF extension. ' +
               'Please use your wallet password on this device.'
             );
             setStep('use-password');
