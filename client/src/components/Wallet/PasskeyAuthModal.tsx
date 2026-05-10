@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { Fingerprint, Snowflake, QrCode, X, AlertTriangle, Loader, CheckCircle } from 'lucide-react';
-import { registerPasskeyWithPRF, authenticateWithPasskeyPRF, b64uEncodePasskey } from '@/lib/passkeyService';
+import { registerPasskeyWithPRF, authenticateWithPasskeyPRF, b64uEncodePasskey, isPlatformAuthenticatorAvailable } from '@/lib/passkeyService';
 import {
   createWalletFromPasskey,
   createWatchOnlyWallet,
@@ -66,7 +66,7 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
   async function handleCreateWallet(migrateWithPassword?: string) {
     setError('');
     setStep('creating');
-    setStatus('Touch your fingerprint or face sensor…');
+    setStatus('Checking device…');
     try {
       const rpId = window.location.hostname.split('.').slice(-2).join('.') || window.location.hostname;
 
@@ -75,6 +75,21 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
       if (existingType === 'passkey') {
         setStep('unlocking');
         setStatus('Authenticating…');
+
+        // PRF only works with a local platform authenticator (Touch ID / Windows Hello /
+        // Android biometric). On Linux desktop or any device without one, Chrome falls
+        // back to cross-device QR which does NOT support PRF. Detect this early and
+        // route straight to password so the user isn't shown a useless QR code.
+        const hasPlatformAuth = await isPlatformAuthenticatorAvailable();
+        if (!hasPlatformAuth) {
+          setError(
+            'This device doesn\'t have a biometric authenticator (fingerprint / Face ID). ' +
+            'Passkey PRF requires local biometrics — please use your wallet password on this device.'
+          );
+          setStep('use-password');
+          return;
+        }
+
         const storedCredentialIdB64 = await getWalletCredentialId(userId);
         try {
           const { masterSeed, credentialId } = await authenticateWithPasskeyPRF();
@@ -109,8 +124,16 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
             setError('Decryption failed — the selected passkey doesn\'t match this wallet. Use your wallet password instead.');
             setStep('use-password');
           } else if (authErr?.name === 'NotAllowedError') {
-            setError('Authentication cancelled');
-            setStep('error');
+            // User cancelled the QR/biometric prompt — go straight to password
+            setError('Passkey authentication was cancelled. Use your wallet password instead.');
+            setStep('use-password');
+          } else if (authErr?.message?.includes('PRF extension not available')) {
+            // Passkey doesn't support PRF (old credential without PRF, or cross-device QR flow)
+            setError(
+              'This passkey doesn\'t support the PRF extension required for key derivation. ' +
+              'Please use your wallet password on this device.'
+            );
+            setStep('use-password');
           } else {
             throw authErr;
           }
