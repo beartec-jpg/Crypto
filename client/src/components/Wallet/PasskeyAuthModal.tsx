@@ -43,8 +43,9 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
   const [error, setError] = useState('');
   const [legacyPassword, setLegacyPassword] = useState('');
   const [fallbackPassword, setFallbackPassword] = useState('');
+  const [showPasskeyRetry, setShowPasskeyRetry] = useState(false);
 
-  // ── Password fallback (when passkey unavailable on this device) ─────────────
+  // ── Password fallback (when passkey unavailable on this device) ————————————
   async function handlePasswordFallback() {
     setError('');
     setStep('creating');
@@ -53,6 +54,8 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
       const wallet = await getCurrentWallet(userId);
       if (!wallet) throw new Error('No wallet found');
       await unlockWallet(wallet.id, fallbackPassword);
+      // Clear stale credential ID so next passkey attempt uses full picker
+      updateWalletCredentialId(wallet.id, '').catch(() => {});
       // Mark session as authenticated so security requirement checks pass
       sessionStorage.setItem('passkey_authenticated', 'true');
       sessionStorage.setItem('passkey_auth_time', Date.now().toString());
@@ -60,6 +63,36 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
       onSuccess(null, wallet);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Incorrect password');
+      setStep('use-password');
+    }
+  }
+
+  // ── Try passkey with empty allowCredentials (full picker) ———————————————
+  async function handleTryPasskeyList() {
+    setStep('unlocking');
+    setStatus('Select your passkey from the list…');
+    try {
+      // No credential ID — Chrome shows full local passkey picker
+      const { masterSeed, credentialId } = await authenticateWithPasskeyPRF();
+      const wallet = await getCurrentWallet(userId);
+      if (!wallet) throw new Error('Wallet record missing');
+      // Self-heal: store the ID that actually worked
+      await updateWalletCredentialId(wallet.id, b64uEncodePasskey(credentialId));
+      setStep('done');
+      onSuccess(masterSeed, wallet);
+    } catch (err: any) {
+      setShowPasskeyRetry(true);
+      if (err?.name === 'NotAllowedError') {
+        setError('Passkey selection cancelled. You can try again or use your password below.');
+      } else if (err?.name === 'OperationError') {
+        setError('Decryption failed — the selected passkey doesn\'t match this wallet. Please use your password.');
+        setShowPasskeyRetry(false);
+      } else if (err?.message?.includes('PRF extension not available')) {
+        setError('This passkey doesn\'t support the required extension. Please use your password on this device.');
+        setShowPasskeyRetry(false);
+      } else {
+        setError(err?.message || 'Passkey authentication failed. Please use your password.');
+      }
       setStep('use-password');
     }
   }
@@ -88,6 +121,7 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
               setError(
                 'Wrong passkey selected. Please try again and select the correct passkey, or use your wallet password below.'
               );
+              setShowPasskeyRetry(true);
               setStep('use-password');
               return;
             }
@@ -96,35 +130,27 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
           const wallet = await getCurrentWallet(userId);
           if (!wallet) throw new Error('Wallet record missing');
 
-          // Self-heal: store the actual credential ID from this auth so next time matches
+          // Self-heal: store the actual credential ID from this auth
           await updateWalletCredentialId(wallet.id, b64uEncodePasskey(credentialId));
 
           setStep('done');
           onSuccess(masterSeed, wallet);
         } catch (authErr: any) {
           if (authErr?.name === 'OperationError') {
-            // AES-GCM decryption failed — safety net, shouldn't reach here after ID check
+            // AES-GCM decryption failed — safety net
             setError('Decryption failed — the selected passkey doesn\'t match this wallet. Use your wallet password instead.');
             setStep('use-password');
-          } else if (authErr?.name === 'NotAllowedError' && storedCredentialIdB64) {
-            // Stored ID caused Chrome to look for a specific passkey it couldn't find
-            // locally (showed QR instead of PIN prompt) and user cancelled.
-            // Retry with empty allowCredentials so user can pick from the full list.
-            setStatus('Retrying — please select your passkey from the list…');
-            try {
-              const { masterSeed: ms2, credentialId: cid2 } = await authenticateWithPasskeyPRF();
-              const wallet2 = await getCurrentWallet(userId);
-              if (!wallet2) throw new Error('Wallet record missing');
-              // Self-heal: store the ID that actually worked
-              await updateWalletCredentialId(wallet2.id, b64uEncodePasskey(cid2));
-              setStep('done');
-              onSuccess(ms2, wallet2);
-            } catch (retryErr: any) {
-              setError('Passkey authentication failed. Use your wallet password instead.');
-              setStep('use-password');
-            }
           } else if (authErr?.name === 'NotAllowedError') {
-            setError('Passkey authentication was cancelled. Use your wallet password instead.');
+            // Chrome showed QR (couldn\'t find the specific passkey locally) and user cancelled.
+            // Clear the stale stored ID so next attempt uses the full picker.
+            getCurrentWallet(userId).then(w => {
+              if (w) updateWalletCredentialId(w.id, '').catch(() => {});
+            }).catch(() => {});
+            setShowPasskeyRetry(true);
+            setError(
+              'Your passkey wasn\'t found on this device automatically. ' +
+              'Try selecting it from the list, or use your wallet password.'
+            );
             setStep('use-password');
           } else if (authErr?.message?.includes('PRF extension not available')) {
             setError(
@@ -293,6 +319,17 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
             </div>
           </div>
           {error && <p className="text-xs text-red-400 bg-red-900/20 rounded-xl p-3">{error}</p>}
+          {showPasskeyRetry && (
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={handleTryPasskeyList}
+                className="w-full py-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-semibold flex items-center justify-center gap-2"
+              >
+                <Fingerprint size={18} /> Select passkey from list
+              </button>
+              <p className="text-center text-xs text-gray-500">— or use your password below —</p>
+            </div>
+          )}
           <div>
             <label className="block text-xs text-gray-400 mb-1">Wallet password</label>
             <input
@@ -315,7 +352,7 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
           <p className="text-xs text-gray-500 text-center">
             You can re-register your passkey from Settings after logging in.
           </p>
-          <button onClick={() => { setStep('choose'); setError(''); setFallbackPassword(''); }} className="text-gray-500 text-xs text-center">Back</button>
+          <button onClick={() => { setStep('choose'); setError(''); setFallbackPassword(''); setShowPasskeyRetry(false); }} className="text-gray-500 text-xs text-center">Back</button>
         </div>
       </div>
     );
