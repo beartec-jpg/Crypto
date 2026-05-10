@@ -75,11 +75,25 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
         setStep('unlocking');
         setStatus('Authenticating…');
         const credentialIdB64 = await getWalletCredentialId(userId);
-        const masterSeed = await authenticateWithPasskeyPRF(credentialIdB64 ?? undefined);
-        const wallet = await getCurrentWallet(userId);
-        if (!wallet) throw new Error('Wallet record missing');
-        setStep('done');
-        onSuccess(masterSeed, wallet);
+        try {
+          const masterSeed = await authenticateWithPasskeyPRF(credentialIdB64 ?? undefined);
+          const wallet = await getCurrentWallet(userId);
+          if (!wallet) throw new Error('Wallet record missing');
+          setStep('done');
+          onSuccess(masterSeed, wallet);
+        } catch (authErr: any) {
+          // OperationError = AES-GCM decryption failed (wrong passkey selected)
+          // NotAllowedError = cancelled
+          if (authErr?.name === 'OperationError') {
+            setError('Decryption failed — the selected passkey doesn\'t match this wallet. Use your wallet password instead.');
+            setStep('use-password');
+          } else if (authErr?.name === 'NotAllowedError') {
+            setError('Authentication cancelled');
+            setStep('error');
+          } else {
+            throw authErr;
+          }
+        }
         return;
       }
 

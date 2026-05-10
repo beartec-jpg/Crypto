@@ -333,35 +333,28 @@ export async function registerPasskeyWithPRF(
  * Authenticate with an existing passkey and return the same 32-byte master seed.
  * Deterministic — same passkey + same PRF salt → same seed every time.
  *
- * We pass the specific credentialId so the browser authenticates with exactly
- * the right credential (and thus the right PRF output). We also restrict to
- * platform authenticators ('platform') to suppress the cross-device QR flow.
+ * We use empty allowCredentials so Chrome shows its local passkey picker
+ * (biometric prompt / password manager) instead of falling back to the
+ * cross-device QR code flow that happens when a specific ID isn't found locally.
+ * The credentialIdB64 param is ignored but kept for API compatibility.
  */
 export async function authenticateWithPasskeyPRF(
-  credentialIdB64?: string,
+  _credentialIdB64?: string,
 ): Promise<Uint8Array> {
   if (!window.PublicKeyCredential) throw new Error('WebAuthn not supported');
 
   const challenge = crypto.getRandomValues(new Uint8Array(32));
 
-  // Build allowCredentials only if we have a stored credential ID.
-  // Using the specific ID ensures we get the right PRF output.
-  const allowCredentials: PublicKeyCredentialDescriptor[] = credentialIdB64
-    ? [{ type: 'public-key', id: b64uDecode(credentialIdB64) }]
-    : [];
-
   const assertion = await navigator.credentials.get({
     publicKey: {
       challenge,
       rpId: getApexDomain(),
-      allowCredentials,
+      allowCredentials: [], // empty = use any locally stored passkey for this domain
       userVerification: 'required',
       extensions: {
         prf: { eval: { first: PRF_SALT } },
       } as AuthenticationExtensionsClientInputs,
     },
-    // Force platform authenticator (fingerprint/Face ID) — prevents cross-device QR flow
-    mediation: 'optional' as CredentialMediationRequirement,
   }) as PublicKeyCredential | null;
 
   if (!assertion) throw new Error('Passkey authentication cancelled');
