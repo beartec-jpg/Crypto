@@ -38,6 +38,12 @@ export default function SecuritySettings({ userId, walletId, walletEvmAddress, m
   const [migrateError, setMigrateError] = useState('');
   const [migrateSuccess, setMigrateSuccess] = useState(false);
 
+  // Re-register passkey on this device
+  const [reregPassword, setReregPassword] = useState('');
+  const [rereging, setRereging] = useState(false);
+  const [reregError, setReregError] = useState('');
+  const [reregSuccess, setReregSuccess] = useState(false);
+
   // Security scan
   const [scanResult, setScanResult] = useState<SecurityScanResult | null>(null);
   const [isScanning, setIsScanning] = useState(false);
@@ -103,6 +109,24 @@ export default function SecuritySettings({ userId, walletId, walletEvmAddress, m
       setMigrateError(e instanceof Error ? e.message : 'Migration failed');
     } finally {
       setMigrating(false);
+    }
+  };
+
+  // Re-register passkey: register a fresh passkey on this device and re-encrypt.
+  // Works because legacy wallets keep encryptedMnemonic+salt even after passkey migration.
+  const handleReregister = async () => {
+    setReregError('');
+    setRereging(true);
+    try {
+      const rpId = window.location.hostname.split('.').slice(-2).join('.') || window.location.hostname;
+      const { credentialId, masterSeed: newSeed } = await registerPasskeyWithPRF(userId);
+      await migrateToPasskey(userId, newSeed, credentialId, rpId, reregPassword);
+      setReregSuccess(true);
+      setReregPassword('');
+    } catch (e) {
+      setReregError(e instanceof Error ? e.message : 'Re-registration failed');
+    } finally {
+      setRereging(false);
     }
   };
 
@@ -187,18 +211,65 @@ export default function SecuritySettings({ userId, walletId, walletEvmAddress, m
       </div>
 
       {walletType === 'passkey' || masterSeed ? (
-        <div className="flex items-start gap-4 p-5 rounded-2xl bg-emerald-900/30 border border-emerald-700/40">
-          <div className="w-10 h-10 rounded-xl bg-emerald-600/20 flex items-center justify-center shrink-0">
-            <CheckCircle className="w-5 h-5 text-emerald-400" />
+        <>
+          <div className="flex items-start gap-4 p-5 rounded-2xl bg-emerald-900/30 border border-emerald-700/40">
+            <div className="w-10 h-10 rounded-xl bg-emerald-600/20 flex items-center justify-center shrink-0">
+              <CheckCircle className="w-5 h-5 text-emerald-400" />
+            </div>
+            <div>
+              <p className="font-semibold text-white">Passkey Secured</p>
+              <p className="text-sm text-emerald-300/80 mt-0.5">
+                Your keys are derived deterministically from your biometric passkey.
+                No seed phrase. No password. Backed by your cloud account.
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="font-semibold text-white">Passkey Secured</p>
-            <p className="text-sm text-emerald-300/80 mt-0.5">
-              Your keys are derived deterministically from your biometric passkey.
-              No seed phrase. No password. Backed by your cloud account.
-            </p>
-          </div>
-        </div>
+
+          {/* Re-register passkey on this device — shown when logged in via password (no masterSeed) */}
+          {!masterSeed && (
+            <div className="p-5 rounded-2xl bg-amber-900/20 border border-amber-700/40 space-y-4">
+              <div className="flex items-start gap-3">
+                <Fingerprint className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-amber-300">Register passkey on this device</p>
+                  <p className="text-sm text-amber-200/70 mt-0.5">
+                    You logged in with your password. To use passkey on this device, register it here —
+                    your addresses stay the same.
+                  </p>
+                </div>
+              </div>
+              {reregSuccess ? (
+                <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium">
+                  <CheckCircle className="w-4 h-4" /> Passkey registered on this device. Log out and back in to use it.
+                </div>
+              ) : (
+                <>
+                  {reregError && (
+                    <p className="text-xs text-red-400 bg-red-900/20 rounded-xl p-3">{reregError}</p>
+                  )}
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Current wallet password</label>
+                    <input
+                      type="password"
+                      value={reregPassword}
+                      onChange={e => setReregPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      className="w-full px-3 py-2 rounded-xl bg-gray-900 border border-gray-700 focus:border-amber-500 focus:outline-none text-sm"
+                    />
+                  </div>
+                  <button
+                    onClick={handleReregister}
+                    disabled={rereging || !reregPassword}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold disabled:opacity-50 transition-colors"
+                  >
+                    <Fingerprint className="w-4 h-4" />
+                    {rereging ? 'Touch your sensor…' : 'Register Passkey on This Device'}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </>
       ) : walletType === 'watch-only' ? (
         <div className="flex items-start gap-4 p-5 rounded-2xl bg-blue-900/30 border border-blue-700/40">
           <div className="w-10 h-10 rounded-xl bg-blue-600/20 flex items-center justify-center shrink-0">
