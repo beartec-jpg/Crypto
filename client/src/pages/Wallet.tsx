@@ -747,6 +747,7 @@ export default function WalletPage() {
                 <SettingsSection 
                   sovereignWallet={sovereignWallet} 
                   userId={userId}
+                  masterSeed={masterSeed}
                   onDeleteWallet={() => setShowDeleteConfirm(true)}
                 />
               )}
@@ -1074,10 +1075,12 @@ export default function WalletPage() {
 function SettingsSection({ 
   sovereignWallet, 
   userId,
+  masterSeed,
   onDeleteWallet 
 }: { 
   sovereignWallet: any; 
   userId: string;
+  masterSeed?: Uint8Array | null;
   onDeleteWallet: () => void;
 }) {
   const [showMnemonicWarning, setShowMnemonicWarning] = useState(false);
