@@ -445,59 +445,134 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
         </div>
 
         <div className="p-6 flex flex-col gap-4">
-          {/* Primary — passkey create/unlock */}
-          <button
-            onClick={async () => {
-              // Check if this is a legacy wallet — needs password before biometric
-              const type = await getWalletType(userId);
-              if (type === 'legacy') {
-                setStep('migrate-password');
-              } else {
-                handleCreateWallet();
-              }
+          <ChooseOptions
+            userId={userId}
+            onPasskey={() => {
+              getWalletType(userId).then(type => {
+                if (type === 'legacy') setStep('migrate-password');
+                else handleCreateWallet();
+              });
             }}
-            className="w-full flex items-start gap-4 p-5 rounded-2xl bg-gradient-to-br from-emerald-900/60 to-cyan-900/60
-                       hover:from-emerald-800/60 hover:to-cyan-800/60 border border-emerald-700/40 text-left transition-colors"
-          >
-            <div className="w-10 h-10 rounded-xl bg-emerald-600/20 flex items-center justify-center shrink-0 mt-0.5">
-              <Fingerprint size={22} className="text-emerald-400" />
-            </div>
-            <div>
-              <p className="text-white font-semibold">Create / Open with Passkey</p>
-              <p className="text-gray-400 text-sm mt-0.5">
-                One biometric tap. Backed by Google or Apple account. No seed phrase.
-              </p>
-            </div>
-          </button>
-
-          {/* Secondary — cold signer */}
-          <button
-            onClick={() => setStep('scanning')}
-            className="w-full flex items-start gap-4 p-5 rounded-2xl bg-gray-800 hover:bg-gray-750
-                       border border-gray-700 text-left transition-colors"
-          >
-            <div className="w-10 h-10 rounded-xl bg-blue-600/20 flex items-center justify-center shrink-0 mt-0.5">
-              <Snowflake size={22} className="text-blue-400" />
-            </div>
-            <div>
-              <p className="text-white font-semibold">Import from Cold Signer</p>
-              <p className="text-gray-400 text-sm mt-0.5">
-                Keys stay offline. Watch balance here, sign on your air-gapped device.
-              </p>
-            </div>
-          </button>
-
-          <p className="text-center text-gray-600 text-xs mt-2">
-            No seed phrases. No passwords. Nothing to lose.
-          </p>
-          <button
-            onClick={() => { setStep('use-password'); setError(''); }}
-            className="text-gray-500 hover:text-gray-300 text-xs text-center underline underline-offset-2"
-          >
-            Passkey not working? Use wallet password
-          </button>
+            onPassword={() => { setStep('use-password'); setShowPasskeyRetry(false); setError(''); }}
+            onColdSigner={() => setStep('scanning')}
+          />
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Async choose panel — shows password-first for existing wallets ────────────
+function ChooseOptions({
+  userId,
+  onPasskey,
+  onPassword,
+  onColdSigner,
+}: {
+  userId: string;
+  onPasskey: () => void;
+  onPassword: () => void;
+  onColdSigner: () => void;
+}) {
+  const [walletType, setWalletType] = useState<string | null>(null);
+
+  useState(() => {
+    getWalletType(userId).then(t => setWalletType(t ?? 'none')).catch(() => setWalletType('none'));
+  });
+
+  // Existing passkey wallet — show password as primary, passkey as secondary
+  // (passkey may show QR on devices where the local authenticator isn't accessible)
+  if (walletType === 'passkey') {
+    return (
+      <>
+        {/* Primary — password */}
+        <button
+          onClick={onPassword}
+          className="w-full flex items-start gap-4 p-5 rounded-2xl bg-gradient-to-br from-amber-900/60 to-orange-900/60
+                     hover:from-amber-800/60 hover:to-orange-800/60 border border-amber-700/40 text-left transition-colors"
+        >
+          <div className="w-10 h-10 rounded-xl bg-amber-600/20 flex items-center justify-center shrink-0 mt-0.5">
+            <AlertTriangle size={22} className="text-amber-400" />
+          </div>
+          <div>
+            <p className="text-white font-semibold">Unlock with Password</p>
+            <p className="text-gray-400 text-sm mt-0.5">
+              Use your wallet password. Works on any device.
+            </p>
+          </div>
+        </button>
+
+        {/* Secondary — passkey */}
+        <button
+          onClick={onPasskey}
+          className="w-full flex items-start gap-4 p-5 rounded-2xl bg-gray-800 hover:bg-gray-750
+                     border border-gray-700 text-left transition-colors"
+        >
+          <div className="w-10 h-10 rounded-xl bg-emerald-600/20 flex items-center justify-center shrink-0 mt-0.5">
+            <Fingerprint size={22} className="text-emerald-400" />
+          </div>
+          <div>
+            <p className="text-white font-semibold">Use Passkey instead</p>
+            <p className="text-gray-400 text-sm mt-0.5">
+              Biometric / PIN unlock. Requires a device where your passkey is stored locally.
+            </p>
+          </div>
+        </button>
+
+        <button
+          onClick={onColdSigner}
+          className="text-gray-500 hover:text-gray-300 text-xs text-center underline underline-offset-2"
+        >
+          Import from Cold Signer
+        </button>
+      </>
+    );
+  }
+
+  // New wallet / legacy wallet — passkey-first
+  return (
+    <>
+      <button
+        onClick={onPasskey}
+        className="w-full flex items-start gap-4 p-5 rounded-2xl bg-gradient-to-br from-emerald-900/60 to-cyan-900/60
+                   hover:from-emerald-800/60 hover:to-cyan-800/60 border border-emerald-700/40 text-left transition-colors"
+      >
+        <div className="w-10 h-10 rounded-xl bg-emerald-600/20 flex items-center justify-center shrink-0 mt-0.5">
+          <Fingerprint size={22} className="text-emerald-400" />
+        </div>
+        <div>
+          <p className="text-white font-semibold">Create / Open with Passkey</p>
+          <p className="text-gray-400 text-sm mt-0.5">
+            One biometric tap. Backed by Google or Apple account. No seed phrase.
+          </p>
+        </div>
+      </button>
+
+      <button
+        onClick={onColdSigner}
+        className="w-full flex items-start gap-4 p-5 rounded-2xl bg-gray-800 hover:bg-gray-750
+                   border border-gray-700 text-left transition-colors"
+      >
+        <div className="w-10 h-10 rounded-xl bg-blue-600/20 flex items-center justify-center shrink-0 mt-0.5">
+          <Snowflake size={22} className="text-blue-400" />
+        </div>
+        <div>
+          <p className="text-white font-semibold">Import from Cold Signer</p>
+          <p className="text-gray-400 text-sm mt-0.5">
+            Keys stay offline. Watch balance here, sign on your air-gapped device.
+          </p>
+        </div>
+      </button>
+
+      <p className="text-center text-gray-600 text-xs mt-2">
+        No seed phrases. No passwords. Nothing to lose.
+      </p>
+      <button
+        onClick={onPassword}
+        className="text-gray-500 hover:text-gray-300 text-xs text-center underline underline-offset-2"
+      >
+        Passkey not working? Use wallet password
+      </button>
+    </>
   );
 }
