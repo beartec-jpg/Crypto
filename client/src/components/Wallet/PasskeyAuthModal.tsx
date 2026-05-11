@@ -44,6 +44,14 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
   const [legacyPassword, setLegacyPassword] = useState('');
   const [fallbackPassword, setFallbackPassword] = useState('');
   const [showPasskeyRetry, setShowPasskeyRetry] = useState(false);
+  // Fetched once on mount — drives all password-related UI gating
+  const [walletType, setWalletType] = useState<string | null>(null);
+
+  useEffect(() => {
+    getWalletType(userId).then(t => setWalletType(t ?? 'none')).catch(() => setWalletType('none'));
+  }, [userId]);
+
+  const isLegacy = walletType === 'legacy';
 
   // ── Password fallback (when passkey unavailable on this device) ————————————
   async function handlePasswordFallback() {
@@ -368,12 +376,14 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
           >
             Try Again
           </button>
-          <button
-            onClick={() => { setStep('use-password'); setError(''); }}
-            className="w-full py-3 rounded-xl border border-amber-700/40 text-amber-400 text-sm hover:bg-amber-900/20"
-          >
-            Use wallet password instead
-          </button>
+          {isLegacy && (
+            <button
+              onClick={() => { setStep('use-password'); setError(''); }}
+              className="w-full py-3 rounded-xl border border-amber-700/40 text-amber-400 text-sm hover:bg-amber-900/20"
+            >
+              Use wallet password instead
+            </button>
+          )}
           <button onClick={onClose} className="text-gray-500 text-sm text-center">Cancel</button>
         </div>
       </div>
@@ -435,14 +445,12 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
 
         <div className="p-6 flex flex-col gap-4">
           <ChooseOptions
-            userId={userId}
+            walletType={walletType}
             error={error}
             onPasskey={() => {
               setError('');
-              getWalletType(userId).then(type => {
-                if (type === 'legacy') setStep('migrate-password');
-                else handleCreateWallet();
-              });
+              if (walletType === 'legacy') setStep('migrate-password');
+              else handleCreateWallet();
             }}
             onPassword={() => { setStep('use-password'); setShowPasskeyRetry(false); setError(''); }}
             onColdSigner={() => setStep('scanning')}
@@ -453,26 +461,21 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
   );
 }
 
-// ── Async choose panel — auto-fires passkey for existing passkey wallets ──────
+// ── Choose panel — walletType drives layout; parent fetches it ────────────────
 function ChooseOptions({
-  userId,
+  walletType,
   error,
   onPasskey,
   onPassword,
   onColdSigner,
 }: {
-  userId: string;
+  walletType: string | null;
   error: string;
   onPasskey: () => void;
   onPassword: () => void;
   onColdSigner: () => void;
 }) {
-  const [walletType, setWalletType] = useState<string | null>(null);
   const [autoFired, setAutoFired] = useState(false);
-
-  useEffect(() => {
-    getWalletType(userId).then(t => setWalletType(t ?? 'none')).catch(() => setWalletType('none'));
-  }, [userId]);
 
   // Auto-fire passkey for existing passkey wallets — no button press needed
   useEffect(() => {
@@ -482,10 +485,9 @@ function ChooseOptions({
     }
   }, [walletType, autoFired, error, onPasskey]);
 
-  // Passkey wallet — spinner while waiting, or retry button after cancellation
+  // Passkey wallet — spinner while Chrome prompts, or retry after cancellation
   if (walletType === null || walletType === 'passkey') {
     if (error) {
-      // Cancelled or failed — show manual retry, not auto-fire
       return (
         <div className="flex flex-col gap-4">
           <p className="text-amber-300 text-sm text-center">{error}</p>
@@ -506,7 +508,7 @@ function ChooseOptions({
     );
   }
 
-  // New wallet / legacy wallet — passkey-first
+  // Legacy / new wallet — passkey-first
   return (
     <>
       <button
@@ -518,9 +520,13 @@ function ChooseOptions({
           <Fingerprint size={22} className="text-emerald-400" />
         </div>
         <div>
-          <p className="text-white font-semibold">Create / Open with Passkey</p>
+          <p className="text-white font-semibold">
+            {walletType === 'legacy' ? 'Upgrade to Passkey' : 'Create Wallet with Passkey'}
+          </p>
           <p className="text-gray-400 text-sm mt-0.5">
-            One biometric tap. Backed by Google or Apple account. No seed phrase.
+            {walletType === 'legacy'
+              ? 'Keep your existing addresses. Passkey replaces your password.'
+              : 'One biometric tap. Backed by Google or Apple account. No seed phrase.'}
           </p>
         </div>
       </button>
@@ -541,15 +547,15 @@ function ChooseOptions({
         </div>
       </button>
 
-      <p className="text-center text-gray-600 text-xs mt-2">
-        No seed phrases. No passwords. Nothing to lose.
-      </p>
-      <button
-        onClick={onPassword}
-        className="text-gray-500 hover:text-gray-300 text-xs text-center underline underline-offset-2"
-      >
-        Passkey not working? Use wallet password
-      </button>
+      {/* Password fallback — legacy wallets only */}
+      {walletType === 'legacy' && (
+        <button
+          onClick={onPassword}
+          className="text-gray-500 hover:text-gray-300 text-xs text-center underline underline-offset-2"
+        >
+          Use existing wallet password instead
+        </button>
+      )}
     </>
   );
 }
