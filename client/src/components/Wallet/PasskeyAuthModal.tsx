@@ -1,7 +1,7 @@
 // PasskeyAuthModal — single-tap wallet creation + cold signer import.
 // No mnemonic. No password. One biometric tap = wallet ready, backed by Google/Apple.
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Fingerprint, Snowflake, QrCode, X, AlertTriangle, Loader, CheckCircle } from 'lucide-react';
 import { registerPasskeyWithPRF, authenticateWithPasskeyPRF, b64uEncodePasskey } from '@/lib/passkeyService';
 import {
@@ -462,7 +462,7 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
   );
 }
 
-// ── Async choose panel — shows password-first for existing wallets ────────────
+// ── Async choose panel — auto-fires passkey for existing passkey wallets ──────
 function ChooseOptions({
   userId,
   onPasskey,
@@ -475,56 +475,42 @@ function ChooseOptions({
   onColdSigner: () => void;
 }) {
   const [walletType, setWalletType] = useState<string | null>(null);
+  const [autoFired, setAutoFired] = useState(false);
 
-  useState(() => {
+  useEffect(() => {
     getWalletType(userId).then(t => setWalletType(t ?? 'none')).catch(() => setWalletType('none'));
-  });
+  }, [userId]);
 
-  // Existing passkey wallet — show password as primary, passkey as secondary
-  // (passkey may show QR on devices where the local authenticator isn't accessible)
-  if (walletType === 'passkey') {
+  // Auto-fire passkey for existing passkey wallets — no button press needed
+  useEffect(() => {
+    if (walletType === 'passkey' && !autoFired) {
+      setAutoFired(true);
+      onPasskey();
+    }
+  }, [walletType, autoFired, onPasskey]);
+
+  // While loading wallet type (or after auto-firing passkey), show spinner
+  if (walletType === null || walletType === 'passkey') {
     return (
       <>
-        {/* Primary — password */}
-        <button
-          onClick={onPassword}
-          className="w-full flex items-start gap-4 p-5 rounded-2xl bg-gradient-to-br from-amber-900/60 to-orange-900/60
-                     hover:from-amber-800/60 hover:to-orange-800/60 border border-amber-700/40 text-left transition-colors"
-        >
-          <div className="w-10 h-10 rounded-xl bg-amber-600/20 flex items-center justify-center shrink-0 mt-0.5">
-            <AlertTriangle size={22} className="text-amber-400" />
-          </div>
-          <div>
-            <p className="text-white font-semibold">Unlock with Password</p>
-            <p className="text-gray-400 text-sm mt-0.5">
-              Use your wallet password. Works on any device.
-            </p>
-          </div>
-        </button>
-
-        {/* Secondary — passkey */}
-        <button
-          onClick={onPasskey}
-          className="w-full flex items-start gap-4 p-5 rounded-2xl bg-gray-800 hover:bg-gray-750
-                     border border-gray-700 text-left transition-colors"
-        >
-          <div className="w-10 h-10 rounded-xl bg-emerald-600/20 flex items-center justify-center shrink-0 mt-0.5">
-            <Fingerprint size={22} className="text-emerald-400" />
-          </div>
-          <div>
-            <p className="text-white font-semibold">Use Passkey instead</p>
-            <p className="text-gray-400 text-sm mt-0.5">
-              Biometric / PIN unlock. Requires a device where your passkey is stored locally.
-            </p>
-          </div>
-        </button>
-
-        <button
-          onClick={onColdSigner}
-          className="text-gray-500 hover:text-gray-300 text-xs text-center underline underline-offset-2"
-        >
-          Import from Cold Signer
-        </button>
+        <div className="flex flex-col items-center gap-3 py-4">
+          <Loader size={32} className="text-emerald-400 animate-spin" />
+          <p className="text-gray-400 text-sm">Waiting for passkey…</p>
+        </div>
+        <div className="flex flex-col gap-2 pt-2 border-t border-gray-800">
+          <button
+            onClick={onPassword}
+            className="text-gray-500 hover:text-amber-400 text-xs text-center transition-colors"
+          >
+            Use wallet password instead
+          </button>
+          <button
+            onClick={onColdSigner}
+            className="text-gray-600 hover:text-gray-300 text-xs text-center"
+          >
+            Import from Cold Signer
+          </button>
+        </div>
       </>
     );
   }
