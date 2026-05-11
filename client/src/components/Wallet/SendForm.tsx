@@ -10,7 +10,7 @@ import {
   getSecuritySettings,
   type SecurityAction 
 } from '@/lib/securityService';
-import { authenticateWithPasskey } from '@/lib/passkeyService';
+import { authenticateWithPasskey, authenticateWithPasskeyPRF } from '@/lib/passkeyService';
 import { 
   estimateGas, 
   checkSufficientBalance,
@@ -24,7 +24,7 @@ import {
   SUPPORTED_SEND_CHAINS,
   type GasEstimate,
 } from '@/lib/sendService';
-import { signTransaction, isBackupVerified } from '@/lib/walletService';
+import { signTransaction, isBackupVerified, getWalletCredentialId } from '@/lib/walletService';
 import { getPrice, formatUsd } from '@/lib/priceService';
 import { fetchChainBalance } from '@/lib/balanceService';
 import { 
@@ -228,9 +228,11 @@ export default function SendForm({
     loadTokens();
   }, [sovereignWallet?.id, selectedChain, tokenNetwork]);
 
+  // Keep qbtcSettings.network in sync with the wallet-level network toggle
   useEffect(() => {
-    setQbtcSettings(getQBTCRpcSettings());
-  }, [selectedChain]);
+    const next = setQBTCRpcSettings({ network: tokenNetwork === 'mainnet' ? 'mainnet' : 'testnet' });
+    setQbtcSettings(next);
+  }, [tokenNetwork]);
 
   // Fetch balance when token or QBTC source changes
   useEffect(() => {
@@ -491,8 +493,19 @@ export default function SendForm({
       }
     }
     
-    // Passkey wallet: skip password modal, derive keys from masterSeed directly
+    // Passkey wallet: require a fresh passkey assertion before signing
     if (masterSeed) {
+      try {
+        const storedCredId = await getWalletCredentialId(userId);
+        await authenticateWithPasskeyPRF(storedCredId ?? undefined);
+      } catch (authErr: any) {
+        if (authErr?.name === 'NotAllowedError') {
+          setError('Transaction cancelled — passkey confirmation is required to send.');
+        } else {
+          setError('Passkey confirmation failed. Please try again.');
+        }
+        return;
+      }
       await handlePasswordSubmit('');
       return;
     }
@@ -1018,86 +1031,11 @@ export default function SendForm({
         </div>
 
         {selectedChain === 'qbtc' && (
-          <div className="space-y-3 p-4 rounded-xl border border-cyan-500/30 bg-cyan-500/5">
-            <p className="text-sm font-medium text-cyan-200">QuantumBTC Node Settings</p>
-            <p className="text-xs text-gray-500">Transactions are routed through your API proxy. These settings are for display only.</p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Network</label>
-                <select
-                  value={qbtcSettings.network}
-                  onChange={(e) => {
-                    const next = setQBTCRpcSettings({ network: e.target.value as 'testnet' | 'mainnet' });
-                    setQbtcSettings(next);
-                  }}
-                  className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700"
-                >
-                  <option value="testnet">Testnet (qbtct1...)</option>
-                  <option value="mainnet">Mainnet (qbtc1...)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">RPC URL</label>
-                <input
-                  value={qbtcSettings.rpcUrl}
-                  onChange={(e) => {
-                    const next = setQBTCRpcSettings({ rpcUrl: e.target.value });
-                    setQbtcSettings(next);
-                  }}
-                  placeholder="/api/qbtc/rpc"
-                  autoComplete="off"
-                  className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">RPC Username (optional)</label>
-                <input
-                  value={qbtcSettings.username || ''}
-                  onChange={(e) => {
-                    const next = setQBTCRpcSettings({ username: e.target.value || undefined });
-                    setQbtcSettings(next);
-                  }}
-                  autoComplete="off"
-                  data-1p-ignore
-                  data-lpignore="true"
-                  className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">RPC Password (optional)</label>
-                <input
-                  type="password"
-                  value={qbtcSettings.password || ''}
-                  onChange={(e) => {
-                    const next = setQBTCRpcSettings({ password: e.target.value || undefined });
-                    setQbtcSettings(next);
-                  }}
-                  autoComplete="new-password"
-                  data-1p-ignore
-                  data-lpignore="true"
-                  className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Fee Rate (sat/vB, min 5)</label>
-                <input
-                  type="number"
-                  min={5}
-                  value={qbtcSettings.feeRate || 5}
-                  onChange={(e) => {
-                    const next = setQBTCRpcSettings({ feeRate: Math.max(5, Number(e.target.value || 5)) });
-                    setQbtcSettings(next);
-                  }}
-                  autoComplete="off"
-                  className="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700"
-                />
-              </div>
-            </div>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 shrink-0" />
+            <span className="text-xs text-cyan-300">
+              QuantumBTC · {qbtcSettings.network === 'mainnet' ? 'Mainnet' : 'Testnet'}
+            </span>
           </div>
         )}
 
