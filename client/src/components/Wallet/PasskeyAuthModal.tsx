@@ -137,27 +137,16 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
           onSuccess(masterSeed, wallet);
         } catch (authErr: any) {
           if (authErr?.name === 'OperationError') {
-            // AES-GCM decryption failed — safety net
-            setError('Decryption failed — the selected passkey doesn\'t match this wallet. Use your wallet password instead.');
-            setStep('use-password');
+            // AES-GCM decryption failed — passkey doesn't match wallet record
+            setError('Decryption failed — the selected passkey doesn\'t match this wallet. Re-register your passkey in Settings, or use your wallet password.');
+            setStep('error');
           } else if (authErr?.name === 'NotAllowedError') {
-            // Chrome showed QR (couldn\'t find the specific passkey locally) and user cancelled.
-            // Clear the stale stored ID so next attempt uses the full picker.
-            getCurrentWallet(userId).then(w => {
-              if (w) updateWalletCredentialId(w.id, '').catch(() => {});
-            }).catch(() => {});
-            setShowPasskeyRetry(true);
-            setError(
-              'Your passkey wasn\'t found on this device automatically. ' +
-              'Try selecting it from the list, or use your wallet password.'
-            );
-            setStep('use-password');
+            // User cancelled the passkey prompt — go back to choose so it auto-fires again
+            setError('Passkey cancelled. Tap the button below to try again.');
+            setStep('choose');
           } else if (authErr?.message?.includes('PRF extension not available')) {
-            setError(
-              'This passkey doesn\'t support the required PRF extension. ' +
-              'Please use your wallet password on this device.'
-            );
-            setStep('use-password');
+            setError('This passkey doesn\'t support the required PRF extension. Please use your wallet password.');
+            setStep('error');
           } else {
             throw authErr;
           }
@@ -447,7 +436,9 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
         <div className="p-6 flex flex-col gap-4">
           <ChooseOptions
             userId={userId}
+            error={error}
             onPasskey={() => {
+              setError('');
               getWalletType(userId).then(type => {
                 if (type === 'legacy') setStep('migrate-password');
                 else handleCreateWallet();
@@ -465,11 +456,13 @@ export default function PasskeyAuthModal({ userId, onClose, onSuccess }: Passkey
 // ── Async choose panel — auto-fires passkey for existing passkey wallets ──────
 function ChooseOptions({
   userId,
+  error,
   onPasskey,
   onPassword,
   onColdSigner,
 }: {
   userId: string;
+  error: string;
   onPasskey: () => void;
   onPassword: () => void;
   onColdSigner: () => void;
@@ -483,35 +476,33 @@ function ChooseOptions({
 
   // Auto-fire passkey for existing passkey wallets — no button press needed
   useEffect(() => {
-    if (walletType === 'passkey' && !autoFired) {
+    if (walletType === 'passkey' && !autoFired && !error) {
       setAutoFired(true);
       onPasskey();
     }
-  }, [walletType, autoFired, onPasskey]);
+  }, [walletType, autoFired, error, onPasskey]);
 
-  // While loading wallet type (or after auto-firing passkey), show spinner
+  // Passkey wallet — spinner while waiting, or retry button after cancellation
   if (walletType === null || walletType === 'passkey') {
+    if (error) {
+      // Cancelled or failed — show manual retry, not auto-fire
+      return (
+        <div className="flex flex-col gap-4">
+          <p className="text-amber-300 text-sm text-center">{error}</p>
+          <button
+            onClick={onPasskey}
+            className="w-full py-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-semibold flex items-center justify-center gap-2"
+          >
+            <Fingerprint size={18} /> Try Again with Passkey
+          </button>
+        </div>
+      );
+    }
     return (
-      <>
-        <div className="flex flex-col items-center gap-3 py-4">
-          <Loader size={32} className="text-emerald-400 animate-spin" />
-          <p className="text-gray-400 text-sm">Waiting for passkey…</p>
-        </div>
-        <div className="flex flex-col gap-2 pt-2 border-t border-gray-800">
-          <button
-            onClick={onPassword}
-            className="text-gray-500 hover:text-amber-400 text-xs text-center transition-colors"
-          >
-            Use wallet password instead
-          </button>
-          <button
-            onClick={onColdSigner}
-            className="text-gray-600 hover:text-gray-300 text-xs text-center"
-          >
-            Import from Cold Signer
-          </button>
-        </div>
-      </>
+      <div className="flex flex-col items-center gap-3 py-4">
+        <Loader size={32} className="text-emerald-400 animate-spin" />
+        <p className="text-gray-400 text-sm">Waiting for passkey…</p>
+      </div>
     );
   }
 
