@@ -563,15 +563,25 @@ export default function SendForm({
           : await unlockWallet(walletId, password);
 
         const isVault = qbtcSource === 'vault';
-        const privateKey = isVault ? wallet.privateKeys.qbtcVault : wallet.privateKeys.qbtc;
 
-        if (!privateKey) {
-          throw new Error(`QBTC ${isVault ? 'vault' : 'hot wallet'} private key not found`);
+        // Must use fromMasterSeed (not fromECDSAPrivateKey) to match the Falcon key
+        // used when the wallet address was first derived — they use different HMAC labels
+        // so the resulting hybrid hash (and address) would otherwise differ.
+        const { mnemonicToSeed } = await import('@scure/bip39');
+        let keyPair: QBTCKeyPair;
+        if (wallet.mnemonic) {
+          // Legacy or migrated wallet: re-derive from BIP39 mnemonic
+          const bip39Seed = await mnemonicToSeed(wallet.mnemonic);
+          keyPair = await QBTCKeyPair.fromMasterSeed(bip39Seed, isVault ? 1 : 0);
+        } else if (masterSeed) {
+          // Pure passkey wallet: derive from PRF masterSeed
+          keyPair = await QBTCKeyPair.fromMasterSeed(masterSeed, isVault ? 1 : 0);
+        } else {
+          throw new Error('Unable to reconstruct QBTC key pair — no mnemonic or masterSeed available');
         }
 
         const qbtcChain = new QBTCChain(qbtcSettings);
         qbtcChainRef.current = qbtcChain;
-        const keyPair = await QBTCKeyPair.fromECDSAPrivateKey(privateKey);
         const signMode = isVault ? 'hybrid' : 'ecdsa';
 
         setTransactionStep('broadcasting');
