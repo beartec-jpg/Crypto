@@ -848,7 +848,8 @@ export default function SendForm({
         password,
         selectedChain,
         tx,
-        isPasskeyAuthenticated || passkeyAuthenticatedThisSession
+        isPasskeyAuthenticated || passkeyAuthenticatedThisSession,
+        masterSeed,
       );
       
       setTransactionStep('broadcasting');

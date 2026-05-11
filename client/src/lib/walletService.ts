@@ -1217,22 +1217,28 @@ export async function signTransaction(
   password: string,
   chain: Chain,
   transaction: any,
-  passkeyAuthenticated: boolean
+  passkeyAuthenticated: boolean,
+  masterSeed?: Uint8Array | null,
 ): Promise<string> {
   // Step 1: Require passkey authentication
-  if (!passkeyAuthenticated) {
+  if (!passkeyAuthenticated && !masterSeed) {
     throw new Error('🔒 Passkey authentication required to sign transactions');
   }
 
   // Step 2: Verify backup before allowing transaction
-  const backupVerified = await isBackupVerified(walletId);
-  if (!backupVerified) {
-    throw new Error('Please verify your recovery phrase backup before sending transactions');
+  // Passkey wallets (masterSeed present) have no mnemonic backup requirement
+  if (!masterSeed) {
+    const backupVerified = await isBackupVerified(walletId);
+    if (!backupVerified) {
+      throw new Error('Please verify your recovery phrase backup before sending transactions');
+    }
   }
 
   try {
     // Step 3: Unlock wallet and get private key
-    const wallet = await unlockWallet(walletId, password);
+    const wallet = masterSeed
+      ? await unlockWalletWithPasskey(walletId, masterSeed)
+      : await unlockWallet(walletId, password);
     const privateKey = wallet.privateKeys[chain];
     
     if (!privateKey) {
