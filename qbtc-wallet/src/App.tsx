@@ -1,14 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Download, RefreshCw } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { useVault } from './hooks/useVault';
 import { deriveKeyPair, deriveMessagingKeyPair } from './lib/keys';
 import type { QBTCKeyPair } from './lib/keys';
-import { publishPubKey } from './lib/messaging';
-import { listContacts } from './storage/contactStore';
 import OnboardingPage from './pages/OnboardingPage';
 import WalletTab from './pages/WalletTab';
 import MessengerTab from './pages/MessengerTab';
-import PasskeyUnlock from './components/PasskeyUnlock';
+import PinEntry from './components/PinEntry';
 import BottomNav from './components/BottomNav';
 
 type Tab = 'wallet' | 'messenger';
@@ -17,11 +15,12 @@ type Tab = 'wallet' | 'messenger';
 let _messagingPrivateKey: CryptoKey | null = null;
 let _messagingPublicKeyRaw: Uint8Array | null = null;
 
-// Contact ECDH pub key store — keyed by qBTC address
+// Contact ECDH pub key store — populated when contacts share keys
+// In production these would be fetched from a key server or QR exchanged
 const contactPubKeys = new Map<string, Uint8Array>();
 
 export default function App() {
-  const { state, unlock, lock, setUnlocked, setWatchOnly, migrateFromPin, unlockError } = useVault();
+  const { state, unlock, lock, setUnlocked } = useVault();
   const [tab, setTab] = useState<Tab>('wallet');
   const [keyPair, setKeyPair] = useState<QBTCKeyPair | null>(null);
   const [msgPrivKey, setMsgPrivKey] = useState<CryptoKey | null>(null);
@@ -31,14 +30,6 @@ export default function App() {
   const installPromptRef = useRef<any>((window as any).deferredInstallPrompt ?? null);
   const [installable, setInstallable] = useState(() => !!(window as any).deferredInstallPrompt);
   const [installedDismissed, setInstallDismissed] = useState(false);
-
-  // PWA update detection — fires when new SW takes control
-  const [updateReady, setUpdateReady] = useState(false);
-  useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.addEventListener('controllerchange', () => setUpdateReady(true));
-    }
-  }, []);
 
   useEffect(() => {
     // In case it fires after mount
@@ -80,21 +71,6 @@ export default function App() {
       setMsgPubKeyRaw(msg.publicKeyRaw);
       _messagingPrivateKey = msg.privateKey;
       _messagingPublicKeyRaw = msg.publicKeyRaw;
-
-      // Publish own public key to relay so contacts can find us
-      publishPubKey(state.qbtcAddress, msg.publicKeyRaw).catch(() => {});
-
-      // Load stored contact pub keys into the in-memory map
-      contactPubKeys.clear();
-      const contacts = await listContacts();
-      for (const c of contacts) {
-        if (c.pubKeyHex) {
-          const hex = c.pubKeyHex;
-          const bytes = new Uint8Array(hex.length / 2);
-          for (let i = 0; i < hex.length; i += 2) bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
-          contactPubKeys.set(c.address, bytes);
-        }
-      }
     })();
 
     return () => { cancelled = true; };
@@ -102,11 +78,6 @@ export default function App() {
 
   const getContactPubKey = useCallback(
     (address: string) => contactPubKeys.get(address),
-    [],
-  );
-
-  const setContactPubKey = useCallback(
-    (address: string, key: Uint8Array) => { contactPubKeys.set(address, key); },
     [],
   );
 
@@ -118,20 +89,6 @@ export default function App() {
       </div>
     );
   }
-
-  // Update banner (shown when new SW has taken control)
-  const updateBanner = updateReady ? (
-    <div className="fixed top-0 left-0 right-0 z-50 flex items-center gap-3 bg-emerald-700 px-4 py-3 shadow-lg">
-      <RefreshCw size={18} className="shrink-0 text-white" />
-      <span className="flex-1 text-sm text-white font-medium">Update ready</span>
-      <button
-        onClick={() => window.location.reload()}
-        className="px-3 py-1.5 rounded-lg bg-white text-emerald-800 text-sm font-semibold"
-      >
-        Reload
-      </button>
-    </div>
-  ) : null;
 
   // Install banner (shown on any screen if installable)
   const installBanner = installable && !installedDismissed ? (
@@ -155,51 +112,24 @@ export default function App() {
   ) : null;
 
   // ── onboarding ───────────────────────────────────────────────────────────
-  if (state.status === 'no-wallet' || state.status === 'needs-migration') {
+  if (state.status === 'no-wallet') {
     return (
       <>
         <OnboardingPage
-          needsMigration={state.status === 'needs-migration'}
-          onHotWalletReady={(masterSeed, qbtcAddress) => setUnlocked(masterSeed, qbtcAddress)}
-          onColdWalletReady={(qbtcAddress, ecdsaPubHex, falconPubHex) =>
-            setWatchOnly(qbtcAddress, ecdsaPubHex, falconPubHex)
-          }
-          onMigrateFromPin={migrateFromPin}
+          onComplete={(masterSeed, qbtcAddress) => setUnlocked(masterSeed, qbtcAddress)}
         />
-        {updateBanner}
         {installBanner}
       </>
     );
   }
 
-  // ── locked — passkey biometric prompt ────────────────────────────────────
+  // ── locked ───────────────────────────────────────────────────────────────
   if (state.status === 'locked') {
     return (
       <>
-        <PasskeyUnlock onUnlock={unlock} error={unlockError} />
-        {updateBanner}
+        <PinEntry onUnlock={unlock} />
         {installBanner}
       </>
-    );
-  }
-
-  // ── watch-only (cold signer mode) ────────────────────────────────────────
-  if (state.status === 'watch-only') {
-    const { qbtcAddress } = state;
-    return (
-      <div className="flex flex-col h-screen bg-slate-950 safe-top">
-        <div className="flex-1 overflow-hidden">
-          <WalletTab
-            address={qbtcAddress}
-            masterSeed={null}
-            keyPair={null}
-            network="testnet"
-          />
-        </div>
-        <BottomNav active={tab} onChange={setTab} />
-        {updateBanner}
-        {installBanner}
-      </div>
     );
   }
 
@@ -222,12 +152,10 @@ export default function App() {
             myPrivateKey={msgPrivKey}
             myPublicKeyRaw={msgPubKeyRaw}
             getContactPubKey={getContactPubKey}
-            setContactPubKey={setContactPubKey}
           />
         )}
       </div>
       <BottomNav active={tab} onChange={setTab} />
-      {updateBanner}
       {installBanner}
     </div>
   );

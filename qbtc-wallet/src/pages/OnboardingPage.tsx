@@ -1,180 +1,182 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { generateMnemonic, mnemonicToSeed } from 'bip39';
+import { CheckCircle, Copy, AlertTriangle, Wallet, Download } from 'lucide-react';
+import PinSetup from '../components/PinSetup';
 import {
-  Fingerprint,
-  Snowflake,
-  QrCode,
-  AlertTriangle,
-  Eye,
-  EyeOff,
-  Lock,
-  Loader,
-} from 'lucide-react';
-import { registerPasskey, getDefaultRpId, b64uEncode } from '../lib/passkeyVault';
+  generateSaltHex,
+  deriveVaultKey,
+  encryptSeed,
+} from '../lib/vault';
 import { deriveKeyPair, getAddress } from '../lib/keys';
 import { saveWallet } from '../storage/walletStore';
-import QRScanner from '../components/QRScanner';
-import type { ColdPubKeysPayload } from '../lib/coldSignerProtocol';
+import {
+  mainWalletExists,
+  getMainWalletRecord,
+  decryptMainWalletMnemonic,
+} from '../lib/mainWalletBridge';
 
 interface OnboardingPageProps {
-  onHotWalletReady: (masterSeed: Uint8Array, qbtcAddress: string) => void;
-  onColdWalletReady: (qbtcAddress: string, ecdsaPubHex: string, falconPubHex: string) => void;
-  needsMigration?: boolean;
-  onMigrateFromPin: (pin: string) => Promise<string | null>;
+  onComplete: (masterSeed: Uint8Array, qbtcAddress: string) => void;
 }
 
-type Step =
-  | 'intro'
-  | 'creating'
-  | 'cold-intro'
-  | 'cold-scan'
-  | 'migrate-pin'
-  | 'migrate-passkey';
+type Step = 'detecting' | 'intro' | 'import-password' | 'mnemonic' | 'confirm' | 'pin' | 'generating';
 
-export default function OnboardingPage({
-  onHotWalletReady,
-  onColdWalletReady,
-  needsMigration = false,
-  onMigrateFromPin,
-}: OnboardingPageProps) {
-  const [step, setStep] = useState<Step>(needsMigration ? 'migrate-pin' : 'intro');
+export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
+  const [step, setStep] = useState<Step>('detecting');
+  const [hasMainWallet, setHasMainWallet] = useState(false);
+  const [mnemonic] = useState(() => generateMnemonic(256)); // 24 words (only used for new wallet flow)
+  const [copied, setCopied] = useState(false);
+  const [confirmWords, setConfirmWords] = useState<string[]>(Array(24).fill(''));
+  const [confirmError, setConfirmError] = useState('');
   const [status, setStatus] = useState('');
-  const [error, setError] = useState('');
-  const [migratePin, setMigratePin] = useState('');
-  const [showMigratePin, setShowMigratePin] = useState(false);
-  const [migrateLoading, setMigrateLoading] = useState(false);
 
-  async function handleMigrateSubmit(e: React.FormEvent) {
+  // Import-from-main-wallet state
+  const [importPassword, setImportPassword] = useState('');
+  const [importError, setImportError] = useState('');
+  const [importLoading, setImportLoading] = useState(false);
+  // Pending mnemonic from import — set before going to 'pin'
+  const [pendingMnemonic, setPendingMnemonic] = useState<string | null>(null);
+
+  // Detect main wallet on mount
+  useEffect(() => {
+    mainWalletExists().then(exists => {
+      setHasMainWallet(exists);
+      setStep('intro');
+    });
+  }, []);
+
+  async function handleImportFromMain(e: React.FormEvent) {
     e.preventDefault();
-    setError('');
-    setMigrateLoading(true);
-    setStep('migrate-passkey');
-    setStatus('Verifying PIN and registering passkey…');
-    const err = await onMigrateFromPin(migratePin);
-    setMigrateLoading(false);
-    if (err) {
-      setError(err);
-      setStep('migrate-pin');
+    setImportLoading(true);
+    setImportError('');
+    try {
+      const record = await getMainWalletRecord();
+      if (!record) throw new Error('No wallet found');
+      const mn = await decryptMainWalletMnemonic(record, importPassword);
+      setPendingMnemonic(mn);
+      setStep('pin');
+    } catch {
+      setImportError('Incorrect password — please try again');
+    } finally {
+      setImportLoading(false);
     }
-    // On success vault state -> 'unlocked', App.tsx unmounts this component
   }
 
-  async function handleCreateHotWallet() {
-    setError('');
-    setStep('creating');
-    setStatus('Setting up passkey…');
-    try {
-      const rpId = getDefaultRpId();
-      const { masterSeed, credentialId } = await registerPasskey(rpId, 'qBTC Wallet');
+  async function handleCopy() {
+    await navigator.clipboard.writeText(mnemonic);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
-      setStatus('Deriving keys…');
+  function handleConfirm() {
+    const entered = confirmWords.join(' ').trim();
+    if (entered !== mnemonic.trim()) {
+      setConfirmError('Words do not match. Please check your backup carefully.');
+      return;
+    }
+    setConfirmError('');
+    setStep('pin');
+  }
+
+  async function handlePin(pin: string) {
+    setStep('generating');
+    const mnemonicToUse = pendingMnemonic ?? mnemonic;
+    setStatus('Deriving keys…');
+    try {
+      const seedBuffer = await mnemonicToSeed(mnemonicToUse);
+      const masterSeed = new Uint8Array(seedBuffer);
+
+      setStatus('Deriving qBTC key pair…');
       const keyPair = await deriveKeyPair(masterSeed);
       const qbtcAddress = getAddress(keyPair, 'testnet');
 
-      setStatus('Saving wallet…');
+      setStatus('Encrypting vault…');
+      const saltHex = generateSaltHex();
+      const vaultKey = await deriveVaultKey(pin, saltHex);
+      const { encryptedSeed, seedIv } = await encryptSeed(masterSeed, vaultKey);
+
       await saveWallet({
         id: 'main',
-        walletType: 'passkey',
-        credentialIdB64: b64uEncode(credentialId),
-        rpId,
+        encryptedSeed,
+        seedIv,
+        saltHex,
         qbtcAddress,
         createdAt: Date.now(),
       });
 
-      onHotWalletReady(masterSeed, qbtcAddress);
+      onComplete(masterSeed, qbtcAddress);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Setup failed');
-      setStep('intro');
+      setStatus(`Error: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
-  function handleColdQRScan(raw: string) {
-    setError('');
-    try {
-      const payload = JSON.parse(raw) as ColdPubKeysPayload;
-      if (payload.type !== 'qbtc-cold-pubkeys' || payload.v !== 1) {
-        throw new Error('Not a valid cold signer QR code');
-      }
-      saveWallet({
-        id: 'main',
-        walletType: 'watch-only',
-        qbtcAddress: payload.address,
-        ecdsaPubHex: payload.ecdsaPub,
-        falconPubHex: payload.falconPub,
-        network: payload.network,
-        createdAt: Date.now(),
-      }).then(() => {
-        onColdWalletReady(payload.address, payload.ecdsaPub, payload.falconPub);
-      });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Invalid QR code');
-    }
+  const words = mnemonic.split(' ');
+
+  // ── detecting ─────────────────────────────────────────────────────────────
+  if (step === 'detecting') {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-950">
+        <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   }
 
-  // ── Spinner (passkey in progress) ─────────────────────────────────────────
-  if (step === 'creating' || step === 'migrate-passkey') {
+  // ── generating ────────────────────────────────────────────────────────────
+  if (step === 'generating') {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 px-6">
-        <div className="text-center flex flex-col items-center gap-4">
-          <Loader size={40} className="text-cyan-400 animate-spin" />
+        <div className="text-center">
+          <div className="w-12 h-12 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-slate-300 text-sm">{status}</p>
-          {error && (
-            <p className="text-red-400 text-sm bg-red-900/20 border border-red-800 rounded-xl px-4 py-3">
-              {error}
-            </p>
-          )}
         </div>
       </div>
     );
   }
 
-  // ── Migration: enter PIN ──────────────────────────────────────────────────
-  if (step === 'migrate-pin') {
+  // ── pin ───────────────────────────────────────────────────────────────────
+  if (step === 'pin') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 px-6">
+        <div className="w-full max-w-sm">
+          <PinSetup onComplete={handlePin} />
+        </div>
+      </div>
+    );
+  }
+
+  // ── import password (piggyback off existing wallet) ───────────────────────
+  if (step === 'import-password') {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 px-6">
         <div className="w-full max-w-sm flex flex-col gap-6">
-          <div className="text-center">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-amber-900/40 flex items-center justify-center">
-              <Lock size={32} className="text-amber-400" />
-            </div>
-            <h1 className="text-2xl font-bold text-white">Upgrade Security</h1>
+          <div>
+            <button onClick={() => setStep('intro')} className="text-slate-400 text-sm mb-4 flex items-center gap-1">
+              ← Back
+            </button>
+            <h2 className="text-xl font-bold text-white">Use Existing Wallet</h2>
             <p className="text-slate-400 text-sm mt-2">
-              Enter your current PIN once to migrate to passkey — biometrics only from now on.
+              Enter your BearTec wallet password to import your qBTC keys into this app.
             </p>
           </div>
-          <form onSubmit={handleMigrateSubmit} className="flex flex-col gap-4">
-            <div className="relative">
-              <input
-                type={showMigratePin ? 'text' : 'password'}
-                placeholder="Current PIN"
-                value={migratePin}
-                onChange={e => setMigratePin(e.target.value)}
-                className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-3 pr-10
-                           text-slate-100 placeholder-slate-500 text-center text-xl tracking-widest
-                           focus:outline-none focus:border-cyan-500"
-                autoFocus
-                autoComplete="current-password"
-              />
-              <button
-                type="button"
-                onClick={() => setShowMigratePin(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
-              >
-                {showMigratePin ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-            {error && (
-              <div className="flex items-start gap-2 text-red-400 text-sm bg-red-900/20 rounded-xl p-3">
-                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-                {error}
-              </div>
-            )}
+          <form onSubmit={handleImportFromMain} className="flex flex-col gap-4">
+            <input
+              type="password"
+              placeholder="Wallet password"
+              value={importPassword}
+              onChange={e => setImportPassword(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3
+                         text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+              autoComplete="current-password"
+              autoFocus
+            />
+            {importError && <p className="text-red-400 text-sm">{importError}</p>}
             <button
               type="submit"
-              disabled={!migratePin || migrateLoading}
-              className="w-full py-4 rounded-2xl bg-cyan-600 hover:bg-cyan-500 text-white
-                         font-semibold text-lg disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled={!importPassword || importLoading}
+              className="w-full py-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold
+                         disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {migrateLoading ? 'Migrating…' : 'Migrate to Passkey'}
+              {importLoading ? 'Importing…' : 'Import'}
             </button>
           </form>
         </div>
@@ -182,131 +184,156 @@ export default function OnboardingPage({
     );
   }
 
-  // ── Cold QR scanner ───────────────────────────────────────────────────────
-  if (step === 'cold-scan') {
-    return (
-      <div className="flex flex-col min-h-screen bg-slate-950">
-        <div className="px-5 py-4 border-b border-slate-800">
-          <button onClick={() => setStep('cold-intro')} className="text-slate-400 text-sm">
-            ← Back
-          </button>
-          <h2 className="text-white font-semibold mt-1">Scan Cold Signer QR</h2>
-          <p className="text-slate-400 text-xs mt-1">
-            Press "Export to Web" in the cold signer app, then scan the QR here.
-          </p>
-        </div>
-        {error && (
-          <div className="mx-5 mt-3 flex items-center gap-2 text-red-400 text-sm bg-red-900/20 rounded-xl p-3">
-            <AlertTriangle size={16} className="shrink-0" />
-            {error}
-          </div>
-        )}
-        <div className="flex-1">
-          <QRScanner onScan={handleColdQRScan} onClose={() => setStep('cold-intro')} />
-        </div>
-      </div>
-    );
-  }
-
-  // ── Cold intro ────────────────────────────────────────────────────────────
-  if (step === 'cold-intro') {
+  // ── confirm (new wallet flow) ─────────────────────────────────────────────
+  if (step === 'confirm') {
     return (
       <div className="flex flex-col min-h-screen bg-slate-950 px-6 py-8">
-        <button onClick={() => setStep('intro')} className="text-slate-400 text-sm mb-6 self-start">
-          ← Back
-        </button>
-        <div className="flex-1 flex flex-col gap-6">
-          <div>
-            <div className="w-16 h-16 mb-4 rounded-full bg-slate-800 flex items-center justify-center">
-              <Snowflake size={32} className="text-blue-400" />
-            </div>
-            <h1 className="text-2xl font-bold text-white">Cold Wallet Setup</h1>
-            <p className="text-slate-400 text-sm mt-2">
-              Your private keys never touch this device. Watch balances here, sign offline.
-            </p>
-          </div>
-          <div className="bg-slate-800/60 rounded-2xl p-5 flex flex-col gap-3 text-sm text-slate-300">
-            <p className="font-semibold text-white">Steps</p>
-            {[
-              ['1.', 'Install qBTC Cold Signer on a spare device'],
-              ['2.', 'Turn on airplane mode on that device'],
-              ['3.', 'Create wallet with your passkey (biometrics)'],
-              ['4.', 'Press "Export to Web" — shows a QR with public keys only'],
-              ['5.', 'Scan it here'],
-            ].map(([n, s]) => (
-              <div key={n} className="flex gap-3">
-                <span className="text-cyan-400 font-bold shrink-0">{n}</span>
-                <span>{s}</span>
+        <div className="flex-1 overflow-y-auto">
+          <h2 className="text-xl font-bold text-white mb-2">Verify your backup</h2>
+          <p className="text-slate-400 text-sm mb-6">
+            Type your recovery phrase to confirm you saved it correctly.
+          </p>
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            {words.map((_, i) => (
+              <div key={i} className="flex flex-col gap-1">
+                <span className="text-slate-500 text-xs">#{i + 1}</span>
+                <input
+                  type="text"
+                  value={confirmWords[i]}
+                  onChange={e => {
+                    const updated = [...confirmWords];
+                    updated[i] = e.target.value.trim().toLowerCase();
+                    setConfirmWords(updated);
+                  }}
+                  className="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-sm
+                             text-slate-100 focus:outline-none focus:border-cyan-500"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                />
               </div>
             ))}
           </div>
-          <a
-            href="https://beartec.uk/cold-signer"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full py-3 rounded-2xl bg-slate-700 hover:bg-slate-600 text-white font-semibold text-center"
-          >
-            Install Cold Signer
-          </a>
-          <button
-            onClick={() => setStep('cold-scan')}
-            className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white
-                       font-semibold flex items-center justify-center gap-3"
-          >
-            <QrCode size={20} />
-            Scan QR from Cold Signer
+          {confirmError && (
+            <div className="flex items-center gap-2 text-red-400 text-sm mb-4">
+              <AlertTriangle size={16} />
+              {confirmError}
+            </div>
+          )}
+        </div>
+        <div className="flex gap-3 pt-4">
+          <button onClick={() => setStep('mnemonic')}
+            className="flex-1 py-3 rounded-lg border border-slate-600 text-slate-300 font-semibold">
+            Back
+          </button>
+          <button onClick={handleConfirm}
+            className="flex-1 py-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold">
+            Confirm
           </button>
         </div>
       </div>
     );
   }
 
-  // ── Intro (default) ───────────────────────────────────────────────────────
+  // ── mnemonic (new wallet flow) ────────────────────────────────────────────
+  if (step === 'mnemonic') {
+    return (
+      <div className="flex flex-col min-h-screen bg-slate-950 px-6 py-8">
+        <div className="flex-1 overflow-y-auto">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle size={20} className="text-yellow-400" />
+            <h2 className="text-xl font-bold text-white">Recovery Phrase</h2>
+          </div>
+          <p className="text-slate-400 text-sm mb-5">
+            Write down these 24 words in order. This is the only way to recover your wallet.
+            Store them offline in a safe place. Never share them.
+          </p>
+          <div className="grid grid-cols-3 gap-2 mb-5">
+            {words.map((word, i) => (
+              <div key={i} className="bg-slate-800 rounded-lg px-2 py-2 flex items-center gap-1">
+                <span className="text-slate-500 text-xs w-5 shrink-0">{i + 1}.</span>
+                <span className="text-slate-100 text-sm font-mono">{word}</span>
+              </div>
+            ))}
+          </div>
+          <button onClick={handleCopy} className="flex items-center gap-2 text-cyan-400 text-sm">
+            {copied ? <CheckCircle size={16} /> : <Copy size={16} />}
+            {copied ? 'Copied!' : 'Copy to clipboard'}
+          </button>
+        </div>
+        <div className="pt-4">
+          <button onClick={() => setStep('confirm')}
+            className="w-full py-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold">
+            I've saved my phrase
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── intro ─────────────────────────────────────────────────────────────────
+  const deferredPrompt = (window as any).deferredInstallPrompt;
+
+  async function handleInstall() {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    (window as any).deferredInstallPrompt = null;
+  }
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 px-6 py-10">
-      <div className="w-full max-w-sm flex flex-col gap-8">
-        <div className="text-center">
-          <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-slate-800 flex items-center justify-center">
-            <Fingerprint size={40} className="text-cyan-400" />
+    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-950 px-6">
+      <div className="w-full max-w-sm text-center flex flex-col gap-6">
+        <div>
+          <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-slate-800 flex items-center justify-center">
+            <span className="text-4xl">₿</span>
           </div>
           <h1 className="text-3xl font-bold text-white">qBTC Wallet</h1>
-          <p className="text-slate-400 text-sm mt-2">Quantum-resistant Bitcoin. Choose your setup.</p>
+          <p className="text-slate-400 text-sm mt-2">Quantum-resistant Bitcoin on your device</p>
         </div>
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
+          {/* Install to home screen — shown if browser supports it */}
+          {deferredPrompt && (
+            <button
+              onClick={handleInstall}
+              className="w-full py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-base flex items-center justify-center gap-2"
+            >
+              <Download size={20} />
+              Install App
+            </button>
+          )}
+          {hasMainWallet && (
+            <button
+              onClick={() => setStep('import-password')}
+              className="w-full py-4 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-base flex items-center justify-center gap-2"
+            >
+              <Wallet size={20} />
+              Use My Existing Wallet
+            </button>
+          )}
           <button
-            onClick={handleCreateHotWallet}
-            className="w-full flex items-start gap-4 p-5 rounded-2xl bg-slate-800 hover:bg-slate-700
-                       active:bg-slate-600 border border-slate-700 text-left transition-colors"
+            onClick={() => setStep('mnemonic')}
+            className={`w-full py-4 rounded-xl font-semibold text-base
+              ${hasMainWallet
+                ? 'border border-slate-600 text-slate-300 hover:text-white hover:border-slate-400'
+                : 'bg-cyan-600 hover:bg-cyan-500 text-white'
+              }`}
           >
-            <div className="w-10 h-10 rounded-xl bg-cyan-600/20 flex items-center justify-center shrink-0 mt-0.5">
-              <Fingerprint size={22} className="text-cyan-400" />
-            </div>
-            <div>
-              <p className="text-white font-semibold">Create Hot Wallet</p>
-              <p className="text-slate-400 text-sm mt-0.5">
-                Passkey protected. Biometrics unlock your keys. Nothing stored on this device.
-              </p>
-            </div>
-          </button>
-          <button
-            onClick={() => setStep('cold-intro')}
-            className="w-full flex items-start gap-4 p-5 rounded-2xl bg-slate-800 hover:bg-slate-700
-                       active:bg-slate-600 border border-slate-700 text-left transition-colors"
-          >
-            <div className="w-10 h-10 rounded-xl bg-blue-600/20 flex items-center justify-center shrink-0 mt-0.5">
-              <Snowflake size={22} className="text-blue-400" />
-            </div>
-            <div>
-              <p className="text-white font-semibold">Use Cold Wallet</p>
-              <p className="text-slate-400 text-sm mt-0.5">
-                Keys stay offline. Watch balances here, sign on your air-gapped device.
-              </p>
-            </div>
+            Create New Wallet
           </button>
         </div>
-        <p className="text-center text-slate-600 text-xs">
-          No seed phrases. No passwords. No backups to lose.
-        </p>
+        {hasMainWallet && (
+          <p className="text-xs text-slate-500">
+            "Use My Existing Wallet" imports your qBTC keys using your BearTec wallet password.
+            No new seed phrase needed.
+          </p>
+        )}
+        {/* iOS fallback — no beforeinstallprompt support */}
+        {!deferredPrompt && (
+          <p className="text-xs text-slate-600">
+            On iPhone? Tap <span className="text-slate-400">Share →  Add to Home Screen</span> to install.
+          </p>
+        )}
       </div>
     </div>
   );
