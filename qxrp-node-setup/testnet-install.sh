@@ -358,25 +358,63 @@ fund_account "$REWARD_ADDRESS" 12 "Reward wallet"
 header "Step 9/9 — Bonding Validator"
 
 bond_validator() {
-  local seed="$1" address="$2" bond_xrp="$3"
+  local consensus_nkey="$1" wallet_seed="$2" bond_xrp="$3"
 
-  info "Step 1/2: ValidatorRegister..."
+  # Derive Falcon-512 public key hex from the wallet seed via wallet_propose RPC.
+  # ValidatorRegister requires sfPublicKey (Falcon-512) + sfConsensusKey (secp256k1 hex).
+  # Both transactions are submitted by the GENESIS account (which holds the bond funds).
+  local FALCON_HEX
+  FALCON_HEX=$(curl -s -X POST "http://127.0.0.1:${RPC_PORT}" \
+    -H "Content-Type: application/json" \
+    -d "{\"method\":\"wallet_propose\",\"params\":[{\"seed\":\"$wallet_seed\"}]}" \
+    | python3 -c "import sys,json; print(json.load(sys.stdin)['result'].get('falcon_public_key_hex',''))" 2>/dev/null)
+
+  if [[ -z "$FALCON_HEX" ]]; then
+    warn "Could not derive Falcon-512 public key from wallet seed"
+    return 1
+  fi
+
+  # Decode n9... consensus key to hex (bytes 1..33 of base58 decode)
+  local CONSENSUS_HEX
+  CONSENSUS_HEX=$(python3 - "$consensus_nkey" <<'PYEOF'
+import sys
+ALPHA="rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz"
+def b58decode(s):
+    n=0
+    for c in s: n=n*58+ALPHA.index(c)
+    res=[]
+    while n: res.append(n&0xFF); n>>=8
+    res.reverse()
+    pad=len(s)-len(s.lstrip(ALPHA[0]))
+    return bytes(pad)+bytes(res)
+print(b58decode(sys.argv[1])[1:34].hex().upper())
+PYEOF
+)
+
+  info "Step 1/2: ValidatorRegister (genesis submits, Falcon+Consensus keys)..."
+  # Sign via source testnet node (has admin RPC / sign method)
+  local SIGN_RESP
+  SIGN_RESP=$(sshpass -p "$TESTNET_SOURCE_PASS" \
+    ssh -o StrictHostKeyChecking=no root@${TESTNET_SOURCE_IP} \
+    "curl -s -X POST http://127.0.0.1:5005 -H 'Content-Type: application/json' \
+     -d '{\"method\":\"sign\",\"params\":[{\"secret\":\"${GENESIS_SEED}\",\"tx_json\":{\"TransactionType\":\"ValidatorRegister\",\"Account\":\"${GENESIS_ADDRESS}\",\"PublicKey\":\"${FALCON_HEX}\",\"ConsensusKey\":\"${CONSENSUS_HEX}\",\"Fee\":\"12\"}}]}'")
+  local SIGN_STATUS
+  SIGN_STATUS=$(echo "$SIGN_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['result'].get('status','?'))" 2>/dev/null)
+  if [[ "$SIGN_STATUS" != "success" ]]; then
+    warn "ValidatorRegister sign failed: $(echo "$SIGN_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['result'].get('error_message','?'))" 2>/dev/null)"
+    return 1
+  fi
+  local TX_BLOB
+  TX_BLOB=$(echo "$SIGN_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['tx_blob'])" 2>/dev/null)
+
   REG=$(curl -s -X POST "http://127.0.0.1:${RPC_PORT}" \
     -H "Content-Type: application/json" \
-    -d "{\"method\":\"submit\",\"params\":[{
-      \"secret\":\"$seed\",
-      \"tx_json\":{
-        \"TransactionType\":\"ValidatorRegister\",
-        \"Account\":\"$address\",
-        \"Fee\":\"12\",
-        \"Flags\":0
-      }}]}")
+    -d "{\"method\":\"submit\",\"params\":[{\"tx_blob\":\"$TX_BLOB\"}]}")
   REG_RESULT=$(echo "$REG" | python3 -c "import sys,json; print(json.load(sys.stdin)['result'].get('engine_result','?'))" 2>/dev/null)
-  REG_HASH=$(echo "$REG" | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['tx_json'].get('hash',''))" 2>/dev/null || echo "")
+  REG_HASH=$(echo "$REG" | python3 -c "import sys,json; print(json.load(sys.stdin)['result'].get('tx_json',{}).get('hash',''))" 2>/dev/null || echo "")
 
   if [[ "$REG_RESULT" == "tesSUCCESS" || "$REG_RESULT" == "terQUEUED" ]]; then
     success "ValidatorRegister: $REG_RESULT"
-    # Wait for validation
     if [[ -n "$REG_HASH" ]]; then
       for _ in $(seq 1 15); do
         sleep 2
@@ -394,22 +432,21 @@ bond_validator() {
   fi
 
   info "Step 2/2: ValidatorBond (${bond_xrp} qXRP)..."
+  local SIGN_RESP2
+  SIGN_RESP2=$(sshpass -p "$TESTNET_SOURCE_PASS" \
+    ssh -o StrictHostKeyChecking=no root@${TESTNET_SOURCE_IP} \
+    "curl -s -X POST http://127.0.0.1:5005 -H 'Content-Type: application/json' \
+     -d '{\"method\":\"sign\",\"params\":[{\"secret\":\"${GENESIS_SEED}\",\"tx_json\":{\"TransactionType\":\"ValidatorBond\",\"Account\":\"${GENESIS_ADDRESS}\",\"ConsensusKey\":\"${CONSENSUS_HEX}\",\"BondedAmount\":\"$((bond_xrp * 1000000))\",\"Fee\":\"12\"}}]}'")
+  local TX_BLOB2
+  TX_BLOB2=$(echo "$SIGN_RESP2" | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['tx_blob'])" 2>/dev/null)
+
   BOND=$(curl -s -X POST "http://127.0.0.1:${RPC_PORT}" \
     -H "Content-Type: application/json" \
-    -d "{\"method\":\"submit\",\"params\":[{
-      \"secret\":\"$seed\",
-      \"tx_json\":{
-        \"TransactionType\":\"ValidatorBond\",
-        \"Account\":\"$address\",
-        \"BondAmount\":\"$((bond_xrp * 1000000))\",
-        \"Fee\":\"12\",
-        \"Flags\":0
-      }}]}")
+    -d "{\"method\":\"submit\",\"params\":[{\"tx_blob\":\"$TX_BLOB2\"}]}")
   BOND_RESULT=$(echo "$BOND" | python3 -c "import sys,json; print(json.load(sys.stdin)['result'].get('engine_result','?'))" 2>/dev/null)
-  BOND_HASH=$(echo "$BOND" | python3 -c "import sys,json; print(json.load(sys.stdin)['result']['tx_json'].get('hash',''))" 2>/dev/null || echo "")
+  BOND_HASH=$(echo "$BOND" | python3 -c "import sys,json; print(json.load(sys.stdin)['result'].get('tx_json',{}).get('hash',''))" 2>/dev/null || echo "")
 
   if [[ "$BOND_RESULT" == "tesSUCCESS" || "$BOND_RESULT" == "terQUEUED" ]]; then
-    # Wait for validation
     if [[ -n "$BOND_HASH" ]]; then
       for _ in $(seq 1 15); do
         sleep 2
@@ -419,9 +456,7 @@ bond_validator() {
           | python3 -c "
 import sys,json
 d=json.load(sys.stdin)['result']
-validated=d.get('validated',False)
-result=d.get('meta',{}).get('TransactionResult','pending')
-print(validated, result)
+print(d.get('validated',False), d.get('meta',{}).get('TransactionResult','pending'))
 " 2>/dev/null)
         if echo "$TX_STATUS" | grep -q "True"; then
           FINAL=$(echo "$TX_STATUS" | awk '{print $2}')
@@ -437,7 +472,7 @@ print(validated, result)
   fi
 }
 
-bond_validator "$VALIDATOR_SEED" "$VALIDATOR_ADDRESS" "$BOND_AMOUNT_XRP"
+bond_validator "$VALIDATION_PUBKEY" "$VALIDATOR_SEED" "$BOND_AMOUNT_XRP"
 
 # ── Auto-sweep service ────────────────────────────────────────────────────────
 cat > "$QXRP_CFG_DIR/sweep.py" << 'SWEEPEOF'
