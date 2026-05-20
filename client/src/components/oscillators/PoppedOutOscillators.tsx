@@ -13,9 +13,11 @@ import { CMFPanel } from '@/components/indicators/oscillators/CMFPanel';
 import { TSIPanel } from '@/components/indicators/oscillators/TSIPanel';
 import { KlingerPanel } from '@/components/indicators/oscillators/KlingerPanel';
 import { SMCDebugTable } from '@/components/tradingSystems/SMCDebugTable';
+import { SMCTrendEnginePanel } from '@/components/trading/SMCTrendEngine/SMCTrendEnginePanel';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
 import type { ScoringInput } from '@/lib/tradingSystemScoring';
 import type { SystemEvaluation } from '@/types/systemScoring';
+import type { SMCTrendEnginePanelData } from '@/components/trading/SMCTrendEngine/types';
 
 interface CandleData {
   time: number;
@@ -38,6 +40,7 @@ interface PoppedOutOscillatorsProps {
     scoringInput: ScoringInput | null;
     evaluation: SystemEvaluation | null;
   };
+  smcTrendEnginePanelData?: SMCTrendEnginePanelData;
 }
 
 function getSmartMoneyScoreColor(score: number): string {
@@ -63,6 +66,7 @@ const OSCILLATOR_CONFIG = [
   { id: 'mfi', title: 'MFI (14)', storageKey: 'oscillator-mfi', defaultPos: { x: 220, y: 500 } },
   { id: 'klinger', title: 'Klinger (34,55,13)', storageKey: 'oscillator-klinger', defaultPos: { x: 220, y: 640 } },
   { id: 'smartMoney', title: 'Smart Money Tracker', storageKey: 'oscillator-smart-money', defaultPos: { x: 440, y: 80 } },
+  { id: 'smcTrendEngine', title: 'SMC Trend Engine', storageKey: 'oscillator-smc-trend-engine', defaultPos: { x: 620, y: 80 } },
 ];
 
 export function PoppedOutOscillators({
@@ -74,6 +78,7 @@ export function PoppedOutOscillators({
   onCycleMode,
   mainChartVisibleRange,
   smartMoneyPanelData,
+  smcTrendEnginePanelData,
 }: PoppedOutOscillatorsProps) {
   const renderOscillatorContent = (id: string) => {
     switch (id) {
@@ -178,6 +183,12 @@ export function PoppedOutOscillators({
               evaluation={smartMoneyPanelData.evaluation}
               scoringInput={smartMoneyPanelData.scoringInput}
             />
+          </div>
+        );
+      case 'smcTrendEngine':
+        return (
+          <div className="h-full w-full overflow-y-auto rounded border border-slate-700 bg-slate-900/70 p-3">
+            <SMCTrendEnginePanel panelData={smcTrendEnginePanelData} />
           </div>
         );
       default:

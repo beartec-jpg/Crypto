@@ -80,4 +80,18 @@ describe('conditionWeights', () => {
       expect(weights.autoFibConfluence).toBe(1);
     });
   });
+
+  describe('smc-trend-engine defaults', () => {
+    it('returns non-zero defaults for all SMC Trend Engine conditions', () => {
+      const weights = getConditionWeights('smc-trend-engine');
+      expect(weights.structureTrend).toBe(1);
+      expect(weights.htfBiasAlignment).toBe(1);
+      expect(weights.orderBlockTrendEntry).toBe(1);
+      expect(weights.fvgTrendEntry).toBe(1);
+      expect(weights.liquidityReaction).toBe(1);
+      expect(weights.autoFibTrendEntry).toBe(1);
+      expect(weights.divergenceTrendSupport).toBe(1);
+      expect(weights.trendFollowThrough).toBe(1);
+    });
+  });
 });

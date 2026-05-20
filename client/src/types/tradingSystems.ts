@@ -8,6 +8,7 @@ export type TradingSystemId =
   | 'mean-reversion'
   | 'breakout-momentum'
   | 'smart-money'
+  | 'smc-trend-engine'
   | 'momentum-scalper'
   | 'divergence-master'
   | 'mtf-confluence'
@@ -174,6 +175,34 @@ export const TRADING_SYSTEMS: Record<TradingSystemId, TradingSystem> = {
         'Price enters fresh Order Block',
         'FVG fill rejection',
         'MSS confirmation (structure shift)',
+      ],
+    },
+  },
+
+  'smc-trend-engine': {
+    id: 'smc-trend-engine',
+    name: 'SMC Trend Engine',
+    description: 'Trend-focused Smart Money system using structure, zones, liquidity, fib and divergence alignment',
+    icon: '🧭',
+    category: 'smc',
+    preset: {
+      smc: {
+        fvg: { enabled: true },
+        orderBlocks: { enabled: true },
+        bos: { enabled: true },
+        liquidity: { enabled: true },
+        autoFib: { enabled: true },
+      },
+      tools: {
+        htfBias: { enabled: true },
+      },
+    },
+    alerts: {
+      entry: [
+        'Trend-aligned OB/FVG reaction',
+        'MSS/BOS continuation with HTF bias',
+        'Liquidity sweep into trend continuation',
+        'Auto-Fib retracement with divergence support',
       ],
     },
   },

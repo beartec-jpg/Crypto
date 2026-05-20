@@ -259,7 +259,7 @@ export function DraggableSystemInfoBox({
             </div>
           )}
 
-          {activeSystemId === 'smart-money' && scoringInput && fullEvaluation && (
+          {(activeSystemId === 'smart-money' || activeSystemId === 'smc-trend-engine') && scoringInput && fullEvaluation && (
             <SMCDebugTable evaluation={fullEvaluation} scoringInput={scoringInput} />
           )}
         </div>

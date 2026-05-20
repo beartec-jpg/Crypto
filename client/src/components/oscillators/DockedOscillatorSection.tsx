@@ -12,10 +12,12 @@ import { CMFPanel } from '@/components/indicators/oscillators/CMFPanel';
 import { TSIPanel } from '@/components/indicators/oscillators/TSIPanel';
 import { KlingerPanel } from '@/components/indicators/oscillators/KlingerPanel';
 import { SMCDebugTable } from '@/components/tradingSystems/SMCDebugTable';
+import { SMCTrendEnginePanel } from '@/components/trading/SMCTrendEngine/SMCTrendEnginePanel';
 import { OSCILLATOR_PANEL_HEIGHT_PER, MOBILE_NAV_HEIGHT, TOP_TOOLBAR_HEIGHT } from '@/lib/constants/layout';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
 import type { ScoringInput } from '@/lib/tradingSystemScoring';
 import type { SystemEvaluation } from '@/types/systemScoring';
+import type { SMCTrendEnginePanelData } from '@/components/trading/SMCTrendEngine/types';
 
 function getSmartMoneyScoreColor(score: number): string {
   if (score >= 60) return 'text-green-400';
@@ -44,6 +46,7 @@ interface DockedOscillatorSectionProps {
     scoringInput: ScoringInput | null;
     evaluation: SystemEvaluation | null;
   };
+  smcTrendEnginePanelData?: SMCTrendEnginePanelData;
 }
 
 export function DockedOscillatorSection({
@@ -61,6 +64,7 @@ export function DockedOscillatorSection({
   perOscillatorPercentage = 0,
   mainChartVisibleRange,
   smartMoneyPanelData,
+  smcTrendEnginePanelData,
 }: DockedOscillatorSectionProps) {
   const dockedOscillatorsCount = Array.from(selectedOscillators).filter(
     osc => !poppedOutOscillators.has(osc) && !miniOscillators?.has(osc)
@@ -325,6 +329,21 @@ export function DockedOscillatorSection({
                   />
                 </>
               )}
+            </div>
+          </div>
+        )}
+
+        {selectedOscillators.has('smcTrendEngine') && !poppedOutOscillators.has('smcTrendEngine') && !miniOscillators?.has('smcTrendEngine') && (
+          <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
+            <div
+              onClick={() => onCycleMode?.('smcTrendEngine')}
+              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
+            >
+              <span>SMC Trend Engine</span>
+              <span className="text-slate-600 ml-2">tap to cycle</span>
+            </div>
+            <div className="h-full w-full overflow-y-auto rounded border border-slate-700 bg-slate-900/70 p-3">
+              <SMCTrendEnginePanel panelData={smcTrendEnginePanelData} />
             </div>
           </div>
         )}

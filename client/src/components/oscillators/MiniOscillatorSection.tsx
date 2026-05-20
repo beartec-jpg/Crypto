@@ -1,6 +1,7 @@
 import type { OscillatorData } from '@/hooks/useOscillatorData';
 import type { ScoringInput } from '@/lib/tradingSystemScoring';
 import type { SystemEvaluation } from '@/types/systemScoring';
+import type { SMCTrendEnginePanelData } from '@/components/trading/SMCTrendEngine/types';
 
 const VOLUME_UP_COLOR = '#26a69a';
 
@@ -12,6 +13,7 @@ interface MiniOscillatorSectionProps {
     scoringInput: ScoringInput | null;
     evaluation: SystemEvaluation | null;
   };
+  smcTrendEnginePanelData?: SMCTrendEnginePanelData;
 }
 
 // Helper to get RSI status
@@ -113,6 +115,7 @@ export function MiniOscillatorSection({
   oscillatorData,
   onCycleMode,
   smartMoneyPanelData,
+  smcTrendEnginePanelData,
 }: MiniOscillatorSectionProps) {
   if (miniOscillators.size === 0) return null;
 
@@ -225,6 +228,19 @@ export function MiniOscillatorSection({
     newMiniItems.push({
       id: 'smartMoney',
       label: 'SMC',
+      value: `${score > 0 ? '+' : ''}${Math.round(score)}`,
+      color,
+      zone,
+    });
+  }
+
+  if (miniOscillators.has('smcTrendEngine') && smcTrendEnginePanelData?.evaluation) {
+    const score = smcTrendEnginePanelData.evaluation.score ?? 0;
+    const zone = score >= 20 ? 'BULL' : score <= -20 ? 'BEAR' : 'NEU';
+    const color = score >= 20 ? 'text-green-400' : score <= -20 ? 'text-red-400' : 'text-yellow-400';
+    newMiniItems.push({
+      id: 'smcTrendEngine',
+      label: 'SMC-T',
       value: `${score > 0 ? '+' : ''}${Math.round(score)}`,
       color,
       zone,
