@@ -6,6 +6,7 @@ import { TOP_TOOLBAR_HEIGHT } from '@/lib/constants/layout';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
 import type { ScoringInput } from '@/lib/tradingSystemScoring';
 import type { SystemEvaluation } from '@/types/systemScoring';
+import type { SMCTrendEnginePanelData } from '@/components/trading/SMCTrendEngine/types';
 
 interface FullscreenChartViewportLayerProps {
   miniOscillators: Set<string>;
@@ -22,6 +23,7 @@ interface FullscreenChartViewportLayerProps {
     scoringInput: ScoringInput | null;
     evaluation: SystemEvaluation | null;
   };
+  smcTrendEnginePanelData?: SMCTrendEnginePanelData;
 }
 
 export function FullscreenChartViewportLayer({
@@ -36,6 +38,7 @@ export function FullscreenChartViewportLayer({
   chartPercentage,
   onChartBackgroundClick,
   smartMoneyPanelData,
+  smcTrendEnginePanelData,
 }: FullscreenChartViewportLayerProps) {
   return (
     <>
@@ -44,6 +47,7 @@ export function FullscreenChartViewportLayer({
         oscillatorData={oscillatorData}
         onCycleMode={onCycleMiniMode}
         smartMoneyPanelData={smartMoneyPanelData}
+        smcTrendEnginePanelData={smcTrendEnginePanelData}
       />
 
       {showHtfBiasPanel && <HTFBiasPanel entries={htfBiasEntries} />}

@@ -3,6 +3,7 @@ import { PoppedOutOscillators } from '@/components/oscillators/PoppedOutOscillat
 import type { OscillatorData } from '@/hooks/useOscillatorData';
 import type { ScoringInput } from '@/lib/tradingSystemScoring';
 import type { SystemEvaluation } from '@/types/systemScoring';
+import type { SMCTrendEnginePanelData } from '@/components/trading/SMCTrendEngine/types';
 
 interface FullscreenOscillatorLayoutProps {
   selectedOscillators: Set<string>;
@@ -20,6 +21,7 @@ interface FullscreenOscillatorLayoutProps {
     scoringInput: ScoringInput | null;
     evaluation: SystemEvaluation | null;
   };
+  smcTrendEnginePanelData?: SMCTrendEnginePanelData;
 }
 
 export function FullscreenOscillatorLayout({
@@ -35,6 +37,7 @@ export function FullscreenOscillatorLayout({
   perOscillatorPercentage,
   mainChartVisibleRange,
   smartMoneyPanelData,
+  smcTrendEnginePanelData,
 }: FullscreenOscillatorLayoutProps) {
   return (
     <>
@@ -53,6 +56,7 @@ export function FullscreenOscillatorLayout({
         perOscillatorPercentage={perOscillatorPercentage}
         mainChartVisibleRange={mainChartVisibleRange}
         smartMoneyPanelData={smartMoneyPanelData}
+        smcTrendEnginePanelData={smcTrendEnginePanelData}
       />
 
       <PoppedOutOscillators
@@ -64,6 +68,7 @@ export function FullscreenOscillatorLayout({
         onCycleMode={onCycleMode}
         mainChartVisibleRange={mainChartVisibleRange}
         smartMoneyPanelData={smartMoneyPanelData}
+        smcTrendEnginePanelData={smcTrendEnginePanelData}
       />
     </>
   );

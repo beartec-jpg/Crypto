@@ -239,3 +239,39 @@ describe('scoreSmartMoney additive model — new scoring', () => {
     expect(liqCond!.score).toBeLessThanOrEqual(40);
   });
 });
+
+describe('smc-trend-engine weighted behavior', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetWeightsToDefault('smc-trend-engine');
+  });
+
+  it('disabling all weighted conditions neutralizes the score', () => {
+    setConditionWeight('smc-trend-engine', 'structureTrend', 0);
+    setConditionWeight('smc-trend-engine', 'htfBiasAlignment', 0);
+    setConditionWeight('smc-trend-engine', 'orderBlockTrendEntry', 0);
+    setConditionWeight('smc-trend-engine', 'fvgTrendEntry', 0);
+    setConditionWeight('smc-trend-engine', 'liquidityReaction', 0);
+    setConditionWeight('smc-trend-engine', 'autoFibTrendEntry', 0);
+    setConditionWeight('smc-trend-engine', 'divergenceTrendSupport', 0);
+    setConditionWeight('smc-trend-engine', 'trendFollowThrough', 0);
+
+    const evaluation = scoreSystem('smc-trend-engine', {
+      latestClose: 100,
+      previousClose: 101,
+      htfBullish: 2,
+      htfBearish: 0,
+      latestStructureDirection: 'bullish',
+      stTrend: 'bullish',
+      currentCandleIndex: 120,
+      currentTime: 120,
+      timeframe: '15m',
+      structureBreaks: [{ breakTime: 100, breakIndex: 100, direction: 'bullish', type: 'mss', confirmed: true }],
+      orderBlocks: [{ high: 100.5, low: 99.5, type: 'bullish', mitigated: false }],
+      fvgs: [{ high: 100.5, low: 99.5, type: 'bullish', filled: false }],
+      liquidityZones: [{ price: 99, type: 'low', swept: true, sweptIndex: 119 }],
+    });
+
+    expect(evaluation.score).toBe(0);
+  });
+});

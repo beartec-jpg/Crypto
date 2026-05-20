@@ -1,6 +1,6 @@
 /**
  * Market pattern detection for the Multi-System Confluence Monitor.
- * Analyses relationships between 8 trading system scores to identify
+ * Analyses relationships between available trading system scores to identify
  * actionable market conditions.
  */
 
@@ -41,6 +41,7 @@ export function detectMarketPattern(
   const meanReversionScore = evaluations.find(e => e.systemId === 'mean-reversion')?.score ?? 0;
   const breakoutScore = evaluations.find(e => e.systemId === 'breakout-momentum')?.score ?? 0;
   const smartMoneyScore = evaluations.find(e => e.systemId === 'smart-money')?.score ?? 0;
+  const smcTrendEngineScore = evaluations.find(e => e.systemId === 'smc-trend-engine')?.score ?? 0;
   const momentumScalperScore = evaluations.find(e => e.systemId === 'momentum-scalper')?.score ?? 0;
   const divergenceScore = evaluations.find(e => e.systemId === 'divergence-master')?.score ?? 0;
   const multiTimeframeScore = evaluations.find(e => e.systemId === 'mtf-confluence')?.score ?? 0;
@@ -104,7 +105,8 @@ export function detectMarketPattern(
   if (
     breakoutScore > 60 &&
     volumeProfileScore < -30 &&
-    smartMoneyScore < 10
+    smartMoneyScore < 10 &&
+    smcTrendEngineScore < 10
   ) {
     patterns.push({
       type: 'warning',

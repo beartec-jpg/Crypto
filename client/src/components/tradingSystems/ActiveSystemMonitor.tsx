@@ -153,7 +153,7 @@ export function ActiveSystemMonitor({
 
   // Derive trend direction arrow and multiplier from the trendStrength condition (Smart Money only).
   // The value encodes direction as a leading arrow character, e.g. "↑1.40x" or "↓1.20x".
-  const trendStrengthCond = systemId === 'smart-money'
+  const trendStrengthCond = (systemId === 'smart-money' || systemId === 'smc-trend-engine')
     ? conditions.find(c => c.id === 'trendStrength')
     : undefined;
   const trendIndicatorDisplay = trendStrengthCond?.value; // e.g. "↑1.40x"
@@ -507,7 +507,7 @@ export function ActiveSystemMonitor({
             </div>
           )}
 
-          {systemId === 'smart-money' && scoringInput && (
+          {(systemId === 'smart-money' || systemId === 'smc-trend-engine') && scoringInput && (
             <SMCDebugTable evaluation={evaluation} scoringInput={scoringInput} />
           )}
         </div>

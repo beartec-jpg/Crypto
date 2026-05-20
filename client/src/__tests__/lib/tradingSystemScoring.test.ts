@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  scoreSystem,
   scoreSmartMoney,
   getTrendStrengthMultiplier,
   getConsecutiveMSSCount,
@@ -804,5 +805,56 @@ describe('getConsecutiveMSSCount', () => {
 
   it('should return 0 for empty structureBreaks', () => {
     expect(getConsecutiveMSSCount([], 'bullish', 2000)).toBe(0);
+  });
+});
+
+describe('SMC Trend Engine scoring', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetWeightsToDefault('smc-trend-engine');
+  });
+
+  it('produces bullish score on bullish structure with bullish zone confluence', () => {
+    const result = scoreSystem('smc-trend-engine', {
+      latestClose: 100,
+      previousClose: 101,
+      htfBullish: 2,
+      htfBearish: 0,
+      latestStructureDirection: 'bullish',
+      stTrend: 'bullish',
+      currentCandleIndex: 120,
+      currentTime: 120,
+      timeframe: '15m',
+      structureBreaks: [{ breakTime: 100, breakIndex: 100, direction: 'bullish', type: 'mss', confirmed: true }],
+      orderBlocks: [{ high: 100.5, low: 99.5, type: 'bullish', mitigated: false }],
+      fvgs: [{ high: 100.5, low: 99.5, type: 'bullish', filled: false }],
+      liquidityZones: [{ price: 99, type: 'low', swept: true, sweptIndex: 119 }],
+      autoFibResult: { primary: createSecondaryFib(100), secondary: null },
+    });
+
+    expect(result.score).toBeGreaterThan(0);
+    expect(result.conditions.some(c => c.id === 'structureTrend')).toBe(true);
+  });
+
+  it('produces bearish score on bearish structure with bearish zone confluence', () => {
+    const result = scoreSystem('smc-trend-engine', {
+      latestClose: 100,
+      previousClose: 99,
+      htfBullish: 0,
+      htfBearish: 2,
+      latestStructureDirection: 'bearish',
+      stTrend: 'bearish',
+      currentCandleIndex: 120,
+      currentTime: 120,
+      timeframe: '15m',
+      structureBreaks: [{ breakTime: 100, breakIndex: 100, direction: 'bearish', type: 'mss', confirmed: true }],
+      orderBlocks: [{ high: 100.5, low: 99.5, type: 'bearish', mitigated: false }],
+      fvgs: [{ high: 100.5, low: 99.5, type: 'bearish', filled: false }],
+      liquidityZones: [{ price: 101, type: 'high', swept: true, sweptIndex: 119 }],
+      autoFibResult: { primary: createSecondaryFib(100), secondary: null },
+    });
+
+    expect(result.score).toBeLessThan(0);
+    expect(result.conditions.some(c => c.id === 'structureTrend')).toBe(true);
   });
 });

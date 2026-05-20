@@ -132,6 +132,19 @@ function getDefaultWeights(systemId: string): Record<string, WeightLevel> {
     };
   }
 
+  if (systemId === 'smc-trend-engine') {
+    return {
+      structureTrend: 1,
+      htfBiasAlignment: 1,
+      orderBlockTrendEntry: 1,
+      fvgTrendEntry: 1,
+      liquidityReaction: 1,
+      autoFibTrendEntry: 1,
+      divergenceTrendSupport: 1,
+      trendFollowThrough: 1,
+    };
+  }
+
   if (systemId === 'momentum-scalper') {
     return {
       macdCrossover: 1,

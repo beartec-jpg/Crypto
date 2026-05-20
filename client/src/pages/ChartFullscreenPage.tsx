@@ -124,7 +124,7 @@ const FREE_MODE_POINT_INTERVAL = 3;
 // All possible oscillator panel IDs (must match OscillatorSelectorModal)
 const ALL_OSCILLATOR_IDS = [
   'rsi', 'macd', 'waddah', 'cmf', 'volume', 'stochRsi', 'tsi',
-  'williamsR', 'cci', 'adx', 'obv', 'mfi', 'klinger',
+  'williamsR', 'cci', 'adx', 'obv', 'mfi', 'klinger', 'smartMoney', 'smcTrendEngine',
 ];
 
 // Minimum number of candles required for meaningful indicator calculations during rewind
@@ -599,6 +599,7 @@ export function ChartFullscreenPage({
       klinger: { enabled: oscillatorPanel.selectedOscillators.has('klinger') },
       waddah: { enabled: oscillatorPanel.selectedOscillators.has('waddah') },
       smartMoney: { enabled: oscillatorPanel.selectedOscillators.has('smartMoney') },
+      smcTrendEngine: { enabled: oscillatorPanel.selectedOscillators.has('smcTrendEngine') },
     }),
     [
       oscillatorPanel.selectedOscillators,
@@ -1128,7 +1129,7 @@ export function ChartFullscreenPage({
 
   // Auto-enable divergence scanner when Smart Money system is activated
   useEffect(() => {
-    if (tradingSystem.activeSystem === 'smart-money') {
+    if (tradingSystem.activeSystem === 'smart-money' || tradingSystem.activeSystem === 'smc-trend-engine') {
       setDivergenceScannerEnabled(true);
     }
   }, [tradingSystem.activeSystem]);
@@ -1343,6 +1344,105 @@ export function ChartFullscreenPage({
     conditionWeightsVersion,
   ]);
 
+  const smcTrendEnginePanelData = useMemo(() => {
+    if (effectiveCandles.length < 2) {
+      return { scoringInput: null, evaluation: null };
+    }
+
+    const previousCandle = effectiveCandles[effectiveCandles.length - 2] as { open: number; close: number };
+    const latestCandle = effectiveCandles[effectiveCandles.length - 1] as { time: number; close: number; volume?: number };
+
+    const lastRsi = oscillatorData.rsi[oscillatorData.rsi.length - 1]?.value;
+    const prevRsi = oscillatorData.rsi[oscillatorData.rsi.length - 2]?.value;
+    const macdNow = oscillatorData.macd.macd[oscillatorData.macd.macd.length - 1]?.value;
+    const macdPrev = oscillatorData.macd.macd[oscillatorData.macd.macd.length - 2]?.value;
+    const sigNow = oscillatorData.macd.signal[oscillatorData.macd.signal.length - 1]?.value;
+    const sigPrev = oscillatorData.macd.signal[oscillatorData.macd.signal.length - 2]?.value;
+
+    const stLatest = superTrendData.standard[superTrendData.standard.length - 1];
+    const stTrend = stLatest?.trend;
+    const latestStructureBreak = structureBreaks[structureBreaks.length - 1];
+    const avgVolume = calculateAverageVolume(effectiveCandles as Array<{ volume: number }>, effectiveCandles.length - 1, 20);
+    const shortTermMA = calculateSimpleMovingAverage(effectiveCandles as Array<{ close: number }>, effectiveCandles.length - 1, 9);
+    const longTermMA = calculateSimpleMovingAverage(effectiveCandles as Array<{ close: number }>, effectiveCandles.length - 1, 21);
+    const { supportLevel, resistanceLevel } = calculateSupportResistance(
+      effectiveCandles as Array<{ low: number; high: number }>,
+      effectiveCandles.length - 1,
+      getSRLookback(timeframe),
+    );
+
+    const htfBullish = htfBiasEntries.filter(e => e.bias === 'bullish').length;
+    const htfBearish = htfBiasEntries.filter(e => e.bias === 'bearish').length;
+
+    const divergenceHistoryLength = 51;
+    const priceHistory = effectiveCandles.slice(-divergenceHistoryLength).map(c => (c as { close: number }).close);
+    const rsiHistory = oscillatorData.rsi.slice(-divergenceHistoryLength).map(p => p.value);
+    const macdHistHistory = oscillatorData.macd.hist.slice(-divergenceHistoryLength).map(p => p.value);
+
+    const scoringInput: ScoringInput = {
+      lastRsi,
+      prevRsi,
+      macdNow,
+      macdPrev,
+      sigNow,
+      sigPrev,
+      stTrend,
+      latestStructureDirection: latestStructureBreak?.direction,
+      htfBullish,
+      htfBearish,
+      rsi: lastRsi,
+      currentPrice: latestCandle.close,
+      supportLevel,
+      resistanceLevel,
+      currentVolume: latestCandle.volume,
+      avgVolume,
+      shortTermMA,
+      longTermMA,
+      latestClose: latestCandle.close,
+      previousClose: previousCandle.close,
+      divergencePoints,
+      currentTime: Number(latestCandle.time),
+      currentCandleIndex: effectiveCandles.length - 1,
+      structureBreaks,
+      swingPoints,
+      ...buildSmcZoneInputs(fvgs, orderBlocks, breakers, liquidityZones),
+      volumeProfileData: volumeProfileData
+        ? { rows: volumeProfileData.rows.map(r => ({ price: r.price, volume: r.volume })), valueAreaHigh: volumeProfileData.vahPrice, valueAreaLow: volumeProfileData.valPrice, poc: volumeProfileData.poc }
+        : undefined,
+      priceHistory,
+      rsiHistory,
+      macdHistHistory,
+      autoFibResult,
+      timeframe,
+    };
+
+    const evaluation = scoreSystem('smc-trend-engine', scoringInput);
+
+    return {
+      scoringInput,
+      evaluation: {
+        ...evaluation,
+        timestamp: Date.now(),
+      },
+    };
+  }, [
+    effectiveCandles,
+    oscillatorData,
+    superTrendData,
+    structureBreaks,
+    swingPoints,
+    htfBiasEntries,
+    divergencePoints,
+    fvgs,
+    orderBlocks,
+    breakers,
+    liquidityZones,
+    volumeProfileData,
+    autoFibResult,
+    timeframe,
+    conditionWeightsVersion,
+  ]);
+
   const activeSystemSummary = useMemo(() => {
     if (!tradingSystem.activeSystem) return null;
 
@@ -1452,7 +1552,7 @@ export function ChartFullscreenPage({
     setIsAnalyzingOpportunities(true);
     // Defer to next animation frame so the loading state renders before heavy computation
     requestAnimationFrame(() => {
-      const smcWeights = getConditionWeights('smart-money');
+      const smcWeights = getConditionWeights(tradingSystem.activeSystem === 'smc-trend-engine' ? 'smc-trend-engine' : 'smart-money');
       const zones = findMaximumOpportunityZones(
         candles as Candle[],
         startIdx,
@@ -1492,6 +1592,7 @@ export function ChartFullscreenPage({
       }
     });
   }, [
+    tradingSystem.activeSystem,
     chartRef,
     candles,
     autoFibResult,
@@ -2811,6 +2912,7 @@ export function ChartFullscreenPage({
           oscillatorData={oscillatorData}
           onCycleMiniMode={oscillatorPanel.cycleMode}
           smartMoneyPanelData={smartMoneyPanelData}
+          smcTrendEnginePanelData={smcTrendEnginePanelData}
           showHtfBiasPanel={htfBiasSettings.settings.enabled}
           htfBiasEntries={htfBiasEntries}
           isLoading={isLoading && candles.length === 0}
@@ -2987,7 +3089,7 @@ export function ChartFullscreenPage({
         )}
       </div>
       
-      <FullscreenOscillatorLayout
+        <FullscreenOscillatorLayout
         selectedOscillators={oscillatorPanel.selectedOscillators}
         poppedOutOscillators={oscillatorPanel.poppedOutOscillators}
         miniOscillators={oscillatorPanel.miniOscillators}
@@ -2998,9 +3100,10 @@ export function ChartFullscreenPage({
         onCycleMode={oscillatorPanel.cycleMode}
         totalPercentage={oscillatorPanel.totalPercentage}
         perOscillatorPercentage={oscillatorPanel.perOscillatorPercentage}
-        mainChartVisibleRange={mainChartVisibleRange}
-        smartMoneyPanelData={smartMoneyPanelData}
-      />
+          mainChartVisibleRange={mainChartVisibleRange}
+          smartMoneyPanelData={smartMoneyPanelData}
+          smcTrendEnginePanelData={smcTrendEnginePanelData}
+        />
       
       <FullscreenChartModals
         selectedDrawingId={drawingInteraction.selectedDrawingId}

@@ -2197,7 +2197,128 @@ export function scoreSmartMoney(input: ScoringInput): SystemEvaluation {
   return buildEvaluation('smart-money', conditions, finalScore, reasoning);
 }
 
-// ── 5. Momentum Scalper ───────────────────────────────────────────────────────
+// ── 5. SMC Trend Engine ───────────────────────────────────────────────────────
+
+export function scoreSMCTrendEngine(input: ScoringInput): SystemEvaluation {
+  const {
+    latestClose,
+    previousClose,
+    latestStructureDirection,
+    stTrend,
+    htfBullish,
+    htfBearish,
+    currentCandleIndex,
+    currentTime,
+    timeframe,
+    structureBreaks,
+    fvgs,
+    orderBlocks,
+    liquidityZones,
+    divergencePoints,
+    autoFibResult,
+  } = input;
+
+  const trendDirection = latestStructureDirection ?? stTrend;
+  const trendSign = trendDirection === 'bullish' ? 1 : trendDirection === 'bearish' ? -1 : 0;
+
+  const structureTrendScore = scoreBoolean(
+    latestStructureDirection === 'bullish',
+    latestStructureDirection === 'bearish',
+    95,
+  );
+
+  const superTrendScore = scoreBoolean(stTrend === 'bullish', stTrend === 'bearish', 75);
+  const trendCompositeScore = clamp(Math.round((structureTrendScore * 0.65) + (superTrendScore * 0.35)));
+
+  const totalHtf = htfBullish + htfBearish;
+  const htfBiasScore = totalHtf > 0
+    ? clamp(Math.round(((htfBullish - htfBearish) / totalHtf) * 100))
+    : 0;
+
+  const orderBlockScore = scoreOrderBlockProximity(latestClose, previousClose, orderBlocks);
+  const fvgScore = scoreFVGProximity(latestClose, previousClose, fvgs);
+  const liquidityScore = scoreLiquiditySweepProximity(
+    latestClose,
+    liquidityZones,
+    currentCandleIndex,
+    structureBreaks,
+    fvgs,
+    orderBlocks,
+  );
+
+  const scannerDivergence = scoreDivergencePointsConfluence(
+    divergencePoints,
+    currentTime,
+    timeframe,
+    htfBullish,
+    htfBearish,
+  );
+
+  const primaryFibScore = scoreAutoFibConfluence(autoFibResult?.primary, latestClose);
+  const autoFibDirectionalScore = trendSign !== 0
+    ? clamp(Math.round(primaryFibScore * trendSign))
+    : 0;
+
+  const trendFollowThroughScore = scorePercentMove(latestClose, previousClose, 2);
+
+  const granularConditions: GranularCondition[] = [
+    {
+      id: 'structureTrend',
+      name: 'Structure Trend',
+      score: trendCompositeScore,
+      value: trendDirection ? trendDirection.toUpperCase() : 'NEUTRAL',
+      description: 'Combined MSS/CHoCH/BOS direction with SuperTrend context.',
+    },
+    {
+      id: 'htfBiasAlignment',
+      name: 'HTF Bias Alignment',
+      score: htfBiasScore,
+      value: `${htfBullish}↑ / ${htfBearish}↓`,
+      description: 'Higher-timeframe directional balance.',
+    },
+    {
+      id: 'orderBlockTrendEntry',
+      name: 'Order Block Trend Entry',
+      score: orderBlockScore,
+      description: 'Proximity to trend-compatible order blocks.',
+    },
+    {
+      id: 'fvgTrendEntry',
+      name: 'FVG Trend Entry',
+      score: fvgScore,
+      description: 'Proximity to trend-compatible fair value gaps.',
+    },
+    {
+      id: 'liquidityReaction',
+      name: 'Liquidity Reaction',
+      score: liquidityScore,
+      description: 'Recent liquidity sweep reaction quality.',
+    },
+    {
+      id: 'autoFibTrendEntry',
+      name: 'Auto-Fib Trend Entry',
+      score: autoFibDirectionalScore,
+      description: 'Primary Auto-Fib retracement quality in trend direction.',
+    },
+    {
+      id: 'divergenceTrendSupport',
+      name: 'Divergence Trend Support',
+      score: scannerDivergence.score,
+      description: scannerDivergence.source,
+    },
+    {
+      id: 'trendFollowThrough',
+      name: 'Trend Follow-Through',
+      score: trendFollowThroughScore,
+      description: 'Latest candle follow-through relative to trend context.',
+    },
+  ];
+
+  const { conditions, overallScore, reasoning } = mapWeightedConditions('smc-trend-engine', granularConditions);
+  return buildEvaluation('smc-trend-engine', conditions, overallScore, reasoning);
+}
+
+// ── 6. Momentum Scalper ───────────────────────────────────────────────────────
 
 export function scoreMomentumScalper(input: ScoringInput): SystemEvaluation {
   const {
@@ -2661,6 +2782,7 @@ export function scoreSystem(systemId: TradingSystemId, input: ScoringInput): Sys
     case 'mean-reversion': return scoreMeanReversion(input);
     case 'breakout-momentum': return scoreBreakoutMomentum(input);
     case 'smart-money': return scoreSmartMoney(input);
+    case 'smc-trend-engine': return scoreSMCTrendEngine(input);
     case 'momentum-scalper': return scoreMomentumScalper(input);
     case 'divergence-master': return scoreDivergenceMaster(input);
     case 'mtf-confluence': return scoreMTFConfluence(input);
