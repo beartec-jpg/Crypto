@@ -24,7 +24,7 @@ import {
   ShoppingCart,
   Tag,
 } from 'lucide-react';
-import { unlockWallet } from '@/lib/walletService';
+import { unlockWallet, unlockWalletWithPasskey } from '@/lib/walletService';
 import {
   type ChainId,
   type V2Offer,
@@ -47,6 +47,8 @@ interface MultiChainMarketTabProps {
   walletBtcPubKey?: string;  // compressed BTC pubkey hex — passed as takerPubKeyHex when accepting BTC offers
   walletBtcAddress?: string; // BTC address (testnet) for balance display
   walletXrpAddress?: string;
+  /** PRF master seed — bypasses password prompts for passkey wallets */
+  masterSeed?: Uint8Array | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -68,8 +70,15 @@ const CHAIN_SYMBOLS: Record<ChainId, string> = {
 
 // ─── Internal wallet signer ──────────────────────────────────────────────────
 
-async function signWithWallet(walletId: string, password: string, message: string): Promise<string> {
-  const wallet = await unlockWallet(walletId, password);
+async function signWithWallet(
+  walletId: string,
+  password: string,
+  message: string,
+  masterSeed?: Uint8Array | null,
+): Promise<string> {
+  const wallet = masterSeed
+    ? await unlockWalletWithPasskey(walletId, masterSeed)
+    : await unlockWallet(walletId, password);
   const ethPrivateKey = wallet.privateKeys.ethereum;
   if (!ethPrivateKey) throw new Error('Ethereum key not found in wallet');
   const signer = new ethers.Wallet('0x' + ethPrivateKey);
@@ -252,11 +261,12 @@ function PasswordField({ value, onChange, disabled = false }: {
 // ─── Accept Offer Modal ───────────────────────────────────────────────────────
 
 function AcceptOfferModal({
-  offer, walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletPubKey, walletBtcPubKey, walletBtcAddress, onClose, onAccepted,
+  offer, walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletPubKey, walletBtcPubKey, walletBtcAddress, masterSeed, onClose, onAccepted,
 }: {
   offer: V2Offer | null;
   walletId: string; walletEvmAddress: string; walletAddress: string; walletXrpAddress: string;
   walletPubKey?: string; walletBtcPubKey?: string; walletBtcAddress?: string;
+  masterSeed?: Uint8Array | null;
   onClose: () => void; onAccepted: () => void;
 }) {
   const [takerAddress, setTakerAddress] = useState('');
@@ -284,7 +294,7 @@ function AcceptOfferModal({
     try {
       setErrorMsg('');
       if (!takerAddress) { setErrorMsg('Enter your receive address'); return; }
-      if (!password.trim()) { setErrorMsg('Enter your wallet password'); return; }
+      if (!masterSeed && !password.trim()) { setErrorMsg('Enter your wallet password'); return; }
 
       setStatus('signing');
       const timestamp = Math.floor(Date.now() / 1000);
@@ -292,7 +302,7 @@ function AcceptOfferModal({
         'ACCEPT_OFFER', offer.baseChain, offer.quoteChain,
         offer.id, walletEvmAddress.toLowerCase(), timestamp,
       );
-      const signature = await signWithWallet(walletId, password, message);
+      const signature = await signWithWallet(walletId, password, message, masterSeed ?? undefined);
 
       // Include the taker's pubkey so the maker can reconstruct the HTLC claim script.
       // The stored pubkey is used as sellerPubKeyHex in the TAKER's HTLC lock script.
@@ -383,7 +393,7 @@ function AcceptOfferModal({
                   className="w-full bg-slate-800/60 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 font-mono cursor-default select-all" />
               </div>
 
-              <PasswordField value={password} onChange={setPassword} disabled={busy} />
+              {!masterSeed && <PasswordField value={password} onChange={setPassword} disabled={busy} />}
 
               {errorMsg && (
                 <div className="flex items-start gap-2 text-xs text-red-300 bg-red-900/20 border border-red-800/40 rounded-lg p-3">
@@ -391,7 +401,7 @@ function AcceptOfferModal({
                 </div>
               )}
 
-              <button onClick={submitAccept} disabled={busy || !password.trim()}
+              <button onClick={submitAccept} disabled={busy || (!masterSeed && !password.trim())}
                 className="w-full py-2.5 rounded-lg font-medium text-sm bg-cyan-600 hover:bg-cyan-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
                 {busy ? <><Loader2 size={14} className="animate-spin" />{status === 'signing' ? 'Signing…' : 'Submitting…'}</> : 'Accept & Initiate Swap'}
               </button>
@@ -444,10 +454,11 @@ type SortMode = 'amount_desc' | 'chain_asc';
 type ChainFilter = ChainId | 'All';
 
 function BuyView({
-  walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletPubKey, walletBtcPubKey, walletBtcAddress, onBack,
+  walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletPubKey, walletBtcPubKey, walletBtcAddress, masterSeed, onBack,
 }: {
   walletId: string; walletEvmAddress: string; walletAddress: string; walletXrpAddress: string;
   walletPubKey?: string; walletBtcPubKey?: string; walletBtcAddress?: string;
+  masterSeed?: Uint8Array | null;
   onBack: () => void;
 }) {
   const [allOffers, setAllOffers] = useState<V2Offer[]>([]);
@@ -630,6 +641,7 @@ function BuyView({
           walletPubKey={walletPubKey}
           walletBtcPubKey={walletBtcPubKey}
           walletBtcAddress={walletBtcAddress}
+          masterSeed={masterSeed}
           onClose={() => setAcceptTarget(null)}
           onAccepted={() => {
             loadOffers();
@@ -645,10 +657,11 @@ function BuyView({
 // ─── Sell View ────────────────────────────────────────────────────────────────
 
 function SellView({
-  walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletBtcAddress, walletBtcPubKey, onBack,
+  walletId, walletEvmAddress, walletAddress, walletXrpAddress, walletBtcAddress, walletBtcPubKey, masterSeed, onBack,
 }: {
   walletId: string; walletEvmAddress: string; walletAddress: string; walletXrpAddress: string;
   walletBtcAddress?: string; walletBtcPubKey?: string;
+  masterSeed?: Uint8Array | null;
   onBack: () => void;
 }) {
   // Chain selectors
@@ -745,11 +758,11 @@ function SellView({
   useEffect(() => { loadMyListings(); }, [loadMyListings]);
 
   const handleCancelListing = useCallback(async (offer: V2Offer) => {
-    if (!password.trim()) { setCancelError('Enter your wallet password to cancel'); return; }
+    if (!masterSeed && !password.trim()) { setCancelError('Enter your wallet password to cancel'); return; }
     setCancelError('');
     setCancellingId(offer.id);
     try {
-      await cancelV2Offer(offer, walletId, password, signWithWallet);
+      await cancelV2Offer(offer, walletId, password, (id, pw, msg) => signWithWallet(id, pw, msg, masterSeed ?? undefined));
       await loadMyListings();
       refreshBalance();
     } catch (e: unknown) {
@@ -783,7 +796,7 @@ function SellView({
       setErrorMsg('');
       if (!baseAmount || !quoteAmount || !makerAddress) { setErrorMsg('Fill in all fields'); return; }
       if (insufficientBalance) { setErrorMsg(`Insufficient ${base} balance (have ${balance}, need ${baseAmount})`); return; }
-      if (!password.trim()) { setErrorMsg('Enter your wallet password'); return; }
+      if (!masterSeed && !password.trim()) { setErrorMsg('Enter your wallet password'); return; }
 
       setSubmitStatus('signing');
       const { secret, secretHash } = await generateSecret();
@@ -795,7 +808,7 @@ function SellView({
         walletEvmAddress.toLowerCase(), baseAmount, quoteAmount,
         secretHash, makerLocktime, timestamp,
       );
-      const signature = await signWithWallet(walletId, password, message);
+      const signature = await signWithWallet(walletId, password, message, masterSeed ?? undefined);
 
       setSubmitStatus('submitting');
       await postV2Offer({
@@ -950,7 +963,7 @@ function SellView({
           </div>
         </div>
 
-        <PasswordField value={password} onChange={setPassword} disabled={busy} />
+        {!masterSeed && <PasswordField value={password} onChange={setPassword} disabled={busy} />}
 
         {errorMsg && (
           <div className="flex items-start gap-2 text-xs text-red-300 bg-red-900/20 border border-red-800/40 rounded-lg p-3">
@@ -968,7 +981,7 @@ function SellView({
         )}
 
         {submitStatus !== 'done' && (
-          <button onClick={submitOffer} disabled={busy || !password.trim() || insufficientBalance}
+          <button onClick={submitOffer} disabled={busy || (!masterSeed && !password.trim()) || insufficientBalance}
             className="w-full py-2.5 rounded-lg font-medium text-sm bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2">
             {busy
               ? <><Loader2 size={14} className="animate-spin" />{submitStatus === 'signing' ? 'Signing…' : 'Submitting…'}</>
@@ -1058,7 +1071,7 @@ function SellView({
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function MultiChainMarketTab({
-  walletId, userId: _userId, walletEvmAddress, walletAddress, walletPubKey, walletXrpAddress = '', walletBtcPubKey = '', walletBtcAddress = '',
+  walletId, userId: _userId, walletEvmAddress, walletAddress, walletPubKey, walletXrpAddress = '', walletBtcPubKey = '', walletBtcAddress = '', masterSeed,
 }: MultiChainMarketTabProps) {
   const [view, setView] = useState<'entry' | 'buy' | 'sell'>('entry');
 
@@ -1072,6 +1085,7 @@ export default function MultiChainMarketTab({
         walletPubKey={walletPubKey}
         walletBtcPubKey={walletBtcPubKey}
         walletBtcAddress={walletBtcAddress}
+        masterSeed={masterSeed}
         onBack={() => setView('entry')}
       />
     );
@@ -1086,6 +1100,7 @@ export default function MultiChainMarketTab({
         walletXrpAddress={walletXrpAddress}
         walletBtcAddress={walletBtcAddress}
         walletBtcPubKey={walletBtcPubKey}
+        masterSeed={masterSeed}
         onBack={() => setView('entry')}
       />
     );

@@ -112,7 +112,7 @@ export function useDrawingsPersistence(symbol: string, interval: string) {
   // Clear all drawings
   const clearDrawingsMutation = useMutation({
     mutationFn: async () => {
-      return await authenticatedApiRequest('DELETE', `/api/crypto/chart-drawings/clear?symbol=${symbol}&timeframe=${interval}`);
+      return await authenticatedApiRequest('DELETE', `/api/crypto/chart-drawings?symbol=${symbol}&timeframe=${interval}`);
     },
     onSuccess: () => {
       toast({ 

@@ -7,7 +7,7 @@ import type { QBTCKeyPair } from '../lib/keys';
 
 interface WalletTabProps {
   address: string;
-  masterSeed: Uint8Array;
+  masterSeed: Uint8Array | null;  // null in watch-only (cold signer) mode
   keyPair: QBTCKeyPair | null;
   network: 'testnet' | 'mainnet';
 }
@@ -53,6 +53,17 @@ export default function WalletTab({ address, masterSeed, keyPair, network }: Wal
   }
 
   if (subView === 'send') {
+    if (!keyPair) {
+      // Watch-only mode — send not available on this device
+      return (
+        <div className="flex flex-col h-full items-center justify-center px-6 gap-4">
+          <p className="text-slate-400 text-center text-sm">
+            This is a watch-only wallet. To send, scan the unsigned transaction QR on your cold signer device.
+          </p>
+          <button onClick={() => setSubView('main')} className="text-cyan-400 text-sm">← Back</button>
+        </div>
+      );
+    }
     return (
       <SendForm
         utxos={utxos}

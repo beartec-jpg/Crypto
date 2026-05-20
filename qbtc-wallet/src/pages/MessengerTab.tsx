@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Send, UserPlus, ArrowLeft, QrCode, Camera, PenLine,
+  Send, UserPlus, ArrowLeft, Trash2, QrCode, Camera, PenLine,
   Copy, Check, Download, Share2, X, Lock,
 } from 'lucide-react';
 import { useMessages } from '../hooks/useMessages';
@@ -77,8 +77,6 @@ export default function MessengerTab({
   const [chatMessages, setChatMessages] = useState<MessageRecord[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-
-  // Add-contact form
   const [newAddress, setNewAddress] = useState('');
   const [newName, setNewName] = useState('');
   const [newMsgKey, setNewMsgKey] = useState('');
@@ -94,7 +92,7 @@ export default function MessengerTab({
   const qrWrapperRef = useRef<HTMLDivElement>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
-  const { contacts, refresh: refreshContacts } = useContacts();
+  const { contacts, remove: removeContact, refresh: refreshContacts } = useContacts();
 
   const getContactPublicKeyFn = useCallback(
     (address: string) => getContactPubKey(address),
@@ -508,12 +506,25 @@ export default function MessengerTab({
           {contacts.map(contact => {
             const thread = threads.find(t => t.address === contact.address);
             return (
-              <ContactCard
-                key={contact.address}
-                contact={contact}
-                lastMessage={thread?.lastMessage}
-                onClick={() => { setActivePeer(contact.address); setView('chat'); }}
-              />
+              <div key={contact.address} className="group flex items-center border-b border-slate-800/50">
+                <ContactCard
+                  contact={contact}
+                  lastMessage={thread?.lastMessage}
+                  onClick={() => { setActivePeer(contact.address); setView('chat'); }}
+                />
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    if (!confirm(`Remove ${contact.name}?`)) return;
+                    await removeContact(contact.address);
+                    if (activePeer === contact.address) { setActivePeer(null); setView('list'); }
+                  }}
+                  className="shrink-0 mr-4 p-2 text-slate-600 hover:text-red-400 active:text-red-400 transition-colors"
+                  aria-label="Delete contact"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             );
           })}
         </div>

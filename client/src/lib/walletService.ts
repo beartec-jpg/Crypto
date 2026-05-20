@@ -8,6 +8,8 @@ import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
 import { pbkdf2 } from '@noble/hashes/pbkdf2';
 import { randomBytes } from '@noble/hashes/utils';
+import { hmac } from '@noble/hashes/hmac';
+import { sha512 } from '@noble/hashes/sha512';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import * as bip39 from 'bip39';
 import { HDKey } from '@scure/bip32';
@@ -15,6 +17,15 @@ import { Keypair } from '@solana/web3.js';
 import { deriveKeypair, deriveAddress, generateSeed } from 'ripple-keypairs';
 import { Wallet as XRPLWallet } from 'xrpl';
 import { QBTCKeyPair, qbtcAddressFromCompressedPubKey } from './qbtcService';
+
+/**
+ * Encode a credential ID (Uint8Array from credential.rawId) to base64url.
+ * Uses Array.from to avoid spread-into-String.fromCharCode argument-count limits.
+ */
+function credentialIdToB64u(id: Uint8Array): string {
+  return btoa(Array.from(id).map(b => String.fromCharCode(b)).join(''))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
 
 // Supported chains
 export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'xrp' | 'solana' | 'qbtc';
@@ -25,7 +36,16 @@ interface WalletDB extends DBSchema {
     value: {
       id: string;
       userId: string;
-      encryptedMnemonic: string;
+      walletType?: 'legacy' | 'passkey' | 'watch-only';
+      // legacy wallets only:
+      encryptedMnemonic?: string;
+      salt?: string;
+      mnemonicBackedUp?: boolean;
+      // passkey wallets: PRF-encrypted mnemonic (migration preserves BIP39 keys)
+      credentialIdB64?: string;
+      rpId?: string;
+      prfEncryptedMnemonic?: string; // AES-GCM ciphertext hex, encrypted with PRF masterSeed
+      prfEncryptedMnemonicIv?: string; // 12-byte IV hex
       addresses: {
         ethereum: string;
         bitcoin: string;
@@ -49,8 +69,6 @@ interface WalletDB extends DBSchema {
         qbtc: string;
       };
       createdAt: string;
-      salt: string;
-      mnemonicBackedUp?: boolean;
     };
     indexes: { userId: string };
   };
@@ -1199,22 +1217,28 @@ export async function signTransaction(
   password: string,
   chain: Chain,
   transaction: any,
-  passkeyAuthenticated: boolean
+  passkeyAuthenticated: boolean,
+  masterSeed?: Uint8Array | null,
 ): Promise<string> {
   // Step 1: Require passkey authentication
-  if (!passkeyAuthenticated) {
+  if (!passkeyAuthenticated && !masterSeed) {
     throw new Error('🔒 Passkey authentication required to sign transactions');
   }
 
   // Step 2: Verify backup before allowing transaction
-  const backupVerified = await isBackupVerified(walletId);
-  if (!backupVerified) {
-    throw new Error('Please verify your recovery phrase backup before sending transactions');
+  // Passkey wallets (masterSeed present) have no mnemonic backup requirement
+  if (!masterSeed) {
+    const backupVerified = await isBackupVerified(walletId);
+    if (!backupVerified) {
+      throw new Error('Please verify your recovery phrase backup before sending transactions');
+    }
   }
 
   try {
     // Step 3: Unlock wallet and get private key
-    const wallet = await unlockWallet(walletId, password);
+    const wallet = masterSeed
+      ? await unlockWalletWithPasskey(walletId, masterSeed)
+      : await unlockWallet(walletId, password);
     const privateKey = wallet.privateKeys[chain];
     
     if (!privateKey) {
@@ -1600,4 +1624,408 @@ export async function getSolanaKeypair(walletId: string, password: string): Prom
     console.error('Failed to get Solana keypair:', error);
     throw error;
   }
+}
+
+// ── Passkey PRF-based wallet ─────────────────────────────────────────────────
+//
+// Derives all chain private keys from a 32-byte PRF seed using HMAC-SHA512.
+// No mnemonic, no password, no BIP39. Same passkey → same addresses forever,
+// backed by Google/Apple account sync.
+
+function hmacSha512(key: Uint8Array, data: Uint8Array): Uint8Array {
+  return hmac(sha512, key, data);
+}
+
+function deriveChainKey(masterSeed: Uint8Array, label: string): Uint8Array {
+  return hmacSha512(masterSeed, new TextEncoder().encode(label)).slice(0, 32);
+}
+
+/**
+ * Derive all multi-chain addresses from a raw 32-byte PRF master seed.
+ * Uses HMAC-SHA512 with chain-specific labels — deterministic, no BIP39.
+ */
+export async function deriveAddressesFromPRFSeed(masterSeed: Uint8Array): Promise<{
+  addresses: Wallet['addresses'];
+  publicKeys: Record<string, string>;
+  privateKeys: UnlockedWallet['privateKeys'];
+}> {
+  // ETH / BSC
+  const ethPriv = deriveChainKey(masterSeed, 'BEARTEC-ETH-V1');
+  const ethAddress = deriveEthereumAddress(ethPriv);
+
+  // BTC mainnet + testnet
+  const btcPriv = deriveChainKey(masterSeed, 'BEARTEC-BTC-V1');
+  const btcAddress = deriveBitcoinAddress(btcPriv, 'mainnet');
+  const btcTestPriv = deriveChainKey(masterSeed, 'BEARTEC-BTC-TESTNET-V1');
+  const btcTestAddress = deriveBitcoinAddress(btcTestPriv, 'testnet');
+
+  // XRP mainnet + testnet
+  const xrpPriv = deriveChainKey(masterSeed, 'BEARTEC-XRP-V1');
+  const xrpAddress = deriveXRPAddress(xrpPriv);
+  const xrpTestPriv = deriveChainKey(masterSeed, 'BEARTEC-XRP-TESTNET-V1');
+  const xrpTestAddress = deriveXRPAddress(xrpTestPriv);
+
+  // Solana mainnet + testnet
+  const solPriv = deriveChainKey(masterSeed, 'BEARTEC-SOL-V1');
+  const solAddress = deriveSolanaAddress(solPriv);
+  const solTestPriv = deriveChainKey(masterSeed, 'BEARTEC-SOL-TESTNET-V1');
+  const solTestAddress = deriveSolanaAddress(solTestPriv);
+
+  // qBTC (uses existing HMAC derivation, pathIndex=0 hot + pathIndex=1 vault)
+  const qbtcKeyPair = await QBTCKeyPair.fromMasterSeed(masterSeed, 0);
+  const qbtcVaultKeyPair = await QBTCKeyPair.fromMasterSeed(masterSeed, 1);
+
+  const addresses: Wallet['addresses'] = {
+    ethereum: ethAddress,
+    bitcoin: btcAddress,
+    bitcoinTestnet: btcTestAddress,
+    bsc: ethAddress,
+    xrp: xrpAddress,
+    xrpTestnet: xrpTestAddress,
+    solana: solAddress,
+    solanaTestnet: solTestAddress,
+    qbtc: qbtcKeyPair.getAddress('testnet'),
+    qbtcMainnet: qbtcKeyPair.getAddress('mainnet'),
+    qbtcVault: qbtcVaultKeyPair.getAddress('testnet'),
+    qbtcVaultMainnet: qbtcVaultKeyPair.getAddress('mainnet'),
+  };
+
+  const publicKeys: Record<string, string> = {
+    ethereum: Buffer.from(secp256k1.getPublicKey(ethPriv, false)).toString('hex'),
+    bitcoin: Buffer.from(secp256k1.getPublicKey(btcPriv, true)).toString('hex'),
+    bitcoinTestnet: Buffer.from(secp256k1.getPublicKey(btcTestPriv, true)).toString('hex'),
+    bsc: Buffer.from(secp256k1.getPublicKey(ethPriv, false)).toString('hex'),
+    xrp: Buffer.from(secp256k1.getPublicKey(xrpPriv, true)).toString('hex'),
+    solana: Buffer.from(solPriv).toString('hex'),
+    qbtc: qbtcKeyPair.ecdsaPublicKeyHex,
+  };
+
+  const privateKeys: UnlockedWallet['privateKeys'] = {
+    ethereum: Buffer.from(ethPriv).toString('hex'),
+    bitcoin: Buffer.from(btcPriv).toString('hex'),
+    bitcoinTestnet: Buffer.from(btcTestPriv).toString('hex'),
+    bsc: Buffer.from(ethPriv).toString('hex'),
+    xrp: Buffer.from(xrpPriv).toString('hex'),
+    xrpTestnet: Buffer.from(xrpTestPriv).toString('hex'),
+    solana: Buffer.from(solPriv).toString('hex'),
+    qbtc: qbtcKeyPair.ecdsaPrivateKeyHex,
+    qbtcVault: qbtcVaultKeyPair.ecdsaPrivateKeyHex,
+  };
+
+  return { addresses, publicKeys, privateKeys };
+}
+
+/**
+ * Create a new passkey-secured wallet. No mnemonic, no password.
+ * masterSeed and credentialId come from registerPasskeyWithPRF().
+ */
+export async function createWalletFromPasskey(
+  userId: string,
+  masterSeed: Uint8Array,
+  credentialId: Uint8Array,
+  rpId: string,
+): Promise<Wallet> {
+  const existing = await getCurrentWallet(userId);
+  if (existing) {
+    throw new Error('Wallet already exists for this account.');
+  }
+
+  const { addresses, publicKeys } = await deriveAddressesFromPRFSeed(masterSeed);
+
+  const db = await getDB();
+  const walletId = `wallet_${userId}_${Date.now()}`;
+  const credentialIdB64 = credentialIdToB64u(credentialId);
+
+  await db.put('wallets', {
+    id: walletId,
+    userId,
+    walletType: 'passkey',
+    credentialIdB64,
+    rpId,
+    addresses,
+    publicKeys,
+    createdAt: new Date().toISOString(),
+  });
+
+  localStorage.setItem(getUserStorageKey(userId, 'wallet_id'), walletId);
+  localStorage.setItem(getUserStorageKey(userId, 'wallet_created'), 'true');
+
+  return { id: walletId, addresses, publicKeys, createdAt: new Date().toISOString() };
+}
+
+/**
+ * Import a watch-only wallet from cold signer public keys.
+ * No private keys — can view balances, sign via cold signer QR flow.
+ */
+export async function createWatchOnlyWallet(
+  userId: string,
+  addresses: Wallet['addresses'],
+  publicKeys: Record<string, string>,
+): Promise<Wallet> {
+  const existing = await getCurrentWallet(userId);
+  if (existing) {
+    await deleteWallet(existing.id, userId);
+  }
+
+  const db = await getDB();
+  const walletId = `wallet_${userId}_${Date.now()}`;
+
+  await db.put('wallets', {
+    id: walletId,
+    userId,
+    walletType: 'watch-only',
+    addresses,
+    publicKeys,
+    createdAt: new Date().toISOString(),
+  });
+
+  localStorage.setItem(getUserStorageKey(userId, 'wallet_id'), walletId);
+  localStorage.setItem(getUserStorageKey(userId, 'wallet_created'), 'true');
+
+  return { id: walletId, addresses, publicKeys, createdAt: new Date().toISOString() };
+}
+
+/**
+ * Unlock a passkey wallet — derive private keys from PRF masterSeed in memory.
+ * masterSeed comes from authenticateWithPasskeyPRF().
+ */
+/**
+ * Encrypt a mnemonic using an AES-GCM key derived from the PRF masterSeed.
+ * Returns { encryptedHex, ivHex }.
+ */
+async function encryptMnemonicWithPRF(
+  mnemonic: string,
+  masterSeed: Uint8Array,
+): Promise<{ encryptedHex: string; ivHex: string }> {
+  // Derive a 256-bit AES key from masterSeed via HMAC-SHA512 (first 32 bytes)
+  const keyBytes = hmac(sha512, masterSeed, new TextEncoder().encode('BEARTEC-MNEMONIC-ENC-V1')).slice(0, 32);
+  const aesKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, aesKey, new TextEncoder().encode(mnemonic));
+  return {
+    encryptedHex: Buffer.from(ciphertext).toString('hex'),
+    ivHex: Buffer.from(iv).toString('hex'),
+  };
+}
+
+/**
+ * Decrypt a PRF-encrypted mnemonic.
+ */
+async function decryptMnemonicWithPRF(
+  encryptedHex: string,
+  ivHex: string,
+  masterSeed: Uint8Array,
+): Promise<string> {
+  const keyBytes = hmac(sha512, masterSeed, new TextEncoder().encode('BEARTEC-MNEMONIC-ENC-V1')).slice(0, 32);
+  const aesKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  const iv = Buffer.from(ivHex, 'hex');
+  const ciphertext = Buffer.from(encryptedHex, 'hex');
+  const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, aesKey, ciphertext);
+  return new TextDecoder().decode(plain);
+}
+
+export async function unlockWalletWithPasskey(
+  walletId: string,
+  masterSeed: Uint8Array,
+): Promise<UnlockedWallet> {
+  const db = await getDB();
+  const wallet = await db.get('wallets', walletId);
+  if (!wallet) throw new Error('Wallet not found');
+
+  // Migrated legacy wallet: decrypt BIP39 mnemonic with PRF key → same addresses
+  if (wallet.prfEncryptedMnemonic && wallet.prfEncryptedMnemonicIv) {
+    const mnemonic = await decryptMnemonicWithPRF(
+      wallet.prfEncryptedMnemonic,
+      wallet.prfEncryptedMnemonicIv,
+      masterSeed,
+    );
+    const { addresses: derivedAddresses, privateKeys } = await deriveKeysFromMnemonic(mnemonic);
+    return {
+      id: wallet.id,
+      addresses: wallet.addresses,
+      mnemonic,
+      privateKeys,
+      createdAt: wallet.createdAt,
+    };
+  }
+
+  // Brand-new passkey wallet: derive keys from HMAC-SHA512 chains
+  const { addresses, privateKeys } = await deriveAddressesFromPRFSeed(masterSeed);
+  return {
+    id: wallet.id,
+    addresses: wallet.addresses,
+    mnemonic: '',
+    privateKeys,
+    createdAt: wallet.createdAt,
+  };
+}
+
+/**
+ * Check if the stored wallet for a user is passkey-type (vs legacy password wallet).
+ */
+export async function getWalletType(
+  userId: string,
+): Promise<'passkey' | 'watch-only' | 'legacy' | null> {
+  const wallet = await getCurrentWallet(userId);
+  if (!wallet) return null;
+  const db = await getDB();
+  const record = await db.get('wallets', wallet.id);
+  if (!record) return null;
+  return (record.walletType as 'passkey' | 'watch-only' | 'legacy') ?? 'legacy';
+}
+
+/**
+ * Get the stored credentialId for an existing passkey wallet.
+ */
+export async function getWalletCredentialId(userId: string): Promise<string | null> {
+  const wallet = await getCurrentWallet(userId);
+  if (!wallet) return null;
+  const db = await getDB();
+  const record = await db.get('wallets', wallet.id);
+  return record?.credentialIdB64 ?? null;
+}
+
+/**
+ * Update the stored credentialId for a wallet.
+ * Called after a successful PRF authentication so the ID from assertion.rawId
+ * (which Chrome definitely recognises) replaces the ID from registration.
+ */
+export async function updateWalletCredentialId(walletId: string, credentialIdB64: string): Promise<void> {
+  try {
+    const db = await getDB();
+    const record = await db.get('wallets', walletId);
+    if (record) {
+      record.credentialIdB64 = credentialIdB64;
+      await db.put('wallets', record);
+    }
+  } catch (err) {
+    console.warn('Failed to update stored credential ID:', err);
+  }
+}
+
+/**
+ * Get XRP seed string from a PRF master seed (passkey wallet path).
+ * Mirrors the entropy-based generation used in getXRPSeed/getXRPTestnetSeed.
+ */
+export function getXRPSeedFromMasterSeed(masterSeed: Uint8Array, testnet: boolean): string {
+  const label = testnet ? 'BEARTEC-XRP-TESTNET-V1' : 'BEARTEC-XRP-V1';
+  const xrpPriv = hmac(sha512, masterSeed, new TextEncoder().encode(label)).slice(0, 32);
+  const entropy = Buffer.from(xrpPriv.slice(0, 16));
+  return generateSeed({ entropy, algorithm: 'ecdsa-secp256k1' });
+}
+
+/**
+ * Derive private keys from a BIP39 mnemonic (in-memory only, not stored).
+ * Used during passkey migration to keep existing keys.
+ */
+async function deriveKeysFromMnemonic(mnemonic: string): Promise<{
+  addresses: Wallet['addresses'];
+  privateKeys: UnlockedWallet['privateKeys'];
+}> {
+  const seed = await bip39.mnemonicToSeed(mnemonic);
+  const root = HDKey.fromMasterSeed(seed);
+
+  const ethNode = derivePath(root, DERIVATION_PATHS.ethereum);
+  const btcNode = derivePath(root, DERIVATION_PATHS.bitcoin);
+  const btcTestnetNode = derivePath(root, DERIVATION_PATHS.bitcoinTestnet);
+  const xrpNode = derivePath(root, DERIVATION_PATHS.xrp);
+  const xrpTestnetNode = derivePath(root, DERIVATION_PATHS.xrpTestnet);
+  const solNode = derivePath(root, DERIVATION_PATHS.solana);
+  const solTestnetNode = derivePath(root, DERIVATION_PATHS.solanaTestnet);
+  const qbtcKeyPair = await QBTCKeyPair.fromMasterSeed(seed, 0);
+  const vaultKeyPair = await QBTCKeyPair.fromMasterSeed(seed, 1);
+
+  const privateKeys: UnlockedWallet['privateKeys'] = {
+    ethereum: ethNode.privateKey ? Buffer.from(ethNode.privateKey).toString('hex') : '',
+    bitcoin: btcNode.privateKey ? Buffer.from(btcNode.privateKey).toString('hex') : '',
+    bitcoinTestnet: btcTestnetNode.privateKey ? Buffer.from(btcTestnetNode.privateKey).toString('hex') : '',
+    bsc: ethNode.privateKey ? Buffer.from(ethNode.privateKey).toString('hex') : '',
+    xrp: xrpNode.privateKey ? Buffer.from(xrpNode.privateKey).toString('hex') : '',
+    xrpTestnet: xrpTestnetNode.privateKey ? Buffer.from(xrpTestnetNode.privateKey).toString('hex') : '',
+    solana: solNode.privateKey ? Buffer.from(solNode.privateKey).toString('hex') : '',
+    qbtc: qbtcKeyPair.ecdsaPrivateKeyHex,
+    qbtcVault: vaultKeyPair.ecdsaPrivateKeyHex,
+  };
+
+  const ethAddr = deriveEthereumAddress(ethNode.privateKey!);
+  const addresses: Wallet['addresses'] = {
+    ethereum: ethAddr,
+    bitcoin: deriveBitcoinAddress(btcNode.privateKey!, 'mainnet'),
+    bitcoinTestnet: deriveBitcoinAddress(btcTestnetNode.privateKey!, 'testnet'),
+    bsc: ethAddr,
+    xrp: deriveXRPAddress(xrpNode.privateKey!),
+    xrpTestnet: deriveXRPAddress(xrpTestnetNode.privateKey!),
+    solana: deriveSolanaAddress(solNode.privateKey!),
+    solanaTestnet: deriveSolanaAddress(solTestnetNode.privateKey!),
+    qbtc: qbtcKeyPair.getAddress('testnet'),
+    qbtcMainnet: qbtcKeyPair.getAddress('mainnet'),
+    qbtcVault: vaultKeyPair.getAddress('testnet'),
+    qbtcVaultMainnet: vaultKeyPair.getAddress('mainnet'),
+  };
+
+  return { addresses, privateKeys };
+}
+
+/**
+ * Migrate an existing legacy (BIP39/password) wallet to passkey security.
+ * Re-encrypts the existing mnemonic with the PRF masterSeed — same addresses,
+ * no fund transfer required. Old password-based encryption is replaced.
+ */
+export async function migrateToPasskey(
+  userId: string,
+  masterSeed: Uint8Array,
+  credentialId: Uint8Array,
+  rpId: string,
+  existingPassword: string,
+): Promise<Wallet> {
+  const walletId = localStorage.getItem(getUserStorageKey(userId, 'wallet_id'));
+  if (!walletId) throw new Error('No wallet found to migrate');
+
+  // Unlock legacy wallet to get the mnemonic
+  const unlocked = await unlockWallet(walletId, existingPassword);
+  const mnemonic = unlocked.mnemonic;
+  if (!mnemonic) throw new Error('Could not retrieve mnemonic from legacy wallet');
+
+  // Re-encrypt mnemonic with PRF masterSeed (AES-GCM, no PBKDF2)
+  const { encryptedHex, ivHex } = await encryptMnemonicWithPRF(mnemonic, masterSeed);
+
+  const credentialIdB64 = credentialIdToB64u(credentialId);
+
+  const db = await getDB();
+  const existing = await db.get('wallets', walletId);
+  if (!existing) throw new Error('Wallet DB record not found');
+
+  // Update the wallet record in-place: keep same addresses, add passkey fields
+  await db.put('wallets', {
+    ...existing,
+    walletType: 'passkey',
+    credentialIdB64,
+    rpId,
+    prfEncryptedMnemonic: encryptedHex,
+    prfEncryptedMnemonicIv: ivHex,
+    // Keep encryptedMnemonic + salt for emergency password-based recovery
+  });
+
+  return {
+    id: walletId,
+    addresses: existing.addresses,
+    publicKeys: existing.publicKeys,
+    createdAt: existing.createdAt,
+  };
+}
+
+/**
+ * Find the oldest legacy (BIP39/password) wallet for a user if one exists.
+ * Used in SecuritySettings to prompt the user to move funds to their new passkey addresses.
+ */
+export async function getLegacyWallet(userId: string): Promise<Wallet | null> {
+  const db = await getDB();
+  const all = await db.getAllFromIndex('wallets', 'userId', userId);
+  const legacy = all.filter(
+    (w) => w.walletType === 'legacy' || (!w.walletType && !w.credentialIdB64),
+  );
+  if (!legacy.length) return null;
+  // Return the oldest one
+  legacy.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  return legacy[0] as unknown as Wallet;
 }

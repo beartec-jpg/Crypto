@@ -251,16 +251,139 @@ function bufferToBase64url(buffer: Uint8Array): string {
  */
 export async function requestPasskeyForTransaction(): Promise<boolean> {
   try {
-    // Check if already authenticated recently
-    if (isPasskeyAuthenticated()) {
-      console.log('✅ Already authenticated');
-      return true;
-    }
-
-    // Request authentication
+    if (isPasskeyAuthenticated()) return true;
     return await authenticateWithPasskey();
   } catch (error: any) {
     console.error('Transaction passkey auth failed:', error);
     return false;
   }
+}
+
+// ── PRF-based key derivation ─────────────────────────────────────────────────
+//
+// Uses the WebAuthn PRF extension to derive a deterministic 32-byte master seed
+// from the user's passkey. Same passkey + same salt → same seed, always.
+// Works with Google/Apple passkey sync — same seed on every device the user owns.
+
+const PRF_SALT_STRING = 'BEARTEC-WALLET-V1-PRF-SALT-2026';
+const PRF_SALT = new TextEncoder().encode(PRF_SALT_STRING);
+
+function b64uEncode(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+function b64uDecode(s: string): Uint8Array {
+  const p = s.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = (4 - p.length % 4) % 4;
+  return Uint8Array.from(atob(p + '='.repeat(pad)), c => c.charCodeAt(0));
+}
+
+export function b64uEncodePasskey(bytes: Uint8Array): string { return b64uEncode(bytes); }
+export function b64uDecodePasskey(s: string): Uint8Array { return b64uDecode(s); }
+
+/**
+ * Register a new passkey and return a deterministic 32-byte master seed via PRF.
+ * Call once on wallet creation — never needs to be repeated.
+ */
+export async function registerPasskeyWithPRF(
+  userId: string,
+): Promise<{ credentialId: Uint8Array; masterSeed: Uint8Array }> {
+  if (!window.PublicKeyCredential) throw new Error('WebAuthn not supported');
+
+  const challenge = crypto.getRandomValues(new Uint8Array(32));
+  const userIdBytes = new TextEncoder().encode(userId);
+
+  const credential = await navigator.credentials.create({
+    publicKey: {
+      challenge,
+      rp: { name: 'BearTec Wallet', id: getApexDomain() },
+      user: { id: userIdBytes, name: userId, displayName: 'BearTec Wallet' },
+      pubKeyCredParams: [{ alg: -7, type: 'public-key' }],
+      authenticatorSelection: {
+        userVerification: 'required',
+        residentKey: 'preferred',
+      },
+      extensions: {
+        prf: { eval: { first: PRF_SALT } },
+      } as AuthenticationExtensionsClientInputs,
+    },
+  }) as PublicKeyCredential | null;
+
+  if (!credential) throw new Error('Passkey registration cancelled');
+
+  const extResults = credential.getClientExtensionResults() as {
+    prf?: { results?: { first?: ArrayBuffer } };
+  };
+
+  const prfOutput = extResults?.prf?.results?.first;
+  if (!prfOutput) {
+    throw new Error(
+      'PRF extension not available. Use Chrome 115+, Safari 17.4+, or Firefox 119+ with a platform authenticator.'
+    );
+  }
+
+  return {
+    credentialId: new Uint8Array(credential.rawId),
+    masterSeed: new Uint8Array(prfOutput, 0, 32),
+  };
+}
+
+/**
+ * Authenticate with an existing passkey and return the 32-byte master seed
+ * plus the actual credential ID used (from assertion.rawId).
+ *
+ * If credentialIdB64 is provided we add it to allowCredentials so Chrome
+ * shows the local PIN / biometric prompt for that specific passkey.
+ * With an empty allowCredentials Chrome on Linux falls back to the
+ * cross-device QR code flow, which is why we need the specific ID.
+ */
+export async function authenticateWithPasskeyPRF(
+  credentialIdB64?: string,
+): Promise<{ masterSeed: Uint8Array; credentialId: Uint8Array }> {
+  if (!window.PublicKeyCredential) throw new Error('WebAuthn not supported');
+
+  const challenge = crypto.getRandomValues(new Uint8Array(32));
+
+  // Use specific credential ID when available — this tells Chrome to use the
+  // local authenticator (PIN / biometric) for that passkey instead of falling
+  // back to the cross-device QR flow.
+  const allowCredentials: PublicKeyCredentialDescriptor[] = [];
+  if (credentialIdB64) {
+    try {
+      allowCredentials.push({
+        type: 'public-key',
+        id: b64uDecode(credentialIdB64),
+        transports: ['internal', 'hybrid'],
+      });
+    } catch {
+      // malformed stored ID — fall through with empty list
+    }
+  }
+
+  const assertion = await navigator.credentials.get({
+    publicKey: {
+      challenge,
+      rpId: getApexDomain(),
+      allowCredentials, // specific ID = local PIN prompt; empty = QR
+      userVerification: 'required',
+      extensions: {
+        prf: { eval: { first: PRF_SALT } },
+      } as AuthenticationExtensionsClientInputs,
+    },
+  }) as PublicKeyCredential | null;
+
+  if (!assertion) throw new Error('Passkey authentication cancelled');
+
+  const extResults = assertion.getClientExtensionResults() as {
+    prf?: { results?: { first?: ArrayBuffer } };
+  };
+
+  const prfOutput = extResults?.prf?.results?.first;
+  if (!prfOutput) throw new Error('PRF extension not available on this credential');
+
+  return {
+    masterSeed: new Uint8Array(prfOutput, 0, 32),
+    credentialId: new Uint8Array(assertion.rawId),
+  };
 }

@@ -114,6 +114,7 @@
     "react-icons": "^5.5.0",
     "react-resizable-panels": "^3.0.6",
     "recharts": "^3.5.1",
+    "ripple-binary-codec": "^2.7.0",
     "ripple-keypairs": "^2.0.0",
     "secrets.js-grempe": "^2.0.0",
     "stripe": "^14.0.0",

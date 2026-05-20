@@ -8,6 +8,7 @@ import { listContacts } from './storage/contactStore';
 import OnboardingPage from './pages/OnboardingPage';
 import WalletTab from './pages/WalletTab';
 import MessengerTab from './pages/MessengerTab';
+import PasskeyUnlock from './components/PasskeyUnlock';
 import PinEntry from './components/PinEntry';
 import BottomNav from './components/BottomNav';
 
@@ -21,7 +22,7 @@ let _messagingPublicKeyRaw: Uint8Array | null = null;
 const contactPubKeys = new Map<string, Uint8Array>();
 
 export default function App() {
-  const { state, unlock, lock, setUnlocked } = useVault();
+  const { state, unlock, lock, setUnlocked, migrateFromPin, unlockError } = useVault();
   const [tab, setTab] = useState<Tab>('wallet');
   const [keyPair, setKeyPair] = useState<QBTCKeyPair | null>(null);
   const [msgPrivKey, setMsgPrivKey] = useState<CryptoKey | null>(null);
@@ -144,17 +145,37 @@ export default function App() {
     );
   }
 
-  // ── locked ───────────────────────────────────────────────────────────────
+  // ── needs PIN migration → passkey ────────────────────────────────────────
+  if (state.status === 'needs-migration') {
+    return (
+      <>
+        <PinEntry
+          onUnlock={async (pin: string) => {
+            const err = await migrateFromPin(pin);
+            return err === null;
+          }}
+        />
+        {installBanner}
+      </>
+    );
+  }
+
+  // ── locked (passkey wallet) ───────────────────────────────────────────────
   if (state.status === 'locked') {
     return (
       <>
-        <PinEntry onUnlock={unlock} />
+        <PasskeyUnlock onUnlock={unlock} error={unlockError} />
         {installBanner}
       </>
     );
   }
 
   // ── unlocked ─────────────────────────────────────────────────────────────
+  if (state.status !== 'unlocked') {
+    // watch-only or unknown — fall through to a minimal shell
+    return null;
+  }
+
   const { masterSeed, qbtcAddress } = state;
 
   return (

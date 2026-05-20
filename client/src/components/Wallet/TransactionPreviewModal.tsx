@@ -3,7 +3,6 @@
 
 import { useState } from 'react';
 import { AlertTriangle, Lock, ArrowRight, X } from 'lucide-react';
-import { authenticateWithPasskey } from '@/lib/passkeyService';
 
 interface TransactionDetails {
   to: string;
@@ -34,30 +33,16 @@ export default function TransactionPreviewModal({
   const handleConfirm = async () => {
     try {
       setError(null);
-      setIsAuthenticating(true);
-
-      // Step 1: Require passkey authentication
-      console.log('🔐 Requesting passkey authentication...');
-      const authenticated = await authenticateWithPasskey();
-
-      if (!authenticated) {
-        setError('Authentication failed. Please try again.');
-        setIsAuthenticating(false);
-        return;
-      }
-
-      console.log('✅ Passkey authenticated');
-      setIsAuthenticating(false);
       setIsSending(true);
 
-      // Step 2: Execute transaction
+      // Execute transaction — passkey was already verified at login;
+      // the send flow (handleConfirmTransaction) uses masterSeed directly.
       await onConfirm();
 
       console.log('✅ Transaction submitted');
     } catch (err: any) {
       console.error('❌ Transaction failed:', err);
       setError(err.message || 'Transaction failed');
-      setIsAuthenticating(false);
       setIsSending(false);
     }
   };

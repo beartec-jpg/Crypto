@@ -181,3 +181,79 @@ export async function signQBTCTransaction(
     falconCompatibilityProof,
   };
 }
+
+/**
+ * Sign a qBTC transaction using a ColdKeyPair (from qbtcKeys.ts / passkey PRF).
+ * Called by the new passkey-based cold signer flow.
+ */
+export async function signQBTCFromColdKeyPair(
+  keys: {
+    ecdsaPriv: Uint8Array;
+    ecdsaPub: Uint8Array;
+    falconPriv: Uint8Array;
+    falconPub: Uint8Array;
+    falconSeed: Uint8Array;
+  },
+  txData: {
+    to: string;
+    amountSats: number;
+    utxos: Array<{ txid: string; vout: number; amount: number }>;
+    network: 'testnet' | 'mainnet';
+    changeAddress: string;
+  }
+): Promise<{ txHex: string }> {
+  if (!txData.utxos || txData.utxos.length === 0) {
+    throw new Error('No UTXOs provided');
+  }
+
+  await initFalcon();
+
+  const network = txData.network === 'mainnet' ? bitcoin.networks.bitcoin : QBTC_TESTNET;
+
+  // Hybrid hash: RIPEMD160(SHA256(ecdsaPub ∥ falconPub))
+  const combined = Buffer.concat([Buffer.from(keys.ecdsaPub), Buffer.from(keys.falconPub)]);
+  const hybridHash = hash160(combined);
+
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+
+  for (const utxo of txData.utxos) {
+    tx.addInput(Buffer.from(utxo.txid, 'hex').reverse(), utxo.vout, 0xfffffffd);
+  }
+
+  tx.addOutput(bitcoin.address.toOutputScript(txData.to, network), txData.amountSats);
+
+  const inputTotal = txData.utxos.reduce((sum, u) => sum + u.amount, 0);
+  // feeRate-based fee estimation: rough 300 bytes per input
+  const estimatedBytes = txData.utxos.length * 300 + 200;
+  const feeSats = estimatedBytes; // placeholder — caller should compute
+  const changeSats = inputTotal - txData.amountSats - feeSats;
+
+  if (changeSats > DUST_THRESHOLD) {
+    const changeOutput = bitcoin.payments.p2wpkh({ hash: hybridHash, network }).output!;
+    tx.addOutput(changeOutput, changeSats);
+  }
+
+  const scriptCode = bitcoin.payments.p2pkh({ hash: hybridHash, network }).output!;
+
+  for (const [idx, utxo] of txData.utxos.entries()) {
+    const digest = tx.hashForWitnessV0(idx, scriptCode, utxo.amount, bitcoin.Transaction.SIGHASH_ALL);
+
+    const rawSig = ecc.sign(digest, keys.ecdsaPriv);
+    const ecdsaSignature = bitcoin.script.signature.encode(
+      Buffer.from(rawSig.toCompactRawBytes()),
+      bitcoin.Transaction.SIGHASH_ALL
+    );
+
+    const falconSignature = Buffer.from(falcon.sign(digest, keys.falconPriv));
+
+    tx.setWitness(idx, [
+      ecdsaSignature,
+      Buffer.from(keys.ecdsaPub),
+      falconSignature,
+      Buffer.from(keys.falconPub),
+    ]);
+  }
+
+  return { txHex: tx.toHex() };
+}

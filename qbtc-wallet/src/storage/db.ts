@@ -1,12 +1,37 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
+/**
+ * WalletRecord — single row keyed by 'main'.
+ *
+ * walletType discriminates three modes:
+ *   undefined / 'legacy' — old PIN/PBKDF2 record, detected for one-time migration
+ *   'passkey'            — passkey PRF vault (normal hot wallet)
+ *   'watch-only'         — cold signer mode, pub keys only, no signing on this device
+ */
 export interface WalletRecord {
-  id: 'main'; // single wallet per PWA install
-  encryptedSeed: string;   // AES-256-GCM encrypted master seed (base64)
-  seedIv: string;          // IV for seed encryption (base64)
-  saltHex: string;         // PBKDF2 salt (hex)
-  qbtcAddress: string;     // derived qBTC testnet address
+  id: 'main';
+  walletType?: 'legacy' | 'passkey' | 'watch-only';
+  qbtcAddress: string;
   createdAt: number;
+
+  // Passkey fields (walletType === 'passkey')
+  credentialIdB64?: string;   // base64url-encoded credential ID
+  rpId?: string;              // relying-party domain used at registration
+
+  // Watch-only fields (walletType === 'watch-only')
+  ecdsaPubHex?: string;       // compressed 33-byte ECDSA pub key (hex)
+  falconPubHex?: string;      // Falcon-512 pub key (hex)
+  network?: 'testnet' | 'mainnet';
+
+  // Legacy PIN fields — present only before migration, cleared afterwards
+  encryptedSeed?: string;
+  seedIv?: string;
+  saltHex?: string;
+}
+
+/** Returns true if the record is a pre-passkey PIN-encrypted wallet */
+export function isLegacyRecord(r: WalletRecord): boolean {
+  return !r.walletType || r.walletType === 'legacy' || !!r.encryptedSeed;
 }
 
 export interface ContactRecord {
@@ -37,6 +62,7 @@ let _db: IDBPDatabase<AppDB> | null = null;
 
 export async function getDb(): Promise<IDBPDatabase<AppDB>> {
   if (_db) return _db;
+  // Version stays at 1 — object store structure unchanged, only record shape evolves.
   _db = await openDB<AppDB>('qbtc-wallet', 1, {
     upgrade(db) {
       // wallet – single-row store

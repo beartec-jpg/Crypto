@@ -18,6 +18,7 @@ import SecuritySettings from '@/components/Wallet/SecuritySettings';
 import SecurityEducationCenter from '@/components/Security/SecurityEducationCenter';
 import MarketplaceTab from '@/components/Wallet/MarketplaceTab';
 import VaultTab from '@/components/Wallet/VaultTab';
+import ValidatorNodeTab from '@/components/Wallet/ValidatorNodeTab';
 import { getCurrentWallet, migrateWalletToUser, deleteWallet } from '@/lib/walletService';
 import { securityManager, getSecurityRequirements, hasPinSetup, setupPin } from '@/lib/securityService';
 import { getWalletTokens, clearWalletTokens, ensureNativeTokens, type Token } from '@/lib/tokenService';
@@ -25,14 +26,14 @@ import type { TokenNetwork } from '@/lib/tokenService';
 import { getChainNetworkAddress, type WalletAddresses } from '@/lib/networkAddress';
 import { deriveWIFFromPrivateKey } from '@/lib/bitcoinService';
 import { usePendingTransactions } from '@/hooks/usePendingTransactions';
-import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle, Send, QrCode, Settings as SettingsIcon, ArrowLeftRight } from 'lucide-react';
+import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle, Send, QrCode, Settings as SettingsIcon, ArrowLeftRight, Server } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import type { Chain } from '@/lib/balanceService';
 
-type WalletMode = 'dashboard' | 'vault' | 'send' | 'receive' | 'settings' | 'security' | 'marketplace';
+type WalletMode = 'dashboard' | 'vault' | 'send' | 'receive' | 'settings' | 'security' | 'marketplace' | 'node';
 
 export default function WalletPage() {
   const { user } = useUser();
@@ -46,6 +47,7 @@ export default function WalletPage() {
   const [hideBalances, setHideBalances] = useState(true);
   const [showPasskeyModal, setShowPasskeyModal] = useState(false);
   const [isPasskeyAuthenticated, setIsPasskeyAuthenticated] = useState(false);
+  const [masterSeed, setMasterSeed] = useState<Uint8Array | null>(null);
   const [selectedChain, setSelectedChain] = useState<Chain>('ethereum');
   const [tokenNetwork, setTokenNetwork] = useState<TokenNetwork>(
     ((import.meta.env.VITE_SWAP_NETWORK || 'testnet') !== 'mainnet' ? 'testnet' : 'mainnet') as TokenNetwork
@@ -122,6 +124,7 @@ export default function WalletPage() {
         setIsWalletUnlocked(false);
         setSovereignWallet(null);
         setPendingWallet(null);
+        setMasterSeed(null);
         console.log('🔒 Wallet auto-locked due to inactivity');
       }
     };
@@ -216,20 +219,16 @@ export default function WalletPage() {
     securityManager.unlockWallet();
   };
 
-  const handlePasskeySuccess = async () => {
+  const handlePasskeySuccess = async (seed: Uint8Array | null, wallet: any) => {
     setShowPasskeyModal(false);
+    if (seed) setMasterSeed(seed);
 
-    if (!userId) {
-      completeWalletUnlock();
-      return;
-    }
-
-    const freshWallet = await getCurrentWallet(userId);
-    if (freshWallet) {
-      setPendingWallet(freshWallet);
-      const walletTokens = await ensureNativeTokens(freshWallet.id, tokenNetwork);
+    const walletToUse = wallet ?? (userId ? await getCurrentWallet(userId) : null);
+    if (walletToUse) {
+      setPendingWallet(walletToUse);
+      const walletTokens = await ensureNativeTokens(walletToUse.id, tokenNetwork);
       setTokens(walletTokens);
-      completeWalletUnlock(freshWallet);
+      completeWalletUnlock(walletToUse);
       return;
     }
 
@@ -292,6 +291,7 @@ export default function WalletPage() {
       setIsPasskeyAuthenticated(false);
       setIsWalletUnlocked(false);
       setPendingWallet(null);
+      setMasterSeed(null);
       setTokens([]);
       setAuthStep('none');
     }
@@ -689,6 +689,18 @@ export default function WalletPage() {
                   <ArrowLeftRight className="w-4 h-4 flex-shrink-0" />
                   <span className="hidden sm:inline">Swap</span>
                 </button>
+                <button
+                  onClick={() => setMode('node')}
+                  className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 ${
+                    mode === 'node'
+                      ? 'bg-cyan-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                  title="Run a Node"
+                >
+                  <Server className="w-4 h-4 flex-shrink-0" />
+                  <span className="hidden sm:inline">Node</span>
+                </button>
               </div>
 
             {/* Main Content */}
@@ -719,11 +731,16 @@ export default function WalletPage() {
                   userId={userId}
                   isPasskeyAuthenticated={isPasskeyAuthenticated}
                   onRequestPasskey={() => setShowPasskeyModal(true)}
+                  onSessionExpired={() => {
+                    setMasterSeed(null);
+                    setShowPasskeyModal(true);
+                  }}
                   selectedChain={selectedChain}
                   tokenNetwork={tokenNetwork}
                   onChainChange={setSelectedChain}
                   onAddPendingTransaction={addPendingTransaction}
                   sovereignWallet={sovereignWallet}
+                  masterSeed={masterSeed}
                 />
               )}
 
@@ -743,6 +760,7 @@ export default function WalletPage() {
                 <SettingsSection 
                   sovereignWallet={sovereignWallet} 
                   userId={userId}
+                  masterSeed={masterSeed}
                   onDeleteWallet={() => setShowDeleteConfirm(true)}
                 />
               )}
@@ -751,6 +769,11 @@ export default function WalletPage() {
                 <SecurityEducationCenter />
               )}
 
+              {mode === 'node' && (
+                <ValidatorNodeTab
+                  rewardAddress={sovereignWallet?.addresses?.xrpTestnet || sovereignWallet?.addresses?.xrp || ''}
+                />
+              )}
               {mode === 'marketplace' && sovereignWallet && (
                 <MarketplaceTab
                   userId={userId}
@@ -761,6 +784,7 @@ export default function WalletPage() {
                   walletXrpAddress={sovereignWallet.addresses?.xrpTestnet || sovereignWallet.addresses?.xrp || ''}
                   walletBtcPubKey={tokenNetwork === 'testnet' ? (sovereignWallet.publicKeys?.bitcoinTestnet || sovereignWallet.publicKeys?.bitcoin || '') : (sovereignWallet.publicKeys?.bitcoin || '')}
                   walletBtcAddress={sovereignWallet.addresses?.bitcoinTestnet || sovereignWallet.addresses?.bitcoin || ''}
+                  masterSeed={masterSeed}
                 />
               )}
             </div>
@@ -1069,10 +1093,12 @@ export default function WalletPage() {
 function SettingsSection({ 
   sovereignWallet, 
   userId,
+  masterSeed,
   onDeleteWallet 
 }: { 
   sovereignWallet: any; 
   userId: string;
+  masterSeed?: Uint8Array | null;
   onDeleteWallet: () => void;
 }) {
   const [showMnemonicWarning, setShowMnemonicWarning] = useState(false);
@@ -1283,6 +1309,7 @@ function SettingsSection({
           userId={userId}
           walletId={sovereignWallet?.id}
           walletEvmAddress={sovereignWallet?.addresses?.ethereum || ''}
+          masterSeed={masterSeed}
         />
       )}
     </div>
