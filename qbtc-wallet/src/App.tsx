@@ -3,9 +3,12 @@ import { Download } from 'lucide-react';
 import { useVault } from './hooks/useVault';
 import { deriveKeyPair, deriveMessagingKeyPair } from './lib/keys';
 import type { QBTCKeyPair } from './lib/keys';
+import { publishPubKey } from './lib/messaging';
+import { listContacts } from './storage/contactStore';
 import OnboardingPage from './pages/OnboardingPage';
 import WalletTab from './pages/WalletTab';
 import MessengerTab from './pages/MessengerTab';
+import PasskeyUnlock from './components/PasskeyUnlock';
 import PinEntry from './components/PinEntry';
 import BottomNav from './components/BottomNav';
 
@@ -15,12 +18,11 @@ type Tab = 'wallet' | 'messenger';
 let _messagingPrivateKey: CryptoKey | null = null;
 let _messagingPublicKeyRaw: Uint8Array | null = null;
 
-// Contact ECDH pub key store — populated when contacts share keys
-// In production these would be fetched from a key server or QR exchanged
+// Contact ECDH pub key store — keyed by qBTC address
 const contactPubKeys = new Map<string, Uint8Array>();
 
 export default function App() {
-  const { state, unlock, lock, setUnlocked } = useVault();
+  const { state, unlock, lock, setUnlocked, migrateFromPin, unlockError } = useVault();
   const [tab, setTab] = useState<Tab>('wallet');
   const [keyPair, setKeyPair] = useState<QBTCKeyPair | null>(null);
   const [msgPrivKey, setMsgPrivKey] = useState<CryptoKey | null>(null);
@@ -71,6 +73,21 @@ export default function App() {
       setMsgPubKeyRaw(msg.publicKeyRaw);
       _messagingPrivateKey = msg.privateKey;
       _messagingPublicKeyRaw = msg.publicKeyRaw;
+
+      // Publish own public key to relay so contacts can find us
+      publishPubKey(state.qbtcAddress, msg.publicKeyRaw).catch(() => {});
+
+      // Load stored contact pub keys into the in-memory map
+      contactPubKeys.clear();
+      const contacts = await listContacts();
+      for (const c of contacts) {
+        if (c.pubKeyHex) {
+          const hex = c.pubKeyHex;
+          const bytes = new Uint8Array(hex.length / 2);
+          for (let i = 0; i < hex.length; i += 2) bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+          contactPubKeys.set(c.address, bytes);
+        }
+      }
     })();
 
     return () => { cancelled = true; };
@@ -78,6 +95,11 @@ export default function App() {
 
   const getContactPubKey = useCallback(
     (address: string) => contactPubKeys.get(address),
+    [],
+  );
+
+  const setContactPubKey = useCallback(
+    (address: string, key: Uint8Array) => { contactPubKeys.set(address, key); },
     [],
   );
 
@@ -123,17 +145,37 @@ export default function App() {
     );
   }
 
-  // ── locked ───────────────────────────────────────────────────────────────
+  // ── needs PIN migration → passkey ────────────────────────────────────────
+  if (state.status === 'needs-migration') {
+    return (
+      <>
+        <PinEntry
+          onUnlock={async (pin: string) => {
+            const err = await migrateFromPin(pin);
+            return err === null;
+          }}
+        />
+        {installBanner}
+      </>
+    );
+  }
+
+  // ── locked (passkey wallet) ───────────────────────────────────────────────
   if (state.status === 'locked') {
     return (
       <>
-        <PinEntry onUnlock={unlock} />
+        <PasskeyUnlock onUnlock={unlock} error={unlockError} />
         {installBanner}
       </>
     );
   }
 
   // ── unlocked ─────────────────────────────────────────────────────────────
+  if (state.status !== 'unlocked') {
+    // watch-only or unknown — fall through to a minimal shell
+    return null;
+  }
+
   const { masterSeed, qbtcAddress } = state;
 
   return (
@@ -152,6 +194,7 @@ export default function App() {
             myPrivateKey={msgPrivKey}
             myPublicKeyRaw={msgPubKeyRaw}
             getContactPubKey={getContactPubKey}
+            setContactPubKey={setContactPubKey}
           />
         )}
       </div>
