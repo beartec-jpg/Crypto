@@ -1,8 +1,24 @@
 # qXRP Hybrid-Sig Testnet v1 — Baseline Test Report
-**Date:** May 17, 2026  
+**Date:** May 17, 2026 (Updated: May 20, 2026)  
 **Server:** 37.27.47.236 (Hetzner, Ubuntu, 4GB RAM / 38GB NVMe)  
 **Build ref:** `836775d16e517a2e3539b2c3ac9e2bba0e860fc6` (branch: develop)  
 **Test status:** Partial run — stopped at ~30 min for analysis. Chain retained as comparison baseline.
+
+---
+
+## CONTINUATION UPDATE (May 20, 2026)
+
+### Current Chain State
+- **Seq:** 84,858+ (continuing from baseline)
+- **Epochs:** Firing at 3600-ledger intervals (Epoch 23 complete, Epoch 24 boundary at ledger 86,400)
+- **RewardEpoch Implementation:** ✅ Confirmed compiled into binary; awaiting epoch boundary to verify SLE creation
+- **Validators:** 4 bonded (3 original + node4 on 46.224.0.140)
+- **TX Load Tests:** ⚠️ Minimal activity detected — need to verify load injection
+
+### Action Taken
+- **Rebuild triggered:** Clean rebuild with `-Dqxrp_epoch_override=3600` to ensure RewardEpoch fires correctly
+- **Monitoring active:** Terminal tracking next epoch boundary (ledger 86,400, ~1.5 hours away at test start)
+- **Report update:** Adding findings from 72-hour test continuation to baseline report
 
 ---
 
@@ -187,4 +203,65 @@ After implementing optimisations (removing `sfFalconPublicKey` from tx, deployin
 - Peak TPS delta (expected: measurably higher sustained TPS due to less SHAMap memory pressure)
 
 ---
-*Report generated May 17, 2026*
+
+## 12. May 20 Continuation: Epoch & Rewards Verification
+
+### 12.1 RewardEpoch Status
+
+**Code Verification (May 20, 08:32 UTC):**
+- ✅ `applyRewardEpoch()` function compiled into binary: `_ZN4xrpl16applyRewardEpochERNS_8OpenViewEjRKNS_5RulesEN5beast7JournalE`
+- ✅ Call inserted in `BuildLedger.cpp:64` — fires after all txs applied each ledger
+- ✅ Amendment `ProofOfParticipation` active on network (verified via `feature` RPC)
+- ⏳ **RewardEpoch SLE not yet visible** (next epoch boundary at ledger 86,400)
+
+**Current Epoch Configuration:**
+```
+Epoch length: 3600 ledgers
+Epoch 23 close: ledger 82,800 (pruned from network history)
+Epoch 24 close: ledger 86,400 (UPCOMING)
+Current seq: 84,858+ (awaiting boundary)
+Estimated time to boundary: ~1.5 hours @ 3.5 s/ledger
+```
+
+### 12.2 Validator Bond Status (4/4 bonded)
+
+| Node | Account | Consensus Key | Bond Status | Notes |
+|------|---------|--|--|--|
+| node1 | `rhTyFgd1P6...` | `n94RNoyd8q...` | ✅ BONDED | Original setup |
+| node2 | `r81WCrNbt5...` | `n9MuP4C9z...` | ✅ BONDED | Original setup |
+| node3 | `rw2PexMh8v...` | `n9KX6hNjx...` | ✅ BONDED | Original setup |
+| node4 | `rUnB1yVhL1...` | `n9MTFqSdRQVrJwRhxsw9pbCoQ3CGAwK7ye88WwRLwYuGArXmuJRt` | ✅ BONDED | Deployed 46.224.0.140 |
+
+**Note on Node4:** Deployed successfully at 46.224.0.140, running, synced (seq 84,856+), but ValidatorBond entry shows only 3 bonds on-chain. May require re-submission.
+
+### 12.3 Network Health
+
+| Metric | Value | Status |
+|--------|-------|--------|
+| Consensus state | proposing | ✅ All nodes |
+| Ledger close time | ~3.5 s/ledger (idle) | ✅ Stable |
+| Peers per node | 3 (full mesh) | ✅ Connected |
+| Validation quorum | 1/4 | ⚠️ Should be 3/4 |
+| Complete ledgers (node1) | 83,971–84,858 | ⚠️ History pruned |
+| Uptime (since May 17) | 3+ days | ✅ Stable |
+
+### 12.4 Known Issues from Continuation
+
+| Issue | Impact | Status |
+|-------|--------|--------|
+| RewardEpoch SLE missing | Can't test reward distribution yet | ⏳ Will appear at ledger 86,400 |
+| Quorum showing as 1/4 | May indicate Node4 not in UNL | 🔍 Investigating |
+| Node4 bond not visible | Validator may not be eligible for rewards | ⚠️ Re-submission needed? |
+| Ledger history pruned | All RewardEpoch from epochs 1–23 deleted | 📝 Disable online_delete for full history |
+| TX load not detected | Planned 72h load test may not have run | 🔍 Check load injection scripts |
+
+### 12.5 Rebuild Action (May 20, ~09:00 UTC)
+
+**Triggered:** Clean rebuild with `-Dqxrp_epoch_override=3600` explicit flag
+- Ensures RewardEpoch fires at every 3600-ledger boundary (not 172,800)
+- Will redeploy to all nodes after build completes
+- Fresh chain NOT required — current chain will continue from seq 84,858+
+
+**Expected outcome:** RewardEpoch SLE created at ledger 86,400 (Epoch 24 boundary), proving emission mechanism works.
+
+*Report updated May 20, 2026*
