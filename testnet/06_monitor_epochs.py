@@ -112,20 +112,31 @@ def render(interval: int):
     print(f"  Ledger:         {seq}")
     print(f"  Epoch:          {epoch_number}")
     print(f"  Next boundary:  ledger {next_boundary}  ({ledgers_left} ledgers, ~{eta_str})")
+    bonds = all_validator_bonds()
+    nkey_idx = build_nkey_index()
+
+    eligible   = [b for b in bonds if b.get("BondStatus") == 1
+                  and b.get("CompositeScore", 0) >= MIN_SCORE_BPS
+                  and b.get("EpochLastClaimed", 0) < epoch_number]
+    paid       = [b for b in bonds if b.get("EpochLastClaimed", 0) >= epoch_number]
+    bonded     = [b for b in bonds if b.get("BondStatus") == 1]
+
     print(f"  Treasury:       {treasury_bal / DROPS_PER_XRP:,.2f} qXRP")
     if pool_balance > 0:
         print(f"  Epoch pool:     {pool_balance / DROPS_PER_XRP:,.2f} qXRP")
-    else:
+    elif epoch_number == 0:
         print(f"  Epoch pool:     (epoch 0 — scoring starts at ledger {EPOCH_LEDGERS})")
+    else:
+        print(f"  Epoch pool:     fully claimed this epoch")
+    print(f"  Active nodes:   {len(bonded)} bonded  |  "
+          f"{len(eligible)} eligible to claim  |  {len(paid)} already paid this epoch")
     print()
-
-    bonds = all_validator_bonds()
-    nkey_idx = build_nkey_index()
 
     if not bonds:
         print("  No ValidatorBond SLEs found yet.")
         print(f"\n  [refreshes every {interval}s — Ctrl-C to quit]")
         return True
+
 
     # Table header
     print(f"{'NODE':<8}  {'ACCOUNT':^36}  {'STATUS':^22}  "
