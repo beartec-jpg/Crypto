@@ -117,8 +117,8 @@ def render(interval: int):
 
     eligible   = [b for b in bonds if b.get("BondStatus") == 1
                   and b.get("CompositeScore", 0) >= MIN_SCORE_BPS
-                  and b.get("EpochLastClaimed", 0) < epoch_number]
-    paid       = [b for b in bonds if b.get("EpochLastClaimed", 0) >= epoch_number]
+                  and b.get("LastClaimedEpoch", 0) < epoch_number]
+    paid       = [b for b in bonds if b.get("LastClaimedEpoch", 0) >= epoch_number]
     bonded     = [b for b in bonds if b.get("BondStatus") == 1]
 
     print(f"  Treasury:       {treasury_bal / DROPS_PER_XRP:,.2f} qXRP")
@@ -149,7 +149,7 @@ def render(interval: int):
         status  = bond.get("BondStatus", 0)
         score   = bond.get("CompositeScore", 0)
         agg     = bond.get("AggregateCompositeScore", 0)
-        claimed = bond.get("EpochLastClaimed", 0)
+        claimed = bond.get("LastClaimedEpoch", 0)
         name    = nkey_idx.get(ck_hex, ck_hex[:8] + "...")
         bal     = get_account_balance(acct)
         status_str = colour_status(status, score, claimed, epoch_number)

@@ -142,7 +142,7 @@ def main():
     for bond in bonds:
         status     = bond.get("BondStatus", 0)
         score      = bond.get("CompositeScore", 0)
-        last_epoch = bond.get("EpochLastClaimed", 0)
+        last_epoch = bond.get("LastClaimedEpoch", 0)
         account    = bond.get("Account", "?")
         ck_hex     = bond.get("ConsensusKey", "")[:16]
 
