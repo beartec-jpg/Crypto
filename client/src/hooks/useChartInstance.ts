@@ -42,7 +42,7 @@ interface UseChartInstanceReturn {
   chartRef: React.MutableRefObject<IChartApi | null>;
   candleSeriesRef: React.MutableRefObject<ISeriesApi<'Candlestick'> | null>;
   isReady: boolean;
-  fitContent: (candleCount?: number, timeframe?: string) => void;
+  fitContent: (candleCount?: number) => void;
 }
 
 export function useChartInstance({
@@ -60,7 +60,7 @@ export function useChartInstance({
   const isFirstResizeRef = useRef(true);
   const isRetryingInitRef = useRef(false);
 
-  const fitContent = useCallback((candleCount?: number, _timeframe?: string) => {
+  const fitContent = useCallback((candleCount?: number) => {
     if (chartRef.current) {
       if (candleCount !== undefined && candleCount > 0) {
         // Show all candles from the start with a small right margin (full zoom out).

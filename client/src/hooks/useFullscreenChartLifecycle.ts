@@ -31,7 +31,7 @@ interface UseFullscreenChartLifecycleParams {
   timeframe: string;
   symbol: string;
   isLoading: boolean;
-  fitContent: (barCount?: number, timeframe?: string) => void;
+  fitContent: (barCount?: number) => void;
   handleChartClick: EventListener;
   handleTouchEnd: EventListener;
   gestureController: {
@@ -109,7 +109,7 @@ export function useFullscreenChartLifecycle({
       // far outside the visible area.
       chartRef.current?.applyOptions({ rightPriceScale: { autoScale: true } });
       candleSeriesRef.current.setData(chartData);
-      fitContent(candles.length, timeframe);
+      fitContent(candles.length);
       chartRef.current?.timeScale().applyOptions({ rightOffset: 50 });
 
       // Record what we just rendered so subsequent live updates can diff against it.
