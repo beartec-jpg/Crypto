@@ -47,7 +47,7 @@ export function FreeDrawToolbar({
 }: FreeDrawToolbarProps) {
   return (
     <div
-      className="absolute top-2 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 bg-slate-900/95 border border-slate-600 rounded-lg px-3 py-1.5 shadow-xl backdrop-blur-sm select-none"
+      className="absolute top-12 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 bg-slate-900/95 border border-slate-600 rounded-lg px-3 py-1.5 shadow-xl backdrop-blur-sm select-none"
       onMouseDown={e => e.stopPropagation()}
       onTouchStart={e => e.stopPropagation()}
     >
