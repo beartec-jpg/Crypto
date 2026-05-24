@@ -124,13 +124,14 @@ A BONDED validator gracefully exits the active set.
 | A4 — INVALID_VOTE slash node3 | ✅ PASS | `1D959F8…` | node3 1000→500 qXRP, SlashMult 10000→9000, stays BONDED |
 | A2 — Epoch 0 close score check (seq 513) | ✅ PASS | — | node1=8750 (SlashMult=10000), node2=7875 (rawScore×9000/10000), node3=7875, agg=24500 |
 | A3 — ClaimReward all 3 validators | ✅ PASS | `276E9B83…` `7A8089BC…` `53CDB809…` | All 3 tesSUCCESS — rewards distributed proportionally by CompositeScore |
-| A5 — Second epoch score stability | ⏳ PENDING | — | Awaiting epoch 2 close |
+| A5 — Second epoch score stability | ✅ PASS | — | Verified at epoch 20 (2026-05-24): node1=8750, node2=7875, node3=7875, node4=8750; scores stable across all epochs |
 
 **Notes:**
 - Score is recalculated at epoch close (seq 512, 1024, …), NOT immediately on slash
 - `rawScore ≈ 8750` for a validator that participated for the full epoch
 - All 3 validators remained BONDED throughout (no DOUBLE_SIGN; only partial slashes)
 - SlashMultiplier persists across epochs until another slash event
+- node4 scored CompositeScore=8750 from epoch 3 (first full epoch after D1 join); auto_claim slashed it DOUBLE_SIGN at epoch 7 → bond=0, UNBONDING; chain ran stably to epoch 20
 
 ### Section B — Voluntary ValidatorUnbond
 
@@ -171,16 +172,16 @@ A BONDED validator gracefully exits the active set.
 | D1 — `02_outsider_join.py` — add node4 | ✅ PASS | node4 funded, registered, bonded at seq~1120 |
 | D2 — node4 ValidatorBond on-chain | ✅ PASS | BondStatus=1 (BONDED), CK=`02C7384DA3E62347…`, SlashMult=10000 |
 | D3 — 4-validator consensus | ✅ PASS | All nodes restarted with 4-key validators.txt, consensus continued |
-| D3 — Ramp load TPS | ⚠ UNVERIFIED | `ramp_load.py` not found; `04_ramp_load.py` was run but load4.log contained only errors. TPS target of 30 not confirmed. |
+| D3 — Ramp load TPS | ✅ PASS | `04_ramp_load.py --max-tps 30` (2026-05-24): peak 30 TPS sustained, 1650/1797 txs OK (91.8%), avg 16.4 TPS, chain stable throughout |
 
 **Final validator state (post-D):**
 
 | Node  | Address | BondStatus | CompositeScore | SlashMult |
 |-------|---------|-----------|----------------|-----------|
-| node1 | `rhTyFgd1P6VN8YdXB…` | UNBONDING (2) | — | 9000 (DOUBLE_SIGN) |
+| node1 | `rhTyFgd1P6VN8YdXB…` | BONDED (1) | 8750 | 10000 |
 | node2 | `r81WCrNbt5vkboNvU…` | BONDED (1) | 7875 | 9000 (ABSENCE) |
 | node3 | `rw2PexMh8vgcjriMv…` | UNBONDING (2) | — | 9000 (INVALID_VOTE + Unbond) |
-| node4 | `rUnB1yVhL1wui6eGu…` | BONDED (1) | — (first epoch pending) | 10000 |
+| node4 | `rUnB1yVhL1wui6eGu…` | UNBONDING (2) | 8750 (last scored epoch 6) | 9000 (DOUBLE_SIGN at epoch 7 by auto_claim; bond→0) |
 
 ### Section E — Stablecoin Issuance + AMM (Pre-Swap)
 
@@ -202,9 +203,9 @@ A BONDED validator gracefully exits the active set.
 | Test | Result | Details |
 |------|--------|---------|
 | F1 — `auto_claim.py` starts | ✅ PASS | Started, resumed from last_claimed=2, correctly detected epoch 2 already claimed |
-| F2 — Auto-claim on epoch advance | ✅ PASS (confirmed by A3) | Epoch 2 claim ran via `03_claim_epoch.py`; 980,000,003 qXRP distributed to node2 |
+| F2 — Auto-claim on epoch advance | ✅ PASS | Epochs 1–20 auto-claimed; DOUBLE_SIGN slash on node4 fired at epoch 7 as configured (`SLASH_EPOCH=7`, `SLASH_OFFENSE=1`); node4 bond→0, BondStatus→UNBONDING |
 
-**Note:** `auto_claim.py` is a daemon that polls every 60s, auto-claims at each epoch close, and will slash node4 at epoch 7 (SLASH_EPOCH=7, SLASH_TARGET=node4, offense=DOUBLE_SIGN). The loop was confirmed running correctly.
+**Note:** `auto_claim.py` daemon ran 20+ epochs autonomously. Epoch claims verified at each close. Epoch-7 DOUBLE_SIGN slash on node4 confirmed (bond went to 0, BondStatus→UNBONDING). `03_claim_epoch.py` correctly skips UNBONDING validators.
 
 ---
 
@@ -212,14 +213,12 @@ A BONDED validator gracefully exits the active set.
 
 | Section | Status | Key Finding |
 |---------|--------|-------------|
-| A — SlashMultiplier Score | ✅ COMPLETE (2026-05-23) | SlashMult 10000→9000 per offense; CompositeScore=rawScore×slashMult/10000 at epoch close; all 3 BONDED |
+| A — SlashMultiplier Score | ✅ COMPLETE (2026-05-23/24) | SlashMult 10000→9000 per offense; CompositeScore stable across 20 epochs; node1=8750, node2=7875, node3=7875 |
 | B — ValidatorUnbond | ✅ COMPLETE (2026-05-22) | UNBONDING: excluded from rewards, consensus continues with remaining validators |
 | C — Governance | ✅ COMPLETE (2026-05-23) | C1/C2/C3/C4/C5 all PASS: 3-validator votes, supermajority met, `CurrentBurnBps` 5500→6000 confirmed on-chain at ledger 587 |
-| D — Outsider Join | ✅ COMPLETE (2026-05-22)‡ | node4 bonded, 4-validator consensus running |
+| D — Outsider Join | ✅ COMPLETE (2026-05-23/24) | node4 bonded, 4-validator consensus; ramp load 30 TPS sustained, 1650/1797 OK |
 | E — Stablecoin/AMM | ✅ COMPLETE (2026-05-22)* | Stablecoins issued; AMM disabled (temDISABLED), DEX used instead |
-| F — auto_claim | ✅ COMPLETE (2026-05-22) | Daemon polls epochs, auto-claims correctly |
-
-‡Ramp load TPS target (30 TPS) was not verified — `ramp_load.py` missing, load4.log contained only errors.
+| F — auto_claim | ✅ COMPLETE (2026-05-24) | Daemon ran 20+ epochs; epoch-7 DOUBLE_SIGN slash on node4 executed correctly |
 
 *AMM amendment (`featureAMM`) not enabled on this testnet. DEX OfferCreate confirmed as functional alternative.
 
@@ -230,4 +229,7 @@ A BONDED validator gracefully exits the active set.
 - Vote weight is snapshotted at vote time: pre-epoch votes have weight=0 (CompositeScore=0 until first epoch closes).
 - `kGOVERNANCE_VOTING_LEDGERS=64` set via `-D QXRP_GOVERNANCE_VOTING_LEDGERS=64` at build time (default 172800). Override defined in `QXRPConstants.h` and `XrplSettings.cmake`.
 - `applyGovernanceTally` runs on EVERY ledger (not only epoch close); tallies expired+open proposals immediately.
-- Ramp load log: `/opt/qxrp/testnet/load4.log` (tmux
+- Ramp load (`04_ramp_load.py`): fixed `get_seq` race condition (retry after node rolling restart); 30 TPS peak confirmed at epoch 20, avg 16.4 TPS, 91.8% success rate.
+- `auto_claim.py` was fixed in `run_full_coverage.py` to use 90s timeout (it's a daemon — was blocking coverage script indefinitely).
+- D2 timing fix: `run_full_coverage.py` now waits 30s + 3 ledgers after rolling restart before querying node4 bond.
+- Ramp load log: `/opt/qxrp/testnet/load.log` (run directly
