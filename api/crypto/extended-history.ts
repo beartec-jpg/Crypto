@@ -14,6 +14,7 @@ const INTERVAL_MS: Record<string, number> = {
   '12h': 12 * 60 * 60 * 1000,
   '1d': 24 * 60 * 60 * 1000,
   '1w': 7 * 24 * 60 * 60 * 1000,
+  '1M': 30 * 24 * 60 * 60 * 1000,
 };
 
 // Verify user authentication from Clerk token
@@ -126,12 +127,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                            intervalStr === '6h' ? '6h' :
                            intervalStr === '12h' ? '12h' :
                            intervalStr === '1d' ? '1d' :
-                           intervalStr === '1w' ? '1w' : '1h';
+                           intervalStr === '1w' ? '1w' :
+                           intervalStr === '1M' ? '1M' : '1h';
 
     const defaultCandleCounts: Record<string, number> = {
       '1m': 3000, '3m': 3000, '5m': 3000, '15m': 3000, '30m': 3000,
       '1h': 3000, '2h': 3000, '4h': 3000, '6h': 2000, '12h': 1500,
-      '1d': 1000, '1w': 500,
+      '1d': 1000, '1w': 500, '1M': 300,
     };
     // Use a moderate fallback for unrecognized intervals to avoid excessive data fetching
     const candlesNeeded = limitParam

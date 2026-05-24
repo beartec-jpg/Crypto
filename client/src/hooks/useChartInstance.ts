@@ -42,7 +42,7 @@ interface UseChartInstanceReturn {
   chartRef: React.MutableRefObject<IChartApi | null>;
   candleSeriesRef: React.MutableRefObject<ISeriesApi<'Candlestick'> | null>;
   isReady: boolean;
-  fitContent: (candleCount?: number, timeframe?: string) => void;
+  fitContent: (candleCount?: number) => void;
 }
 
 export function useChartInstance({
@@ -60,26 +60,15 @@ export function useChartInstance({
   const isFirstResizeRef = useRef(true);
   const isRetryingInitRef = useRef(false);
 
-  const fitContent = useCallback((candleCount?: number, timeframe?: string) => {
+  const fitContent = useCallback((candleCount?: number) => {
     if (chartRef.current) {
-      const visibleBarsByTimeframe: Record<string, number> = {
-        '1m': 200, '3m': 200, '5m': 200, '15m': 150, '30m': 120,
-        '1h': 120, '2h': 100, '4h': 100, '6h': 80, '8h': 70,
-        '12h': 60, '1d': 90, '3d': 60, '1w': 52, '1M': 24,
-      };
-      const DEFAULT_VISIBLE_BARS = 120; // sensible default for unrecognized timeframes
-      const barsToShow = timeframe ? (visibleBarsByTimeframe[timeframe] ?? DEFAULT_VISIBLE_BARS) : undefined;
-
-      if (barsToShow !== undefined && candleCount !== undefined && candleCount > barsToShow) {
-        const from = candleCount - barsToShow;
-        const to = candleCount + 20; // small right offset for future whitespace
-        chartRef.current.timeScale().setVisibleLogicalRange({ from, to });
-        console.log(`[Chart] Set visible range to last ${barsToShow} candles (${timeframe})`);
+      if (candleCount !== undefined && candleCount > 0) {
+        // Show all candles from the start with a small right margin (full zoom out).
+        // Using setVisibleLogicalRange rather than per-timeframe limited bars ensures
+        // the user always sees the complete picture after a timeframe change.
+        chartRef.current.timeScale().setVisibleLogicalRange({ from: 0, to: candleCount + 10 });
       } else {
         chartRef.current.timeScale().fitContent();
-        if (candleCount !== undefined) {
-          console.log('[Chart] Fit content with', candleCount, 'candles');
-        }
       }
     }
   }, []);
@@ -137,6 +126,7 @@ export function useChartInstance({
       },
       rightPriceScale: {
         borderVisible: false,
+        autoScale: true,
       },
     });
 
