@@ -30,7 +30,7 @@ The single largest departure from standard XRPL. Activates an entirely new valid
 | `ValidatorRegister` | 85 | Register a Falcon pubkey + consensus key on-chain | ✅ Working — all 4 validators registered |
 | `ValidatorBond` | 86 | Lock qXRP as economic bond, transition to BONDED state | ✅ Working — all 4 bonded |
 | `ReleaseBond` | 90 | Return bond funds after unbonding lock expires | ✅ Working (bug fixed during session — `tefINTERNAL` caused by `keylet::account()` using synthetic bond ID; patched to use `sleBond->getAccountID(sfAccount)`) |
-| `ClaimReward` | — | Claim epoch PoP rewards proportional to composite score | ✅ Implemented; no claims submitted yet this test run |
+| `ClaimReward` | — | Claim epoch PoP rewards proportional to composite score | ✅ Tested — equal-split (2 validators), proportional (score-weighted), sole-validator (full pool), and post-slash exclusion (`tecNO_PERMISSION`) all verified |
 | `UnbondValidator` | — | Begin unbonding process (starts lock period) | ✅ Implemented |
 | `SlashValidator` | — | Governance-initiated slashing for double-sign / absence | ✅ Implemented; 1 slash event recorded on Node 2 |
 
@@ -161,7 +161,7 @@ Meaning: of every 10 drops of fee, ~6.4 drops are burned, ~3.6 go to the treasur
 | `kGOVERNANCE_VOTING_LEDGERS` | 172,800 (~7 days production) / override for testnet |
 | Proposal types | `kPROPOSAL_TYPE_BURN_BPS = 1` (change fee burn fraction) |
 
-**Status:** ✅ Code implemented, not yet exercised in this test run.
+**Status:** ✅ Tested 2026-05-23. `GovernanceProposal` submitted (BURN_BPS type), 2 YES votes reaching 67% supermajority (VotedFor=16,625 ≥ threshold=16,415), `CurrentBurnBps` updated from 5,500 to 6,000 on-chain at the proposal expiry ledger. NO vote (dissent recording) also verified. A crash bug in `BuildLedger.cpp` (setting `sfProposals` to empty vector crashing all nodes) was found and fixed during this test.
 
 ---
 
@@ -306,11 +306,11 @@ The 3,323 failures all occurred during the **initial setup phase** (accounts bei
 | Supply cap (200B) | ✅ | `total_coins` decreasing correctly via burns |
 | P2P payments | ✅ | 852,829 accepted over 71 hours |
 | AMM | ✅ (amendment active) | Not load-tested |
-| ClaimReward tx | ⬜ Not yet tested | Implemented; validators haven't submitted claims |
-| On-chain governance | ⬜ Not yet tested | Implemented; no proposals submitted |
-| UnbondValidator | ✅ | Tested (triggered before re-bond) |
-| Double-sign slash | ⬜ Not yet tested | Would require crafted diverging validations |
-| Fee escalation | ⬜ Not triggered | Load too low; base fee holding at minimum |
+| ClaimReward tx | ✅ | Equal-split, proportional, sole-validator, and post-slash exclusion all verified (2026-05-22/23) |
+| On-chain governance | ✅ | GovernanceProposal + GovernanceVote tested; supermajority executed burnBps change on-chain (2026-05-23) |
+| UnbondValidator | ✅ | Tested (triggered before re-bond; UNBONDING exclusion from ClaimReward verified) |
+| Double-sign slash | ✅ | Tested with crafted diverging STValidation blobs; 100% bond burn + forced UNBONDING confirmed (2026-05-22) |
+| Fee escalation | ✅ | Triggered at 30 TPS sustained load; API layer hit HTTP 503 at saturation; underlying consensus and queue escalation behaved correctly (2026-05-24) |
 
 ---
 
@@ -341,12 +341,10 @@ Growth rate at current load: ~60–70 MB/day on full history node. At this rate,
 
 ## 8. Known Issues / Open Items
 
-1. **`ClaimReward` not tested end-to-end** — the reward claim flow (ClaimReward tx → balance increases, EpochPoolBalance decreases) has not been exercised in this test run. Should be done to validate the full PoP reward distribution cycle.
+1. **Latency score hard-floored** — `LatencyScoreBps` is always 5,000 for all validators. Actual latency measurement is not yet implemented in the scoring code.
 
-2. **Latency score hard-floored** — `LatencyScoreBps` is always 5,000 for all validators. Actual latency measurement is not yet implemented in the scoring code.
+2. **Node 2 bond is 750 qXRP** (vs 1,000 minimum) — the minimum was raised to 1,000 qXRP after node 2 was first bonded at 500 qXRP. Node 2 was re-bonded during this session but the bond object shows 750 qXRP. May need topping up or the minimum enforcement grandfathers existing bonds.
 
-3. **Node 2 bond is 750 qXRP** (vs 1,000 minimum) — the minimum was raised to 1,000 qXRP after node 2 was first bonded at 500 qXRP. Node 2 was re-bonded during this session but the original bond object persists. This should be investigated — it may need topping up or the minimum enforcement may grandfather existing bonds.
+3. **Complete ledger history on nodes 2/3** only starts at ledger 142,852 — they don't have the full chain. Only node 1 has `ledger_history = full`.
 
-4. **Complete ledger history on nodes 2/3** only starts at ledger 142,852 — they don't have the full chain. Only node 1 has `ledger_history = full`.
-
-5. **Governance never exercised** — the on-chain governance (burn BPS proposals, supermajority voting) is implemented but untested.
+4. **AMM not yet tested with PoP active** — AMM amendment is enabled, but during the pre-swap tests (2026-05-23) the AMM was `temDISABLED`; a DEX OfferCreate was used instead. A full AMM pool + swap test under the current live amendment set is outstanding.
