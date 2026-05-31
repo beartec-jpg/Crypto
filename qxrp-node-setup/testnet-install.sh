@@ -57,6 +57,7 @@ HTTP_PORT="6005"
 BOND_AMOUNT_XRP="1000"
 SWEEP_THRESHOLD_XRP="50"
 REWARD_ADDRESS=""
+DRY_RUN=false
 
 # ── Parse args ────────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -64,6 +65,7 @@ while [[ $# -gt 0 ]]; do
     --reward-address)   REWARD_ADDRESS="$2"; shift 2 ;;
     --reward-address=*) REWARD_ADDRESS="${1#*=}"; shift ;;
     --bond-amount)      BOND_AMOUNT_XRP="$2"; shift 2 ;;
+    --dry-run)          DRY_RUN=true; shift ;;
     *) shift ;;
   esac
 done
@@ -93,11 +95,15 @@ success "Tools ready"
 
 # ── Step 2: Copy binary from testnet server ───────────────────────────────────
 header "Step 2/9 — Copying qXRP Binary"
-info "Copying from ${TESTNET_SOURCE_IP}..."
-sshpass -p "$TESTNET_SOURCE_PASS" \
-  scp -o StrictHostKeyChecking=no \
-  root@${TESTNET_SOURCE_IP}:/opt/qxrp/bin/xrpld \
-  "$QXRP_BIN"
+if [[ "$DRY_RUN" == true ]]; then
+  info "[DRY-RUN] Would scp xrpld binary from ${TESTNET_SOURCE_IP}"
+else
+  info "Copying from ${TESTNET_SOURCE_IP}..."
+  sshpass -p "$TESTNET_SOURCE_PASS" \
+    scp -o StrictHostKeyChecking=no \
+    root@${TESTNET_SOURCE_IP}:/opt/qxrp/bin/xrpld \
+    "$QXRP_BIN"
+fi
 chmod +x "$QXRP_BIN"
 VERSION=$("$QXRP_BIN" --version 2>/dev/null | head -1 || echo "unknown")
 success "Binary installed: $QXRP_BIN  ($VERSION)"
