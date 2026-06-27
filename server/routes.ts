@@ -6793,6 +6793,43 @@ Return ONLY valid JSON in this exact format:
     }
   });
 
+  // ============================================
+  // OSCILLATOR PREFERENCES API
+  // ============================================
+
+  // Get oscillator preferences for the current user
+  app.get("/api/crypto/oscillator-preferences", requireCryptoAuth, async (req, res) => {
+    try {
+      const userId = (req as any).cryptoUser.id;
+      const prefs = await storage.getOscillatorPreferences(userId);
+      if (!prefs) {
+        return res.status(404).json({ error: 'No preferences found' });
+      }
+      res.json({ favoriteOscillators: prefs.favoriteOscillators });
+    } catch (error: any) {
+      console.error('Error fetching oscillator preferences:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Save/update oscillator preferences
+  app.put("/api/crypto/oscillator-preferences", requireCryptoAuth, async (req, res) => {
+    try {
+      const userId = (req as any).cryptoUser.id;
+      const { favoriteOscillators } = req.body;
+
+      if (!Array.isArray(favoriteOscillators)) {
+        return res.status(400).json({ error: 'favoriteOscillators must be an array' });
+      }
+
+      const prefs = await storage.upsertOscillatorPreferences(userId, favoriteOscillators);
+      res.json({ favoriteOscillators: prefs.favoriteOscillators });
+    } catch (error: any) {
+      console.error('Error saving oscillator preferences:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Auto-analyze for Elliott Wave patterns
   app.post("/api/crypto/elliott-wave/analyze", requireCryptoAuth, requireEliteTier, async (req, res) => {
     try {

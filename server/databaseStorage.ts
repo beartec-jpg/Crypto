@@ -1,4 +1,4 @@
-import type { FeedbackBoard, InsertFeedbackBoard, FeedbackBoardReply, InsertFeedbackBoardReply, ElliottWaveLabel, InsertElliottWaveLabel, CachedCandles, InsertCachedCandles } from "@shared/schema";
+import type { FeedbackBoard, InsertFeedbackBoard, FeedbackBoardReply, InsertFeedbackBoardReply, ElliottWaveLabel, InsertElliottWaveLabel, CachedCandles, InsertCachedCandles, UserOscillatorPreferences } from "@shared/schema";
 import { db } from "./db";
 import { feedbackBoard, feedbackBoardReplies } from "@shared/schema";
 import { desc } from "drizzle-orm";
@@ -310,7 +310,44 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  // Oscillator Preferences operations
+  async getOscillatorPreferences(userId: string): Promise<UserOscillatorPreferences | undefined> {
+    const { userOscillatorPreferences } = await import("@shared/schema");
+    const [prefs] = await db
+      .select()
+      .from(userOscillatorPreferences)
+      .where(eq(userOscillatorPreferences.userId, userId));
+    return prefs;
+  }
+
+  async upsertOscillatorPreferences(userId: string, favoriteOscillators: string[]): Promise<UserOscillatorPreferences> {
+    const { userOscillatorPreferences } = await import("@shared/schema");
+    const existing = await this.getOscillatorPreferences(userId);
+
+    if (existing) {
+      const [updated] = await db
+        .update(userOscillatorPreferences)
+        .set({
+          favoriteOscillators: favoriteOscillators as any,
+          updatedAt: new Date(),
+        })
+        .where(eq(userOscillatorPreferences.userId, userId))
+        .returning();
+      return updated;
+    } else {
+      const [inserted] = await db
+        .insert(userOscillatorPreferences)
+        .values({
+          userId,
+          favoriteOscillators: favoriteOscillators as any,
+        })
+        .returning();
+      return inserted;
+    }
+  }
+
   // ========== ANALYTICS METHODS ==========
+
   async logAnalyticsEvent(event: any): Promise<void> {
     const { analyticsEvents } = await import("@shared/schema");
     try {

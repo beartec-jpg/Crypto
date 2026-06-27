@@ -28,6 +28,9 @@ interface UseFullscreenChartLifecycleParams {
   chartRef: React.MutableRefObject<any>;
   chartContainerRef: React.MutableRefObject<HTMLDivElement | null>;
   candles: any[];
+  /** Key reflecting the symbol+timeframe the current candles array was fetched for.
+   *  Used to skip rendering candles that belong to a different timeframe. */
+  candlesKey: string;
   timeframe: string;
   symbol: string;
   isLoading: boolean;
@@ -46,6 +49,7 @@ export function useFullscreenChartLifecycle({
   chartRef,
   chartContainerRef,
   candles,
+  candlesKey,
   timeframe,
   symbol,
   isLoading,
@@ -76,6 +80,15 @@ export function useFullscreenChartLifecycle({
       return;
     }
 
+    // Guard: if the candles array still belongs to a different symbol/timeframe
+    // (i.e. fresh data hasn't arrived yet after a switch), skip rendering to
+    // avoid showing the old-timeframe bars at the new timeframe's scale, which
+    // causes the misplaced-candle glitch reported on higher timeframes.
+    const currentKey = `${symbol}_${timeframe}`;
+    if (candlesKey !== currentKey) {
+      return;
+    }
+
     // When rewinding, only show candles up to the rewind position (hide future candles)
     const displayCandles = rewindPosition !== null ? candles.slice(0, rewindPosition) : candles;
 
@@ -88,8 +101,8 @@ export function useFullscreenChartLifecycle({
       chartData.push(...(futureBars as any[]));
     }
 
-    const currentKey = `${symbol}:${timeframe}`;
-    const isNewPair = lastSymbolTimeframeRef.current !== currentKey;
+    const chartKey = `${symbol}:${timeframe}`;
+    const isNewPair = lastSymbolTimeframeRef.current !== chartKey;
 
     // Fit content on initial load or any symbol/timeframe change so we never carry
     // over a stale visible range from a different bar density.
@@ -100,7 +113,7 @@ export function useFullscreenChartLifecycle({
       if (!isLoading) {
         // Candles are fresh for this pair — lock in the key so subsequent renders
         // (auto-refresh) go through the else branch (preserve user's scroll position).
-        lastSymbolTimeframeRef.current = currentKey;
+        lastSymbolTimeframeRef.current = chartKey;
         isInitialDataLoad.current = false;
       }
       // Re-enable price scale auto-scaling before loading the new symbol's candles.
@@ -159,8 +172,10 @@ export function useFullscreenChartLifecycle({
   // setData + setVisibleLogicalRange that interrupts in-progress scroll animations.
   // The `isLoading` value is still read inside the effect (for the isNewPair branch)
   // via closure; it just doesn't need to *trigger* a re-run on its own.
+  // `candlesKey` IS included so the effect re-runs immediately when fresh candles for
+  // the new timeframe arrive, clearing the stale-candle guard introduced above.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candles, rewindPosition, candleSeriesRef, fitContent, timeframe, symbol, chartRef]);
+  }, [candles, candlesKey, rewindPosition, candleSeriesRef, fitContent, timeframe, symbol, chartRef]);
 
   useEffect(() => {
     const chartElement = chartContainerRef.current;

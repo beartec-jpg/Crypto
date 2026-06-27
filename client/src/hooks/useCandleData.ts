@@ -10,6 +10,9 @@ interface UseCandleDataOptions {
 
 interface UseCandleDataReturn {
   candles: Candle[];
+  /** Key reflecting the symbol+timeframe the current `candles` array actually belongs to.
+   *  Callers can compare against `${symbol}_${timeframe}` to detect stale candle data. */
+  candlesKey: string;
   isLoading: boolean;
   error: Error | null;
   refetch: () => Promise<void>;
@@ -22,6 +25,8 @@ export function useCandleData({
   refreshInterval = 10000, // 10s default
 }: UseCandleDataOptions): UseCandleDataReturn {
   const [candles, setCandles] = useState<Candle[]>([]);
+  /** Tracks which symbol+timeframe the current `candles` array represents. */
+  const [candlesKey, setCandlesKey] = useState(`${symbol}_${timeframe}`);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const requestIdRef = useRef(0);
@@ -47,6 +52,7 @@ export function useCandleData({
 
       if (requestId === requestIdRef.current) {
         setCandles(candleData);
+        setCandlesKey(`${symbol}_${timeframe}`);
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
@@ -55,6 +61,7 @@ export function useCandleData({
       console.error('Failed to fetch candle data:', err);
       if (requestId === requestIdRef.current) {
         setCandles([]);
+        setCandlesKey(`${symbol}_${timeframe}`);
         setError(err instanceof Error ? err : new Error('Unknown error'));
       }
     } finally {
@@ -70,7 +77,8 @@ export function useCandleData({
     // Do NOT immediately clear candles on symbol/timeframe changes.
     // Keeping the previous bars visible prevents the chart from going blank
     // during the brief network round-trip.  New data replaces them atomically
-    // once the fetch completes.
+    // once the fetch completes.  The `candlesKey` lets the chart lifecycle skip
+    // rendering stale candles at the wrong timeframe scale.
     setError(null);
     setIsLoading(true);
 
@@ -90,6 +98,7 @@ export function useCandleData({
 
   return {
     candles,
+    candlesKey,
     isLoading,
     error,
     refetch: fetchCandles,

@@ -8,7 +8,11 @@ const DEFAULT_PREFERENCES: OscillatorPreferences = {
 };
 
 // Valid oscillator IDs
-type OscillatorId = 'rsi' | 'macd' | 'stochRSI' | 'obv' | 'mfi' | 'williamsR' | 'cci' | 'adx';
+export type OscillatorId = 'rsi' | 'macd' | 'stochRSI' | 'obv' | 'mfi' | 'williamsR' | 'cci' | 'adx';
+
+export const VALID_OSCILLATOR_IDS = new Set<OscillatorId>([
+  'rsi', 'macd', 'stochRSI', 'obv', 'mfi', 'williamsR', 'cci', 'adx',
+]);
 
 /**
  * Hook for managing oscillator preferences (favorite oscillators).
@@ -98,5 +102,6 @@ export function useOscillatorPreferences() {
     isSaving,
     toggleFavorite,
     isFavorite,
+    updatePreferences,
   };
 }

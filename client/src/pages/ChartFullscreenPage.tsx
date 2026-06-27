@@ -470,7 +470,7 @@ export function ChartFullscreenPage({
   }, [chartRef.current]);
 
   // Hooks - Data fetching
-  const { candles, isLoading, error } = useCandleData({
+  const { candles, candlesKey, isLoading, error } = useCandleData({
     symbol,
     timeframe,
     enabled: chartReady,
@@ -2260,6 +2260,7 @@ export function ChartFullscreenPage({
     chartRef,
     chartContainerRef,
     candles,
+    candlesKey,
     timeframe,
     symbol,
     isLoading,
@@ -2529,11 +2530,19 @@ export function ChartFullscreenPage({
   }, [elliottWave.isComplete, elliottWave.isValid]);
 
   // --- Indicator Persistence ---
+  //
+  // Two separate localStorage keys:
+  //   indicatorDefaults_${symbol}_${timeframe}  — per-timeframe indicator PARAMETERS
+  //   oscillatorDefaults_${symbol}              — global per-symbol oscillator panel
+  //                                               selections and toggle states (highLow,
+  //                                               divergenceScanner).  These should be
+  //                                               shared across all timeframes.
 
   const saveIndicatorDefaults = useCallback(() => {
     try {
-      const key = `indicatorDefaults_${symbol}_${timeframe}`;
-      const data = {
+      // --- Per-timeframe indicator parameters ---
+      const tfKey = `indicatorDefaults_${symbol}_${timeframe}`;
+      const tfData = {
         indicators: {
           ema: { show: indicators.ema.show, configs: indicators.ema.configs, inputs: indicators.ema.inputs },
           sma: { show: indicators.sma.show, configs: indicators.sma.configs },
@@ -2556,13 +2565,20 @@ export function ChartFullscreenPage({
           cci: { show: indicators.cci.show, period: indicators.cci.period },
           adx: { show: indicators.adx.show, period: indicators.adx.period },
         },
+      };
+      localStorage.setItem(tfKey, JSON.stringify(tfData));
+
+      // --- Global per-symbol settings (shared across all timeframes) ---
+      const symKey = `oscillatorDefaults_${symbol}`;
+      const symData = {
         oscillatorPanel: {
           selected: Array.from(oscillatorPanel.selectedOscillators),
         },
         highLowEnabled,
         divergenceScannerEnabled,
       };
-      localStorage.setItem(key, JSON.stringify(data));
+      localStorage.setItem(symKey, JSON.stringify(symData));
+
       console.log(`💾 Saved indicator defaults for ${symbol}_${timeframe}`);
     } catch {
       // Ignore storage errors (e.g. quota exceeded)
@@ -2590,111 +2606,135 @@ export function ChartFullscreenPage({
 
   const loadIndicatorDefaults = useCallback(() => {
     try {
-      const key = `indicatorDefaults_${symbol}_${timeframe}`;
-      const saved = localStorage.getItem(key);
-      if (!saved) return;
+      // --- Per-timeframe indicator parameters ---
+      const tfKey = `indicatorDefaults_${symbol}_${timeframe}`;
+      const savedTf = localStorage.getItem(tfKey);
+      if (savedTf) {
+        const data = JSON.parse(savedTf);
+        const ind = data.indicators || {};
 
-      const data = JSON.parse(saved);
-      const ind = data.indicators || {};
+        // EMA
+        if (ind.ema) {
+          if (ind.ema.show !== undefined) indicators.ema.setShow(ind.ema.show);
+          if (Array.isArray(ind.ema.configs)) {
+            indicators.ema.setConfigs(ind.ema.configs);
+            const inputs: Record<string, string> = {};
+            ind.ema.configs.forEach((c: MAConfig) => { inputs[c.id] = String(c.period); });
+            indicators.ema.setInputs(inputs);
+          }
+        }
 
-      // EMA
-      if (ind.ema) {
-        if (ind.ema.show !== undefined) indicators.ema.setShow(ind.ema.show);
-        if (Array.isArray(ind.ema.configs)) {
-          indicators.ema.setConfigs(ind.ema.configs);
-          const inputs: Record<string, string> = {};
-          ind.ema.configs.forEach((c: MAConfig) => { inputs[c.id] = String(c.period); });
-          indicators.ema.setInputs(inputs);
+        // SMA
+        if (ind.sma) {
+          if (ind.sma.show !== undefined) indicators.sma.setShow(ind.sma.show);
+          if (Array.isArray(ind.sma.configs)) indicators.sma.setConfigs(ind.sma.configs);
+        }
+
+        // Bollinger Bands
+        if (ind.bb) {
+          if (ind.bb.show !== undefined) indicators.bb.setShow(ind.bb.show);
+          if (ind.bb.period !== undefined) { indicators.bb.setPeriod(ind.bb.period); indicators.bb.setPeriodInput(String(ind.bb.period)); }
+          if (ind.bb.stdDev !== undefined) { indicators.bb.setStdDev(ind.bb.stdDev); indicators.bb.setStdDevInput(String(ind.bb.stdDev)); }
+        }
+
+        // VWAP
+        if (ind.vwap) {
+          if (ind.vwap.showSession !== undefined) indicators.vwap.setShowSession(ind.vwap.showSession);
+          if (ind.vwap.showDaily !== undefined) indicators.vwap.setShowDaily(ind.vwap.showDaily);
+          if (ind.vwap.showWeekly !== undefined) indicators.vwap.setShowWeekly(ind.vwap.showWeekly);
+          if (ind.vwap.showMonthly !== undefined) indicators.vwap.setShowMonthly(ind.vwap.showMonthly);
+          if (ind.vwap.showRolling !== undefined) indicators.vwap.setShowRolling(ind.vwap.showRolling);
+          if (ind.vwap.rollingPeriod !== undefined) {
+            indicators.vwap.setRollingPeriod(ind.vwap.rollingPeriod);
+            indicators.vwap.setRollingPeriodInput(String(ind.vwap.rollingPeriod));
+          }
+        }
+
+        // Elder Impulse
+        if (ind.elderImpulse?.show !== undefined) indicators.elderImpulse.setShow(ind.elderImpulse.show);
+
+        // RSI
+        if (ind.rsi) {
+          if (ind.rsi.show !== undefined) indicators.rsi.setShow(ind.rsi.show);
+          if (ind.rsi.period !== undefined) { indicators.rsi.setPeriod(ind.rsi.period); indicators.rsi.setPeriodInput(String(ind.rsi.period)); }
+        }
+
+        // MACD
+        if (ind.macd) {
+          if (ind.macd.show !== undefined) indicators.macd.setShow(ind.macd.show);
+          if (ind.macd.fast !== undefined) { indicators.macd.setFast(ind.macd.fast); indicators.macd.setFastInput(String(ind.macd.fast)); }
+          if (ind.macd.slow !== undefined) { indicators.macd.setSlow(ind.macd.slow); indicators.macd.setSlowInput(String(ind.macd.slow)); }
+          if (ind.macd.signal !== undefined) { indicators.macd.setSignal(ind.macd.signal); indicators.macd.setSignalInput(String(ind.macd.signal)); }
+        }
+
+        // Stochastic RSI
+        if (ind.stochRSI) {
+          if (ind.stochRSI.show !== undefined) indicators.stochRSI.setShow(ind.stochRSI.show);
+          if (ind.stochRSI.period !== undefined) { indicators.stochRSI.setPeriod(ind.stochRSI.period); indicators.stochRSI.setPeriodInput(String(ind.stochRSI.period)); }
+        }
+
+        // OBV
+        if (ind.obv?.show !== undefined) indicators.obv.setShow(ind.obv.show);
+
+        // MFI
+        if (ind.mfi) {
+          if (ind.mfi.show !== undefined) indicators.mfi.setShow(ind.mfi.show);
+          if (ind.mfi.period !== undefined) { indicators.mfi.setPeriod(ind.mfi.period); indicators.mfi.setPeriodInput(String(ind.mfi.period)); }
+        }
+
+        // Williams %R
+        if (ind.williamsR) {
+          if (ind.williamsR.show !== undefined) indicators.williamsR.setShow(ind.williamsR.show);
+          if (ind.williamsR.period !== undefined) { indicators.williamsR.setPeriod(ind.williamsR.period); indicators.williamsR.setPeriodInput(String(ind.williamsR.period)); }
+        }
+
+        // CCI
+        if (ind.cci) {
+          if (ind.cci.show !== undefined) indicators.cci.setShow(ind.cci.show);
+          if (ind.cci.period !== undefined) { indicators.cci.setPeriod(ind.cci.period); indicators.cci.setPeriodInput(String(ind.cci.period)); }
+        }
+
+        // ADX
+        if (ind.adx) {
+          if (ind.adx.show !== undefined) indicators.adx.setShow(ind.adx.show);
+          if (ind.adx.period !== undefined) { indicators.adx.setPeriod(ind.adx.period); indicators.adx.setPeriodInput(String(ind.adx.period)); }
+        }
+
+        // Migrate old per-timeframe oscillator panel data to the new global key (one-time migration)
+        if (Array.isArray(data.oscillatorPanel?.selected) || data.highLowEnabled !== undefined || data.divergenceScannerEnabled !== undefined) {
+          try {
+            const symKey = `oscillatorDefaults_${symbol}`;
+            if (!localStorage.getItem(symKey)) {
+              const migrated: Record<string, any> = {};
+              if (Array.isArray(data.oscillatorPanel?.selected)) {
+                migrated.oscillatorPanel = { selected: data.oscillatorPanel.selected };
+              }
+              if (data.highLowEnabled !== undefined) migrated.highLowEnabled = data.highLowEnabled;
+              if (data.divergenceScannerEnabled !== undefined) migrated.divergenceScannerEnabled = data.divergenceScannerEnabled;
+              localStorage.setItem(symKey, JSON.stringify(migrated));
+            }
+          } catch { /* ignore */ }
         }
       }
 
-      // SMA
-      if (ind.sma) {
-        if (ind.sma.show !== undefined) indicators.sma.setShow(ind.sma.show);
-        if (Array.isArray(ind.sma.configs)) indicators.sma.setConfigs(ind.sma.configs);
-      }
+      // --- Global per-symbol settings (shared across all timeframes) ---
+      const symKey = `oscillatorDefaults_${symbol}`;
+      const savedSym = localStorage.getItem(symKey);
+      if (savedSym) {
+        const symData = JSON.parse(savedSym);
 
-      // Bollinger Bands
-      if (ind.bb) {
-        if (ind.bb.show !== undefined) indicators.bb.setShow(ind.bb.show);
-        if (ind.bb.period !== undefined) { indicators.bb.setPeriod(ind.bb.period); indicators.bb.setPeriodInput(String(ind.bb.period)); }
-        if (ind.bb.stdDev !== undefined) { indicators.bb.setStdDev(ind.bb.stdDev); indicators.bb.setStdDevInput(String(ind.bb.stdDev)); }
-      }
-
-      // VWAP
-      if (ind.vwap) {
-        if (ind.vwap.showSession !== undefined) indicators.vwap.setShowSession(ind.vwap.showSession);
-        if (ind.vwap.showDaily !== undefined) indicators.vwap.setShowDaily(ind.vwap.showDaily);
-        if (ind.vwap.showWeekly !== undefined) indicators.vwap.setShowWeekly(ind.vwap.showWeekly);
-        if (ind.vwap.showMonthly !== undefined) indicators.vwap.setShowMonthly(ind.vwap.showMonthly);
-        if (ind.vwap.showRolling !== undefined) indicators.vwap.setShowRolling(ind.vwap.showRolling);
-        if (ind.vwap.rollingPeriod !== undefined) {
-          indicators.vwap.setRollingPeriod(ind.vwap.rollingPeriod);
-          indicators.vwap.setRollingPeriodInput(String(ind.vwap.rollingPeriod));
+        // Oscillator panel selections
+        if (Array.isArray(symData.oscillatorPanel?.selected)) {
+          const savedSet = new Set<string>(symData.oscillatorPanel.selected);
+          ALL_OSCILLATOR_IDS.forEach(id => {
+            oscillatorPanel.toggleOscillator(id, savedSet.has(id));
+          });
         }
+
+        // Global toggles
+        if (symData.highLowEnabled !== undefined) setHighLowEnabled(symData.highLowEnabled);
+        if (symData.divergenceScannerEnabled !== undefined) setDivergenceScannerEnabled(symData.divergenceScannerEnabled);
       }
-
-      // Elder Impulse
-      if (ind.elderImpulse?.show !== undefined) indicators.elderImpulse.setShow(ind.elderImpulse.show);
-
-      // RSI
-      if (ind.rsi) {
-        if (ind.rsi.show !== undefined) indicators.rsi.setShow(ind.rsi.show);
-        if (ind.rsi.period !== undefined) { indicators.rsi.setPeriod(ind.rsi.period); indicators.rsi.setPeriodInput(String(ind.rsi.period)); }
-      }
-
-      // MACD
-      if (ind.macd) {
-        if (ind.macd.show !== undefined) indicators.macd.setShow(ind.macd.show);
-        if (ind.macd.fast !== undefined) { indicators.macd.setFast(ind.macd.fast); indicators.macd.setFastInput(String(ind.macd.fast)); }
-        if (ind.macd.slow !== undefined) { indicators.macd.setSlow(ind.macd.slow); indicators.macd.setSlowInput(String(ind.macd.slow)); }
-        if (ind.macd.signal !== undefined) { indicators.macd.setSignal(ind.macd.signal); indicators.macd.setSignalInput(String(ind.macd.signal)); }
-      }
-
-      // Stochastic RSI
-      if (ind.stochRSI) {
-        if (ind.stochRSI.show !== undefined) indicators.stochRSI.setShow(ind.stochRSI.show);
-        if (ind.stochRSI.period !== undefined) { indicators.stochRSI.setPeriod(ind.stochRSI.period); indicators.stochRSI.setPeriodInput(String(ind.stochRSI.period)); }
-      }
-
-      // OBV
-      if (ind.obv?.show !== undefined) indicators.obv.setShow(ind.obv.show);
-
-      // MFI
-      if (ind.mfi) {
-        if (ind.mfi.show !== undefined) indicators.mfi.setShow(ind.mfi.show);
-        if (ind.mfi.period !== undefined) { indicators.mfi.setPeriod(ind.mfi.period); indicators.mfi.setPeriodInput(String(ind.mfi.period)); }
-      }
-
-      // Williams %R
-      if (ind.williamsR) {
-        if (ind.williamsR.show !== undefined) indicators.williamsR.setShow(ind.williamsR.show);
-        if (ind.williamsR.period !== undefined) { indicators.williamsR.setPeriod(ind.williamsR.period); indicators.williamsR.setPeriodInput(String(ind.williamsR.period)); }
-      }
-
-      // CCI
-      if (ind.cci) {
-        if (ind.cci.show !== undefined) indicators.cci.setShow(ind.cci.show);
-        if (ind.cci.period !== undefined) { indicators.cci.setPeriod(ind.cci.period); indicators.cci.setPeriodInput(String(ind.cci.period)); }
-      }
-
-      // ADX
-      if (ind.adx) {
-        if (ind.adx.show !== undefined) indicators.adx.setShow(ind.adx.show);
-        if (ind.adx.period !== undefined) { indicators.adx.setPeriod(ind.adx.period); indicators.adx.setPeriodInput(String(ind.adx.period)); }
-      }
-
-      // Oscillator panel
-      if (Array.isArray(data.oscillatorPanel?.selected)) {
-        const savedSet = new Set<string>(data.oscillatorPanel.selected);
-        ALL_OSCILLATOR_IDS.forEach(id => {
-          oscillatorPanel.toggleOscillator(id, savedSet.has(id));
-        });
-      }
-
-      // Divergence scanner
-      if (data.highLowEnabled !== undefined) setHighLowEnabled(data.highLowEnabled);
-      if (data.divergenceScannerEnabled !== undefined) setDivergenceScannerEnabled(data.divergenceScannerEnabled);
 
       console.log(`📂 Loaded indicator defaults for ${symbol}_${timeframe}`);
     } catch (error) {

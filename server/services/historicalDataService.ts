@@ -30,14 +30,16 @@ const MAX_CANDLES_PER_REQUEST = 1000;
 const RATE_LIMIT_DELAY_MS = 200;
 
 const TARGET_HISTORY_CANDLES: Record<string, number> = {
-  '1M': 300,    // ~25 years (monthly: 20+ years target)
-  '1w': 520,    // ~10 years (weekly: 5-10 years target)
-  '1d': 3650,   // ~10 years (daily: 10 years target)
-  '4h': 4380,   // ~2 years (4h: reasonable history)
-  '1h': 8760,   // ~1 year
-  '15m': 8640,  // ~90 days
-  '5m': 8640,   // ~30 days
-  '1m': 5760,   // ~4 days
+  '1M': 360,    // ~30 years (monthly)
+  '1w': 780,    // ~15 years (weekly)
+  '1d': 5000,   // ~13+ years (daily)
+  '4h': 13140,  // ~6 years (4h)
+  '2h': 17520,  // ~4 years (2h)
+  '1h': 26280,  // ~3 years (1h)
+  '30m': 17520, // ~1 year (30m)
+  '15m': 17280, // ~6 months (15m)
+  '5m': 8640,   // ~30 days (5m)
+  '1m': 5760,   // ~4 days (1m)
 };
 
 const TIMEFRAME_TO_MS: Record<string, number> = {
@@ -128,7 +130,15 @@ export async function fetchExtendedHistory(
     const cached = await storage.getCachedCandles(normalizedSymbol, timeframe);
     if (cached) {
       const cacheAgeMs = Date.now() - new Date(cached.updatedAt!).getTime();
-      const maxCacheAgeMs = Math.max(timeframeMs, 60 * 60 * 1000);
+      // Use a 24-hour minimum cache TTL for historical data so we avoid
+      // repeatedly re-fetching thousands of candles on every chart load.
+      // For lower timeframes (< 1h) keep a tighter 4-hour TTL so intraday
+      // candles stay reasonably fresh.
+      const SHORT_TF_MS = 60 * 60 * 1000; // 1h
+      const isShortTimeframe = (timeframeMs || SHORT_TF_MS) < SHORT_TF_MS;
+      const maxCacheAgeMs = isShortTimeframe
+        ? Math.max(timeframeMs, 4 * 60 * 60 * 1000)   // 4-hour min for sub-hour TFs
+        : 24 * 60 * 60 * 1000;                          // 24-hour min for 1h+
 
       if (cacheAgeMs < maxCacheAgeMs && cached.candleCount >= targetCandles * 0.9) {
         console.log(`Using cached data for ${normalizedSymbol} ${timeframe}: ${cached.candleCount} candles`);
