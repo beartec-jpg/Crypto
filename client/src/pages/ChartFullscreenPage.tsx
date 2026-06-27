@@ -2701,7 +2701,7 @@ export function ChartFullscreenPage({
         }
 
         // Migrate old per-timeframe oscillator panel data to the new global key (one-time migration)
-        if (Array.isArray(data.oscillatorPanel?.selected) || data.highLowEnabled !== undefined) {
+        if (Array.isArray(data.oscillatorPanel?.selected) || data.highLowEnabled !== undefined || data.divergenceScannerEnabled !== undefined) {
           try {
             const symKey = `oscillatorDefaults_${symbol}`;
             if (!localStorage.getItem(symKey)) {

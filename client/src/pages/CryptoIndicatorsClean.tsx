@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useMarketStateDemo } from '@/hooks/useMarketStateDemo';
 import { useIndicatorsData } from '@/hooks/useIndicatorsData';
-import { useOscillatorPreferences } from '@/hooks/useOscillatorPreferences';
+import { useOscillatorPreferences, type OscillatorId, VALID_OSCILLATOR_IDS } from '@/hooks/useOscillatorPreferences';
 import { Link, useLocation } from 'wouter';
 
 // Default symbol and timeframe for demo
@@ -37,7 +37,7 @@ export default function CryptoIndicatorsClean() {
   const { favoriteOscillators, isLoading: prefsLoading, updatePreferences } = useOscillatorPreferences();
 
   // Local state initialised from persisted prefs once loaded; default to rsi+macd until data arrives
-  const [activeOscillators, setActiveOscillators] = useState<string[]>(['rsi', 'macd']);
+  const [activeOscillators, setActiveOscillators] = useState<OscillatorId[]>(['rsi', 'macd']);
   const [prefsInitialised, setPrefsInitialised] = useState(false);
 
   // Hydrate local state from persisted prefs exactly once after they load
@@ -85,11 +85,13 @@ export default function CryptoIndicatorsClean() {
 
   const handleOscillatorToggle = useCallback((oscillatorId: string, checked: boolean) => {
     setActiveOscillators((previous) => {
+      // Only allow known OscillatorId values through to keep types strict
+      if (!VALID_OSCILLATOR_IDS.has(oscillatorId as OscillatorId)) return previous;
+      const id = oscillatorId as OscillatorId;
       const next = checked
-        ? previous.includes(oscillatorId) ? previous : [...previous, oscillatorId]
-        : previous.filter((id) => id !== oscillatorId);
-      // Persist to DB (cast to the strict union type expected by the hook)
-      updatePreferences(next as any);
+        ? previous.includes(id) ? previous : [...previous, id]
+        : previous.filter((o) => o !== id);
+      updatePreferences(next);
       return next;
     });
   }, [updatePreferences]);
