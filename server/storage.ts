@@ -1,4 +1,4 @@
-import { type FeedbackBoard, type InsertFeedbackBoard, type FeedbackBoardReply, type InsertFeedbackBoardReply, type ElliottWaveLabel, type InsertElliottWaveLabel, type CachedCandles, type InsertCachedCandles } from "@shared/schema";
+import { type FeedbackBoard, type InsertFeedbackBoard, type FeedbackBoardReply, type InsertFeedbackBoardReply, type ElliottWaveLabel, type InsertElliottWaveLabel, type CachedCandles, type InsertCachedCandles, type UserOscillatorPreferences } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -21,6 +21,10 @@ export interface IStorage {
   // Cached Historical Candles (for extended EW analysis)
   getCachedCandles(symbol: string, timeframe: string): Promise<CachedCandles | undefined>;
   upsertCachedCandles(candles: InsertCachedCandles): Promise<CachedCandles>;
+
+  // Oscillator Preferences
+  getOscillatorPreferences(userId: string): Promise<UserOscillatorPreferences | undefined>;
+  upsertOscillatorPreferences(userId: string, favoriteOscillators: string[]): Promise<UserOscillatorPreferences>;
 
   // Analytics
   logAnalyticsEvent(event: any): Promise<void>;
@@ -111,6 +115,10 @@ export class MemStorage implements IStorage {
   // Cached Candles (stub - uses database storage in production)
   async getCachedCandles(_symbol: string, _timeframe: string): Promise<CachedCandles | undefined> { return undefined; }
   async upsertCachedCandles(_candles: InsertCachedCandles): Promise<CachedCandles> { throw new Error("Cached candles require database storage"); }
+
+  // Oscillator Preferences (stub - uses database storage in production)
+  async getOscillatorPreferences(_userId: string): Promise<UserOscillatorPreferences | undefined> { return undefined; }
+  async upsertOscillatorPreferences(_userId: string, _favoriteOscillators: string[]): Promise<UserOscillatorPreferences> { throw new Error("Oscillator preferences require database storage"); }
 
   // Analytics stubs (uses database in production)
   async logAnalyticsEvent(_event: any): Promise<void> {}

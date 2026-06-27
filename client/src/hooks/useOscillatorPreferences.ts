@@ -98,5 +98,6 @@ export function useOscillatorPreferences() {
     isSaving,
     toggleFavorite,
     isFavorite,
+    updatePreferences,
   };
 }
