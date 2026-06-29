@@ -7,7 +7,7 @@
 /**
  * All supported timeframe intervals ordered from smallest to largest.
  */
-export const TIMEFRAME_ORDER: readonly string[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
+export const TIMEFRAME_ORDER: readonly string[] = ['1m', '5m', '15m', '1h', '4h', '1d', '1w', '1M'];
 
 /**
  * Returns the current timeframe and all higher (larger) timeframes.

@@ -52,12 +52,17 @@ export function getDynamicPriceDecimals(price: number): number {
   return getDecimalsForPrice(absPrice, targetSigFigs);
 }
 
+// Prices smaller than this (in absolute value) are treated as zero to avoid
+// floating-point artifacts like -1.28e-14 appearing on chart scale labels.
+const NEAR_ZERO_THRESHOLD = 1e-8;
+
 /**
  * Dynamic chart formatter using token-price-dependent decimals.
  */
 export function formatPriceDynamic(price: number): string {
   if (price === 0) return '0';
-  const decimals = getDynamicPriceDecimals(price);
+  if (Math.abs(price) < NEAR_ZERO_THRESHOLD) return '0';  // clamp near-zero floating-point artifacts
+  const decimals = Math.min(getDynamicPriceDecimals(price), 8);  // cap at 8 dp max
   return price.toFixed(decimals);
 }
 
