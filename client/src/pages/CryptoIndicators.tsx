@@ -828,13 +828,17 @@ const handleAIMarketReview = () => {
   }, [symbol, interval, drawingsPersistence]);
   
   const deleteDrawing = useCallback((drawingId: string) => {
+    const drawing = drawings.find(d => d.id === drawingId);
+    // Prevent deleting drawings that belong to a higher timeframe
+    if (drawing?.timeframe && drawing.timeframe !== interval) return;
+
     setDrawings(prev => prev.filter(d => d.id !== drawingId));
     setSelectedDrawingId(null);
     
     // Delete from database via hook
     // Note: If this fails, the refetch from the hook will restore the correct state
     drawingsPersistence.deleteDrawing(drawingId);
-  }, [drawingsPersistence]);
+  }, [drawings, interval, drawingsPersistence]);
   
   const clearDrawings = useCallback(() => {
     // Clear local state
