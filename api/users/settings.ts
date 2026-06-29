@@ -94,14 +94,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const cryptoUserId = userResult.rows[0].id;
 
     // One-time safe schema evolution for drawing defaults.
-    // Wrapped in its own try/catch so a no-op migration never aborts the request.
+    // If the ALTER fails (e.g. restricted DB role), verify the column exists and
+    // abort with a clear error rather than silently proceeding and getting a
+    // confusing "column not found" failure later in the INSERT.
     try {
       await pool.query(
         `ALTER TABLE user_settings
          ADD COLUMN IF NOT EXISTS drawing_defaults JSONB DEFAULT '{}'::jsonb`
       );
     } catch (schemaErr) {
-      console.warn('[settings] drawing_defaults column migration warning (safe to ignore):', schemaErr);
+      // Verify the column actually exists; abort if not so we get a clear 500
+      const colCheck = await pool.query(
+        `SELECT 1 FROM information_schema.columns
+         WHERE table_name = 'user_settings' AND column_name = 'drawing_defaults'`
+      );
+      if (colCheck.rows.length === 0) {
+        console.error('[settings] drawing_defaults column missing and could not be added:', schemaErr);
+        return res.status(500).json({ error: 'Schema migration required: drawing_defaults column missing' });
+      }
+      console.warn('[settings] drawing_defaults column migration warning (column already exists):', schemaErr);
     }
 
     if (req.method === 'GET') {

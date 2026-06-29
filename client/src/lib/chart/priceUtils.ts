@@ -57,7 +57,8 @@ export function getDynamicPriceDecimals(price: number): number {
  */
 export function formatPriceDynamic(price: number): string {
   if (price === 0) return '0';
-  const decimals = getDynamicPriceDecimals(price);
+  if (Math.abs(price) < 1e-8) return '0';  // clamp near-zero floating-point artifacts
+  const decimals = Math.min(getDynamicPriceDecimals(price), 8);  // cap at 8 dp max
   return price.toFixed(decimals);
 }
 
