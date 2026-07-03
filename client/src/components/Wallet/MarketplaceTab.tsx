@@ -36,6 +36,7 @@ import { authenticateWithPasskey, isPasskeyAuthenticated } from '@/lib/passkeySe
 import PinEntryModal from './PinEntryModal';
 import { ethers } from 'ethers';
 import MultiChainMarketTab from '@/components/MultiChainMarketTab';
+import DeployCollateralLockPanel from '@/components/Wallet/DeployCollateralLockPanel';
 import { fetchV2SwapsByAddress, buildV2Message, postV2LockSideA, postV2LockSideB, postV2ClaimSideB, cancelV2Swap, type V2Swap, type ChainId } from '@/lib/swapV2Api';
 import { BitcoinAdapter, getUtxosBtc } from '@/lib/adapters/BitcoinAdapter';
 import { XrplAdapter, encodeConditionFromHash } from '@/lib/adapters/XrplAdapter';
@@ -3109,7 +3110,8 @@ export default function MarketplaceTab({
         </div>
       </div>
 
-      {/* ─── Deploy HTLC if not configured ─── */}
+      {/* ─── One-time Sepolia deploys (wallet pays gas) ─── */}
+      <DeployCollateralLockPanel walletId={walletId} masterSeed={masterSeed} />
       {!getSwapNetworkConfig().htlcContractAddress && (
         <DeployHTLCPanel walletId={walletId} masterSeed={masterSeed} />
       )}

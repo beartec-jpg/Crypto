@@ -18,7 +18,7 @@ import SecuritySettings from '@/components/Wallet/SecuritySettings';
 import SecurityEducationCenter from '@/components/Security/SecurityEducationCenter';
 import MarketplaceTab from '@/components/Wallet/MarketplaceTab';
 import VaultTab from '@/components/Wallet/VaultTab';
-import ValidatorNodeTab from '@/components/Wallet/ValidatorNodeTab';
+
 import { getCurrentWallet, migrateWalletToUser, deleteWallet } from '@/lib/walletService';
 import { securityManager, getSecurityRequirements, hasPinSetup, setupPin } from '@/lib/securityService';
 import { getWalletTokens, clearWalletTokens, ensureNativeTokens, type Token } from '@/lib/tokenService';
@@ -26,14 +26,14 @@ import type { TokenNetwork } from '@/lib/tokenService';
 import { getChainNetworkAddress, type WalletAddresses } from '@/lib/networkAddress';
 import { deriveWIFFromPrivateKey } from '@/lib/bitcoinService';
 import { usePendingTransactions } from '@/hooks/usePendingTransactions';
-import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle, Send, QrCode, Settings as SettingsIcon, ArrowLeftRight, Server } from 'lucide-react';
+import { Shield, Lock, Eye, EyeOff, Wallet as WalletIcon, AlertTriangle, Send, QrCode, Settings as SettingsIcon, ArrowLeftRight } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import type { Chain } from '@/lib/balanceService';
 
-type WalletMode = 'dashboard' | 'vault' | 'send' | 'receive' | 'settings' | 'security' | 'marketplace' | 'node';
+type WalletMode = 'dashboard' | 'vault' | 'send' | 'receive' | 'settings' | 'security' | 'marketplace';
 
 export default function WalletPage() {
   const { user } = useUser();
@@ -689,18 +689,7 @@ export default function WalletPage() {
                   <ArrowLeftRight className="w-4 h-4 flex-shrink-0" />
                   <span className="hidden sm:inline">Swap</span>
                 </button>
-                <button
-                  onClick={() => setMode('node')}
-                  className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 ${
-                    mode === 'node'
-                      ? 'bg-cyan-600 text-white'
-                      : 'text-gray-400 hover:text-white'
-                  }`}
-                  title="Run a Node"
-                >
-                  <Server className="w-4 h-4 flex-shrink-0" />
-                  <span className="hidden sm:inline">Node</span>
-                </button>
+
               </div>
 
             {/* Main Content */}
@@ -769,11 +758,7 @@ export default function WalletPage() {
                 <SecurityEducationCenter />
               )}
 
-              {mode === 'node' && (
-                <ValidatorNodeTab
-                  rewardAddress={sovereignWallet?.addresses?.xrpTestnet || sovereignWallet?.addresses?.xrp || ''}
-                />
-              )}
+
               {mode === 'marketplace' && sovereignWallet && (
                 <MarketplaceTab
                   userId={userId}
