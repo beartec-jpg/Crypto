@@ -119,7 +119,7 @@ export default function DeployCollateralLockPanel({
       const signer = await unlockSigner();
       setStep('Connecting to Sepolia…');
 
-      const balance = await provider.getBalance(signer.address);
+      const balance = await signer.provider!.getBalance(signer.address);
       if (balance === 0n) {
         throw new Error(`No Sepolia ETH at ${signer.address}. Fund the wallet with Sepolia ETH first.`);
       }
