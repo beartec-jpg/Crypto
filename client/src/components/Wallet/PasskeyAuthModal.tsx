@@ -497,6 +497,17 @@ function ChooseOptions({
           >
             <Fingerprint size={18} /> Try Again with Passkey
           </button>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-gray-700" />
+            <span className="text-xs text-gray-500">or</span>
+            <div className="flex-1 h-px bg-gray-700" />
+          </div>
+          <button
+            onClick={onPassword}
+            className="w-full py-3 rounded-xl border border-amber-700/40 text-amber-400 text-sm hover:bg-amber-900/20"
+          >
+            Authenticate with password
+          </button>
         </div>
       );
     }
