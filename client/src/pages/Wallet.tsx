@@ -80,6 +80,10 @@ export default function WalletPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
+  // Reset device state
+  const [showResetDeviceConfirm, setShowResetDeviceConfirm] = useState(false);
+  const [resetDeviceError, setResetDeviceError] = useState('');
+
   const { transactions: pendingTransactions, addPendingTransaction, removeTransaction } = usePendingTransactions();
 
   const { address, isConnected } = useAccount();
@@ -311,11 +315,7 @@ export default function WalletPage() {
 
   const handleResetWalletDevice = async () => {
     if (!userId) return;
-    if (!window.confirm(
-      'This will remove the wallet data stored on this device. ' +
-      'Your wallet is still accessible from other devices where you have your passkey. ' +
-      'Continue?'
-    )) return;
+    setResetDeviceError('');
     try {
       await removeAllWalletsForUser(userId);
       securityManager.lockWallet();
@@ -329,8 +329,9 @@ export default function WalletPage() {
       setTokens([]);
       setAuthStep('none');
       setPasskeyDismissed(false);
-    } catch (e) {
-      console.error('Failed to reset wallet device data:', e);
+      setShowResetDeviceConfirm(false);
+    } catch (e: any) {
+      setResetDeviceError(e?.message || 'Failed to remove wallet data. Please try again.');
     }
   };
 
@@ -590,7 +591,7 @@ export default function WalletPage() {
                     Passkey not available on this device?
                   </p>
                   <button
-                    onClick={handleResetWalletDevice}
+                    onClick={() => setShowResetDeviceConfirm(true)}
                     className="text-xs text-red-400 hover:text-red-300 underline underline-offset-2"
                   >
                     Remove wallet data from this device
@@ -1114,6 +1115,40 @@ export default function WalletPage() {
               className="bg-red-600 hover:bg-red-700"
             >
               {isDeleting ? 'Deleting...' : 'Delete Wallet'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset device confirmation dialog */}
+      <Dialog open={showResetDeviceConfirm} onOpenChange={setShowResetDeviceConfirm}>
+        <DialogContent className="bg-gray-900 border-gray-700 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-red-400">Remove wallet data from this device?</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              This removes the wallet data stored on this device only. Your wallet remains accessible
+              from other devices where you have your passkey registered. You can re-add it on this
+              device once you have your passkey available.
+            </DialogDescription>
+          </DialogHeader>
+          {resetDeviceError && (
+            <div className="text-sm text-red-400 bg-red-900/20 border border-red-500/30 rounded p-2">
+              {resetDeviceError}
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setShowResetDeviceConfirm(false); setResetDeviceError(''); }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleResetWalletDevice}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Remove from this device
             </Button>
           </DialogFooter>
         </DialogContent>

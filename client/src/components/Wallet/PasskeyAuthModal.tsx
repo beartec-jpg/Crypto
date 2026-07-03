@@ -506,7 +506,7 @@ function ChooseOptions({
             onClick={onPassword}
             className="w-full py-3 rounded-xl border border-amber-700/40 text-amber-400 text-sm hover:bg-amber-900/20"
           >
-            Use wallet password instead
+            Authenticate with password
           </button>
         </div>
       );
