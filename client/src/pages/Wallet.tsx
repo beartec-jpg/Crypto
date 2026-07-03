@@ -19,7 +19,7 @@ import SecurityEducationCenter from '@/components/Security/SecurityEducationCent
 import MarketplaceTab from '@/components/Wallet/MarketplaceTab';
 import VaultTab from '@/components/Wallet/VaultTab';
 
-import { getCurrentWallet, migrateWalletToUser, deleteWallet } from '@/lib/walletService';
+import { getCurrentWallet, migrateWalletToUser, deleteWallet, removeAllWalletsForUser } from '@/lib/walletService';
 import { securityManager, getSecurityRequirements, hasPinSetup, setupPin } from '@/lib/securityService';
 import { getWalletTokens, clearWalletTokens, ensureNativeTokens, type Token } from '@/lib/tokenService';
 import type { TokenNetwork } from '@/lib/tokenService';
@@ -72,6 +72,7 @@ export default function WalletPage() {
   const [authStep, setAuthStep] = useState<'none' | 'pin' | 'pin-setup' | 'passkey' | 'complete'>('none');
   const [isOpeningAuth, setIsOpeningAuth] = useState(false);
   const [isOpeningCreateWallet, setIsOpeningCreateWallet] = useState(false);
+  const [passkeyDismissed, setPasskeyDismissed] = useState(false);
 
   // Delete wallet states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -173,12 +174,14 @@ export default function WalletPage() {
         }
       } else if (requirements.includes('passkey')) {
         setAuthStep('passkey');
-        setShowPasskeyModal(true);
+        if (!passkeyDismissed) {
+          setShowPasskeyModal(true);
+        }
       }
     };
     
     checkWalletAndSecurity();
-  }, [userId, authStep, tokenNetwork]);
+  }, [userId, authStep, tokenNetwork, passkeyDismissed]);
 
   const handlePinSuccess = () => {
     setShowPinModal(false);
@@ -235,10 +238,19 @@ export default function WalletPage() {
     completeWalletUnlock();
   };
 
+  const handlePasskeyModalClose = () => {
+    setShowPasskeyModal(false);
+    setPasskeyDismissed(true);
+    // Reset auth state so the effect re-runs but won't auto-open modal again
+    setAuthStep('none');
+    setPendingWallet(null);
+  };
+
   const handleAuthenticateClick = () => {
     if (!userId) return;
 
     setIsOpeningAuth(true);
+    setPasskeyDismissed(false);
     // Defer security checks to the next tick so button feedback paints immediately.
     window.setTimeout(() => {
       const requirements = getSecurityRequirements(userId, 'openWallet');
@@ -294,6 +306,31 @@ export default function WalletPage() {
       setMasterSeed(null);
       setTokens([]);
       setAuthStep('none');
+    }
+  };
+
+  const handleResetWalletDevice = async () => {
+    if (!userId) return;
+    if (!window.confirm(
+      'This will remove the wallet data stored on this device. ' +
+      'Your wallet is still accessible from other devices where you have your passkey. ' +
+      'Continue?'
+    )) return;
+    try {
+      await removeAllWalletsForUser(userId);
+      securityManager.lockWallet();
+      sessionStorage.removeItem('wallet_unlocked');
+      sessionStorage.removeItem('pendingTokenSelection');
+      setSovereignWallet(null);
+      setIsPasskeyAuthenticated(false);
+      setIsWalletUnlocked(false);
+      setPendingWallet(null);
+      setMasterSeed(null);
+      setTokens([]);
+      setAuthStep('none');
+      setPasskeyDismissed(false);
+    } catch (e) {
+      console.error('Failed to reset wallet device data:', e);
     }
   };
 
@@ -548,6 +585,17 @@ export default function WalletPage() {
                   qbtcAddress={sovereignWallet?.addresses?.qbtc}
                   className="mt-2 inline-flex items-center gap-2 text-sm text-cyan-300 hover:text-cyan-200 transition-colors"
                 />
+                <div className="mt-6 pt-4 border-t border-gray-700">
+                  <p className="text-xs text-gray-500 mb-2">
+                    Passkey not available on this device?
+                  </p>
+                  <button
+                    onClick={handleResetWalletDevice}
+                    className="text-xs text-red-400 hover:text-red-300 underline underline-offset-2"
+                  >
+                    Remove wallet data from this device
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="bg-gray-800 rounded-2xl p-8 mb-8">
@@ -993,7 +1041,7 @@ export default function WalletPage() {
       {/* Passkey Auth Modal */}
       {showPasskeyModal && userId && (
         <PasskeyAuthModal
-          onClose={() => setShowPasskeyModal(false)}
+          onClose={handlePasskeyModalClose}
           onSuccess={handlePasskeySuccess}
           userId={userId}
         />
