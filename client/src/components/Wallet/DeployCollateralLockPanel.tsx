@@ -1,10 +1,16 @@
 // One-time Sepolia deploy: USDC collateral lock contract (bridge vault).
-// Uses wallet ETH key + Sepolia ETH for gas — same pattern as DeployHTLCPanel.
+// Passkey wallets: single Deploy button (biometric). Legacy wallets: password.
 
-import { useState } from 'react';
-import { AlertTriangle, CheckCircle2, Loader2, Send } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { AlertTriangle, CheckCircle2, Fingerprint, Loader2, Send } from 'lucide-react';
 import { ethers } from 'ethers';
-import { unlockWallet, unlockWalletWithPasskey } from '@/lib/walletService';
+import {
+  unlockWallet,
+  unlockWalletWithPasskey,
+  getWalletType,
+  getWalletCredentialId,
+} from '@/lib/walletService';
+import { authenticateWithPasskeyPRF } from '@/lib/passkeyService';
 import { getSwapNetworkConfig } from '@/lib/evmHTLC';
 import {
   COLLATERAL_LOCK_BYTECODE,
@@ -19,30 +25,59 @@ function getDisplayError(err: unknown, fallback: string): string {
 
 interface Props {
   walletId: string;
+  userId: string;
   masterSeed?: Uint8Array | null;
+  onMasterSeed?: (seed: Uint8Array) => void;
 }
 
-export default function DeployCollateralLockPanel({ walletId, masterSeed }: Props) {
+export default function DeployCollateralLockPanel({
+  walletId,
+  userId,
+  masterSeed: sessionSeed,
+  onMasterSeed,
+}: Props) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [step, setStep] = useState('');
   const [deployedAddress, setDeployedAddress] = useState('');
+  const [walletType, setWalletType] = useState<'passkey' | 'legacy' | 'watch-only' | null>(null);
 
   const configured = !!(import.meta.env.VITE_USDC_COLLATERAL_LOCK_CONTRACT || '').trim();
+  const isPasskeyWallet = walletType === 'passkey';
+
+  useEffect(() => {
+    getWalletType(userId).then(setWalletType).catch(() => setWalletType('legacy'));
+  }, [userId]);
+
+  const resolveMasterSeed = async (): Promise<Uint8Array> => {
+    if (sessionSeed) return sessionSeed;
+    const credId = await getWalletCredentialId(userId);
+    const { masterSeed } = await authenticateWithPasskeyPRF(credId ?? undefined);
+    onMasterSeed?.(masterSeed);
+    return masterSeed;
+  };
 
   const handleDeploy = async () => {
-    if (!masterSeed && !password.trim()) {
+    if (walletType === 'watch-only') {
+      setError('Watch-only wallet cannot deploy contracts');
+      return;
+    }
+    if (!isPasskeyWallet && !sessionSeed && !password.trim()) {
       setError('Enter your wallet password');
       return;
     }
+
     setLoading(true);
     setError('');
     try {
-      setStep('Unlocking wallet…');
-      const wallet = masterSeed
-        ? await unlockWalletWithPasskey(walletId, masterSeed)
-        : await unlockWallet(walletId, password);
+      setStep(isPasskeyWallet && !sessionSeed ? 'Confirm with passkey…' : 'Unlocking wallet…');
+      const wallet = sessionSeed
+        ? await unlockWalletWithPasskey(walletId, sessionSeed)
+        : isPasskeyWallet
+          ? await unlockWalletWithPasskey(walletId, await resolveMasterSeed())
+          : await unlockWallet(walletId, password);
+
       const ethPrivateKey = wallet.privateKeys.ethereum;
       if (!ethPrivateKey) throw new Error('Ethereum private key not found in wallet');
 
@@ -113,30 +148,47 @@ export default function DeployCollateralLockPanel({ walletId, masterSeed }: Prop
         <span className="text-cyan-300 font-bold text-sm">Deploy USDC Collateral Lock (one-time)</span>
       </div>
       <p className="text-xs text-cyan-200/80">
-        Deploy the Sepolia lock contract once. Users approve USDC then call{' '}
-        <code className="text-cyan-200">deposit(amount, destinationAddress)</code> from any external wallet.
-        Requires Sepolia ETH in this wallet for gas.
+        Deploy the Sepolia lock contract once. Requires Sepolia ETH in this wallet for gas.
+        {isPasskeyWallet && ' Confirm with your passkey when you tap Deploy.'}
       </p>
-      <div className="flex gap-2">
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Wallet password"
-          className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
-          onKeyDown={(e) => e.key === 'Enter' && handleDeploy()}
-        />
+
+      {isPasskeyWallet ? (
         <button
           type="button"
           onClick={handleDeploy}
           disabled={loading}
-          className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 text-white font-semibold text-sm flex items-center gap-2"
+          className="w-full px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 text-white font-semibold text-sm flex items-center justify-center gap-2"
         >
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          Deploy
+          {loading ? (
+            <><Loader2 className="w-4 h-4 animate-spin" /> {step || 'Working…'}</>
+          ) : (
+            <><Fingerprint className="w-4 h-4" /> Deploy with Passkey</>
+          )}
         </button>
-      </div>
-      {step && <p className="text-xs text-amber-300">{step}</p>}
+      ) : (
+        <div className="flex gap-2">
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Wallet password"
+            className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 focus:border-cyan-400 focus:outline-none text-sm"
+            onKeyDown={(e) => e.key === 'Enter' && handleDeploy()}
+          />
+          <button
+            type="button"
+            onClick={handleDeploy}
+            disabled={loading}
+            className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 text-white font-semibold text-sm flex items-center gap-2"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            Deploy
+          </button>
+        </div>
+      )}
+
+      {step && isPasskeyWallet && <p className="text-xs text-amber-300">{step}</p>}
+      {!isPasskeyWallet && step && <p className="text-xs text-amber-300">{step}</p>}
       {error && (
         <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-2 text-red-300 text-xs">{error}</div>
       )}

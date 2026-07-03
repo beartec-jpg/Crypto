@@ -3111,7 +3111,11 @@ export default function MarketplaceTab({
       </div>
 
       {/* ─── One-time Sepolia deploys (wallet pays gas) ─── */}
-      <DeployCollateralLockPanel walletId={walletId} masterSeed={masterSeed} />
+      <DeployCollateralLockPanel
+        walletId={walletId}
+        userId={userId}
+        masterSeed={masterSeed}
+      />
       {!getSwapNetworkConfig().htlcContractAddress && (
         <DeployHTLCPanel walletId={walletId} masterSeed={masterSeed} />
       )}
