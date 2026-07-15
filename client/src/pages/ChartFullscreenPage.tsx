@@ -459,9 +459,15 @@ export function ChartFullscreenPage({
   useEffect(() => {
     if (!chartRef.current) return;
     const handleVisibleRangeChange = () => {
-      const range = chartRef.current?.timeScale().getVisibleRange();
-      if (range) setMainChartVisibleRange(range);
-      setChartViewVersion(v => v + 1);
+      try {
+        const range = chartRef.current?.timeScale().getVisibleRange();
+        if (range) setMainChartVisibleRange(range);
+        setChartViewVersion(v => v + 1);
+      } catch (err) {
+        // A throw here would propagate into lightweight-charts' internal event
+        // dispatch and can wedge the time scale, disabling further pan/zoom.
+        console.error('[Chart] visible range handler error:', err);
+      }
     };
     chartRef.current.timeScale().subscribeVisibleTimeRangeChange(handleVisibleRangeChange);
     return () => {
@@ -476,6 +482,19 @@ export function ChartFullscreenPage({
     enabled: chartReady,
     refreshInterval: 30000,
   });
+
+  // The timeframe that the currently-held `candles` array actually belongs to.
+  // `timeframe` (the selected value) updates immediately on a dropdown change, but the
+  // candle data lags by one network round-trip. Indicator overlays that pick their data
+  // source from the interval (e.g. moving averages choosing "current TF" vs a cached HTF
+  // series) must key off the timeframe of the data they are rendering — otherwise a
+  // higher-TF MA gets computed from the previous lower-TF candles, producing the stray
+  // "line"/shadow that reads the wrong timeframe. Derived from candlesKey (`${symbol}_${tf}`)
+  // so it advances in lock-step with `candles`.
+  const renderedTimeframe = useMemo(() => {
+    const prefix = `${symbol}_`;
+    return candlesKey.startsWith(prefix) ? candlesKey.slice(prefix.length) : timeframe;
+  }, [candlesKey, symbol, timeframe]);
 
   const {
     externalMetrics: gdsExternalMetrics,
@@ -2286,11 +2305,17 @@ export function ChartFullscreenPage({
   // Resume pan/zoom whenever activeTool changes (including when cancelled via Escape or
   // tool-switch). This unblocks the chart if pauseChartPanZoom() was called mid-stroke
   // but resumeChartPanZoom() was never reached due to the interrupted interaction.
+  //
+  // symbol/timeframe are also included: cycling the timeframe while a drawing drag or
+  // free-draw stroke had paused pan/zoom could otherwise leave the chart frozen (pan/zoom
+  // disabled) with no code path to re-enable it — forcing the user to exit and reopen the
+  // fullscreen chart just to scroll again. Re-running here guarantees pan/zoom is restored
+  // and any stuck drag state is cleared on every symbol/timeframe switch.
   useEffect(() => {
     resumeChartPanZoom();
     dragEditStateRef.current = null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTool]);
+  }, [activeTool, symbol, timeframe]);
 
   const modalHelpers = useFullscreenModalHelpers({
     selectedDrawingId: drawingInteraction.selectedDrawingId,
@@ -2971,7 +2996,7 @@ export function ChartFullscreenPage({
           showEma={indicators.ema.show}
           emaHTFDataCache={htfDataCache}
           symbol={symbol}
-          interval={timeframe}
+          interval={renderedTimeframe}
           elderImpulseEnabled={indicators.elderImpulse.show}
           vwapShowSession={indicators.vwap.showSession}
           vwapShowDaily={indicators.vwap.showDaily}

@@ -121,9 +121,19 @@ export function useFullscreenChartLifecycle({
       // (e.g. BTC's 64000–90000) and the new candles (e.g. VET at ~0.03) render
       // far outside the visible area.
       chartRef.current?.applyOptions({ rightPriceScale: { autoScale: true } });
-      candleSeriesRef.current.setData(chartData);
-      fitContent(candles.length);
-      chartRef.current?.timeScale().applyOptions({ rightOffset: 50 });
+      // Guard setData: if lightweight-charts rejects the payload (e.g. out-of-order
+      // or duplicate timestamps produced during a rapid timeframe switch) it throws,
+      // which would otherwise abort this render pass and leave the chart's gesture
+      // state corrupted (the "chart frozen until restart" symptom). Swallowing the
+      // error here keeps the previous bars visible until valid data arrives.
+      try {
+        candleSeriesRef.current.setData(chartData);
+        fitContent(candles.length);
+        chartRef.current?.timeScale().applyOptions({ rightOffset: 50 });
+      } catch (err) {
+        console.error('[ChartLifecycle] Failed to set candle data:', err);
+        return;
+      }
 
       // Record what we just rendered so subsequent live updates can diff against it.
       const lc = candles[candles.length - 1];
@@ -158,12 +168,15 @@ export function useFullscreenChartLifecycle({
       lastRenderedCandleRef.current = makeCandleSnapshot(lc, candles.length);
 
       const currentLogicalRange = chartRef.current?.timeScale().getVisibleLogicalRange();
-      candleSeriesRef.current.setData(chartData);
-      if (currentLogicalRange) {
-        try {
+      try {
+        candleSeriesRef.current.setData(chartData);
+        if (currentLogicalRange) {
           chartRef.current?.timeScale().setVisibleLogicalRange(currentLogicalRange);
-        } catch {
         }
+      } catch (err) {
+        // Never let a bad live-update payload throw out of the effect — that would
+        // interrupt React's render and can leave the chart's pan/zoom unusable.
+        console.error('[ChartLifecycle] Failed to apply live candle update:', err);
       }
     }
   // NOTE: `isLoading` is intentionally omitted from the deps array.
