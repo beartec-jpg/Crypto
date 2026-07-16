@@ -57,7 +57,7 @@ export function isCryptoAiLowerTimeframe(value: string): value is CryptoAiLowerT
 export function isValidCryptoAiPair(
   higherTimeframe: string,
   lowerTimeframe: string,
-): higherTimeframe is CryptoAiHigherTimeframe {
+): boolean {
   return CRYPTO_AI_VALID_PAIRS.some(
     ([higher, lower]) => higher === higherTimeframe && lower === lowerTimeframe,
   );

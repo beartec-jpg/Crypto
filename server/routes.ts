@@ -89,6 +89,33 @@ function getClientIp(req: Request): string {
   return req.ip || 'unknown';
 }
 
+function createRateLimiter(maxRequests: number, windowMs: number) {
+  const entries = new Map<string, { count: number; resetAt: number }>();
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    const key = `${getClientIp(req)}:${req.path}`;
+    const now = Date.now();
+    const entry = entries.get(key);
+
+    if (!entry || entry.resetAt <= now) {
+      entries.set(key, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+
+    if (entry.count >= maxRequests) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+      res.setHeader('Retry-After', String(retryAfterSeconds));
+      return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+    }
+
+    entry.count += 1;
+    next();
+  };
+}
+
+const cryptoAiRouteRateLimit = createRateLimiter(20, 60 * 1000);
+const internalCronRateLimit = createRateLimiter(10, 60 * 1000);
+
 function isValidQbtcTestnetAddress(address: string): boolean {
   return /^qbtct1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{38,}$/.test(address.toLowerCase());
 }
@@ -3983,7 +4010,7 @@ Be concise and direct.`;
   });
 
   // Multi-Timeframe Analysis endpoint (15m, 1h, 4h in one call)
-  app.post("/api/crypto/order-flow-alerts-multi-tf", requireCryptoAuth, async (req, res) => {
+  app.post("/api/crypto/order-flow-alerts-multi-tf", requireCryptoAuth, cryptoAiRouteRateLimit, async (req, res) => {
     console.log('📥 Multi-TF Order flow alerts endpoint called');
     try {
       const apiKeyCheck = checkXaiApiKey();
@@ -4423,7 +4450,7 @@ OUTPUT: Valid JSON only, no markdown.
     }
   });
 
-  app.post('/api/internal/crypto-ai/refresh', async (req, res) => {
+  app.post('/api/internal/crypto-ai/refresh', internalCronRateLimit, async (req, res) => {
     const authHeader = req.headers.authorization;
     const expectedCronAuth = process.env.CRON_SECRET ? ['Bearer', process.env.CRON_SECRET].join(' ') : null;
     if (expectedCronAuth && authHeader !== expectedCronAuth) {
