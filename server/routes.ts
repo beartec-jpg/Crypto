@@ -4562,7 +4562,7 @@ OUTPUT: Valid JSON only, no markdown.
   });
 
   // Order Flow Alerts endpoint using xAI Grok (publicly accessible)
-  app.post("/api/crypto/order-flow-alerts", requireCryptoAuth, async (req, res) => {
+  app.post("/api/crypto/order-flow-alerts", requireCryptoAuth, cryptoAiRouteRateLimit, async (req, res) => {
     console.log('📥 Order flow alerts endpoint called');
     try {
       // Check if XAI API key is configured

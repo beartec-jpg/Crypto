@@ -235,8 +235,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (cachedAnalysis && isCryptoAiDeepDiveCacheFresh(cachedAnalysis.updated_at, interval)) {
           if (!isAdmin && cryptoUserId) {
             await pool.query(
-              'UPDATE crypto_subscriptions SET ai_credits = $1, updated_at = NOW() WHERE user_id = $2',
-              [aiCreditsUsed + 1, cryptoUserId]
+              'UPDATE crypto_subscriptions SET ai_credits = ai_credits + 1, updated_at = NOW() WHERE user_id = $1',
+              [cryptoUserId]
             );
           }
 
@@ -553,10 +553,9 @@ Return ONLY valid JSON:
 
     if (!isAdmin && cryptoUserId && pool && dbAvailable) {
       try {
-        const newCreditsUsed = aiCreditsUsed + 1;
         await pool.query(
-          'UPDATE crypto_subscriptions SET ai_credits = $1, updated_at = NOW() WHERE user_id = $2',
-          [newCreditsUsed, cryptoUserId]
+          'UPDATE crypto_subscriptions SET ai_credits = ai_credits + 1, updated_at = NOW() WHERE user_id = $1',
+          [cryptoUserId]
         );
 
         const existingCache = await pool.query(
