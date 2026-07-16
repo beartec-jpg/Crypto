@@ -1,6 +1,11 @@
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, decimal, timestamp, jsonb, boolean, doublePrecision } from "drizzle-orm/pg-core";
 import { z } from "zod";
+import {
+  CRYPTO_AI_TIMEFRAMES,
+  DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
+  DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+} from "./cryptoAiConfig";
 // Feedback Board - public rolling message board for suggestions/feedback
 export const feedbackBoard = pgTable("feedback_board", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -59,7 +64,7 @@ export const cryptoUsers = pgTable("crypto_users", {
 export type CryptoUser = typeof cryptoUsers.$inferSelect;
 export type InsertCryptoUser = typeof cryptoUsers.$inferInsert;
 
-const aiTimeframeSchema = z.enum(['5m', '15m', '1h', '4h', '1d', '1w']);
+const aiTimeframeSchema = z.enum(CRYPTO_AI_TIMEFRAMES);
 
 // Crypto subscription table for alert preferences and subscription tiers
 export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
@@ -86,7 +91,7 @@ export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
   bonusElliottCredits: integer("bonus_elliott_credits").default(0), // Admin-granted bonus Elliott credits
   customToolAccess: jsonb("custom_tool_access").$type<string[]>(), // Admin-granted custom tool/indicator IDs
   // AI trading-desk scan preferences (per-user)
-  tickerSlots: integer("ticker_slots").notNull().default(1), // How many watchlist tickers may run through LIVE AI scanning (ticker-scaled tier)
+  tickerSlots: integer("ticker_slots").notNull().default(0), // How many watchlist tickers may run through LIVE AI scanning (ticker-scaled tier)
   strategyGroups: text("strategy_groups").array().notNull().default(sql`ARRAY['indicator','smc']::text[]`), // Which strategy groups/modes to receive
   scanTickers: text("scan_tickers").array().notNull().default(sql`ARRAY[]::text[]`), // Subset of watchlist activated for live AI
   minRiskReward: decimal("min_risk_reward", { precision: 4, scale: 2 }).notNull().default("1.5"), // User-tunable min R/R threshold
@@ -125,15 +130,15 @@ export const insertCryptoSubscriptionSchema = z.object({
   bonusAiCredits: z.number().int().optional().default(0),
   bonusElliottCredits: z.number().int().optional().default(0),
   customToolAccess: z.array(z.string()).optional().nullable(),
-  tickerSlots: z.number().int().optional().default(1),
+  tickerSlots: z.number().int().optional().default(0),
   strategyGroups: z.array(z.string()).optional().default(['indicator', 'smc']),
   scanTickers: z.array(z.string()).optional().default([]),
   minRiskReward: z.union([z.string(), z.number()]).optional().default("1.5"),
   minConfluence: z.number().int().optional().default(3),
   aiModelPref: z.enum(['fast', 'deep']).optional().default('fast'),
   aiTraderMode: z.string().optional().default('smc'),
-  aiHigherTimeframe: aiTimeframeSchema.optional().default('1d'),
-  aiLowerTimeframe: aiTimeframeSchema.optional().default('15m'),
+  aiHigherTimeframe: aiTimeframeSchema.optional().default(DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME),
+  aiLowerTimeframe: aiTimeframeSchema.optional().default(DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME),
   elliottScanEnabled: z.boolean().optional().default(false),
   pushSubscription: z.any().optional().nullable(),
   stripeSubscriptionId: z.string().optional().nullable(),
@@ -152,6 +157,9 @@ export const cryptoScanCache = pgTable("crypto_scan_cache", {
   mode: varchar("mode").notNull(), // 'indicator' | 'smc' | 'elliott' | ...
   scores: jsonb("scores").notNull().default(sql`'{}'::jsonb`), // deterministic 9-system output + reasoning[]
   aiNarration: jsonb("ai_narration"), // Grok narration/ranking (nullable until narrated)
+  higherTimeframe: varchar("higher_timeframe"),
+  lowerTimeframe: varchar("lower_timeframe"),
+  snapshots: jsonb("snapshots").notNull().default(sql`'[]'::jsonb`),
   tierState: varchar("tier_state").notNull().default("neutral"), // 'actionable' | 'watchlist' | 'neutral'
   modelUsed: varchar("model_used"), // 'fast' | 'deep'
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -164,6 +172,9 @@ export const insertCryptoScanCacheSchema = z.object({
   mode: z.string(),
   scores: z.any().optional().default({}),
   aiNarration: z.any().optional().nullable(),
+  higherTimeframe: z.string().optional().nullable(),
+  lowerTimeframe: z.string().optional().nullable(),
+  snapshots: z.array(z.any()).optional().default([]),
   tierState: z.enum(['actionable', 'watchlist', 'neutral']).optional().default('neutral'),
   modelUsed: z.enum(['fast', 'deep']).optional().nullable(),
 });
@@ -264,8 +275,10 @@ export const cryptoPreferencesSchema = z.object({
   indicatorAlertsEnabled: z.boolean().default(true),
   pushSubscription: z.any().nullable().default(null),
   aiTraderMode: z.string().default('smc'),
-  aiHigherTimeframe: aiTimeframeSchema.default('1d'),
-  aiLowerTimeframe: aiTimeframeSchema.default('15m'),
+  aiHigherTimeframe: aiTimeframeSchema.default(DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME),
+  aiLowerTimeframe: aiTimeframeSchema.default(DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME),
+  tickerSlots: z.number().int().min(0).max(5).default(0),
+  scanTickers: z.array(z.string()).max(5).default([]),
   tier: z.string().default('free'),
 });
 

@@ -19,6 +19,14 @@ import WebSocket from "ws";
 import axios from 'axios';
 import { storage } from "./storage";
 import { userWatchlists } from "@shared/schema";
+import {
+  CRYPTO_AI_HIGHER_TIMEFRAMES,
+  CRYPTO_AI_LOWER_TIMEFRAMES,
+  DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
+  DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+  normalizeCryptoAiPair,
+  isValidCryptoAiPair,
+} from "@shared/cryptoAiConfig";
 
 const execFileAsync = promisify(execFile);
 
@@ -3990,11 +3998,10 @@ Be concise and direct.`;
       const subscription = await cryptoSubscriptionService.getUserSubscription(userId);
       const tier = subscription.tier;
 
-      // Multi-TF is Elite only
-      if (tier !== 'elite') {
+      if (tier === 'free' || tier === 'beginner') {
         return res.status(403).json({ 
-          error: 'Elite subscription required',
-          message: 'Multi-Timeframe Analysis is an Elite-only feature. Please upgrade to Elite tier.',
+          error: 'Upgrade required',
+          message: 'AI Analysis is available on Intermediate, Pro, and Elite plans.',
           requireUpgrade: true
         });
       }
@@ -4011,23 +4018,13 @@ Be concise and direct.`;
         return res.status(400).json({ error: 'Symbol is required' });
       }
 
-      const TIMEFRAME_RANK: Record<string, number> = {
-        '5m': 1,
-        '15m': 2,
-        '1h': 3,
-        '4h': 4,
-        '1d': 5,
-        '1w': 6,
-      };
-      const fallbackFrames = Array.isArray(timeframes) ? timeframes.filter((tf: string) => tf in TIMEFRAME_RANK) : [];
-      const lowerTimeframe = requestedLowerTimeframe || fallbackFrames[0] || '15m';
-      const higherTimeframe = requestedHigherTimeframe || fallbackFrames[1] || '1d';
-      if (!(lowerTimeframe in TIMEFRAME_RANK) || !(higherTimeframe in TIMEFRAME_RANK)) {
-        return res.status(400).json({ error: 'Invalid timeframe selection' });
-      }
-      if (TIMEFRAME_RANK[higherTimeframe] <= TIMEFRAME_RANK[lowerTimeframe]) {
-        return res.status(400).json({ error: 'Higher timeframe must be greater than lower timeframe' });
-      }
+      const fallbackFrames = Array.isArray(timeframes) ? timeframes : [];
+      const normalizedPair = normalizeCryptoAiPair(
+        requestedHigherTimeframe || fallbackFrames[1] || DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
+        requestedLowerTimeframe || fallbackFrames[0] || DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+      );
+      const lowerTimeframe = normalizedPair.lowerTimeframe;
+      const higherTimeframe = normalizedPair.higherTimeframe;
 
       let creditResult = { success: true, remaining: subscription.aiCredits ?? 0 };
       if (analysisType === 'deep') {
@@ -4046,6 +4043,76 @@ Be concise and direct.`;
       const traderMode = getAiTraderMode(requestedMode);
 
       console.log(`📊 Multi-TF Analysis for ${symbol}: ${higherTimeframe}/${lowerTimeframe} (${analysisType})`);
+
+      if (analysisType === 'general') {
+        const { pool } = await import('./db');
+        const { encodeCryptoAiPairInterval, isCryptoAiCacheFresh } = await import('@shared/cryptoAiConfig');
+        const pairInterval = encodeCryptoAiPairInterval(higherTimeframe, lowerTimeframe);
+        const cachedResult = await pool.query(
+          `SELECT ai_narration, snapshots, updated_at
+           FROM crypto_scan_cache
+           WHERE symbol = $1 AND interval = $2 AND mode = 'general'
+           LIMIT 1`,
+          [symbol, pairInterval],
+        );
+
+        const cachedRow = cachedResult.rows[0];
+        if (cachedRow && isCryptoAiCacheFresh(cachedRow.updated_at)) {
+          const aiNarration = typeof cachedRow.ai_narration === 'string' ? JSON.parse(cachedRow.ai_narration) : (cachedRow.ai_narration || {});
+          return res.json({
+            success: true,
+            cached: true,
+            multiTFInsights: aiNarration.multiTFInsights || null,
+            bestTrades: [],
+            estimatedCost: 0,
+            tokens: { input: 0, output: 0 },
+            creditsRemaining: subscription.aiCredits ?? 0,
+            sessionBoard: {
+              session: aiNarration.session || null,
+              refreshedAt: cachedRow.updated_at,
+              snapshots: Array.isArray(cachedRow.snapshots) ? cachedRow.snapshots : [],
+            },
+          });
+        }
+
+        try {
+          const { runGeneralPairRefresh } = await import('../api/crypto/order-flow-alerts-multi-tf');
+          const generated = await runGeneralPairRefresh(pool, process.env.XAI_API_KEY!, symbol, higherTimeframe, lowerTimeframe);
+          return res.json({
+            success: true,
+            cached: false,
+            multiTFInsights: generated.multiTFInsights,
+            bestTrades: [],
+            estimatedCost: generated.estimatedCost,
+            tokens: generated.tokens,
+            creditsRemaining: subscription.aiCredits ?? 0,
+            sessionBoard: {
+              session: generated.session,
+              refreshedAt: generated.refreshedAt,
+              snapshots: generated.snapshots,
+            },
+          });
+        } catch (generalError: any) {
+          if (cachedRow) {
+            const aiNarration = typeof cachedRow.ai_narration === 'string' ? JSON.parse(cachedRow.ai_narration) : (cachedRow.ai_narration || {});
+            return res.json({
+              success: true,
+              cached: true,
+              multiTFInsights: aiNarration.multiTFInsights || null,
+              bestTrades: [],
+              estimatedCost: 0,
+              tokens: { input: 0, output: 0 },
+              creditsRemaining: subscription.aiCredits ?? 0,
+              sessionBoard: {
+                session: aiNarration.session || null,
+                refreshedAt: cachedRow.updated_at,
+                snapshots: Array.isArray(cachedRow.snapshots) ? cachedRow.snapshots : [],
+              },
+            });
+          }
+          throw generalError;
+        }
+      }
 
       // Fetch data for all timeframes in parallel
       const fetchBarsForTF = async (tf: string) => {
@@ -4353,6 +4420,47 @@ OUTPUT: Valid JSON only, no markdown.
         error: error.message,
         success: false
       });
+    }
+  });
+
+  app.post('/api/internal/crypto-ai/refresh', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const expectedCronAuth = process.env.CRON_SECRET ? ['Bearer', process.env.CRON_SECRET].join(' ') : null;
+    if (expectedCronAuth && authHeader !== expectedCronAuth) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+      const { pool } = await import('./db');
+      const activeTickerResult = await pool.query(
+        `SELECT DISTINCT unnest(scan_tickers) AS symbol
+         FROM crypto_subscriptions
+         WHERE cardinality(scan_tickers) > 0`
+      );
+
+      const symbols = activeTickerResult.rows
+        .map((row: { symbol?: string }) => row.symbol)
+        .filter((symbol): symbol is string => Boolean(symbol));
+      const { runGeneralPairRefresh } = await import('../api/crypto/order-flow-alerts-multi-tf');
+      const results = [];
+      for (const symbol of symbols) {
+        for (const higherTimeframe of CRYPTO_AI_HIGHER_TIMEFRAMES) {
+          for (const lowerTimeframe of CRYPTO_AI_LOWER_TIMEFRAMES) {
+            results.push(await runGeneralPairRefresh(pool, process.env.XAI_API_KEY!, symbol, higherTimeframe, lowerTimeframe));
+          }
+        }
+      }
+
+      res.json({
+        success: true,
+        activeTickers: symbols.length,
+        activePairs: symbols.length * CRYPTO_AI_HIGHER_TIMEFRAMES.length * CRYPTO_AI_LOWER_TIMEFRAMES.length,
+        callsPerDay: symbols.length * CRYPTO_AI_HIGHER_TIMEFRAMES.length * CRYPTO_AI_LOWER_TIMEFRAMES.length * 3,
+        estimatedDailyCost: results.reduce((sum, result) => sum + (result.estimatedCost ?? 0), 0) * 3,
+      });
+    } catch (error: any) {
+      console.error('Failed to refresh crypto AI general cache:', error);
+      res.status(500).json({ error: error.message });
     }
   });
 
@@ -5863,9 +5971,35 @@ Return ONLY valid JSON in this exact format:
         elliottAlertsEnabled: subscription?.elliottAlertsEnabled ?? true,
         aiTradeAlertsEnabled: subscription?.aiTradeAlertsEnabled ?? true,
         indicatorAlertsEnabled: subscription?.indicatorAlertsEnabled ?? true,
+        tickerSlots: (() => {
+          switch (subscription?.tier) {
+            case 'elite':
+              return 5;
+            case 'pro':
+              return 3;
+            case 'intermediate':
+              return 1;
+            default:
+              return 0;
+          }
+        })(),
+        scanTickers: Array.isArray(subscription?.scanTickers)
+          ? Array.from(new Set(subscription.scanTickers.filter(Boolean))).slice(0, (() => {
+              switch (subscription?.tier) {
+                case 'elite':
+                  return 5;
+                case 'pro':
+                  return 3;
+                case 'intermediate':
+                  return 1;
+                default:
+                  return 0;
+              }
+            })())
+          : [],
         aiTraderMode: subscription?.aiTraderMode || 'smc',
-        aiHigherTimeframe: subscription?.aiHigherTimeframe || '1d',
-        aiLowerTimeframe: subscription?.aiLowerTimeframe || '15m',
+        aiHigherTimeframe: normalizeCryptoAiPair(subscription?.aiHigherTimeframe, subscription?.aiLowerTimeframe).higherTimeframe,
+        aiLowerTimeframe: normalizeCryptoAiPair(subscription?.aiHigherTimeframe, subscription?.aiLowerTimeframe).lowerTimeframe,
         pushSubscription: subscription?.pushSubscription || null,
         tier: subscription?.tier || 'free',
       });
@@ -5882,22 +6016,25 @@ Return ONLY valid JSON in this exact format:
       const { 
         selectedTickers, alertGrades, alertTimeframes, alertTypes, alertsEnabled, pushSubscription,
         hlineAlertsEnabled, elliottAlertsEnabled, aiTradeAlertsEnabled, indicatorAlertsEnabled,
-        aiTraderMode, aiHigherTimeframe, aiLowerTimeframe
+        scanTickers, aiTraderMode, aiHigherTimeframe, aiLowerTimeframe
       } = req.body;
-
-      const ALLOWED_AI_TIMEFRAMES = ['5m', '15m', '1h', '4h', '1d', '1w'] as const;
-      const AI_TIMEFRAME_RANK: Record<string, number> = {
-        '5m': 1,
-        '15m': 2,
-        '1h': 3,
-        '4h': 4,
-        '1d': 5,
-        '1w': 6,
+      const getTickerSlotCap = (userTier: string) => {
+        switch (userTier) {
+          case 'elite':
+            return 5;
+          case 'pro':
+            return 3;
+          case 'intermediate':
+            return 1;
+          default:
+            return 0;
+        }
       };
 
       // Get user subscription for tier-based validation
       const subscription = await cryptoSubscriptionService.getUserSubscription(userId);
       const tier = subscription?.tier || 'free';
+      const tickerSlots = getTickerSlotCap(tier);
 
       // Tier-based limits with progressive feature unlocking
       const tierLimits: {
@@ -6003,28 +6140,38 @@ Return ONLY valid JSON in this exact format:
       if (elliottAlertsEnabled !== undefined) updateData.elliottAlertsEnabled = elliottAlertsEnabled;
       if (aiTradeAlertsEnabled !== undefined) updateData.aiTradeAlertsEnabled = aiTradeAlertsEnabled;
       if (indicatorAlertsEnabled !== undefined) updateData.indicatorAlertsEnabled = indicatorAlertsEnabled;
+      if (scanTickers !== undefined) {
+        if (!Array.isArray(scanTickers)) {
+          return res.status(400).json({ error: 'scanTickers must be an array.' });
+        }
+        updateData.scanTickers = Array.from(
+          new Set(scanTickers.filter((ticker: unknown) => typeof ticker === 'string' && ticker.trim().length > 0))
+        ).slice(0, tickerSlots);
+      }
+      updateData.tickerSlots = tickerSlots;
       if (aiTraderMode !== undefined) {
         // Validate against the set of enabled AI trader modes (indicator | smc | ...).
         const { getAiTraderMode } = await import("@shared/aiTraderModes");
         updateData.aiTraderMode = getAiTraderMode(aiTraderMode).id;
       }
       if (aiHigherTimeframe !== undefined) {
-        if (!(ALLOWED_AI_TIMEFRAMES as readonly string[]).includes(aiHigherTimeframe)) {
-          return res.status(400).json({ error: `aiHigherTimeframe must be one of: ${ALLOWED_AI_TIMEFRAMES.join(', ')}` });
+        if (!(CRYPTO_AI_HIGHER_TIMEFRAMES as readonly string[]).includes(aiHigherTimeframe)) {
+          return res.status(400).json({ error: `aiHigherTimeframe must be one of: ${CRYPTO_AI_HIGHER_TIMEFRAMES.join(', ')}` });
         }
         updateData.aiHigherTimeframe = aiHigherTimeframe;
       }
       if (aiLowerTimeframe !== undefined) {
-        if (!(ALLOWED_AI_TIMEFRAMES as readonly string[]).includes(aiLowerTimeframe)) {
-          return res.status(400).json({ error: `aiLowerTimeframe must be one of: ${ALLOWED_AI_TIMEFRAMES.join(', ')}` });
+        if (!(CRYPTO_AI_LOWER_TIMEFRAMES as readonly string[]).includes(aiLowerTimeframe)) {
+          return res.status(400).json({ error: `aiLowerTimeframe must be one of: ${CRYPTO_AI_LOWER_TIMEFRAMES.join(', ')}` });
         }
         updateData.aiLowerTimeframe = aiLowerTimeframe;
       }
       if (updateData.aiHigherTimeframe !== undefined || updateData.aiLowerTimeframe !== undefined) {
-        const nextHigher = updateData.aiHigherTimeframe ?? subscription?.aiHigherTimeframe ?? '1d';
-        const nextLower = updateData.aiLowerTimeframe ?? subscription?.aiLowerTimeframe ?? '15m';
-        if (AI_TIMEFRAME_RANK[nextHigher] <= AI_TIMEFRAME_RANK[nextLower]) {
-          return res.status(400).json({ error: 'Higher timeframe must be greater than lower timeframe.' });
+        const currentPair = normalizeCryptoAiPair(subscription?.aiHigherTimeframe, subscription?.aiLowerTimeframe);
+        const nextHigher = updateData.aiHigherTimeframe ?? currentPair.higherTimeframe;
+        const nextLower = updateData.aiLowerTimeframe ?? currentPair.lowerTimeframe;
+        if (!isValidCryptoAiPair(nextHigher, nextLower)) {
+          return res.status(400).json({ error: 'AI timeframe pair must be one of: 1w/1h, 1w/15m, 1d/1h, 1d/15m.' });
         }
       }
 
@@ -8749,6 +8896,51 @@ CRITICAL DATA RULES:
       res.json({ success: true });
     } catch (error: any) {
       console.error('Admin custom access error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/admin/crypto-ai-usage', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (_req: Request, res: Response) => {
+    try {
+      const { pool } = await import('./db');
+      const activeTickerResult = await pool.query(
+        `SELECT DISTINCT unnest(scan_tickers) AS symbol
+         FROM crypto_subscriptions
+         WHERE cardinality(scan_tickers) > 0`
+      );
+
+      const activeTickers = activeTickerResult.rows
+        .map((row: { symbol?: string }) => row.symbol)
+        .filter((symbol): symbol is string => Boolean(symbol));
+      const activePairs = activeTickers.length * CRYPTO_AI_HIGHER_TIMEFRAMES.length * CRYPTO_AI_LOWER_TIMEFRAMES.length;
+      const cacheResult = await pool.query(
+        `SELECT ai_narration
+         FROM crypto_scan_cache
+         WHERE mode = 'general'`
+      );
+
+      const latestCosts = cacheResult.rows
+        .map((row: { ai_narration?: any }) => {
+          const narration = typeof row.ai_narration === 'string' ? JSON.parse(row.ai_narration) : row.ai_narration;
+          return Number(narration?.estimatedCost ?? 0);
+        })
+        .filter((value: number) => Number.isFinite(value) && value > 0);
+
+      const averageCost = latestCosts.length > 0
+        ? latestCosts.reduce((sum: number, value: number) => sum + value, 0) / latestCosts.length
+        : 0;
+      const callsPerDay = activePairs * 3;
+      const estimatedDailyCost = callsPerDay * averageCost;
+
+      res.json({
+        activeTickers: activeTickers.length,
+        activePairs,
+        callsPerDay,
+        estimatedDailyCost,
+        estimatedMonthlyCost: estimatedDailyCost * 30,
+        averageCostPerCall: averageCost,
+      });
+    } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });

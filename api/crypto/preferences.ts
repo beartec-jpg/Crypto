@@ -57,14 +57,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const pool = await getDb();
 
   try {
-    const ALLOWED_AI_TIMEFRAMES = ['5m', '15m', '1h', '4h', '1d', '1w'] as const;
-    const AI_TIMEFRAME_RANK: Record<string, number> = {
-      '5m': 1,
-      '15m': 2,
-      '1h': 3,
-      '4h': 4,
-      '1d': 5,
-      '1w': 6,
+    const {
+      CRYPTO_AI_HIGHER_TIMEFRAMES,
+      CRYPTO_AI_LOWER_TIMEFRAMES,
+      DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
+      DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+      normalizeCryptoAiPair,
+      isValidCryptoAiPair,
+    } = await import('../_lib/cryptoAiConfig.js');
+    const getTickerSlotCap = (tier: string) => {
+      switch (tier) {
+        case 'elite':
+          return 5;
+        case 'pro':
+          return 3;
+        case 'intermediate':
+          return 1;
+        default:
+          return 0;
+      }
     };
 
     // Get user ID from crypto_users
@@ -102,20 +113,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           alertsEnabled: false,
           pushSubscription: null,
           tier: 'free',
-          tickerSlots: 1,
+          tickerSlots: 0,
           strategyGroups: ['indicator', 'smc'],
           scanTickers: [],
           minRiskReward: 1.5,
           minConfluence: 3,
           aiModelPref: 'fast',
           aiTraderMode: 'smc',
-          aiHigherTimeframe: '1d',
-          aiLowerTimeframe: '15m',
+          aiHigherTimeframe: DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
+          aiLowerTimeframe: DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
           elliottScanEnabled: false,
         });
       }
 
       const row = result.rows[0];
+      const tier = row.tier || 'free';
+      const tickerSlots = Math.min(5, getTickerSlotCap(tier));
+      const normalizedPair = normalizeCryptoAiPair(row.ai_higher_timeframe, row.ai_lower_timeframe);
+      const scanTickers = Array.isArray(row.scan_tickers)
+        ? Array.from(new Set(row.scan_tickers.filter(Boolean))).slice(0, tickerSlots)
+        : [];
       return res.json({
         selectedTickers: row.selected_tickers || [],
         alertGrades: row.alert_grades || ['A+', 'A'],
@@ -123,16 +140,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         alertTypes: row.alert_types || ['bos', 'choch', 'fvg', 'liquidation'],
         alertsEnabled: row.alerts_enabled || false,
         pushSubscription: row.push_subscription || null,
-        tier: row.tier || 'free',
-        tickerSlots: row.ticker_slots ?? 1,
+        tier,
+        tickerSlots,
         strategyGroups: row.strategy_groups || ['indicator', 'smc'],
-        scanTickers: row.scan_tickers || [],
+        scanTickers,
         minRiskReward: row.min_risk_reward != null ? Number(row.min_risk_reward) : 1.5,
         minConfluence: row.min_confluence ?? 3,
         aiModelPref: row.ai_model_pref || 'fast',
         aiTraderMode: row.ai_trader_mode || 'smc',
-        aiHigherTimeframe: row.ai_higher_timeframe || '1d',
-        aiLowerTimeframe: row.ai_lower_timeframe || '15m',
+        aiHigherTimeframe: normalizedPair.higherTimeframe,
+        aiLowerTimeframe: normalizedPair.lowerTimeframe,
         elliottScanEnabled: row.elliott_scan_enabled || false,
       });
     }
@@ -148,8 +165,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         [cryptoUserId]
       );
       const tier = tierResult.rows[0]?.tier || 'free';
-      // ticker_slots is admin-settable (payment deferred); cap live AI scan tickers at this value (max 5)
-      const tickerSlots = Math.min(tierResult.rows[0]?.ticker_slots ?? 1, 5);
+      const tickerSlots = Math.min(5, getTickerSlotCap(tier));
 
       // Tier-based limits
       const tierLimits: Record<string, { maxTickers: number; allowedAlertTypes: string[]; allowedGrades: string[]; allowedTimeframes: string[] }> = {
@@ -213,11 +229,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           await pool.end();
           return res.status(400).json({ error: 'scanTickers must be an array.' });
         }
-        if (scanTickers.length > tickerSlots) {
-          await pool.end();
-          return res.status(403).json({ error: `Your plan allows ${tickerSlots} live AI ticker(s). Upgrade to add more.` });
-        }
       }
+      const sanitizedScanTickers = scanTickers === undefined
+        ? undefined
+        : Array.from(new Set(scanTickers.filter((ticker: unknown) => typeof ticker === 'string' && ticker.trim().length > 0)))
+            .slice(0, tickerSlots);
 
       // Validate min risk/reward (numeric, sane bounds)
       let minRiskRewardValue: number | undefined;
@@ -252,23 +268,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: `aiTraderMode must be one of: ${ALLOWED_AI_TRADER_MODES.join(', ')}.` });
       }
 
-      if (aiHigherTimeframe !== undefined && !(ALLOWED_AI_TIMEFRAMES as readonly string[]).includes(aiHigherTimeframe)) {
+      if (aiHigherTimeframe !== undefined && !(CRYPTO_AI_HIGHER_TIMEFRAMES as readonly string[]).includes(aiHigherTimeframe)) {
         await pool.end();
-        return res.status(400).json({ error: `aiHigherTimeframe must be one of: ${ALLOWED_AI_TIMEFRAMES.join(', ')}.` });
+        return res.status(400).json({ error: `aiHigherTimeframe must be one of: ${CRYPTO_AI_HIGHER_TIMEFRAMES.join(', ')}.` });
       }
 
-      if (aiLowerTimeframe !== undefined && !(ALLOWED_AI_TIMEFRAMES as readonly string[]).includes(aiLowerTimeframe)) {
+      if (aiLowerTimeframe !== undefined && !(CRYPTO_AI_LOWER_TIMEFRAMES as readonly string[]).includes(aiLowerTimeframe)) {
         await pool.end();
-        return res.status(400).json({ error: `aiLowerTimeframe must be one of: ${ALLOWED_AI_TIMEFRAMES.join(', ')}.` });
+        return res.status(400).json({ error: `aiLowerTimeframe must be one of: ${CRYPTO_AI_LOWER_TIMEFRAMES.join(', ')}.` });
       }
 
-      const currentHigher = tierResult.rows[0]?.ai_higher_timeframe || '1d';
-      const currentLower = tierResult.rows[0]?.ai_lower_timeframe || '15m';
-      const nextHigher = aiHigherTimeframe ?? currentHigher;
-      const nextLower = aiLowerTimeframe ?? currentLower;
-      if ((aiHigherTimeframe !== undefined || aiLowerTimeframe !== undefined) && AI_TIMEFRAME_RANK[nextHigher] <= AI_TIMEFRAME_RANK[nextLower]) {
+      const currentPair = normalizeCryptoAiPair(
+        tierResult.rows[0]?.ai_higher_timeframe,
+        tierResult.rows[0]?.ai_lower_timeframe,
+      );
+      const nextHigher = aiHigherTimeframe ?? currentPair.higherTimeframe;
+      const nextLower = aiLowerTimeframe ?? currentPair.lowerTimeframe;
+      if ((aiHigherTimeframe !== undefined || aiLowerTimeframe !== undefined) && !isValidCryptoAiPair(nextHigher, nextLower)) {
         await pool.end();
-        return res.status(400).json({ error: 'Higher timeframe must be greater than lower timeframe.' });
+        return res.status(400).json({ error: 'AI timeframe pair must be one of: 1w/1h, 1w/15m, 1d/1h, 1d/15m.' });
       }
 
       if (elliottScanEnabled !== undefined && typeof elliottScanEnabled !== 'boolean') {
@@ -286,8 +304,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Insert new subscription
         await pool.query(
           `INSERT INTO crypto_subscriptions 
-           (id, user_id, selected_tickers, alert_grades, alert_timeframes, alert_types, alerts_enabled, push_subscription, tier, ai_trader_mode, ai_higher_timeframe, ai_lower_timeframe, created_at, updated_at)
-           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'free', $8, $9, $10, NOW(), NOW())`,
+           (id, user_id, selected_tickers, alert_grades, alert_timeframes, alert_types, alerts_enabled, push_subscription, tier, ticker_slots, scan_tickers, ai_trader_mode, ai_higher_timeframe, ai_lower_timeframe, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'free', $8, $9, $10, $11, $12, NOW(), NOW())`,
           [
             cryptoUserId,
             selectedTickers || [],
@@ -296,9 +314,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             alertTypes || ['bos', 'choch'],
             alertsEnabled || false,
             pushSubscription ? JSON.stringify(pushSubscription) : null,
+            tickerSlots,
+            sanitizedScanTickers || [],
             aiTraderMode || 'smc',
-            aiHigherTimeframe || '1d',
-            aiLowerTimeframe || '15m',
+            aiHigherTimeframe || DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
+            aiLowerTimeframe || DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
           ]
         );
       } else {
@@ -335,9 +355,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           updates.push(`strategy_groups = $${paramIndex++}`);
           values.push(strategyGroups);
         }
-        if (scanTickers !== undefined) {
+        if (sanitizedScanTickers !== undefined) {
           updates.push(`scan_tickers = $${paramIndex++}`);
-          values.push(scanTickers);
+          values.push(sanitizedScanTickers);
         }
         if (minRiskRewardValue !== undefined) {
           updates.push(`min_risk_reward = $${paramIndex++}`);

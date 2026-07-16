@@ -33,6 +33,13 @@ const MONTHLY_ELLIOTT_AI_CREDITS: Record<BaseTier, number> = {
 
 // Elliott add-on gives 50 monthly Elliott AI credits
 const ELLIOTT_ADDON_CREDITS = 50;
+const AI_TICKER_SLOTS: Record<BaseTier, number> = {
+  free: 0,
+  beginner: 0,
+  intermediate: 1,
+  pro: 3,
+  elite: 5,
+};
 
 // Feature capability flags computed from base tier + add-ons
 export function getCapabilities(tier: BaseTier, hasElliottAddon: boolean) {
@@ -94,6 +101,7 @@ export class CryptoSubscriptionService {
         .values({
           userId,
           tier: "free",
+          tickerSlots: AI_TICKER_SLOTS.free,
           aiCredits: 0,
           subscriptionStatus: "active",
         })
@@ -287,6 +295,7 @@ export class CryptoSubscriptionService {
       .set({
         tier,
         stripeSubscriptionId,
+        tickerSlots: AI_TICKER_SLOTS[tier],
         aiCredits: newCredits,
         aiCreditsResetAt: now,
         elliottAiCredits: newElliottCredits,
