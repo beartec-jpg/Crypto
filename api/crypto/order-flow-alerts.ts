@@ -2,8 +2,6 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
 
-const CACHE_TTL = 60 * 60 * 1000; // 1 hour cache per symbol/timeframe
-
 const MONTHLY_AI_CREDITS: Record<string, number> = {
   free: 0,
   beginner: 0,
@@ -124,6 +122,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       bbMiddle = 0, bbUpper = 0, bbLower = 0, bbBandwidth = 0,
       mode: requestedMode
     } = req.body;
+    const { getAiTraderMode } = await import('../_lib/aiTraderModes.js');
+    const { isCryptoAiDeepDiveCacheFresh } = await import('../_lib/cryptoAiConfig.js');
+    const traderMode = getAiTraderMode(requestedMode);
     
     // Helper to format Unix timestamp to readable date/time
     const formatEventTime = (timestamp: number) => {
@@ -140,6 +141,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let aiCreditsUsed = 0;
     let aiLimit = 0;
     let dbAvailable = false;
+    let minRiskReward = AI_MIN_RISK_REWARD_RATIO;
+    let minConfluence = 3;
+    let atrStopBuffer = 0.75;
+    let fvgAtrFactor = 0.5;
 
     try {
       pool = await getDb();
@@ -154,7 +159,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         dbAvailable = true;
 
         const subResult = await pool.query(
-          'SELECT tier, ai_credits, ai_credits_reset_at FROM crypto_subscriptions WHERE user_id = $1',
+          `SELECT tier, ai_credits, ai_credits_reset_at, min_risk_reward, min_confluence,
+                  atr_stop_buffer, fvg_atr_factor
+           FROM crypto_subscriptions WHERE user_id = $1`,
           [cryptoUserId]
         );
 
@@ -162,6 +169,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         tier = subscription?.tier || 'free';
         aiLimit = MONTHLY_AI_CREDITS[tier] || 0;
         aiCreditsUsed = subscription?.ai_credits || 0;
+        minRiskReward = Number(subscription?.min_risk_reward ?? AI_MIN_RISK_REWARD_RATIO);
+        minConfluence = Number(subscription?.min_confluence ?? 3);
+        atrStopBuffer = Number(subscription?.atr_stop_buffer ?? 0.75);
+        fvgAtrFactor = Number(subscription?.fvg_atr_factor ?? 0.5);
         const resetAt = subscription?.ai_credits_reset_at ? new Date(subscription.ai_credits_reset_at) : null;
 
         const now = new Date();
@@ -195,37 +206,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const aiCreditsRemaining = isAdmin ? 999 : (aiLimit - aiCreditsUsed);
 
-    if (cryptoUserId && pool && dbAvailable) {
-      try {
-        const cacheResult = await pool.query(
-          `SELECT alerts, market_insights, orderflow_data, updated_at 
-           FROM crypto_ai_analyses 
-           WHERE user_id = $1 AND symbol = $2 AND interval = $3`,
-          [cryptoUserId, symbol, interval]
-        );
-
-        const cachedAnalysis = cacheResult.rows[0];
-        const cacheAge = cachedAnalysis?.updated_at 
-          ? Date.now() - new Date(cachedAnalysis.updated_at).getTime() 
-          : Infinity;
-
-        if (cachedAnalysis && cacheAge < CACHE_TTL) {
-          console.log(`📊 Returning cached analysis for ${symbol}/${interval} (${Math.round(cacheAge/1000)}s old)`);
-          await pool.end();
-          return res.json({
-            alerts: cachedAnalysis.alerts || [],
-            marketInsights: cachedAnalysis.market_insights || null,
-            cached: true,
-            cacheAge: Math.round(cacheAge / 1000),
-            cacheRemaining: Math.round((CACHE_TTL - cacheAge) / 1000),
-            creditsRemaining: aiCreditsRemaining
-          });
-        }
-      } catch (cacheError) {
-        console.error('Cache check failed, proceeding with fresh analysis:', cacheError);
-      }
-    }
-
     if (!isAdmin && aiCreditsRemaining <= 0) {
       try { await pool?.end(); } catch {}
       return res.status(403).json({ 
@@ -235,6 +215,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         creditsLimit: aiLimit,
         tier
       });
+    }
+
+    if (pool && dbAvailable) {
+      try {
+        const cacheResult = await pool.query(
+          `SELECT ai_narration, updated_at
+           FROM crypto_scan_cache
+           WHERE symbol = $1
+             AND interval = $2
+             AND mode = $3
+             AND higher_timeframe IS NULL
+             AND lower_timeframe IS NULL
+           LIMIT 1`,
+          [symbol, interval, traderMode.id]
+        );
+
+        const cachedAnalysis = cacheResult.rows[0];
+        if (cachedAnalysis && isCryptoAiDeepDiveCacheFresh(cachedAnalysis.updated_at, interval)) {
+          if (!isAdmin && cryptoUserId) {
+            await pool.query(
+              'UPDATE crypto_subscriptions SET ai_credits = ai_credits + 1, updated_at = NOW() WHERE user_id = $1',
+              [cryptoUserId]
+            );
+          }
+
+          const aiNarration = typeof cachedAnalysis.ai_narration === 'string'
+            ? JSON.parse(cachedAnalysis.ai_narration)
+            : (cachedAnalysis.ai_narration || {});
+          await pool.end();
+          return res.json({
+            ...(aiNarration.result || { alerts: [], marketInsights: null }),
+            mode: traderMode.id,
+            cached: true,
+            creditsRemaining: isAdmin ? 999 : Math.max(0, aiCreditsRemaining - 1),
+            indicatorData: aiNarration.indicatorData || null,
+          });
+        }
+      } catch (cacheError) {
+        console.error('Shared cache check failed, proceeding with fresh analysis:', cacheError);
+      }
     }
 
     // Calculate price range from swing pivots
@@ -287,11 +307,8 @@ ${clusterList}
     const topBearFVGs = bearFVG.slice(-3).map((fvg: any) => `$${fvg.low?.toFixed(4)}-$${fvg.high?.toFixed(4)} [${formatEventTime(fvg.time)}]`).join(' | ');
       
     // ===== MODE-AWARE, TOOL-DRIVEN ANALYSIS =====
-    // Resolve the selected AI trader mode (indicator | smc | ...). Each mode brings
-    // its own persona, validity criteria and preferred tools so an indicator trader
-    // is never judged by FVG rules and vice-versa.
-    const { getAiTraderMode } = await import('../_lib/aiTraderModes.js');
-    const traderMode = getAiTraderMode(requestedMode);
+    // The selected AI trader mode brings its own persona, validity criteria and
+    // preferred tools so an indicator trader is never judged by FVG rules and vice-versa.
 
     // Recompute institutional figures for the tool payload (scoped locally above).
     const instOiTrend = orderflowData?.openInterest?.trend || 'N/A';
@@ -382,9 +399,10 @@ ${traderMode.validityCriteria}
 
 GENERAL RULES:
 - Every entry must have a concrete justification appropriate to this mode — never a blind "enter at current price".
-- STOP LOSS behind the invalidation structure (use ~1-2x ATR as a minimum buffer).
-- Min R/R ≥ ${AI_MIN_RISK_REWARD_RATIO} to TP1. Discard any setup that cannot achieve this.
-- Require 3+ confirming signals for a trade. Grade A+ (6+), A (5), B (4), C (3).
+- STOP LOSS behind the invalidation structure with only a small ATR buffer (~0.5-1x ATR). For this run use about ${atrStopBuffer}x ATR and do not over-pad.
+- Valid FVG execution zones can be as small as ${fvgAtrFactor}x ATR when the structure is otherwise clean.
+- Min R/R ≥ ${minRiskReward} to TP1. Discard any setup that cannot achieve this.
+- Require at least ${minConfluence} confirming signals for a trade. Grade A+ (6+), A (5), B (4), C (3).
 - If no valid setup exists for this mode, return empty alerts and explain the live read in marketInsights (still populate bias and keyLevels).
 
 Return ONLY valid JSON:
@@ -426,7 +444,7 @@ Return ONLY valid JSON:
     // pre-computed payloads, and it produces a final JSON answer.
     const runWithTools = async (): Promise<any> => {
       const messages: any[] = [
-        { role: 'system', content: `${traderMode.systemPrompt} You require a minimum ${AI_MIN_RISK_REWARD_RATIO}:1 R/R to TP1. If no genuine setup exists for your mode, say so clearly rather than forcing a trade.` },
+        { role: 'system', content: `${traderMode.systemPrompt} You require a minimum ${minRiskReward}:1 R/R to TP1, at least ${minConfluence} confirming signals, an ATR stop buffer near ${atrStopBuffer}x, and you may use valid FVGs from ${fvgAtrFactor}x ATR. If no genuine setup exists for your mode, say so clearly rather than forcing a trade.` },
         { role: 'user', content: userPrompt },
       ];
       const maxIterations = 6;
@@ -515,7 +533,7 @@ Return ONLY valid JSON:
               _rr: rr
             };
           })
-          .filter((a: any) => a._rr >= AI_MIN_RISK_REWARD_RATIO)
+          .filter((a: any) => a._rr >= minRiskReward && Math.max(a.confluenceCount || 0, Array.isArray(a.confluenceSignals) ? a.confluenceSignals.length : 0) >= minConfluence)
           .map(({ _rr, ...a }: any) => a);
 
         result = {
@@ -535,10 +553,9 @@ Return ONLY valid JSON:
 
     if (!isAdmin && cryptoUserId && pool && dbAvailable) {
       try {
-        const newCreditsUsed = aiCreditsUsed + 1;
         await pool.query(
-          'UPDATE crypto_subscriptions SET ai_credits = $1, updated_at = NOW() WHERE user_id = $2',
-          [newCreditsUsed, cryptoUserId]
+          'UPDATE crypto_subscriptions SET ai_credits = ai_credits + 1, updated_at = NOW() WHERE user_id = $1',
+          [cryptoUserId]
         );
 
         const existingCache = await pool.query(
@@ -629,6 +646,27 @@ Return ONLY valid JSON:
       fundingRate: { value: fundingValue, bias: fundingBias },
       longShortRatio: { value: lsRatio, label: lsRatio > 1.2 ? 'longs dominant' : lsRatio < 0.8 ? 'shorts dominant' : 'balanced' }
     };
+
+    if (pool && dbAvailable) {
+      try {
+        await pool.query(
+          `INSERT INTO crypto_scan_cache (
+             id, symbol, interval, mode, scores, ai_narration, created_at, updated_at
+           ) VALUES (
+             gen_random_uuid(), $1, $2, $3, '{}'::jsonb, $4::jsonb, NOW(), NOW()
+           )
+           ON CONFLICT (symbol, interval, mode)
+           DO UPDATE SET
+             ai_narration = EXCLUDED.ai_narration,
+             higher_timeframe = NULL,
+             lower_timeframe = NULL,
+             updated_at = NOW()`,
+          [symbol, interval, traderMode.id, JSON.stringify({ result, indicatorData: indicatorDataForResponse })]
+        );
+      } catch (sharedCacheError) {
+        console.error('Failed to update shared deep-dive cache:', sharedCacheError);
+      }
+    }
     
     res.json({
       ...result,

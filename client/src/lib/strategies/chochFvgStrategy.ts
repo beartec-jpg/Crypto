@@ -107,7 +107,7 @@ export function generateChochFVGSignal(
 ): TradeSignal | null {
   if (!params.enabled || data.length < 50) return null;
   
-  const fvgs = calculateFVGs(data, true, 1, params.footprintData || [], params.fvgVolumeThreshold);
+  const fvgs = calculateFVGs(data, true, 0.5, params.footprintData || [], params.fvgVolumeThreshold);
   const currentCandle = data[data.length - 1];
   const currentPrice = currentCandle.close;
   

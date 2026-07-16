@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
@@ -86,6 +87,19 @@ type RequestState =
   | { status: 'error'; error: string }
   | { status: 'success'; data: AnalysisResponse };
 
+type AdminAiUsage = {
+  activeTickers: number;
+  activeCombos?: number;
+  activePairs?: number;
+  callsPerDay: number;
+  averageInputTokens?: number;
+  averageOutputTokens?: number;
+  averageCostPerCall?: number;
+  estimatedDailyCost?: number;
+  estimatedMonthlyCost?: number;
+  cacheHitRate?: number;
+};
+
 type AiPreferences = CryptoPreferences & {
   aiTraderMode?: string;
   aiHigherTimeframe?: AiTimeframe;
@@ -114,28 +128,10 @@ function formatValue(value?: string | number): string {
   return String(value);
 }
 
-function formatUsage(data?: AnalysisResponse): string {
-  if (!data) return '';
-  const cost = data.estimatedCost;
-  const input = data.tokens?.input ?? 0;
-  const output = data.tokens?.output ?? 0;
-  const parts: string[] = [];
-  if (data.cached) {
-    parts.push('cached');
-  }
-  if (input || output) {
-    parts.push(`${input.toLocaleString()} in / ${output.toLocaleString()} out`);
-  }
-  if (typeof cost === 'number') {
-    parts.push(`~$${cost.toFixed(6)}`);
-  }
-  return parts.join(' • ');
-}
-
 export default function CryptoAI() {
   usePageViewTracking('crypto-ai');
 
-  const { isAuthenticated, isLoading: authLoading } = useCryptoAuth();
+  const { isAuthenticated, isLoading: authLoading, isAdmin } = useCryptoAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { watchlistTickers } = useWatchlistState();
@@ -144,6 +140,10 @@ export default function CryptoAI() {
   const [aiHigherTimeframe, setAiHigherTimeframe] = useState<CryptoAiHigherTimeframe>(DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME);
   const [aiLowerTimeframe, setAiLowerTimeframe] = useState<CryptoAiLowerTimeframe>(DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME);
   const [savingPreferences, setSavingPreferences] = useState(false);
+  const [minRiskReward, setMinRiskReward] = useState('1.5');
+  const [minConfluence, setMinConfluence] = useState('3');
+  const [atrStopBuffer, setAtrStopBuffer] = useState('0.75');
+  const [fvgAtrFactor, setFvgAtrFactor] = useState('0.5');
   const [generalStates, setGeneralStates] = useState<Record<string, RequestState>>({});
   const [deepDiveStates, setDeepDiveStates] = useState<Record<string, RequestState>>({});
   const [sessionCandles, setSessionCandles] = useState<Record<string, ReturnType<typeof parseKlinesToCandles>>>({});
@@ -153,6 +153,15 @@ export default function CryptoAI() {
     enabled: isAuthenticated && !authLoading,
     queryFn: async () => {
       const response = await authenticatedApiRequest('GET', '/api/crypto/preferences');
+      return await response.json();
+    },
+  });
+
+  const { data: adminUsage } = useQuery<AdminAiUsage>({
+    queryKey: ['/api/admin/crypto-ai-usage'],
+    enabled: isAuthenticated && !authLoading && isAdmin,
+    queryFn: async () => {
+      const response = await authenticatedApiRequest('GET', '/api/admin/crypto-ai-usage');
       return await response.json();
     },
   });
@@ -178,6 +187,11 @@ export default function CryptoAI() {
     if ((CRYPTO_AI_LOWER_TIMEFRAMES as readonly string[]).includes(preferences.aiLowerTimeframe || '')) {
       setAiLowerTimeframe(preferences.aiLowerTimeframe as CryptoAiLowerTimeframe);
     }
+
+    setMinRiskReward(String(preferences.minRiskReward ?? 1.5));
+    setMinConfluence(String(preferences.minConfluence ?? 3));
+    setAtrStopBuffer(String(preferences.atrStopBuffer ?? 0.75));
+    setFvgAtrFactor(String(preferences.fvgAtrFactor ?? 0.5));
   }, [preferences]);
 
   const watchlistOptions = useMemo(
@@ -355,6 +369,30 @@ export default function CryptoAI() {
     }
   };
 
+  const persistNumericPreference = async (
+    key: 'minRiskReward' | 'minConfluence' | 'atrStopBuffer' | 'fvgAtrFactor',
+    rawValue: string,
+  ) => {
+    const nextValue = key === 'minConfluence' ? Math.round(Number(rawValue)) : Number(rawValue);
+    if (!Number.isFinite(nextValue)) {
+      setMinRiskReward(String(preferences?.minRiskReward ?? 1.5));
+      setMinConfluence(String(preferences?.minConfluence ?? 3));
+      setAtrStopBuffer(String(preferences?.atrStopBuffer ?? 0.75));
+      setFvgAtrFactor(String(preferences?.fvgAtrFactor ?? 0.5));
+      return;
+    }
+
+    const payload: Partial<AiPreferences> = { [key]: nextValue };
+    try {
+      await persistPreferences(payload);
+    } catch {
+      setMinRiskReward(String(preferences?.minRiskReward ?? 1.5));
+      setMinConfluence(String(preferences?.minConfluence ?? 3));
+      setAtrStopBuffer(String(preferences?.atrStopBuffer ?? 0.75));
+      setFvgAtrFactor(String(preferences?.fvgAtrFactor ?? 0.5));
+    }
+  };
+
   const handleDeepDive = async (ticker: string) => {
     setDeepDiveStates((current) => ({ ...current, [ticker]: { status: 'loading' } }));
 
@@ -408,7 +446,7 @@ export default function CryptoAI() {
           <CardHeader>
             <CardTitle className="text-xl">Analysis preferences</CardTitle>
             <CardDescription>
-              Reusing your existing watchlist from the indicators page. Choose one of the four launch pairs, manually activate the tickers you want on AI, then use trader mode for deep-dive trade searches.
+              Reusing your existing watchlist from the indicators page. Choose one of the four launch pairs, manually activate the tickers you want on AI, then tune deep-dive thresholds to match your style.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-3">
@@ -522,8 +560,104 @@ export default function CryptoAI() {
                 </span>
               )}
             </div>
+
+            <div className="space-y-3 md:col-span-3">
+              <div>
+                <div className="text-sm font-medium">Deep-dive thresholds</div>
+                <div className="text-sm text-muted-foreground">
+                  Tighten or loosen the trade search without lowering your structural standards.
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <label className="space-y-2">
+                  <div className="text-sm font-medium">Min R/R</div>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="99.99"
+                    value={minRiskReward}
+                    disabled={savingPreferences}
+                    onChange={(event) => setMinRiskReward(event.target.value)}
+                    onBlur={() => void persistNumericPreference('minRiskReward', minRiskReward)}
+                  />
+                </label>
+                <label className="space-y-2">
+                  <div className="text-sm font-medium">Min confluence</div>
+                  <Input
+                    type="number"
+                    step="1"
+                    min="0"
+                    max="9"
+                    value={minConfluence}
+                    disabled={savingPreferences}
+                    onChange={(event) => setMinConfluence(event.target.value)}
+                    onBlur={() => void persistNumericPreference('minConfluence', minConfluence)}
+                  />
+                </label>
+                <label className="space-y-2">
+                  <div className="text-sm font-medium">ATR stop buffer</div>
+                  <Input
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    max="10"
+                    value={atrStopBuffer}
+                    disabled={savingPreferences}
+                    onChange={(event) => setAtrStopBuffer(event.target.value)}
+                    onBlur={() => void persistNumericPreference('atrStopBuffer', atrStopBuffer)}
+                  />
+                </label>
+                <label className="space-y-2">
+                  <div className="text-sm font-medium">FVG ATR factor</div>
+                  <Input
+                    type="number"
+                    step="0.05"
+                    min="0"
+                    max="10"
+                    value={fvgAtrFactor}
+                    disabled={savingPreferences}
+                    onChange={(event) => setFvgAtrFactor(event.target.value)}
+                    onBlur={() => void persistNumericPreference('fvgAtrFactor', fvgAtrFactor)}
+                  />
+                </label>
+              </div>
+            </div>
           </CardContent>
         </Card>
+
+        {isAdmin && adminUsage ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl">AI usage</CardTitle>
+              <CardDescription>Admin-only spend and cache health.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <div className="rounded-lg border border-border/60 p-4">
+                <div className="text-xs uppercase text-muted-foreground">Active combos</div>
+                <div className="mt-1 text-2xl font-semibold">{adminUsage.activeCombos ?? adminUsage.activePairs ?? 0}</div>
+              </div>
+              <div className="rounded-lg border border-border/60 p-4">
+                <div className="text-xs uppercase text-muted-foreground">Calls / day</div>
+                <div className="mt-1 text-2xl font-semibold">{adminUsage.callsPerDay.toLocaleString()}</div>
+              </div>
+              <div className="rounded-lg border border-border/60 p-4">
+                <div className="text-xs uppercase text-muted-foreground">Avg tokens / call</div>
+                <div className="mt-1 text-sm font-semibold">
+                  {(adminUsage.averageInputTokens ?? 0).toLocaleString()} in / {(adminUsage.averageOutputTokens ?? 0).toLocaleString()} out
+                </div>
+              </div>
+              <div className="rounded-lg border border-border/60 p-4">
+                <div className="text-xs uppercase text-muted-foreground">Est. daily cost</div>
+                <div className="mt-1 text-2xl font-semibold">${(adminUsage.estimatedDailyCost ?? 0).toFixed(2)}</div>
+              </div>
+              <div className="rounded-lg border border-border/60 p-4">
+                <div className="text-xs uppercase text-muted-foreground">Cache hit rate</div>
+                <div className="mt-1 text-2xl font-semibold">{((adminUsage.cacheHitRate ?? 0) * 100).toFixed(0)}%</div>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {!canUseAi ? (
           <Card className="border-amber-500/30">
@@ -539,7 +673,7 @@ export default function CryptoAI() {
             <CardHeader>
               <CardTitle>No AI tickers active</CardTitle>
               <CardDescription>
-                Pick up to {tickerSlotCap} ticker{tickerSlotCap === 1 ? '' : 's'} from your watchlist above to start loading shared pair analyses.
+                Pick up to {tickerSlotCap} ticker{tickerSlotCap === 1 ? '' : 's'} from your watchlist above to start loading pair analyses.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -584,7 +718,7 @@ export default function CryptoAI() {
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <h3 className="font-semibold">Session board</h3>
-                          <p className="text-sm text-muted-foreground">Shared pair cache for {aiHigherTimeframe}/{aiLowerTimeframe}, rotated across Asia, London, and New York.</p>
+                          <p className="text-sm text-muted-foreground">Rotated across Asia, London, and New York for the selected pair.</p>
                         </div>
                         {generalState.status === 'loading' && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                       </div>
@@ -620,9 +754,6 @@ export default function CryptoAI() {
                                   <div className="mb-3 flex items-center justify-between gap-3">
                                     <div>
                                       <h4 className="text-sm font-semibold">{label}</h4>
-                                      <div className="text-xs text-muted-foreground">
-                                        {snapshot?.generatedAt ? new Date(snapshot.generatedAt).toLocaleString() : 'No snapshot yet'}
-                                      </div>
                                     </div>
                                     <Badge variant={getBiasVariant(bias)}>{bias ?? 'Pending'}</Badge>
                                   </div>
@@ -668,8 +799,6 @@ export default function CryptoAI() {
                             <div className="mb-2 text-sm font-semibold">Cross-timeframe summary</div>
                             <p className="text-sm text-muted-foreground">{getOverallSummary(generalInsights)}</p>
                           </div>
-
-                          <div className="text-xs text-muted-foreground">{formatUsage(generalState.data)}</div>
                         </div>
                       ) : null}
                     </section>
@@ -769,8 +898,6 @@ export default function CryptoAI() {
                               ))}
                             </div>
                           )}
-
-                          <div className="text-xs text-muted-foreground">{formatUsage(deepDiveState.data)}</div>
                         </div>
                       ) : null}
                     </section>

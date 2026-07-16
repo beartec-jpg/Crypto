@@ -24,6 +24,9 @@ import {
   CRYPTO_AI_LOWER_TIMEFRAMES,
   DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
   DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+  encodeCryptoAiPairInterval,
+  isCryptoAiCacheFresh,
+  isCryptoAiDeepDiveCacheFresh,
   normalizeCryptoAiPair,
   isValidCryptoAiPair,
 } from "@shared/cryptoAiConfig";
@@ -839,7 +842,10 @@ const DEFAULT_VOLUME_PROFILE_BINS = 40;  // Resolution for volume profile histog
 const VALUE_AREA_PERCENTAGE = 0.7;       // Standard 70% value area (VAH/VAL)
 
 // Lightweight FVG detection (server-side) — returns only unmitigated FVGs
-function detectFVGServer(bars: CandleBar[]): { bullFVG: { low: number; high: number }[]; bearFVG: { low: number; high: number }[] } {
+function detectFVGServer(
+  bars: CandleBar[],
+  minGapAtrMultiple: number = MIN_FVG_GAP_ATR_MULTIPLE,
+): { bullFVG: { low: number; high: number }[]; bearFVG: { low: number; high: number }[] } {
   const bullFVG: { low: number; high: number }[] = [];
   const bearFVG: { low: number; high: number }[] = [];
   if (bars.length < 10) return { bullFVG, bearFVG };
@@ -850,7 +856,7 @@ function detectFVGServer(bars: CandleBar[]): { bullFVG: { low: number; high: num
     // Bullish FVG: current low > two-bars-ago high
     if (bars[i].low > bars[i - 2].high) {
       const gapSize = bars[i].low - bars[i - 2].high;
-      if (gapSize >= atr * MIN_FVG_GAP_ATR_MULTIPLE) {
+      if (gapSize >= atr * minGapAtrMultiple) {
         const low = bars[i - 2].high;
         const high = bars[i].low;
         // Check if mitigated by a later bar
@@ -864,7 +870,7 @@ function detectFVGServer(bars: CandleBar[]): { bullFVG: { low: number; high: num
     // Bearish FVG: current high < two-bars-ago low
     if (bars[i].high < bars[i - 2].low) {
       const gapSize = bars[i - 2].low - bars[i].high;
-      if (gapSize >= atr * MIN_FVG_GAP_ATR_MULTIPLE) {
+      if (gapSize >= atr * minGapAtrMultiple) {
         const low = bars[i].high;
         const high = bars[i - 2].low;
         let mitigated = false;
@@ -4052,6 +4058,11 @@ Be concise and direct.`;
       );
       const lowerTimeframe = normalizedPair.lowerTimeframe;
       const higherTimeframe = normalizedPair.higherTimeframe;
+      const pairInterval = encodeCryptoAiPairInterval(higherTimeframe, lowerTimeframe);
+      const minRiskReward = Number(subscription.minRiskReward ?? AI_MIN_RISK_REWARD_RATIO);
+      const minConfluence = Number(subscription.minConfluence ?? 3);
+      const atrStopBuffer = Number(subscription.atrStopBuffer ?? 0.75);
+      const fvgAtrFactor = Number(subscription.fvgAtrFactor ?? 0.5);
 
       let creditResult = { success: true, remaining: subscription.aiCredits ?? 0 };
       if (analysisType === 'deep') {
@@ -4071,10 +4082,38 @@ Be concise and direct.`;
 
       console.log(`📊 Multi-TF Analysis for ${symbol}: ${higherTimeframe}/${lowerTimeframe} (${analysisType})`);
 
+      if (analysisType === 'deep') {
+        const { pool } = await import('./db');
+        const cachedResult = await pool.query(
+          `SELECT ai_narration, updated_at
+           FROM crypto_scan_cache
+           WHERE symbol = $1
+             AND higher_timeframe = $2
+             AND lower_timeframe = $3
+             AND mode = $4
+           LIMIT 1`,
+          [symbol, higherTimeframe, lowerTimeframe, traderMode.id],
+        );
+
+        const cachedRow = cachedResult.rows[0];
+        if (cachedRow && isCryptoAiDeepDiveCacheFresh(cachedRow.updated_at, lowerTimeframe)) {
+          const aiNarration = typeof cachedRow.ai_narration === 'string'
+            ? JSON.parse(cachedRow.ai_narration)
+            : (cachedRow.ai_narration || {});
+          return res.json({
+            success: true,
+            cached: true,
+            multiTFInsights: aiNarration.multiTFInsights || null,
+            bestTrades: Array.isArray(aiNarration.bestTrades) ? aiNarration.bestTrades : [],
+            estimatedCost: Number(aiNarration.estimatedCost ?? 0),
+            tokens: aiNarration.tokens || { input: 0, output: 0 },
+            creditsRemaining: creditResult.remaining,
+          });
+        }
+      }
+
       if (analysisType === 'general') {
         const { pool } = await import('./db');
-        const { encodeCryptoAiPairInterval, isCryptoAiCacheFresh } = await import('@shared/cryptoAiConfig');
-        const pairInterval = encodeCryptoAiPairInterval(higherTimeframe, lowerTimeframe);
         const cachedResult = await pool.query(
           `SELECT ai_narration, snapshots, updated_at
            FROM crypto_scan_cache
@@ -4176,7 +4215,7 @@ Be concise and direct.`;
         const vwapCalc = calculateVWAP(bars);
         const obv = calculateOBV(bars);
         const boschoch = detectBOSCHoCH(bars);
-        const fvgs = detectFVGServer(bars);
+        const fvgs = detectFVGServer(bars, fvgAtrFactor);
         const obs = detectOrderBlocksServer(bars);
         const vp = calculateVolumeProfileServer(bars);
         
@@ -4218,7 +4257,7 @@ Be concise and direct.`;
       const higherData = computeIndicators(barsByTimeframe[higherTimeframe]);
 
       // Constants for trade idea validation
-      const MIN_RISK_REWARD_RATIO = AI_MIN_RISK_REWARD_RATIO;
+      const MIN_RISK_REWARD_RATIO = minRiskReward;
       const DUPLICATE_ENTRY_THRESHOLD_PCT = 0.001; // 0.1% tolerance for same-entry detection
 
       // Derive dominant HTF bias from the user-selected higher/lower timeframe pair
@@ -4273,13 +4312,14 @@ ${fmtTF(lowerTimeframe, lowerData)}
 TRADE PLANNING RULES:
 1. HTF bias is ${dominantBias}. All trades MUST align with this bias (no counter-trend trades unless bias is NEUTRAL with an A+ opposing setup).
 2. ENTRY: Place entry at an FVG zone, Order Block, or key swing level — NOT at current price unless price is exactly at that level. Prefer waiting for a pullback into an FVG or OB confluence.
-3. STOP LOSS: Place SL behind the nearest structural level — below the entry OB/FVG low for LONGs, above the entry OB/FVG high for SHORTs. Size using 1-2x ATR as a guide but anchor to structure.
+3. STOP LOSS: Place SL behind the nearest structural level — below the entry OB/FVG low for LONGs, above the entry OB/FVG high for SHORTs. ATR is only a small buffer (~0.5-1x); for this run target about ${atrStopBuffer}x ATR and do not over-pad.
 4. TARGET: Trade level-to-level. TP1 = previous swing pivot or nearest opposing FVG/OB. TP2 = next major structural level (swing high/low, VAH/VAL, or POC on HTF).
-5. Minimum R/R: ${MIN_RISK_REWARD_RATIO}:1 to TP1. Discard any setup below this threshold.
-6. LONG: SL strictly below entry, TP1/TP2 strictly above entry.
-7. SHORT: SL strictly above entry, TP1/TP2 strictly below entry.
-8. No contradictory LONG and SHORT at the same entry. Maximum 2 trade ideas total.
-9. If no high-quality setup exists at a structural level, output 0 trades and say why in overallSummary.
+5. Treat valid FVGs from ${fvgAtrFactor}x ATR and above as eligible execution zones on the lower timeframe.
+6. Minimum R/R: ${MIN_RISK_REWARD_RATIO}:1 to TP1. Require at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}.
+7. LONG: SL strictly below entry, TP1/TP2 strictly above entry.
+8. SHORT: SL strictly above entry, TP1/TP2 strictly below entry.
+9. No contradictory LONG and SHORT at the same entry. Maximum 2 trade ideas total.
+10. If no high-quality setup exists at a structural level, output 0 trades and say why in overallSummary.
 
 OUTPUT: Valid JSON only, no markdown.
 {
@@ -4315,7 +4355,7 @@ OUTPUT: Valid JSON only, no markdown.
             role: "system",
             content: analysisType === 'general'
               ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Always respond with valid JSON only, no markdown.`
-              : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes (${higherTimeframe}, ${lowerTimeframe}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\nYour edge is cross-timeframe confluence: identify WHERE price is going (the target level), WHERE to enter (with a concrete justification appropriate to this mode — never a blind "enter at current price"), and WHERE your invalidation is (a structural stop behind the entry). You require a minimum ${MIN_RISK_REWARD_RATIO}:1 R/R to TP1. You never output contradictory LONG+SHORT setups. If no quality setup exists for this mode, you say so. Always respond with valid JSON only, no markdown.`
+              : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes (${higherTimeframe}, ${lowerTimeframe}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\nYour edge is cross-timeframe confluence: identify WHERE price is going (the target level), WHERE to enter (with a concrete justification appropriate to this mode — never a blind "enter at current price"), and WHERE your invalidation is (a structural stop behind the entry). You require a minimum ${MIN_RISK_REWARD_RATIO}:1 R/R to TP1, at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}, an ATR stop buffer near ${atrStopBuffer}x, and execution FVGs valid from ${fvgAtrFactor}x ATR. You never output contradictory LONG+SHORT setups. If no quality setup exists for this mode, you say so. Always respond with valid JSON only, no markdown.`
           },
           { role: "user", content: analysisType === 'general' ? generalPrompt : deepPrompt }
         ],
@@ -4374,7 +4414,10 @@ OUTPUT: Valid JSON only, no markdown.
         // Enforce minimum risk-reward ratio
         const risk = Math.abs(entry - sl);
         const reward = Math.abs(tp1 - entry);
-        if (risk === 0 || reward / risk < MIN_RISK_REWARD_RATIO) {
+        const confluenceCount = Array.isArray(trade.confluenceSignals)
+          ? trade.confluenceSignals.length
+          : Number(trade.confluenceCount ?? 0);
+        if (risk === 0 || reward / risk < MIN_RISK_REWARD_RATIO || confluenceCount < minConfluence) {
           console.warn(`⚠️ Discarding trade with insufficient R/R (${(reward / risk).toFixed(2)}:1, min ${MIN_RISK_REWARD_RATIO}:1):`, trade);
           return false;
         }
@@ -4419,6 +4462,33 @@ OUTPUT: Valid JSON only, no markdown.
 
       if (analysisType === 'deep') {
         try {
+          const { pool } = await import('./db');
+          await pool.query(
+            `INSERT INTO crypto_scan_cache (
+               id, symbol, interval, mode, scores, ai_narration, higher_timeframe, lower_timeframe, created_at, updated_at
+             ) VALUES (
+               gen_random_uuid(), $1, $2, $3, '{}'::jsonb, $4::jsonb, $5, $6, NOW(), NOW()
+             )
+             ON CONFLICT (symbol, interval, mode)
+             DO UPDATE SET
+               ai_narration = EXCLUDED.ai_narration,
+               higher_timeframe = EXCLUDED.higher_timeframe,
+               lower_timeframe = EXCLUDED.lower_timeframe,
+               updated_at = NOW()`,
+            [
+              symbol,
+              pairInterval,
+              traderMode.id,
+              JSON.stringify({
+                multiTFInsights: parsedResult.multiTFInsights,
+                bestTrades: parsedResult.bestTrades || [],
+                estimatedCost,
+                tokens: { input: inputTokens, output: outputTokens },
+              }),
+              higherTimeframe,
+              lowerTimeframe,
+            ],
+          );
           await cryptoSubscriptionService.saveCachedMultiTFAnalysis(
             userId,
             symbol,
@@ -4492,7 +4562,7 @@ OUTPUT: Valid JSON only, no markdown.
   });
 
   // Order Flow Alerts endpoint using xAI Grok (publicly accessible)
-  app.post("/api/crypto/order-flow-alerts", requireCryptoAuth, async (req, res) => {
+  app.post("/api/crypto/order-flow-alerts", requireCryptoAuth, cryptoAiRouteRateLimit, async (req, res) => {
     console.log('📥 Order flow alerts endpoint called');
     try {
       // Check if XAI API key is configured
@@ -4554,9 +4624,41 @@ OUTPUT: Valid JSON only, no markdown.
         minusDI = 0,
         mode: requestedMode,
       } = req.body;
+      const { getAiTraderMode } = await import("@shared/aiTraderModes");
+      const traderMode = getAiTraderMode(requestedMode);
+      const minRiskReward = Number(subscription.minRiskReward ?? AI_MIN_RISK_REWARD_RATIO);
+      const minConfluence = Number(subscription.minConfluence ?? 3);
+      const atrStopBuffer = Number(subscription.atrStopBuffer ?? 0.75);
+      const fvgAtrFactor = Number(subscription.fvgAtrFactor ?? 0.5);
 
       if (!symbol || !currentPrice || !recentBars) {
         return res.status(400).json({ error: 'Missing required data' });
+      }
+
+      const { pool } = await import('./db');
+      const sharedCacheResult = await pool.query(
+        `SELECT ai_narration, updated_at
+         FROM crypto_scan_cache
+         WHERE symbol = $1
+           AND interval = $2
+           AND mode = $3
+           AND higher_timeframe IS NULL
+           AND lower_timeframe IS NULL
+         LIMIT 1`,
+        [symbol, interval, traderMode.id],
+      );
+      const sharedCacheRow = sharedCacheResult.rows[0];
+      if (sharedCacheRow && isCryptoAiDeepDiveCacheFresh(sharedCacheRow.updated_at, interval)) {
+        const aiNarration = typeof sharedCacheRow.ai_narration === 'string'
+          ? JSON.parse(sharedCacheRow.ai_narration)
+          : (sharedCacheRow.ai_narration || {});
+        return res.json({
+          ...(aiNarration.result || { alerts: [], marketInsights: null }),
+          mode: traderMode.id,
+          cached: true,
+          creditsRemaining: usageStatus.creditsRemaining,
+          indicatorData: aiNarration.indicatorData || null,
+        });
       }
 
       // ===== CALCULATE ALL INDICATORS FROM BAR DATA =====
@@ -4752,11 +4854,8 @@ OUTPUT: Valid JSON only, no markdown.
         : 'none';
 
       // ===== MODE-AWARE, TOOL-DRIVEN ANALYSIS =====
-      // Resolve the selected AI trader mode (indicator | smc | ...). Each mode brings
-      // its own persona, validity criteria and preferred tools so an indicator trader
-      // is never judged by FVG rules and vice-versa.
-      const { getAiTraderMode } = await import("@shared/aiTraderModes");
-      const traderMode = getAiTraderMode(requestedMode);
+      // The selected AI trader mode brings its own persona, validity criteria and
+      // preferred tools so an indicator trader is never judged by FVG rules and vice-versa.
 
       // Tool payloads are backed by the indicators/structures already computed above.
       // Rather than dumping everything into one prompt, the model pulls only what it
@@ -4833,9 +4932,10 @@ ${traderMode.validityCriteria}
 
 GENERAL RULES:
 - Trade level-to-level. Every entry must have a concrete justification appropriate to this mode — never a blind "enter at current price".
-- STOP LOSS behind the invalidation structure (use ~1-2x ATR as a minimum buffer).
-- Min R/R ≥${AI_MIN_RISK_REWARD_RATIO}:1 to TP1. Discard any setup that cannot achieve this.
-- Grade: A+ (6+ confluence), A (5), B (4), C (3). Output 1-3 setups only if they genuinely qualify.
+- STOP LOSS behind the invalidation structure with only a small ATR buffer (~0.5-1x ATR). For this run use about ${atrStopBuffer}x ATR and do not over-pad.
+- Valid FVG execution zones can be as small as ${fvgAtrFactor}x ATR when the structure is otherwise clean.
+- Min R/R ≥${minRiskReward}:1 to TP1. Discard any setup that cannot achieve this.
+- Require at least ${minConfluence} confirming signals. Grade: A+ (6+ confluence), A (5), B (4), C (3). Output 1-3 setups only if they genuinely qualify.
 - If no valid setup exists for this mode, output 0 alerts and explain the live read in marketInsights (still populate bias and keyLevels).
 
 Return JSON only, no markdown:
@@ -4865,7 +4965,7 @@ Return JSON only, no markdown:
         messages: [
           {
             role: "system",
-            content: `${traderMode.systemPrompt} You require a minimum ${AI_MIN_RISK_REWARD_RATIO}:1 R/R to TP1. If no genuine setup exists for your mode, say so clearly rather than forcing a trade.`,
+            content: `${traderMode.systemPrompt} You require a minimum ${minRiskReward}:1 R/R to TP1, at least ${minConfluence} confirming signals, an ATR stop buffer near ${atrStopBuffer}x, and you may use valid FVGs from ${fvgAtrFactor}x ATR. If no genuine setup exists for your mode, say so clearly rather than forcing a trade.`,
           },
           {
             role: "user",
@@ -4919,8 +5019,12 @@ Return JSON only, no markdown:
           // Attach calculated R/R to the alert for frontend display
           alert.calculatedRR = rrRatio;
           
-          if (rrRatio < AI_MIN_RISK_REWARD_RATIO) {
-            console.log(`⚠️ Filtering trade: R/R too low (${rrRatio.toFixed(2)}:1, min ${AI_MIN_RISK_REWARD_RATIO}:1)`);
+          const confluenceCount = Math.max(
+            Number(alert.confluenceCount || 0),
+            Array.isArray(alert.confluenceSignals) ? alert.confluenceSignals.length : 0,
+          );
+          if (rrRatio < minRiskReward || confluenceCount < minConfluence) {
+            console.log(`⚠️ Filtering trade: setup below thresholds (R/R ${rrRatio.toFixed(2)}:1, min ${minRiskReward}:1; confluence ${confluenceCount}/${minConfluence})`);
             return false;
           }
           return true;
@@ -4973,7 +5077,7 @@ Return JSON only, no markdown:
         if (result.alerts.length === 0 && originalCount > 0) {
           result.marketInsights = result.marketInsights || {};
           result.marketInsights.noTradesReason = result.marketInsights.noTradesReason || 
-            `${originalCount} potential setup(s) were identified but filtered out due to insufficient Risk/Reward ratio (below ${AI_MIN_RISK_REWARD_RATIO}:1) or being duplicate entries. Wait for price to reach a key structural level (FVG, Order Block, or major swing) before entering.`;
+            `${originalCount} potential setup(s) were identified but filtered out for falling below your risk/confluence thresholds or being duplicate entries. Wait for price to reach a key structural level (FVG, Order Block, or major swing) before entering.`;
         }
       }
 
@@ -5031,6 +5135,25 @@ Return JSON only, no markdown:
         fundingRate: { value: fundingValue, bias: fundingBias },
         longShortRatio: { value: lsRatio, label: lsRatio > 1.2 ? 'longs dominant' : lsRatio < 0.8 ? 'shorts dominant' : 'balanced' }
       };
+
+      try {
+        await pool.query(
+          `INSERT INTO crypto_scan_cache (
+             id, symbol, interval, mode, scores, ai_narration, created_at, updated_at
+           ) VALUES (
+             gen_random_uuid(), $1, $2, $3, '{}'::jsonb, $4::jsonb, NOW(), NOW()
+           )
+           ON CONFLICT (symbol, interval, mode)
+           DO UPDATE SET
+             ai_narration = EXCLUDED.ai_narration,
+             higher_timeframe = NULL,
+             lower_timeframe = NULL,
+             updated_at = NOW()`,
+          [symbol, interval, traderMode.id, JSON.stringify({ result, indicatorData: indicatorDataForCache })]
+        );
+      } catch (sharedCacheError) {
+        console.error('Failed to update shared AI analysis cache:', sharedCacheError);
+      }
 
       // Save analysis to cache for later retrieval
       try {
@@ -6024,6 +6147,10 @@ Return ONLY valid JSON in this exact format:
               }
             })())
           : [],
+        minRiskReward: subscription?.minRiskReward != null ? Number(subscription.minRiskReward) : 1.5,
+        minConfluence: subscription?.minConfluence ?? 3,
+        atrStopBuffer: subscription?.atrStopBuffer != null ? Number(subscription.atrStopBuffer) : 0.75,
+        fvgAtrFactor: subscription?.fvgAtrFactor != null ? Number(subscription.fvgAtrFactor) : 0.5,
         aiTraderMode: subscription?.aiTraderMode || 'smc',
         aiHigherTimeframe: normalizeCryptoAiPair(subscription?.aiHigherTimeframe, subscription?.aiLowerTimeframe).higherTimeframe,
         aiLowerTimeframe: normalizeCryptoAiPair(subscription?.aiHigherTimeframe, subscription?.aiLowerTimeframe).lowerTimeframe,
@@ -6043,7 +6170,8 @@ Return ONLY valid JSON in this exact format:
       const { 
         selectedTickers, alertGrades, alertTimeframes, alertTypes, alertsEnabled, pushSubscription,
         hlineAlertsEnabled, elliottAlertsEnabled, aiTradeAlertsEnabled, indicatorAlertsEnabled,
-        scanTickers, aiTraderMode, aiHigherTimeframe, aiLowerTimeframe
+        scanTickers, aiTraderMode, aiHigherTimeframe, aiLowerTimeframe,
+        minRiskReward, minConfluence, atrStopBuffer, fvgAtrFactor
       } = req.body;
       const getTickerSlotCap = (userTier: string) => {
         switch (userTier) {
@@ -6174,6 +6302,34 @@ Return ONLY valid JSON in this exact format:
         updateData.scanTickers = Array.from(
           new Set(scanTickers.filter((ticker: unknown) => typeof ticker === 'string' && ticker.trim().length > 0))
         ).slice(0, tickerSlots);
+      }
+      if (minRiskReward !== undefined) {
+        const minRiskRewardValue = Number(minRiskReward);
+        if (!Number.isFinite(minRiskRewardValue) || minRiskRewardValue < 0 || minRiskRewardValue > 99.99) {
+          return res.status(400).json({ error: 'minRiskReward must be a number between 0 and 99.99.' });
+        }
+        updateData.minRiskReward = minRiskRewardValue.toFixed(2);
+      }
+      if (minConfluence !== undefined) {
+        const minConfluenceValue = Number(minConfluence);
+        if (!Number.isInteger(minConfluenceValue) || minConfluenceValue < 0 || minConfluenceValue > 9) {
+          return res.status(400).json({ error: 'minConfluence must be an integer between 0 and 9.' });
+        }
+        updateData.minConfluence = minConfluenceValue;
+      }
+      if (atrStopBuffer !== undefined) {
+        const atrStopBufferValue = Number(atrStopBuffer);
+        if (!Number.isFinite(atrStopBufferValue) || atrStopBufferValue < 0 || atrStopBufferValue > 10) {
+          return res.status(400).json({ error: 'atrStopBuffer must be a number between 0 and 10.' });
+        }
+        updateData.atrStopBuffer = atrStopBufferValue.toFixed(2);
+      }
+      if (fvgAtrFactor !== undefined) {
+        const fvgAtrFactorValue = Number(fvgAtrFactor);
+        if (!Number.isFinite(fvgAtrFactorValue) || fvgAtrFactorValue < 0 || fvgAtrFactorValue > 10) {
+          return res.status(400).json({ error: 'fvgAtrFactor must be a number between 0 and 10.' });
+        }
+        updateData.fvgAtrFactor = fvgAtrFactorValue.toFixed(2);
       }
       updateData.tickerSlots = tickerSlots;
       if (aiTraderMode !== undefined) {
@@ -8939,30 +9095,46 @@ CRITICAL DATA RULES:
       const activeTickers = activeTickerResult.rows
         .map((row: { symbol?: string }) => row.symbol)
         .filter((symbol): symbol is string => Boolean(symbol));
-      const activePairs = activeTickers.length * CRYPTO_AI_HIGHER_TIMEFRAMES.length * CRYPTO_AI_LOWER_TIMEFRAMES.length;
+      const activeCombos = activeTickers.length * CRYPTO_AI_HIGHER_TIMEFRAMES.length * CRYPTO_AI_LOWER_TIMEFRAMES.length;
       const cacheResult = await pool.query(
-        `SELECT ai_narration
+        `SELECT ai_narration, mode
          FROM crypto_scan_cache
-         WHERE mode = 'general'`
+         WHERE ai_narration IS NOT NULL`
       );
 
-      const latestCosts = cacheResult.rows
+      const latestUsage = cacheResult.rows
         .map((row: { ai_narration?: any }) => {
           const narration = typeof row.ai_narration === 'string' ? JSON.parse(row.ai_narration) : row.ai_narration;
-          return Number(narration?.estimatedCost ?? 0);
+          return {
+            inputTokens: Number(narration?.tokens?.input ?? 0),
+            outputTokens: Number(narration?.tokens?.output ?? 0),
+            estimatedCost: Number(narration?.estimatedCost ?? 0),
+          };
         })
-        .filter((value: number) => Number.isFinite(value) && value > 0);
+        .filter((value: { estimatedCost: number }) => Number.isFinite(value.estimatedCost) && value.estimatedCost >= 0);
 
-      const averageCost = latestCosts.length > 0
-        ? latestCosts.reduce((sum: number, value: number) => sum + value, 0) / latestCosts.length
+      const averageCost = latestUsage.length > 0
+        ? latestUsage.reduce((sum: number, value: { estimatedCost: number }) => sum + value.estimatedCost, 0) / latestUsage.length
         : 0;
-      const callsPerDay = activePairs * 3;
+      const averageInputTokens = latestUsage.length > 0
+        ? latestUsage.reduce((sum: number, value: { inputTokens: number }) => sum + value.inputTokens, 0) / latestUsage.length
+        : 0;
+      const averageOutputTokens = latestUsage.length > 0
+        ? latestUsage.reduce((sum: number, value: { outputTokens: number }) => sum + value.outputTokens, 0) / latestUsage.length
+        : 0;
+      const warmedGeneralCombos = cacheResult.rows.filter((row: { mode?: string }) => row.mode === 'general').length;
+      const cacheHitRate = activeCombos > 0 ? Math.min(1, warmedGeneralCombos / activeCombos) : 0;
+      const callsPerDay = activeCombos * 3;
       const estimatedDailyCost = callsPerDay * averageCost;
 
       res.json({
         activeTickers: activeTickers.length,
-        activePairs,
+        activeCombos,
+        activePairs: activeCombos,
         callsPerDay,
+        averageInputTokens,
+        averageOutputTokens,
+        cacheHitRate,
         estimatedDailyCost,
         estimatedMonthlyCost: estimatedDailyCost * 30,
         averageCostPerCall: averageCost,

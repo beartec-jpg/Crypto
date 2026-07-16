@@ -182,17 +182,22 @@ function detectBOSCHoCH(bars: any[]): { bos: number; choch: number } {
   return { bos, choch };
 }
 
-function detectFVGs(bars: any[]): { bullish: Array<{low: number; high: number}>; bearish: Array<{low: number; high: number}> } {
+function detectFVGs(
+  bars: any[],
+  atrFactor: number = 0.5,
+): { bullish: Array<{low: number; high: number}>; bearish: Array<{low: number; high: number}> } {
   const bullish: Array<{low: number; high: number}> = [];
   const bearish: Array<{low: number; high: number}> = [];
   const recent = bars.slice(-100);
+  const atr = calculateATR(recent, 14);
+  const minGap = Number.isFinite(atr) && atr > 0 ? atr * Math.max(0, atrFactor) : 0;
   for (let i = 2; i < recent.length; i++) {
     // Bullish FVG: gap between bar[i-2].high and bar[i].low (bar[i-1] is the impulse up)
-    if (recent[i].low > recent[i - 2].high) {
+    if (recent[i].low > recent[i - 2].high && recent[i].low - recent[i - 2].high >= minGap) {
       bullish.push({ low: recent[i - 2].high, high: recent[i].low });
     }
     // Bearish FVG: gap between bar[i-2].low and bar[i].high (bar[i-1] is the impulse down)
-    if (recent[i].high < recent[i - 2].low) {
+    if (recent[i].high < recent[i - 2].low && recent[i - 2].low - recent[i].high >= minGap) {
       bearish.push({ low: recent[i].high, high: recent[i - 2].low });
     }
   }
@@ -286,7 +291,7 @@ async function fetchBarsForTF(symbol: string, tf: string) {
   }));
 }
 
-function computeIndicators(bars: any[]) {
+function computeIndicators(bars: any[], fvgAtrFactor: number = 0.5) {
   const currentPrice = bars[bars.length - 1].close;
   const rsi = calculateRSI(bars, 14);
   const macd = calculateMACD(bars);
@@ -297,7 +302,7 @@ function computeIndicators(bars: any[]) {
   const vwapCalc = calculateVWAP(bars);
   const obv = calculateOBV(bars);
   const boschoch = detectBOSCHoCH(bars);
-  const fvgs = detectFVGs(bars);
+  const fvgs = detectFVGs(bars, fvgAtrFactor);
   const obs = detectOrderBlocks(bars);
   const volProfile = calculateVolumeProfile(bars);
   const swings = detectSwingPivots(bars);
@@ -526,6 +531,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       normalizeCryptoAiPair,
       encodeCryptoAiPairInterval,
       isCryptoAiCacheFresh,
+      isCryptoAiDeepDiveCacheFresh,
     } = await import('../_lib/cryptoAiConfig.js');
 
     const {
@@ -562,7 +568,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const cryptoUserId = userResult.rows[0].id;
 
     const subResult = await pool.query(
-      'SELECT tier, ai_credits, ai_credits_reset_at FROM crypto_subscriptions WHERE user_id = $1',
+      `SELECT tier, ai_credits, ai_credits_reset_at, min_risk_reward, min_confluence,
+              atr_stop_buffer, fvg_atr_factor
+       FROM crypto_subscriptions WHERE user_id = $1`,
       [cryptoUserId]
     );
 
@@ -592,6 +600,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const creditsRemaining = isAdmin ? 999 : (aiLimit - aiCreditsUsed);
+    const minRiskReward = Number(subscription?.min_risk_reward ?? AI_MIN_RISK_REWARD_RATIO);
+    const minConfluence = Number(subscription?.min_confluence ?? 3);
+    const atrStopBuffer = Number(subscription?.atr_stop_buffer ?? 0.75);
+    const fvgAtrFactor = Number(subscription?.fvg_atr_factor ?? 0.5);
     if (analysisType === 'deep' && !isAdmin && creditsRemaining <= 0) {
       await pool.end();
       return res.status(403).json({ 
@@ -603,6 +615,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const pairInterval = encodeCryptoAiPairInterval(higherTimeframe, lowerTimeframe);
     console.log(`📊 Multi-TF Analysis for ${symbol}: ${higherTimeframe}/${lowerTimeframe} (${analysisType})`);
+
+    if (analysisType === 'deep') {
+      const cachedResult = await pool.query(
+        `SELECT ai_narration, updated_at
+         FROM crypto_scan_cache
+         WHERE symbol = $1
+           AND higher_timeframe = $2
+           AND lower_timeframe = $3
+           AND mode = $4
+         LIMIT 1`,
+        [symbol, higherTimeframe, lowerTimeframe, traderMode.id],
+      );
+
+      const cachedRow = cachedResult.rows[0];
+      if (cachedRow && isCryptoAiDeepDiveCacheFresh(cachedRow.updated_at, lowerTimeframe)) {
+        if (!isAdmin) {
+          await pool.query('UPDATE crypto_subscriptions SET ai_credits = ai_credits + 1, updated_at = NOW() WHERE user_id = $1', [cryptoUserId]);
+        }
+
+        const aiNarration = typeof cachedRow.ai_narration === 'string'
+          ? JSON.parse(cachedRow.ai_narration)
+          : (cachedRow.ai_narration || {});
+
+        await pool.end();
+        return res.json({
+          success: true,
+          cached: true,
+          multiTFInsights: aiNarration.multiTFInsights || null,
+          bestTrades: Array.isArray(aiNarration.bestTrades) ? aiNarration.bestTrades : [],
+          estimatedCost: Number(aiNarration.estimatedCost ?? 0),
+          tokens: aiNarration.tokens || { input: 0, output: 0 },
+          creditsRemaining: isAdmin ? 999 : Math.max(0, creditsRemaining - 1),
+        });
+      }
+    }
 
     if (analysisType === 'general') {
       const cachedResult = await pool.query(
@@ -682,8 +729,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       )
     ) as Record<string, any[]>;
 
-    const lowerData = computeIndicators(barsByTimeframe[lowerTimeframe]);
-    const higherData = computeIndicators(barsByTimeframe[higherTimeframe]);
+    const lowerData = computeIndicators(barsByTimeframe[lowerTimeframe], fvgAtrFactor);
+    const higherData = computeIndicators(barsByTimeframe[higherTimeframe], fvgAtrFactor);
 
     const fmtTF = (label: string, d: ReturnType<typeof computeIndicators>) => `
 **${label} (${label === higherTimeframe ? 'Higher TF bias' : 'Lower TF execution'}):**
@@ -740,10 +787,11 @@ ${fmtTF(lowerTimeframe, lowerData)}
 1. ${higherTimeframe} sets the directional bias; ${lowerTimeframe} is for entry timing and execution.
 2. Every setup must align with the higher timeframe unless bias is NEUTRAL and the setup is exceptional.
 3. ENTRY: must be at a concrete structural/indicator level appropriate to the selected trader mode — never a blind entry at current price.
-4. STOP LOSS: behind the invalidation structure with ATR as a guide.
+4. STOP LOSS: behind the invalidation structure first. Use only a small ATR buffer (~0.5-1x ATR); for this run target roughly ${atrStopBuffer}x ATR unless structure needs less.
 5. TARGETS: level-to-level, with TP1 at the nearest opposing level and TP2 at the next major level.
-6. Only include trades with R/R ≥ ${AI_MIN_RISK_REWARD_RATIO} to TP1.
-7. If no valid trade exists, return an empty bestTrades array and explain why in overallSummary.
+6. FVG entries may be valid from ${fvgAtrFactor}x ATR and above on the execution timeframe; do not reject smaller but still valid structure-led gaps.
+7. Only include trades with R/R ≥ ${minRiskReward} to TP1 and at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}.
+8. If no valid trade exists, return an empty bestTrades array and explain why in overallSummary.
 
 Respond with ONLY valid JSON:
 {
@@ -783,7 +831,7 @@ Respond with ONLY valid JSON:
     let completion: any;
     const systemContent = analysisType === 'general'
       ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Always respond with valid JSON only.`
-      : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes. Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\nHigher timeframes set the bias; lower timeframes provide entry timing. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Always respond with valid JSON only.`;
+      : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes. Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\nHigher timeframes set the bias; lower timeframes provide entry timing. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Respect the user's tighter risk settings: minimum R/R ${minRiskReward}:1, minimum confluence ${minConfluence}, ATR stop buffer about ${atrStopBuffer}x, and FVG size threshold ${fvgAtrFactor}x ATR. Always respond with valid JSON only.`;
     try {
       completion = await (openai.chat.completions.create as any)({
         model: XAI_PRIMARY_MODEL,
@@ -835,7 +883,12 @@ Respond with ONLY valid JSON:
             const rr = risk > 0 && reward > 0 ? reward / risk : 0;
             return { ...t, riskRewardRatio: parseFloat(rr.toFixed(2)), _rr: rr };
           })
-          .filter((t: any) => t._rr >= AI_MIN_RISK_REWARD_RATIO)
+          .filter((t: any) => {
+            const confluenceCount = Array.isArray(t.confluenceSignals)
+              ? t.confluenceSignals.length
+              : Number(t.confluenceCount ?? 0);
+            return t._rr >= minRiskReward && confluenceCount >= minConfluence;
+          })
           .map(({ _rr, ...t }: any) => t);
 
       parsedResult = { multiTFInsights: parsed.multiTFInsights || null, bestTrades: filteredTrades };
@@ -850,6 +903,32 @@ Respond with ONLY valid JSON:
 
     if (analysisType === 'deep') {
       try {
+      await pool.query(
+        `INSERT INTO crypto_scan_cache (
+           id, symbol, interval, mode, scores, ai_narration, higher_timeframe, lower_timeframe, created_at, updated_at
+         ) VALUES (
+           gen_random_uuid(), $1, $2, $3, '{}'::jsonb, $4::jsonb, $5, $6, NOW(), NOW()
+         )
+         ON CONFLICT (symbol, interval, mode)
+         DO UPDATE SET
+           ai_narration = EXCLUDED.ai_narration,
+           higher_timeframe = EXCLUDED.higher_timeframe,
+           lower_timeframe = EXCLUDED.lower_timeframe,
+           updated_at = NOW()`,
+        [
+          symbol,
+          pairInterval,
+          traderMode.id,
+          JSON.stringify({
+            multiTFInsights: parsedResult.multiTFInsights,
+            bestTrades: parsedResult.bestTrades || [],
+            estimatedCost,
+            tokens: { input: inputTokens, output: outputTokens },
+          }),
+          higherTimeframe,
+          lowerTimeframe,
+        ],
+      );
       const existingCache = await pool.query(
         `SELECT id FROM crypto_ai_analyses WHERE user_id = $1 AND symbol = $2 AND interval = 'multi-tf'`,
         [cryptoUserId, symbol]

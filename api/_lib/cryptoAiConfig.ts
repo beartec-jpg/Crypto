@@ -59,6 +59,34 @@ export function encodeCryptoAiPairInterval(higherTimeframe: CryptoAiHigherTimefr
   return `${higherTimeframe}_${lowerTimeframe}`;
 }
 
+export function getCryptoAiTimeframeMinutes(timeframe: string): number | null {
+  const match = timeframe.trim().toLowerCase().match(/^(\d+)(m|h|d|w)$/);
+  if (!match) return null;
+
+  const value = Number(match[1]);
+  if (!Number.isFinite(value) || value <= 0) return null;
+
+  switch (match[2]) {
+    case 'm':
+      return value;
+    case 'h':
+      return value * 60;
+    case 'd':
+      return value * 60 * 24;
+    case 'w':
+      return value * 60 * 24 * 7;
+    default:
+      return null;
+  }
+}
+
+export function getCryptoAiDeepDiveTtlMinutes(lowerTimeframe: string): number {
+  const timeframeMinutes = getCryptoAiTimeframeMinutes(lowerTimeframe)
+    ?? getCryptoAiTimeframeMinutes(DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME)
+    ?? 15;
+  return timeframeMinutes * 2;
+}
+
 export function getLatestCryptoAiScheduleRun(now: Date = new Date()): { session: CryptoAiSessionLabel; boundary: Date } {
   const candidates = CRYPTO_AI_SCHEDULE.map(({ hour, minute, session }) => {
     const boundary = new Date(now);
@@ -88,4 +116,17 @@ export function isCryptoAiCacheFresh(updatedAt: string | Date | null | undefined
   if (Number.isNaN(updatedDate.getTime())) return false;
   const { boundary } = getLatestCryptoAiScheduleRun(now);
   return updatedDate.getTime() >= boundary.getTime();
+}
+
+export function isCryptoAiDeepDiveCacheFresh(
+  updatedAt: string | Date | null | undefined,
+  lowerTimeframe: string,
+  now: Date = new Date(),
+): boolean {
+  if (!updatedAt) return false;
+  const updatedDate = updatedAt instanceof Date ? updatedAt : new Date(updatedAt);
+  if (Number.isNaN(updatedDate.getTime())) return false;
+
+  const ageMs = now.getTime() - updatedDate.getTime();
+  return ageMs >= 0 && ageMs <= getCryptoAiDeepDiveTtlMinutes(lowerTimeframe) * 60_000;
 }

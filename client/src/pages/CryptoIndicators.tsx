@@ -1540,7 +1540,7 @@ const handleAIMarketReview = () => {
   }, [chartSettings.bos.swingLength]);
 
   // Wrap calculateFVGs with footprintData dependency
-  const calculateFVGsWrapper = useCallback((data: CandleData[], useAtrFilter: boolean = true, atrFactor: number = 1): FVG[] => {
+  const calculateFVGsWrapper = useCallback((data: CandleData[], useAtrFilter: boolean = true, atrFactor: number = 0.5): FVG[] => {
     return calculateFVGs(data, footprintData, useAtrFilter, atrFactor, chartSettings.legacy.fvgVolumeThreshold);
   }, [footprintData, chartSettings.legacy.fvgVolumeThreshold]);
 
