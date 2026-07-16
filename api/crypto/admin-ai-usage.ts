@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 
 import { getPool } from '../_lib/db.js';
+import { CRYPTO_AI_HIGHER_TIMEFRAMES, CRYPTO_AI_LOWER_TIMEFRAMES } from '../_lib/cryptoAiConfig.js';
 
 const ADMIN_EMAIL = 'beartec@beartec.uk';
 
@@ -46,31 +47,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const activeTickers = activeTickerResult.rows
       .map((row: { symbol?: string }) => row.symbol)
       .filter((symbol): symbol is string => Boolean(symbol));
-    const activePairs = activeTickers.length * 4;
+    const activeCombos = activeTickers.length * CRYPTO_AI_HIGHER_TIMEFRAMES.length * CRYPTO_AI_LOWER_TIMEFRAMES.length;
 
     const cacheResult = await pool.query(
-      `SELECT ai_narration
+      `SELECT ai_narration, mode
        FROM crypto_scan_cache
-       WHERE mode = 'general'`
+       WHERE ai_narration IS NOT NULL`
     );
 
-    const latestCosts = cacheResult.rows
+    const latestUsage = cacheResult.rows
       .map((row: { ai_narration?: any }) => {
         const narration = typeof row.ai_narration === 'string' ? JSON.parse(row.ai_narration) : row.ai_narration;
-        return Number(narration?.estimatedCost ?? 0);
+        return {
+          inputTokens: Number(narration?.tokens?.input ?? 0),
+          outputTokens: Number(narration?.tokens?.output ?? 0),
+          estimatedCost: Number(narration?.estimatedCost ?? 0),
+        };
       })
-      .filter((value) => Number.isFinite(value) && value > 0);
+      .filter((value) => Number.isFinite(value.estimatedCost) && value.estimatedCost >= 0);
 
-    const averageCost = latestCosts.length > 0
-      ? latestCosts.reduce((sum, value) => sum + value, 0) / latestCosts.length
+    const averageCost = latestUsage.length > 0
+      ? latestUsage.reduce((sum, value) => sum + value.estimatedCost, 0) / latestUsage.length
       : 0;
-    const callsPerDay = activePairs * 3;
+    const averageInputTokens = latestUsage.length > 0
+      ? latestUsage.reduce((sum, value) => sum + value.inputTokens, 0) / latestUsage.length
+      : 0;
+    const averageOutputTokens = latestUsage.length > 0
+      ? latestUsage.reduce((sum, value) => sum + value.outputTokens, 0) / latestUsage.length
+      : 0;
+    const warmedGeneralCombos = cacheResult.rows.filter((row: { mode?: string }) => row.mode === 'general').length;
+    const cacheHitRate = activeCombos > 0 ? Math.min(1, warmedGeneralCombos / activeCombos) : 0;
+    const callsPerDay = activeCombos * 3;
     const estimatedDailyCost = callsPerDay * averageCost;
 
     return res.json({
       activeTickers: activeTickers.length,
-      activePairs,
+      activeCombos,
+      activePairs: activeCombos,
       callsPerDay,
+      averageInputTokens,
+      averageOutputTokens,
+      cacheHitRate,
       estimatedDailyCost,
       estimatedMonthlyCost: estimatedDailyCost * 30,
       averageCostPerCall: averageCost,

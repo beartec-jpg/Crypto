@@ -96,6 +96,8 @@ export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
   scanTickers: text("scan_tickers").array().notNull().default(sql`ARRAY[]::text[]`), // Subset of watchlist activated for live AI
   minRiskReward: decimal("min_risk_reward", { precision: 4, scale: 2 }).notNull().default("1.5"), // User-tunable min R/R threshold
   minConfluence: integer("min_confluence").notNull().default(3), // User-tunable min confluence threshold
+  atrStopBuffer: decimal("atr_stop_buffer", { precision: 4, scale: 2 }).notNull().default("0.75"), // User-tunable ATR stop buffer multiplier
+  fvgAtrFactor: decimal("fvg_atr_factor", { precision: 4, scale: 2 }).notNull().default("0.50"), // User-tunable minimum FVG size in ATR multiples
   aiModelPref: varchar("ai_model_pref").notNull().default("fast"), // Preferred narrator model: 'fast' | 'deep'
   aiTraderMode: varchar("ai_trader_mode").notNull().default("smc"), // Selected AI trader mode for /cryptoai page: 'indicator' | 'smc' | ...
   aiHigherTimeframe: varchar("ai_higher_timeframe").notNull().default("1d"), // Preferred higher timeframe for /cryptoai analysis cards
@@ -135,6 +137,8 @@ export const insertCryptoSubscriptionSchema = z.object({
   scanTickers: z.array(z.string()).optional().default([]),
   minRiskReward: z.union([z.string(), z.number()]).optional().default("1.5"),
   minConfluence: z.number().int().optional().default(3),
+  atrStopBuffer: z.union([z.string(), z.number()]).optional().default("0.75"),
+  fvgAtrFactor: z.union([z.string(), z.number()]).optional().default("0.50"),
   aiModelPref: z.enum(['fast', 'deep']).optional().default('fast'),
   aiTraderMode: z.string().optional().default('smc'),
   aiHigherTimeframe: aiTimeframeSchema.optional().default(DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME),
@@ -279,6 +283,10 @@ export const cryptoPreferencesSchema = z.object({
   aiLowerTimeframe: aiTimeframeSchema.default(DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME),
   tickerSlots: z.number().int().min(0).max(5).default(0),
   scanTickers: z.array(z.string()).max(5).default([]),
+  minRiskReward: z.number().min(0).max(99.99).default(1.5),
+  minConfluence: z.number().int().min(0).max(9).default(3),
+  atrStopBuffer: z.number().min(0).max(10).default(0.75),
+  fvgAtrFactor: z.number().min(0).max(10).default(0.5),
   tier: z.string().default('free'),
 });
 

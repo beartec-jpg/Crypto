@@ -7,8 +7,10 @@ import {
 } from '@/lib/cryptoAiSessionBoard';
 import {
   encodeCryptoAiPairInterval,
+  getCryptoAiDeepDiveTtlMinutes,
   getCryptoAiCycleSession,
   isCryptoAiCacheFresh,
+  isCryptoAiDeepDiveCacheFresh,
   normalizeCryptoAiPair,
 } from '@shared/cryptoAiConfig';
 
@@ -29,6 +31,13 @@ describe('crypto AI pair config', () => {
     expect(getCryptoAiCycleSession(now)).toBe('new_york');
     expect(isCryptoAiCacheFresh('2026-07-16T13:05:00.000Z', now)).toBe(true);
     expect(isCryptoAiCacheFresh('2026-07-16T05:55:00.000Z', now)).toBe(false);
+  });
+
+  it('uses a deep-dive TTL equal to 2x the lower timeframe', () => {
+    expect(getCryptoAiDeepDiveTtlMinutes('15m')).toBe(30);
+    expect(getCryptoAiDeepDiveTtlMinutes('1h')).toBe(120);
+    expect(isCryptoAiDeepDiveCacheFresh('2026-07-16T13:31:00.000Z', '15m', new Date('2026-07-16T14:00:00.000Z'))).toBe(true);
+    expect(isCryptoAiDeepDiveCacheFresh('2026-07-16T13:29:00.000Z', '15m', new Date('2026-07-16T14:00:00.000Z'))).toBe(false);
   });
 });
 

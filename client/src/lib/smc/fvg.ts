@@ -65,7 +65,7 @@ export function calculateFVGs(
   footprintData: FootprintData[],
   fvgVolumeThreshold: number = 1.5,
   useAtrFilter: boolean = true, 
-  atrFactor: number = 1
+  atrFactor: number = 0.5
 ): FVG[] {
   const atr = calculateATR(data);
   const fvgs: FVG[] = [];
