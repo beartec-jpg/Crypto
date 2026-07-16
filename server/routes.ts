@@ -3999,26 +3999,53 @@ Be concise and direct.`;
         });
       }
 
-      // Use 2 credits for multi-TF (more comprehensive analysis)
-      const creditResult = await cryptoSubscriptionService.useAICredit(userId);
-      if (!creditResult.success) {
-        return res.status(403).json({ 
-          error: 'No AI credits remaining',
-          message: 'You have used all your monthly AI credits.',
-          creditsRemaining: 0
-        });
-      }
-
-      const { symbol, timeframes = ['5m', '15m', '1h', '4h'], mode: requestedMode } = req.body;
+      const {
+        symbol,
+        timeframes = ['15m', '1d'],
+        higherTimeframe: requestedHigherTimeframe,
+        lowerTimeframe: requestedLowerTimeframe,
+        analysisType = 'deep',
+        mode: requestedMode,
+      } = req.body;
       if (!symbol) {
         return res.status(400).json({ error: 'Symbol is required' });
+      }
+
+      const TIMEFRAME_RANK: Record<string, number> = {
+        '5m': 1,
+        '15m': 2,
+        '1h': 3,
+        '4h': 4,
+        '1d': 5,
+        '1w': 6,
+      };
+      const fallbackFrames = Array.isArray(timeframes) ? timeframes.filter((tf: string) => tf in TIMEFRAME_RANK) : [];
+      const lowerTimeframe = requestedLowerTimeframe || fallbackFrames[0] || '15m';
+      const higherTimeframe = requestedHigherTimeframe || fallbackFrames[1] || '1d';
+      if (!(lowerTimeframe in TIMEFRAME_RANK) || !(higherTimeframe in TIMEFRAME_RANK)) {
+        return res.status(400).json({ error: 'Invalid timeframe selection' });
+      }
+      if (TIMEFRAME_RANK[higherTimeframe] <= TIMEFRAME_RANK[lowerTimeframe]) {
+        return res.status(400).json({ error: 'Higher timeframe must be greater than lower timeframe' });
+      }
+
+      let creditResult = { success: true, remaining: subscription.aiCredits ?? 0 };
+      if (analysisType === 'deep') {
+        creditResult = await cryptoSubscriptionService.useAICredit(userId);
+        if (!creditResult.success) {
+          return res.status(403).json({ 
+            error: 'No AI credits remaining',
+            message: 'You have used all your monthly AI credits.',
+            creditsRemaining: 0
+          });
+        }
       }
 
       // Resolve the selected AI trader mode so multi-TF analysis uses the same lens.
       const { getAiTraderMode } = await import("@shared/aiTraderModes");
       const traderMode = getAiTraderMode(requestedMode);
 
-      console.log(`📊 Multi-TF Analysis for ${symbol}: ${timeframes.join(', ')}`);
+      console.log(`📊 Multi-TF Analysis for ${symbol}: ${higherTimeframe}/${lowerTimeframe} (${analysisType})`);
 
       // Fetch data for all timeframes in parallel
       const fetchBarsForTF = async (tf: string) => {
@@ -4036,12 +4063,12 @@ Be concise and direct.`;
         }));
       };
 
-      const [bars5m, bars15m, bars1h, bars4h] = await Promise.all([
-        fetchBarsForTF('5m'),
-        fetchBarsForTF('15m'),
-        fetchBarsForTF('1h'),
-        fetchBarsForTF('4h')
-      ]);
+      const requestedFrames = Array.from(new Set([lowerTimeframe, higherTimeframe]));
+      const barsByTimeframe = Object.fromEntries(
+        await Promise.all(
+          requestedFrames.map(async (tf) => [tf, await fetchBarsForTF(tf)])
+        )
+      ) as Record<string, CandleBar[]>;
 
       // Helper to compute indicators for a given bars array
       const computeIndicators = (bars: any[]) => {
@@ -4093,66 +4120,61 @@ Be concise and direct.`;
         };
       };
 
-      const data5m = computeIndicators(bars5m);
-      const data15m = computeIndicators(bars15m);
-      const data1h = computeIndicators(bars1h);
-      const data4h = computeIndicators(bars4h);
+      const lowerData = computeIndicators(barsByTimeframe[lowerTimeframe]);
+      const higherData = computeIndicators(barsByTimeframe[higherTimeframe]);
 
       // Constants for trade idea validation
-      const RSI_BULLISH_THRESHOLD = 55;
-      const RSI_BEARISH_THRESHOLD = 45;
-      const HTF_4H_WEIGHT = 2;     // 4h RSI/MACD weighted twice vs 1h
-      const HTF_1H_WEIGHT = 1;
-      const BIAS_SCORE_THRESHOLD = 2; // Score needed to declare BULLISH or BEARISH
       const MIN_RISK_REWARD_RATIO = AI_MIN_RISK_REWARD_RATIO;
       const DUPLICATE_ENTRY_THRESHOLD_PCT = 0.001; // 0.1% tolerance for same-entry detection
 
-      // Derive dominant HTF bias from 1h and 4h to anchor trade direction in the prompt
+      // Derive dominant HTF bias from the user-selected higher/lower timeframe pair
       const htfBiasScore = (() => {
         let score = 0;
-        const rsi4h = parseFloat(data4h.rsi);
-        const rsi1h = parseFloat(data1h.rsi);
-        if (rsi4h > RSI_BULLISH_THRESHOLD) score += HTF_4H_WEIGHT; else if (rsi4h < RSI_BEARISH_THRESHOLD) score -= HTF_4H_WEIGHT;
-        if (rsi1h > RSI_BULLISH_THRESHOLD) score += HTF_1H_WEIGHT; else if (rsi1h < RSI_BEARISH_THRESHOLD) score -= HTF_1H_WEIGHT;
-        if (parseFloat(data4h.macd.histogram) > 0) score += HTF_4H_WEIGHT; else if (parseFloat(data4h.macd.histogram) < 0) score -= HTF_4H_WEIGHT;
-        if (parseFloat(data1h.macd.histogram) > 0) score += HTF_1H_WEIGHT; else if (parseFloat(data1h.macd.histogram) < 0) score -= HTF_1H_WEIGHT;
+        const higherRsi = parseFloat(higherData.rsi);
+        const lowerRsi = parseFloat(lowerData.rsi);
+        if (higherRsi > 55) score += 2; else if (higherRsi < 45) score -= 2;
+        if (lowerRsi > 55) score += 1; else if (lowerRsi < 45) score -= 1;
+        if (parseFloat(higherData.macd.histogram) > 0) score += 2; else if (parseFloat(higherData.macd.histogram) < 0) score -= 2;
+        if (parseFloat(lowerData.macd.histogram) > 0) score += 1; else if (parseFloat(lowerData.macd.histogram) < 0) score -= 1;
         return score;
       })();
-      const dominantBias = htfBiasScore >= BIAS_SCORE_THRESHOLD ? 'BULLISH' : htfBiasScore <= -BIAS_SCORE_THRESHOLD ? 'BEARISH' : 'NEUTRAL';
+      const dominantBias = htfBiasScore >= 2 ? 'BULLISH' : htfBiasScore <= -2 ? 'BEARISH' : 'NEUTRAL';
 
-      // Build multi-TF prompt for Grok
       const fmt = (arr: string[]) => arr.length > 0 ? arr.join(', ') : 'none';
-      const prompt = `Symbol: ${symbol} | Multi-Timeframe Analysis
-Current Price: $${data5m.currentPrice}
-HTF Dominant Bias (1h+4h): ${dominantBias}
+      const fmtTF = (label: string, data: ReturnType<typeof computeIndicators>) => `
+${label} (${label === higherTimeframe ? 'Higher TF bias' : 'Lower TF execution'}) | RSI:${data.rsi} MACD:${data.macd.histogram}${data.macd.crossover !== 'none' ? `(${data.macd.crossover})` : ''} Stoch:%K${data.stoch.k}/%D${data.stoch.d} ADX:${data.adx} ATR:${data.atr}
+  VWAP:$${data.vwap} OBV:${data.obv} Squeeze:${data.bb.squeeze ? 'YES' : 'no'} BOS:${data.bos} CHoCH:${data.choch}
+  Range: H$${data.recentHigh}/L$${data.recentLow} VP: POC$${data.volumeProfile.poc}/VAH$${data.volumeProfile.vah}/VAL$${data.volumeProfile.val}
+  Swing Highs: ${fmt(data.swingHighs)} | Swing Lows: ${fmt(data.swingLows)}
+  Bullish FVGs: ${fmt(data.fvgs.bullish)} | Bearish FVGs: ${fmt(data.fvgs.bearish)}
+  Bullish OBs: ${fmt(data.orderBlocks.bullish)} | Bearish OBs: ${fmt(data.orderBlocks.bearish)}`;
 
-5m | RSI:${data5m.rsi} MACD:${data5m.macd.histogram}${data5m.macd.crossover !== 'none' ? `(${data5m.macd.crossover})` : ''} Stoch:%K${data5m.stoch.k}/%D${data5m.stoch.d} ADX:${data5m.adx} ATR:${data5m.atr}
-  VWAP:$${data5m.vwap} OBV:${data5m.obv} Squeeze:${data5m.bb.squeeze ? 'YES' : 'no'} BOS:${data5m.bos} CHoCH:${data5m.choch}
-  Range: H$${data5m.recentHigh}/L$${data5m.recentLow} VP: POC$${data5m.volumeProfile.poc}/VAH$${data5m.volumeProfile.vah}/VAL$${data5m.volumeProfile.val}
-  Swing Highs: ${fmt(data5m.swingHighs)} | Swing Lows: ${fmt(data5m.swingLows)}
-  Bullish FVGs: ${fmt(data5m.fvgs.bullish)} | Bearish FVGs: ${fmt(data5m.fvgs.bearish)}
-  Bullish OBs: ${fmt(data5m.orderBlocks.bullish)} | Bearish OBs: ${fmt(data5m.orderBlocks.bearish)}
+      const generalPrompt = `Symbol: ${symbol} | General multi-timeframe overview
+Higher timeframe: ${higherTimeframe}
+Lower timeframe: ${lowerTimeframe}
+Current Price: $${lowerData.currentPrice}
+${fmtTF(higherTimeframe, higherData)}
+${fmtTF(lowerTimeframe, lowerData)}
 
-15m | RSI:${data15m.rsi} MACD:${data15m.macd.histogram}${data15m.macd.crossover !== 'none' ? `(${data15m.macd.crossover})` : ''} Stoch:%K${data15m.stoch.k}/%D${data15m.stoch.d} ADX:${data15m.adx} ATR:${data15m.atr}
-  VWAP:$${data15m.vwap} OBV:${data15m.obv} Squeeze:${data15m.bb.squeeze ? 'YES' : 'no'} BOS:${data15m.bos} CHoCH:${data15m.choch}
-  Range: H$${data15m.recentHigh}/L$${data15m.recentLow} VP: POC$${data15m.volumeProfile.poc}/VAH$${data15m.volumeProfile.vah}/VAL$${data15m.volumeProfile.val}
-  Swing Highs: ${fmt(data15m.swingHighs)} | Swing Lows: ${fmt(data15m.swingLows)}
-  Bullish FVGs: ${fmt(data15m.fvgs.bullish)} | Bearish FVGs: ${fmt(data15m.fvgs.bearish)}
-  Bullish OBs: ${fmt(data15m.orderBlocks.bullish)} | Bearish OBs: ${fmt(data15m.orderBlocks.bearish)}
+Give a concise at-a-glance analysis only. Do NOT produce a trade plan, entry, stop, targets, or risk/reward.
+- Higher timeframe: focus on dominant bias/trend and key levels.
+- Lower timeframe: focus on momentum/structure, alignment with the higher timeframe, and nearby trigger levels.
+- Keep summaries brief and actionable.
 
-1h | RSI:${data1h.rsi} MACD:${data1h.macd.histogram}${data1h.macd.crossover !== 'none' ? `(${data1h.macd.crossover})` : ''} Stoch:%K${data1h.stoch.k}/%D${data1h.stoch.d} ADX:${data1h.adx} ATR:${data1h.atr}
-  VWAP:$${data1h.vwap} OBV:${data1h.obv} Squeeze:${data1h.bb.squeeze ? 'YES' : 'no'} BOS:${data1h.bos} CHoCH:${data1h.choch}
-  Range: H$${data1h.recentHigh}/L$${data1h.recentLow} VP: POC$${data1h.volumeProfile.poc}/VAH$${data1h.volumeProfile.vah}/VAL$${data1h.volumeProfile.val}
-  Swing Highs: ${fmt(data1h.swingHighs)} | Swing Lows: ${fmt(data1h.swingLows)}
-  Bullish FVGs: ${fmt(data1h.fvgs.bullish)} | Bearish FVGs: ${fmt(data1h.fvgs.bearish)}
-  Bullish OBs: ${fmt(data1h.orderBlocks.bullish)} | Bearish OBs: ${fmt(data1h.orderBlocks.bearish)}
+OUTPUT: Valid JSON only, no markdown.
+{
+  "multiTFInsights": {
+    "${higherTimeframe}": { "summary": "1-2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["label: $X"] },
+    "${lowerTimeframe}": { "summary": "1-2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["label: $X"] },
+    "overallSummary": "1-2 sentences on alignment and what matters next"
+  }
+}`;
 
-4h | RSI:${data4h.rsi} MACD:${data4h.macd.histogram}${data4h.macd.crossover !== 'none' ? `(${data4h.macd.crossover})` : ''} Stoch:%K${data4h.stoch.k}/%D${data4h.stoch.d} ADX:${data4h.adx} ATR:${data4h.atr}
-  VWAP:$${data4h.vwap} OBV:${data4h.obv} Squeeze:${data4h.bb.squeeze ? 'YES' : 'no'} BOS:${data4h.bos} CHoCH:${data4h.choch}
-  Range: H$${data4h.recentHigh}/L$${data4h.recentLow} VP: POC$${data4h.volumeProfile.poc}/VAH$${data4h.volumeProfile.vah}/VAL$${data4h.volumeProfile.val}
-  Swing Highs: ${fmt(data4h.swingHighs)} | Swing Lows: ${fmt(data4h.swingLows)}
-  Bullish FVGs: ${fmt(data4h.fvgs.bullish)} | Bearish FVGs: ${fmt(data4h.fvgs.bearish)}
-  Bullish OBs: ${fmt(data4h.orderBlocks.bullish)} | Bearish OBs: ${fmt(data4h.orderBlocks.bearish)}
+      const deepPrompt = `Symbol: ${symbol} | Multi-timeframe trade search
+Current Price: $${lowerData.currentPrice}
+HTF Dominant Bias (${higherTimeframe}): ${dominantBias}
+${fmtTF(higherTimeframe, higherData)}
+${fmtTF(lowerTimeframe, lowerData)}
 
 TRADE PLANNING RULES:
 1. HTF bias is ${dominantBias}. All trades MUST align with this bias (no counter-trend trades unless bias is NEUTRAL with an A+ opposing setup).
@@ -4168,44 +4190,44 @@ TRADE PLANNING RULES:
 OUTPUT: Valid JSON only, no markdown.
 {
   "multiTFInsights": {
-    "5m": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["label: $X"] },
-    "15m": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["label: $X"] },
-    "1h": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["label: $X"] },
-    "4h": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["label: $X"] },
-    "overallSummary": "2 sentences on cross-TF alignment, dominant trend, and whether a high-quality structural setup exists"
+    "${higherTimeframe}": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["label: $X"] },
+    "${lowerTimeframe}": { "summary": "2 sentences", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["label: $X"] },
+    "overallSummary": "2 sentences on cross-TF alignment, dominant trend, and whether a high-quality setup exists"
   },
   "bestTrades": [
     {
       "grade": "A+/A/B/C",
-      "primaryTF": "15m/1h/4h",
+      "primaryTF": "${lowerTimeframe}/${higherTimeframe}",
       "direction": "LONG/SHORT",
       "entry": 1.2345,
       "stopLoss": 1.2280,
       "targets": [1.2420, 1.2520],
-      "entryRationale": "FVG $1.23-$1.235 + bullish OB confluence on 15m",
-      "slRationale": "Below OB low $1.228 (1.5x ATR)",
-      "tp1Rationale": "Previous swing high $1.242",
-      "tp2Rationale": "4h VAH $1.252",
-      "confluenceSignals": ["15m bullish FVG $1.23-$1.235", "1h BOS bullish", "4h RSI above 55", "VWAP support"],
+      "entryRationale": "why the level matters",
+      "slRationale": "why the invalidation sits there",
+      "tp1Rationale": "nearest opposing level",
+      "tp2Rationale": "next major level",
+      "confluenceSignals": ["signal 1", "signal 2", "signal 3"],
       "reasoning": "1 sentence: why this is a high-probability level-to-level setup."
     }
   ]
 }`;
 
-      console.log('🤖 Calling xAI Grok 4 (thinking) for multi-TF analysis...');
+      console.log('🤖 Calling xAI Grok 4 for multi-TF analysis...');
       const startTime = Date.now();
 
       const response = await createXaiChatCompletionWithFallback({
         messages: [
           {
             role: "system",
-            content: `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes (${timeframes.join(', ')}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\nYour edge is cross-timeframe confluence: identify WHERE price is going (the target level), WHERE to enter (with a concrete justification appropriate to this mode — never a blind "enter at current price"), and WHERE your invalidation is (a structural stop behind the entry). You require a minimum ${MIN_RISK_REWARD_RATIO}:1 R/R to TP1. You never output contradictory LONG+SHORT setups. If no quality setup exists for this mode, you say so. Always respond with valid JSON only, no markdown.`
+            content: analysisType === 'general'
+              ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Always respond with valid JSON only, no markdown.`
+              : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes (${higherTimeframe}, ${lowerTimeframe}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\nYour edge is cross-timeframe confluence: identify WHERE price is going (the target level), WHERE to enter (with a concrete justification appropriate to this mode — never a blind "enter at current price"), and WHERE your invalidation is (a structural stop behind the entry). You require a minimum ${MIN_RISK_REWARD_RATIO}:1 R/R to TP1. You never output contradictory LONG+SHORT setups. If no quality setup exists for this mode, you say so. Always respond with valid JSON only, no markdown.`
           },
-          { role: "user", content: prompt }
+          { role: "user", content: analysisType === 'general' ? generalPrompt : deepPrompt }
         ],
-        temperature: 0.3,
-        max_tokens: 16000,
-        enableThinking: true,
+        temperature: analysisType === 'general' ? 0.2 : 0.3,
+        max_tokens: analysisType === 'general' ? 1200 : 16000,
+        enableThinking: analysisType !== 'general',
       });
 
       const duration = Date.now() - startTime;
@@ -4220,14 +4242,19 @@ OUTPUT: Valid JSON only, no markdown.
       try {
         let content = extractTextContent(response.choices[0].message);
         content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        parsedResult = JSON.parse(content);
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        parsedResult = jsonMatch ? JSON.parse(jsonMatch[0]) : { multiTFInsights: null, bestTrades: [] };
       } catch (parseError) {
         console.error('Failed to parse Grok response:', parseError);
         parsedResult = { multiTFInsights: null, bestTrades: [] };
       }
 
+      if (analysisType === 'general') {
+        parsedResult.bestTrades = [];
+      }
+
       // === Server-side validation of trade ideas ===
-      const rawTrades: any[] = parsedResult.bestTrades || [];
+      const rawTrades: any[] = analysisType === 'general' ? [] : (parsedResult.bestTrades || []);
 
       const sanitisedTrades = rawTrades.filter((trade: any) => {
         const entry = parseFloat(trade.entry);
@@ -4294,29 +4321,30 @@ OUTPUT: Valid JSON only, no markdown.
 
       const validatedTrades = dedupedTrades.slice(0, 2); // Hard cap at 2
       console.log(`✅ Trade ideas after validation: ${validatedTrades.length} (raw: ${rawTrades.length})`);
-      parsedResult.bestTrades = validatedTrades;
+      parsedResult.bestTrades = analysisType === 'general' ? [] : validatedTrades;
 
-      // Save Multi-TF analysis to cache
-      try {
-        await cryptoSubscriptionService.saveCachedMultiTFAnalysis(
-          userId,
-          symbol,
-          parsedResult.multiTFInsights,
-          parsedResult.bestTrades || [],
-          parsedResult.confluence || ''
-        );
-        console.log('💾 Multi-TF analysis cached for', symbol);
-      } catch (cacheError) {
-        console.error('Failed to cache multi-TF analysis:', cacheError);
+      if (analysisType === 'deep') {
+        try {
+          await cryptoSubscriptionService.saveCachedMultiTFAnalysis(
+            userId,
+            symbol,
+            parsedResult.multiTFInsights,
+            parsedResult.bestTrades || [],
+            parsedResult.confluence || ''
+          );
+          console.log('💾 Multi-TF analysis cached for', symbol);
+        } catch (cacheError) {
+          console.error('Failed to cache multi-TF analysis:', cacheError);
+        }
       }
 
       res.json({
         success: true,
         multiTFInsights: parsedResult.multiTFInsights,
         bestTrades: parsedResult.bestTrades || [],
-        cost: estimatedCost,
+        estimatedCost,
         tokens: { input: inputTokens, output: outputTokens },
-        creditsRemaining: creditResult.remaining
+        creditsRemaining: analysisType === 'deep' ? creditResult.remaining : (subscription.aiCredits ?? 0)
       });
 
     } catch (error: any) {
@@ -5836,6 +5864,8 @@ Return ONLY valid JSON in this exact format:
         aiTradeAlertsEnabled: subscription?.aiTradeAlertsEnabled ?? true,
         indicatorAlertsEnabled: subscription?.indicatorAlertsEnabled ?? true,
         aiTraderMode: subscription?.aiTraderMode || 'smc',
+        aiHigherTimeframe: subscription?.aiHigherTimeframe || '1d',
+        aiLowerTimeframe: subscription?.aiLowerTimeframe || '15m',
         pushSubscription: subscription?.pushSubscription || null,
         tier: subscription?.tier || 'free',
       });
@@ -5852,8 +5882,18 @@ Return ONLY valid JSON in this exact format:
       const { 
         selectedTickers, alertGrades, alertTimeframes, alertTypes, alertsEnabled, pushSubscription,
         hlineAlertsEnabled, elliottAlertsEnabled, aiTradeAlertsEnabled, indicatorAlertsEnabled,
-        aiTraderMode
+        aiTraderMode, aiHigherTimeframe, aiLowerTimeframe
       } = req.body;
+
+      const ALLOWED_AI_TIMEFRAMES = ['5m', '15m', '1h', '4h', '1d', '1w'] as const;
+      const AI_TIMEFRAME_RANK: Record<string, number> = {
+        '5m': 1,
+        '15m': 2,
+        '1h': 3,
+        '4h': 4,
+        '1d': 5,
+        '1w': 6,
+      };
 
       // Get user subscription for tier-based validation
       const subscription = await cryptoSubscriptionService.getUserSubscription(userId);
@@ -5967,6 +6007,25 @@ Return ONLY valid JSON in this exact format:
         // Validate against the set of enabled AI trader modes (indicator | smc | ...).
         const { getAiTraderMode } = await import("@shared/aiTraderModes");
         updateData.aiTraderMode = getAiTraderMode(aiTraderMode).id;
+      }
+      if (aiHigherTimeframe !== undefined) {
+        if (!(ALLOWED_AI_TIMEFRAMES as readonly string[]).includes(aiHigherTimeframe)) {
+          return res.status(400).json({ error: `aiHigherTimeframe must be one of: ${ALLOWED_AI_TIMEFRAMES.join(', ')}` });
+        }
+        updateData.aiHigherTimeframe = aiHigherTimeframe;
+      }
+      if (aiLowerTimeframe !== undefined) {
+        if (!(ALLOWED_AI_TIMEFRAMES as readonly string[]).includes(aiLowerTimeframe)) {
+          return res.status(400).json({ error: `aiLowerTimeframe must be one of: ${ALLOWED_AI_TIMEFRAMES.join(', ')}` });
+        }
+        updateData.aiLowerTimeframe = aiLowerTimeframe;
+      }
+      if (updateData.aiHigherTimeframe !== undefined || updateData.aiLowerTimeframe !== undefined) {
+        const nextHigher = updateData.aiHigherTimeframe ?? subscription?.aiHigherTimeframe ?? '1d';
+        const nextLower = updateData.aiLowerTimeframe ?? subscription?.aiLowerTimeframe ?? '15m';
+        if (AI_TIMEFRAME_RANK[nextHigher] <= AI_TIMEFRAME_RANK[nextLower]) {
+          return res.status(400).json({ error: 'Higher timeframe must be greater than lower timeframe.' });
+        }
       }
 
       const updated = await db.update(cryptoSubscriptions)
