@@ -4,7 +4,7 @@ import OpenAI from 'openai';
 
 const ADMIN_EMAIL = 'beartec@beartec.uk';
 const AI_MIN_RISK_REWARD_RATIO = 1.5;
-const XAI_PRIMARY_MODEL = 'grok-4';
+const XAI_PRIMARY_MODEL = 'grok-4.5';
 const XAI_FALLBACK_MODEL = 'grok-4-1-fast-reasoning';
 const XAI_THINKING_BUDGET = parseInt(process.env.XAI_THINKING_BUDGET || '5000', 10);
 
@@ -294,10 +294,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(503).json({ error: 'AI service not configured', available: false });
     }
 
-    const { symbol, timeframes = ['5m', '15m', '1h', '4h'] } = req.body;
+    const { symbol, timeframes = ['5m', '15m', '1h', '4h'], mode: requestedMode } = req.body;
     if (!symbol) {
       return res.status(400).json({ error: 'Symbol is required' });
     }
+
+    // Resolve the selected AI trader mode so multi-TF analysis uses the same lens.
+    const { getAiTraderMode } = await import('../_lib/aiTraderModes.js');
+    const traderMode = getAiTraderMode(requestedMode);
 
     pool = await getDb();
 
@@ -487,11 +491,12 @@ Respond with ONLY valid JSON:
     });
 
     let completion: any;
+    const mtfSystemContent = `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes. Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\nHigher timeframes set the bias; lower timeframes provide entry timing. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Always respond with valid JSON only.`;
     try {
       completion = await (openai.chat.completions.create as any)({
         model: XAI_PRIMARY_MODEL,
         messages: [
-          { role: 'system', content: 'You are a professional SMC/ICT trader specializing in multi-timeframe analysis. Higher timeframes set the bias; lower timeframes provide entry timing. Think through the structural analysis carefully before committing to a trade idea. Always respond with valid JSON only.' },
+          { role: 'system', content: mtfSystemContent },
           { role: 'user', content: prompt }
         ],
         thinking: { type: 'enabled', budget_tokens: XAI_THINKING_BUDGET },
@@ -503,7 +508,7 @@ Respond with ONLY valid JSON:
       completion = await openai.chat.completions.create({
         model: XAI_FALLBACK_MODEL,
         messages: [
-          { role: 'system', content: 'You are a professional SMC/ICT trader specializing in multi-timeframe analysis. Higher timeframes set the bias; lower timeframes provide entry timing. Always respond with valid JSON only.' },
+          { role: 'system', content: mtfSystemContent },
           { role: 'user', content: prompt }
         ],
         temperature: 0.3,

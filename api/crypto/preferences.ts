@@ -73,7 +73,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'GET') {
       const result = await pool.query(
         `SELECT selected_tickers, alert_grades, alert_timeframes, alert_types, 
-                alerts_enabled, push_subscription, tier
+                alerts_enabled, push_subscription, tier,
+                ticker_slots, strategy_groups, scan_tickers, min_risk_reward,
+                min_confluence, ai_model_pref, ai_trader_mode, elliott_scan_enabled
          FROM crypto_subscriptions WHERE user_id = $1`,
         [cryptoUserId]
       );
@@ -89,6 +91,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           alertsEnabled: false,
           pushSubscription: null,
           tier: 'free',
+          tickerSlots: 1,
+          strategyGroups: ['indicator', 'smc'],
+          scanTickers: [],
+          minRiskReward: 1.5,
+          minConfluence: 3,
+          aiModelPref: 'fast',
+          aiTraderMode: 'smc',
+          elliottScanEnabled: false,
         });
       }
 
@@ -101,18 +111,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         alertsEnabled: row.alerts_enabled || false,
         pushSubscription: row.push_subscription || null,
         tier: row.tier || 'free',
+        tickerSlots: row.ticker_slots ?? 1,
+        strategyGroups: row.strategy_groups || ['indicator', 'smc'],
+        scanTickers: row.scan_tickers || [],
+        minRiskReward: row.min_risk_reward != null ? Number(row.min_risk_reward) : 1.5,
+        minConfluence: row.min_confluence ?? 3,
+        aiModelPref: row.ai_model_pref || 'fast',
+        aiTraderMode: row.ai_trader_mode || 'smc',
+        elliottScanEnabled: row.elliott_scan_enabled || false,
       });
     }
 
     if (req.method === 'POST') {
-      const { selectedTickers, alertGrades, alertTimeframes, alertTypes, alertsEnabled, pushSubscription } = req.body || {};
+      const { selectedTickers, alertGrades, alertTimeframes, alertTypes, alertsEnabled, pushSubscription,
+              strategyGroups, scanTickers, minRiskReward, minConfluence, aiModelPref, aiTraderMode, elliottScanEnabled } = req.body || {};
 
       // Get current tier for validation
       const tierResult = await pool.query(
-        'SELECT tier FROM crypto_subscriptions WHERE user_id = $1',
+        'SELECT tier, ticker_slots FROM crypto_subscriptions WHERE user_id = $1',
         [cryptoUserId]
       );
       const tier = tierResult.rows[0]?.tier || 'free';
+      // ticker_slots is admin-settable (payment deferred); cap live AI scan tickers at this value (max 5)
+      const tickerSlots = Math.min(tierResult.rows[0]?.ticker_slots ?? 1, 5);
 
       // Tier-based limits
       const tierLimits: Record<string, { maxTickers: number; allowedAlertTypes: string[]; allowedGrades: string[]; allowedTimeframes: string[] }> = {
@@ -152,6 +173,72 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           await pool.end();
           return res.status(403).json({ error: `${tier} tier does not support alert types: ${invalidTypes.join(', ')}. Upgrade to unlock.` });
         }
+      }
+
+      // --- AI trading-desk scan preference validation ---
+      const ALLOWED_STRATEGY_GROUPS = ['indicator', 'smc', 'elliott', 'divergence-master', 'mtf-confluence', 'volume-profile'];
+
+      // Validate strategy groups
+      if (strategyGroups !== undefined) {
+        if (!Array.isArray(strategyGroups)) {
+          await pool.end();
+          return res.status(400).json({ error: 'strategyGroups must be an array.' });
+        }
+        const invalidGroups = strategyGroups.filter((g: string) => !ALLOWED_STRATEGY_GROUPS.includes(g));
+        if (invalidGroups.length > 0) {
+          await pool.end();
+          return res.status(400).json({ error: `Invalid strategy groups: ${invalidGroups.join(', ')}.` });
+        }
+      }
+
+      // Validate scan tickers count against the user's ticker_slots (max 5 live AI tickers)
+      if (scanTickers !== undefined) {
+        if (!Array.isArray(scanTickers)) {
+          await pool.end();
+          return res.status(400).json({ error: 'scanTickers must be an array.' });
+        }
+        if (scanTickers.length > tickerSlots) {
+          await pool.end();
+          return res.status(403).json({ error: `Your plan allows ${tickerSlots} live AI ticker(s). Upgrade to add more.` });
+        }
+      }
+
+      // Validate min risk/reward (numeric, sane bounds)
+      let minRiskRewardValue: number | undefined;
+      if (minRiskReward !== undefined) {
+        minRiskRewardValue = Number(minRiskReward);
+        if (!Number.isFinite(minRiskRewardValue) || minRiskRewardValue < 0 || minRiskRewardValue > 99.99) {
+          await pool.end();
+          return res.status(400).json({ error: 'minRiskReward must be a number between 0 and 99.99.' });
+        }
+      }
+
+      // Validate min confluence (integer, sane bounds)
+      let minConfluenceValue: number | undefined;
+      if (minConfluence !== undefined) {
+        minConfluenceValue = Number(minConfluence);
+        if (!Number.isInteger(minConfluenceValue) || minConfluenceValue < 0 || minConfluenceValue > 9) {
+          await pool.end();
+          return res.status(400).json({ error: 'minConfluence must be an integer between 0 and 9.' });
+        }
+      }
+
+      // Validate narrator model preference
+      if (aiModelPref !== undefined && !['fast', 'deep'].includes(aiModelPref)) {
+        await pool.end();
+        return res.status(400).json({ error: "aiModelPref must be 'fast' or 'deep'." });
+      }
+
+      // Validate AI trader mode (enabled modes only; mirrors shared/aiTraderModes.ts)
+      const ALLOWED_AI_TRADER_MODES = ['indicator', 'smc'];
+      if (aiTraderMode !== undefined && !ALLOWED_AI_TRADER_MODES.includes(aiTraderMode)) {
+        await pool.end();
+        return res.status(400).json({ error: `aiTraderMode must be one of: ${ALLOWED_AI_TRADER_MODES.join(', ')}.` });
+      }
+
+      if (elliottScanEnabled !== undefined && typeof elliottScanEnabled !== 'boolean') {
+        await pool.end();
+        return res.status(400).json({ error: 'elliottScanEnabled must be a boolean.' });
       }
 
       // Check if subscription exists
@@ -205,6 +292,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (pushSubscription !== undefined) {
           updates.push(`push_subscription = $${paramIndex++}`);
           values.push(pushSubscription ? JSON.stringify(pushSubscription) : null);
+        }
+        if (strategyGroups !== undefined) {
+          updates.push(`strategy_groups = $${paramIndex++}`);
+          values.push(strategyGroups);
+        }
+        if (scanTickers !== undefined) {
+          updates.push(`scan_tickers = $${paramIndex++}`);
+          values.push(scanTickers);
+        }
+        if (minRiskRewardValue !== undefined) {
+          updates.push(`min_risk_reward = $${paramIndex++}`);
+          values.push(minRiskRewardValue);
+        }
+        if (minConfluence !== undefined) {
+          updates.push(`min_confluence = $${paramIndex++}`);
+          values.push(minConfluenceValue);
+        }
+        if (aiModelPref !== undefined) {
+          updates.push(`ai_model_pref = $${paramIndex++}`);
+          values.push(aiModelPref);
+        }
+        if (aiTraderMode !== undefined) {
+          updates.push(`ai_trader_mode = $${paramIndex++}`);
+          values.push(aiTraderMode);
+        }
+        if (elliottScanEnabled !== undefined) {
+          updates.push(`elliott_scan_enabled = $${paramIndex++}`);
+          values.push(elliottScanEnabled);
         }
 
         updates.push(`updated_at = NOW()`);
