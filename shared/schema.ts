@@ -83,6 +83,14 @@ export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
   bonusAiCredits: integer("bonus_ai_credits").default(0), // Admin-granted bonus AI credits (added on top of tier)
   bonusElliottCredits: integer("bonus_elliott_credits").default(0), // Admin-granted bonus Elliott credits
   customToolAccess: jsonb("custom_tool_access").$type<string[]>(), // Admin-granted custom tool/indicator IDs
+  // AI trading-desk scan preferences (per-user)
+  tickerSlots: integer("ticker_slots").notNull().default(1), // How many watchlist tickers may run through LIVE AI scanning (ticker-scaled tier)
+  strategyGroups: text("strategy_groups").array().notNull().default(sql`ARRAY['indicator','smc']::text[]`), // Which strategy groups/modes to receive
+  scanTickers: text("scan_tickers").array().notNull().default(sql`ARRAY[]::text[]`), // Subset of watchlist activated for live AI
+  minRiskReward: decimal("min_risk_reward", { precision: 4, scale: 2 }).notNull().default("1.5"), // User-tunable min R/R threshold
+  minConfluence: integer("min_confluence").notNull().default(3), // User-tunable min confluence threshold
+  aiModelPref: varchar("ai_model_pref").notNull().default("fast"), // Preferred narrator model: 'fast' | 'deep'
+  elliottScanEnabled: boolean("elliott_scan_enabled").notNull().default(false), // Opt-in to Elliott mode in scanner
   pushSubscription: jsonb("push_subscription"), // Store push subscription data
   stripeSubscriptionId: varchar("stripe_subscription_id"),
   subscriptionStatus: varchar("subscription_status").default("active"),
@@ -112,6 +120,13 @@ export const insertCryptoSubscriptionSchema = z.object({
   bonusAiCredits: z.number().int().optional().default(0),
   bonusElliottCredits: z.number().int().optional().default(0),
   customToolAccess: z.array(z.string()).optional().nullable(),
+  tickerSlots: z.number().int().optional().default(1),
+  strategyGroups: z.array(z.string()).optional().default(['indicator', 'smc']),
+  scanTickers: z.array(z.string()).optional().default([]),
+  minRiskReward: z.union([z.string(), z.number()]).optional().default("1.5"),
+  minConfluence: z.number().int().optional().default(3),
+  aiModelPref: z.enum(['fast', 'deep']).optional().default('fast'),
+  elliottScanEnabled: z.boolean().optional().default(false),
   pushSubscription: z.any().optional().nullable(),
   stripeSubscriptionId: z.string().optional().nullable(),
   subscriptionStatus: z.string().optional().default("active"),
@@ -120,6 +135,33 @@ export const insertCryptoSubscriptionSchema = z.object({
 
 export type InsertCryptoSubscription = z.infer<typeof insertCryptoSubscriptionSchema>;
 export type CryptoSubscription = typeof cryptoSubscriptions.$inferSelect;
+
+// Shared, cross-user AI scan cache (NO user_id -> one Grok call serves every user on that ticker)
+export const cryptoScanCache = pgTable("crypto_scan_cache", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  symbol: varchar("symbol").notNull(), // e.g. 'XRPUSDT'
+  interval: varchar("interval").notNull(), // e.g. '15m','1h','4h'
+  mode: varchar("mode").notNull(), // 'indicator' | 'smc' | 'elliott' | ...
+  scores: jsonb("scores").notNull().default(sql`'{}'::jsonb`), // deterministic 9-system output + reasoning[]
+  aiNarration: jsonb("ai_narration"), // Grok narration/ranking (nullable until narrated)
+  tierState: varchar("tier_state").notNull().default("neutral"), // 'actionable' | 'watchlist' | 'neutral'
+  modelUsed: varchar("model_used"), // 'fast' | 'deep'
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertCryptoScanCacheSchema = z.object({
+  symbol: z.string(),
+  interval: z.string(),
+  mode: z.string(),
+  scores: z.any().optional().default({}),
+  aiNarration: z.any().optional().nullable(),
+  tierState: z.enum(['actionable', 'watchlist', 'neutral']).optional().default('neutral'),
+  modelUsed: z.enum(['fast', 'deep']).optional().nullable(),
+});
+
+export type InsertCryptoScanCache = z.infer<typeof insertCryptoScanCacheSchema>;
+export type CryptoScanCache = typeof cryptoScanCache.$inferSelect;
 
 // User Watchlists - separate table for managing user's ticker watchlist
 export const userWatchlists = pgTable("user_watchlists", {
