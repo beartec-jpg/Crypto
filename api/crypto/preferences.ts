@@ -75,7 +75,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         `SELECT selected_tickers, alert_grades, alert_timeframes, alert_types, 
                 alerts_enabled, push_subscription, tier,
                 ticker_slots, strategy_groups, scan_tickers, min_risk_reward,
-                min_confluence, ai_model_pref, elliott_scan_enabled
+                min_confluence, ai_model_pref, ai_trader_mode, elliott_scan_enabled
          FROM crypto_subscriptions WHERE user_id = $1`,
         [cryptoUserId]
       );
@@ -97,6 +97,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           minRiskReward: 1.5,
           minConfluence: 3,
           aiModelPref: 'fast',
+          aiTraderMode: 'smc',
           elliottScanEnabled: false,
         });
       }
@@ -116,13 +117,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         minRiskReward: row.min_risk_reward != null ? Number(row.min_risk_reward) : 1.5,
         minConfluence: row.min_confluence ?? 3,
         aiModelPref: row.ai_model_pref || 'fast',
+        aiTraderMode: row.ai_trader_mode || 'smc',
         elliottScanEnabled: row.elliott_scan_enabled || false,
       });
     }
 
     if (req.method === 'POST') {
       const { selectedTickers, alertGrades, alertTimeframes, alertTypes, alertsEnabled, pushSubscription,
-              strategyGroups, scanTickers, minRiskReward, minConfluence, aiModelPref, elliottScanEnabled } = req.body || {};
+              strategyGroups, scanTickers, minRiskReward, minConfluence, aiModelPref, aiTraderMode, elliottScanEnabled } = req.body || {};
 
       // Get current tier for validation
       const tierResult = await pool.query(
@@ -227,6 +229,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: "aiModelPref must be 'fast' or 'deep'." });
       }
 
+      // Validate AI trader mode (enabled modes only; mirrors shared/aiTraderModes.ts)
+      const ALLOWED_AI_TRADER_MODES = ['indicator', 'smc'];
+      if (aiTraderMode !== undefined && !ALLOWED_AI_TRADER_MODES.includes(aiTraderMode)) {
+        await pool.end();
+        return res.status(400).json({ error: `aiTraderMode must be one of: ${ALLOWED_AI_TRADER_MODES.join(', ')}.` });
+      }
+
       if (elliottScanEnabled !== undefined && typeof elliottScanEnabled !== 'boolean') {
         await pool.end();
         return res.status(400).json({ error: 'elliottScanEnabled must be a boolean.' });
@@ -303,6 +312,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (aiModelPref !== undefined) {
           updates.push(`ai_model_pref = $${paramIndex++}`);
           values.push(aiModelPref);
+        }
+        if (aiTraderMode !== undefined) {
+          updates.push(`ai_trader_mode = $${paramIndex++}`);
+          values.push(aiTraderMode);
         }
         if (elliottScanEnabled !== undefined) {
           updates.push(`elliott_scan_enabled = $${paramIndex++}`);

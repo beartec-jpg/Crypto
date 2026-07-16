@@ -321,7 +321,7 @@ async function createXaiChatCompletionWithTools(params: {
     ? [primaryModel]
     : [primaryModel, XAI_FALLBACK_MODEL];
 
-  const maxIterations = params.maxIterations ?? 5;
+  const maxIterations = params.maxIterations ?? 6;
   const messages: any[] = [...params.messages];
   const aggregatedUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
 
@@ -4199,7 +4199,7 @@ OUTPUT: Valid JSON only, no markdown.
         messages: [
           {
             role: "system",
-            content: `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes. Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\nYou are an elite crypto trader specialising in SMC/ICT multi-timeframe analysis. Your edge is identifying high-probability setups where price is approaching a key structural level (FVG, Order Block, swing pivot) with cross-timeframe confluence. You think in levels: you identify WHERE price is going (the target level), WHERE to enter (the entry level — always an FVG, OB, or confirmed pivot), and WHERE your invalidation is (structural stop behind the entry zone). You never generate a trade that is just "enter at current price with an ATR stop" — that is not a trade setup, it is a guess. You require a minimum ${MIN_RISK_REWARD_RATIO}:1 R/R to TP1. You never output contradictory LONG+SHORT setups. If no quality setup exists for this mode, you say so. Always respond with valid JSON only, no markdown.`
+            content: `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes (${timeframes.join(', ')}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\nYour edge is cross-timeframe confluence: identify WHERE price is going (the target level), WHERE to enter (with a concrete justification appropriate to this mode — never a blind "enter at current price"), and WHERE your invalidation is (a structural stop behind the entry). You require a minimum ${MIN_RISK_REWARD_RATIO}:1 R/R to TP1. You never output contradictory LONG+SHORT setups. If no quality setup exists for this mode, you say so. Always respond with valid JSON only, no markdown.`
           },
           { role: "user", content: prompt }
         ],
