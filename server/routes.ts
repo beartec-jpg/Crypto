@@ -301,6 +301,124 @@ async function createXaiChatCompletionWithFallback(params: {
   throw lastError;
 }
 
+// Tool-enabled xAI completion with a bounded function-calling loop.
+// Instead of dumping every indicator/SMC feature into one giant prompt, the model
+// receives a small "drip" context plus callable tools and pulls the data it needs
+// on demand. Returns an object shaped like a chat completion (choices[0].message +
+// usage) with token usage aggregated across every round-trip, so callers can treat
+// it the same as createXaiChatCompletionWithFallback.
+async function createXaiChatCompletionWithTools(params: {
+  preferredModel?: string;
+  messages: any[]; // full message array (system + user); mutated copy is used internally
+  tools: any[]; // OpenAI-style tool definitions
+  executeTool: (name: string, args: any) => Promise<string> | string;
+  temperature: number;
+  max_tokens: number;
+  maxIterations?: number; // safety cap on tool round-trips
+}) {
+  const primaryModel = params.preferredModel || XAI_DEFAULT_MODEL;
+  const modelCandidates = primaryModel === XAI_FALLBACK_MODEL
+    ? [primaryModel]
+    : [primaryModel, XAI_FALLBACK_MODEL];
+
+  const maxIterations = params.maxIterations ?? 5;
+  const messages: any[] = [...params.messages];
+  const aggregatedUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+
+  // Resolve a working model on the first request, then reuse it for the loop.
+  let activeModel: string | null = null;
+  let lastResponse: any = null;
+
+  for (let iteration = 0; iteration < maxIterations; iteration++) {
+    const requestParams: any = {
+      messages,
+      temperature: params.temperature,
+      max_tokens: params.max_tokens,
+      tools: params.tools,
+      tool_choice: 'auto',
+    };
+
+    let response: any = null;
+    if (activeModel) {
+      requestParams.model = activeModel;
+      console.log(`🧰 xAI tool request: model=${activeModel} iter=${iteration}`);
+      response = await xai.chat.completions.create(requestParams);
+    } else {
+      // First round: try candidates until one is accepted.
+      let lastError: any = null;
+      for (const model of modelCandidates) {
+        try {
+          console.log(`🧰 xAI tool request: model=${model} iter=${iteration}`);
+          response = await xai.chat.completions.create({ ...requestParams, model });
+          activeModel = model;
+          break;
+        } catch (error: any) {
+          lastError = error;
+          if (!isModelSelectionError(error) || model === modelCandidates[modelCandidates.length - 1]) {
+            throw error;
+          }
+          console.warn(`⚠️ xAI model '${model}' unavailable, retrying with fallback`);
+        }
+      }
+      if (!response) throw lastError;
+    }
+
+    lastResponse = response;
+    if (response.usage) {
+      aggregatedUsage.prompt_tokens += response.usage.prompt_tokens || 0;
+      aggregatedUsage.completion_tokens += response.usage.completion_tokens || 0;
+      aggregatedUsage.total_tokens += response.usage.total_tokens || 0;
+    }
+
+    const choice = response.choices?.[0];
+    const message = choice?.message;
+    const toolCalls = message?.tool_calls;
+
+    if (!toolCalls || toolCalls.length === 0) {
+      // No more tools requested — final answer.
+      return { choices: [{ message }], usage: aggregatedUsage, model: activeModel };
+    }
+
+    // Append the assistant turn (with its tool_calls) then each tool result.
+    messages.push(message);
+    for (const call of toolCalls) {
+      const fnName = call?.function?.name;
+      let args: any = {};
+      try {
+        args = call?.function?.arguments ? JSON.parse(call.function.arguments) : {};
+      } catch {
+        args = {};
+      }
+      let toolResult = '';
+      try {
+        toolResult = await params.executeTool(fnName, args);
+      } catch (toolError: any) {
+        toolResult = JSON.stringify({ error: `Tool '${fnName}' failed: ${toolError?.message || 'unknown error'}` });
+      }
+      messages.push({
+        role: 'tool',
+        tool_call_id: call.id,
+        content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult),
+      });
+    }
+  }
+
+  // Hit the iteration cap: ask the model once more for a final answer without tools.
+  const finalResponse: any = await xai.chat.completions.create({
+    model: activeModel || primaryModel,
+    messages,
+    temperature: params.temperature,
+    max_tokens: params.max_tokens,
+  });
+  if (finalResponse.usage) {
+    aggregatedUsage.prompt_tokens += finalResponse.usage.prompt_tokens || 0;
+    aggregatedUsage.completion_tokens += finalResponse.usage.completion_tokens || 0;
+    aggregatedUsage.total_tokens += finalResponse.usage.total_tokens || 0;
+  }
+  const finalMessage = finalResponse.choices?.[0]?.message || lastResponse?.choices?.[0]?.message;
+  return { choices: [{ message: finalMessage }], usage: aggregatedUsage, model: activeModel };
+}
+
 // Extract text content from xAI response — handles both string content and content-block arrays
 // (Grok 4 thinking returns reasoning in reasoning_content; final text is always in .content)
 function extractTextContent(message: any): string {
@@ -3891,10 +4009,14 @@ Be concise and direct.`;
         });
       }
 
-      const { symbol, timeframes = ['5m', '15m', '1h', '4h'] } = req.body;
+      const { symbol, timeframes = ['5m', '15m', '1h', '4h'], mode: requestedMode } = req.body;
       if (!symbol) {
         return res.status(400).json({ error: 'Symbol is required' });
       }
+
+      // Resolve the selected AI trader mode so multi-TF analysis uses the same lens.
+      const { getAiTraderMode } = await import("@shared/aiTraderModes");
+      const traderMode = getAiTraderMode(requestedMode);
 
       console.log(`📊 Multi-TF Analysis for ${symbol}: ${timeframes.join(', ')}`);
 
@@ -4077,7 +4199,7 @@ OUTPUT: Valid JSON only, no markdown.
         messages: [
           {
             role: "system",
-            content: `You are an elite crypto trader specialising in SMC/ICT multi-timeframe analysis. Your edge is identifying high-probability setups where price is approaching a key structural level (FVG, Order Block, swing pivot) with cross-timeframe confluence. You think in levels: you identify WHERE price is going (the target level), WHERE to enter (the entry level — always an FVG, OB, or confirmed pivot), and WHERE your invalidation is (structural stop behind the entry zone). You never generate a trade that is just "enter at current price with an ATR stop" — that is not a trade setup, it is a guess. You require a minimum ${MIN_RISK_REWARD_RATIO}:1 R/R to TP1. You never output contradictory LONG+SHORT setups. If no quality structural setup exists, you say so. Always respond with valid JSON only, no markdown.`
+            content: `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes. Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\nYou are an elite crypto trader specialising in SMC/ICT multi-timeframe analysis. Your edge is identifying high-probability setups where price is approaching a key structural level (FVG, Order Block, swing pivot) with cross-timeframe confluence. You think in levels: you identify WHERE price is going (the target level), WHERE to enter (the entry level — always an FVG, OB, or confirmed pivot), and WHERE your invalidation is (structural stop behind the entry zone). You never generate a trade that is just "enter at current price with an ATR stop" — that is not a trade setup, it is a guess. You require a minimum ${MIN_RISK_REWARD_RATIO}:1 R/R to TP1. You never output contradictory LONG+SHORT setups. If no quality setup exists for this mode, you say so. Always respond with valid JSON only, no markdown.`
           },
           { role: "user", content: prompt }
         ],
@@ -4266,7 +4388,8 @@ OUTPUT: Valid JSON only, no markdown.
         cci = 0,
         adx = 0,
         plusDI = 0,
-        minusDI = 0
+        minusDI = 0,
+        mode: requestedMode,
       } = req.body;
 
       if (!symbol || !currentPrice || !recentBars) {
@@ -4465,51 +4588,96 @@ OUTPUT: Valid JSON only, no markdown.
         ? bearishOB.slice(-3).map((o: any) => `$${o.price?.toFixed(4)}`).join(', ')
         : 'none';
 
-      const prompt = `${symbol} | ${interval} | Expected hold: ${expectedDuration}
+      // ===== MODE-AWARE, TOOL-DRIVEN ANALYSIS =====
+      // Resolve the selected AI trader mode (indicator | smc | ...). Each mode brings
+      // its own persona, validity criteria and preferred tools so an indicator trader
+      // is never judged by FVG rules and vice-versa.
+      const { getAiTraderMode } = await import("@shared/aiTraderModes");
+      const traderMode = getAiTraderMode(requestedMode);
+
+      // Tool payloads are backed by the indicators/structures already computed above.
+      // Rather than dumping everything into one prompt, the model pulls only what it
+      // needs on demand via function calls ("drip then deep").
+      const toolData: Record<string, any> = {
+        getIndicators: {
+          note: 'Classic technical indicators computed from the latest bars.',
+          trend: decisionPacket.trend,
+          momentum: decisionPacket.momentum,
+        },
+        getSmcStructures: {
+          note: 'Smart-Money structures: unmitigated FVGs, order blocks, BOS/CHoCH, displacement, liquidity and swings.',
+          bos: boschoch.bos,
+          choch: boschoch.choch,
+          displacement: displacement.displacement ? displacement.direction : 'none',
+          swingHighs: swingHighsStr,
+          swingLows: swingLowsStr,
+          bullishFVGs_unmitigated_nearestFirst: bullFVGStr,
+          bearishFVGs_unmitigated_nearestFirst: bearFVGStr,
+          bullishOrderBlocks: bullOBStr,
+          bearishOrderBlocks: bearOBStr,
+          counts: {
+            orderBlocks: decisionPacket.structure.orderBlocks,
+            fvgs: decisionPacket.structure.fvgs,
+            imbalances: decisionPacket.structure.imbalances,
+            absorption: decisionPacket.structure.absorptionCount,
+            liquidityGrabs: decisionPacket.structure.liquidityGrabCount,
+            hiddenDivergences: decisionPacket.structure.hiddenDivergenceCount,
+          },
+          recentSignals: decisionPacket.structure.recentSignals,
+        },
+        getVolumeProfile: {
+          note: 'Volume-profile levels (POC/VAH/VAL), VWAP, CVD and OBV.',
+          levels: decisionPacket.market.levels,
+          vwap: decisionPacket.trend.vwap,
+          cvd: { value: Number(Number(cvd || 0).toFixed(0)), trend: cvdTrend },
+          obv: decisionPacket.momentum.obv,
+        },
+        getInstitutional: {
+          note: 'Institutional positioning: open interest, funding rate and long/short ratio.',
+          ...decisionPacket.institutional,
+        },
+      };
+
+      const toolDescriptions: Record<string, string> = {
+        getIndicators: 'Get classic technical indicators (RSI, MACD, Stochastic, ADX/DI, Bollinger Bands, CCI, MFI, CMF, OBV, ATR).',
+        getSmcStructures: 'Get Smart-Money structures: unmitigated FVGs, order blocks, BOS/CHoCH, displacement, liquidity grabs and swing points.',
+        getVolumeProfile: 'Get volume-profile levels (POC/VAH/VAL), VWAP, CVD and OBV.',
+        getInstitutional: 'Get institutional positioning: open interest trend, funding rate and long/short ratio.',
+      };
+      const toolNames = Object.keys(toolData);
+      const tools = toolNames.map((name) => ({
+        type: 'function',
+        function: {
+          name,
+          description: toolDescriptions[name],
+          parameters: { type: 'object', properties: {}, additionalProperties: false },
+        },
+      }));
+
+      const preferredToolsStr = traderMode.preferredTools.filter((t) => toolNames.includes(t)).join(', ') || toolNames.join(', ');
+
+      const dripContext = `${symbol} | ${interval} | Expected hold: ${expectedDuration}
 Price: $${currentPrice.toFixed(4)} | Last bar: O$${lastBar.open.toFixed(4)} H$${lastBar.high.toFixed(4)} L$${lastBar.low.toFixed(4)} C$${lastBar.close.toFixed(4)}
 50-bar change: ${priceChange > 0 ? '+' : ''}${priceChange.toFixed(2)}%
+Quick bias hint: ADX ${adx.toFixed(1)} (${adx > 25 ? 'trending' : 'ranging'}); price ${currentPrice > vwapCalc.vwap ? 'above' : 'below'} VWAP.`;
 
-STRUCTURAL LEVELS (use these for entry/SL/target decisions):
-- Swing Highs: ${swingHighsStr} | Swing Lows: ${swingLowsStr}
-- VP: POC $${poc.toFixed(4)}, VAH $${vah.toFixed(4)}, VAL $${val.toFixed(4)}
-- VWAP: $${vwapCalc.vwap.toFixed(4)} (${vwapCalc.label})
-- Bullish FVGs (unmitigated, nearest first): ${bullFVGStr}
-- Bearish FVGs (unmitigated, nearest first): ${bearFVGStr}
-- Bullish OBs: ${bullOBStr} | Bearish OBs: ${bearOBStr}
-- BOS: ${boschoch.bos} | CHoCH: ${boschoch.choch} | Displacement: ${displacement.displacement ? displacement.direction : 'none'}
-- Liquidity Grabs: ${liquidityGrabCount || 0}${liquidityGrabs?.length ? ` (${liquidityGrabs[liquidityGrabs.length - 1]?.type} @ $${liquidityGrabs[liquidityGrabs.length - 1]?.price?.toFixed(4)})` : ''}
+      const userPrompt = `${dripContext}
 
-MOMENTUM & VOLUME:
-- RSI: ${rsi.toFixed(2)} (${rsiLabel}) | CCI: ${cci.toFixed(2)} ${cci > 100 ? '(OB)' : cci < -100 ? '(OS)' : ''} | Stoch %K/${stoch.k.toFixed(1)} %D/${stoch.d.toFixed(1)} (${stochLabel})${stoch.crossover !== 'none' ? ` ${stoch.crossover}` : ''}
-- MACD hist: ${macd.histogram.toFixed(6)} (${macdMomentum})${macd.crossover !== 'none' ? ` ${macd.crossover}` : ''}${macd.divergence !== 'none' ? ` ${macd.divergence} div` : ''}
-- MFI: ${mfi.mfi.toFixed(2)} (${mfiLabel})${mfi.divergence !== 'none' ? ` ${mfi.divergence}` : ''} | CMF: ${cmf.cmf > 0 ? '+' : ''}${cmf.cmf.toFixed(3)} (${cmf.label})
-- CVD: ${cvd.toFixed(0)} (${cvdTrend}) | OBV: ${(obv.obv / 1000000).toFixed(2)}M${obv.divergence !== 'none' ? ` ${obv.divergence} div` : ''}
-- Absorption events: ${absorptionCount || 0}${absorption?.length ? ` (${absorption[absorption.length - 1]?.type} @ $${absorption[absorption.length - 1]?.price?.toFixed(4)})` : ''} | Hidden divs: ${_hiddenDivergenceCount || 0}
+You are analysing in ${traderMode.label} mode. Use the available tools to pull the data you need before deciding — start with: ${preferredToolsStr}. Call additional tools only if they add value. Do NOT assume data you have not fetched.
 
-TREND & VOLATILITY:
-- ADX: ${adx.toFixed(2)} (${adx > 25 ? 'STRONG' : adx < 20 ? 'weak' : 'moderate'}) | +DI/${plusDI.toFixed(2)} -DI/${minusDI.toFixed(2)} (${plusDI > minusDI ? 'bullish' : 'bearish'})
-- ATR: ${atr.toFixed(6)} | BB: mid $${bb.middle.toFixed(4)}${bb.squeeze ? ' SQUEEZE' : ''} BW ${(bb.bandwidth * 100).toFixed(2)}%
+MODE VALIDITY CRITERIA:
+${traderMode.validityCriteria}
 
-INSTITUTIONAL:
-- OI: ${oiTrend !== 'N/A' ? `${oiTrend.toUpperCase()} (${oiDelta > 0 ? '+' : ''}${oiDelta.toFixed(2)}%)` : 'N/A'} | Funding: ${fundingValue.toFixed(4)}% (${fundingBias}) | L/S Ratio: ${lsRatio.toFixed(2)} (${lsRatio > 1.2 ? 'longs dom' : lsRatio < 0.8 ? 'shorts dom' : 'balanced'})
+GENERAL RULES:
+- Trade level-to-level. Every entry must have a concrete justification appropriate to this mode — never a blind "enter at current price".
+- STOP LOSS behind the invalidation structure (use ~1-2x ATR as a minimum buffer).
+- Min R/R ≥${AI_MIN_RISK_REWARD_RATIO}:1 to TP1. Discard any setup that cannot achieve this.
+- Grade: A+ (6+ confluence), A (5), B (4), C (3). Output 1-3 setups only if they genuinely qualify.
+- If no valid setup exists for this mode, output 0 alerts and explain the live read in marketInsights (still populate bias and keyLevels).
 
-TASK — Think like a professional SMC/ICT trader:
-1. Identify the most significant structural levels from the data above. The best setups trade FROM a level TO a level.
-2. Only generate a trade if price is at or approaching a high-quality entry zone (unmitigated FVG, Order Block, or key swing with confluence). Do NOT invent an entry at current price.
-3. ENTRY: Inside the FVG range or at the OB level. If no clear FVG/OB is present, use the nearest swing/VWAP/POC confluence.
-4. STOP LOSS: Place behind the entry structure — below the OB/FVG low for LONG, above the OB/FVG high for SHORT. Use 1-2x ATR as a minimum buffer but anchor to structure.
-5. TARGETS: Trade level-to-level. TP1 = nearest opposing structural level (swing high/low, FVG, OB on the other side). TP2 = next major level beyond TP1.
-6. Min R/R ≥${AI_MIN_RISK_REWARD_RATIO}:1 to TP1. Discard any setup that cannot achieve this.
-7. Grade: A+ (6+ confluence), A (5), B (4), C (3). Output 1-3 setups only if they genuinely qualify.
-8. If market is choppy / no clear structural setup exists, output 0 alerts and explain in marketInsights.
-
-JSON output only, no markdown:
+Return JSON only, no markdown:
 {
-  "marketInsights": {
-    "summary": "2 sentences: structural bias and whether a setup is valid.",
-    "bias": "BULLISH|BEARISH|NEUTRAL",
-    "keyLevels": ["POC: $X", "Swing High: $Y", "Bullish FVG: $A-$B"]
-  },
+  "marketInsights": { "summary": "2 sentences: bias and whether a setup is valid for this mode.", "bias": "BULLISH|BEARISH|NEUTRAL", "keyLevels": ["..."] },
   "alerts": [
     {
       "grade": "A+|A|B|C",
@@ -4517,33 +4685,35 @@ JSON output only, no markdown:
       "entry": 1.2345,
       "stopLoss": 1.2280,
       "targets": [1.2420, 1.2520],
-      "entryZone": "Bullish FVG $1.23-$1.235 + OB confluence",
-      "slRationale": "Below OB low $1.228 (1.5x ATR buffer)",
-      "tp1Rationale": "Previous swing high $1.242",
-      "confluenceSignals": ["Bullish FVG at $1.23", "RSI oversold bounce", "CVD rising", "BOS bullish", "OI rising"],
+      "entryZone": "e.g. Bullish FVG $1.23-$1.235 + OB confluence, or RSI oversold reversal + MACD cross",
+      "slRationale": "Structural/ATR justification",
+      "tp1Rationale": "Level-to-level justification",
+      "confluenceSignals": ["..."],
       "confluenceCount": 5,
-      "reasoning": "1 sentence: structural level + confirmation."
+      "reasoning": "1 sentence: entry justification + confirmation."
     }
   ]
 }`;
 
-      console.log('🤖 Calling xAI Grok 4 (thinking) for order flow analysis...');
+      console.log(`🤖 Calling xAI Grok (${traderMode.id} mode, tool-driven) for order flow analysis...`);
       const startTime = Date.now();
-      
-      const response = await createXaiChatCompletionWithFallback({
+
+      const response = await createXaiChatCompletionWithTools({
         messages: [
           {
             role: "system",
-            content: `You are an elite crypto trader with deep expertise in SMC/ICT, order flow, and multi-indicator confluence. Your trading philosophy: identify the dominant structural trend, wait for price to pull back into a high-quality entry zone (unmitigated FVG or Order Block), set your stop behind the structure, and target the next major level. You never "guess" an entry at current price — every entry has a specific structural justification. You require minimum ${AI_MIN_RISK_REWARD_RATIO}:1 R/R to TP1 and at least 4 confluence factors. If no genuine setup exists, you say so clearly. Return ONLY valid JSON, no markdown.`
+            content: `${traderMode.systemPrompt} You require a minimum ${AI_MIN_RISK_REWARD_RATIO}:1 R/R to TP1. If no genuine setup exists for your mode, say so clearly rather than forcing a trade.`,
           },
           {
             role: "user",
-            content: prompt
-          }
+            content: userPrompt,
+          },
         ],
+        tools,
+        executeTool: (name: string) => JSON.stringify(toolData[name] ?? { error: `Unknown tool: ${name}` }),
         temperature: 0.3,
         max_tokens: 16000,
-        enableThinking: true,
+        maxIterations: 6,
       });
 
       const rawContent = extractTextContent(response.choices[0].message);
@@ -4753,7 +4923,8 @@ JSON output only, no markdown:
         dailyLimit: usageStatus.limit,
         remainingToday: usageStatus.remainingToday,
         creditsRemaining: usageStatus.creditsRemaining,
-        indicatorData: indicatorDataForCache
+        indicatorData: indicatorDataForCache,
+        mode: traderMode.id
       });
     } catch (error: any) {
       console.error('❌ Error generating order flow alerts:', error);
@@ -5664,6 +5835,7 @@ Return ONLY valid JSON in this exact format:
         elliottAlertsEnabled: subscription?.elliottAlertsEnabled ?? true,
         aiTradeAlertsEnabled: subscription?.aiTradeAlertsEnabled ?? true,
         indicatorAlertsEnabled: subscription?.indicatorAlertsEnabled ?? true,
+        aiTraderMode: subscription?.aiTraderMode || 'smc',
         pushSubscription: subscription?.pushSubscription || null,
         tier: subscription?.tier || 'free',
       });
@@ -5679,7 +5851,8 @@ Return ONLY valid JSON in this exact format:
       const userId = (req as any).cryptoUser.id;
       const { 
         selectedTickers, alertGrades, alertTimeframes, alertTypes, alertsEnabled, pushSubscription,
-        hlineAlertsEnabled, elliottAlertsEnabled, aiTradeAlertsEnabled, indicatorAlertsEnabled 
+        hlineAlertsEnabled, elliottAlertsEnabled, aiTradeAlertsEnabled, indicatorAlertsEnabled,
+        aiTraderMode
       } = req.body;
 
       // Get user subscription for tier-based validation
@@ -5790,6 +5963,11 @@ Return ONLY valid JSON in this exact format:
       if (elliottAlertsEnabled !== undefined) updateData.elliottAlertsEnabled = elliottAlertsEnabled;
       if (aiTradeAlertsEnabled !== undefined) updateData.aiTradeAlertsEnabled = aiTradeAlertsEnabled;
       if (indicatorAlertsEnabled !== undefined) updateData.indicatorAlertsEnabled = indicatorAlertsEnabled;
+      if (aiTraderMode !== undefined) {
+        // Validate against the set of enabled AI trader modes (indicator | smc | ...).
+        const { getAiTraderMode } = await import("@shared/aiTraderModes");
+        updateData.aiTraderMode = getAiTraderMode(aiTraderMode).id;
+      }
 
       const updated = await db.update(cryptoSubscriptions)
         .set(updateData)

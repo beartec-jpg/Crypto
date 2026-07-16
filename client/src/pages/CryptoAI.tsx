@@ -21,6 +21,7 @@ import { ProfessionalOrderflowTable } from '@/components/ProfessionalOrderflowTa
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
 import { calculateCCI, calculateADX, ADXValue } from '@/lib/indicators';
+import { ENABLED_AI_TRADER_MODES, DEFAULT_AI_TRADER_MODE, isAiTraderModeId, type AiTraderModeId } from '@shared/aiTraderModes';
 import grokLogo from '@assets/Grok_Full_Logomark_Light_1763287603908.png';
 import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 
@@ -188,6 +189,7 @@ export default function CryptoAI() {
   const [selectedTickers, setSelectedTickers] = useState<string[]>([]);
   const [selectedGrades, setSelectedGrades] = useState<string[]>(['A+', 'A', 'B', 'C']);
   const [alertTimeframe, setAlertTimeframe] = useState('15m');
+  const [aiTraderMode, setAiTraderMode] = useState<AiTraderModeId>(DEFAULT_AI_TRADER_MODE);
   const [savingPreferences, setSavingPreferences] = useState(false);
   
   // Sync alertTimeframe with chart interval when interval changes
@@ -1428,6 +1430,7 @@ export default function CryptoAI() {
         body: JSON.stringify({
           symbol,
           interval: alertTimeframe,
+          mode: aiTraderMode,
           currentPrice,
           recentBars: data.slice(-100),
           cvd: cvdCurrent,
@@ -1582,6 +1585,7 @@ export default function CryptoAI() {
         body: JSON.stringify({
           symbol,
           timeframes: ['5m', '15m', '1h', '4h'],
+          mode: aiTraderMode,
         }),
       });
 
@@ -2533,6 +2537,9 @@ export default function CryptoAI() {
           if (data.alertGrades) {
             setSelectedGrades(data.alertGrades);
           }
+          if (data.aiTraderMode && isAiTraderModeId(data.aiTraderMode)) {
+            setAiTraderMode(data.aiTraderMode as AiTraderModeId);
+          }
         }
       } catch (error) {
         console.error('Error loading preferences:', error);
@@ -2554,7 +2561,8 @@ export default function CryptoAI() {
         credentials: 'include',
         body: JSON.stringify({
           selectedTickers,
-          alertGrades: selectedGrades
+          alertGrades: selectedGrades,
+          aiTraderMode
         })
       });
 
@@ -2567,6 +2575,22 @@ export default function CryptoAI() {
       console.error('Error saving preferences:', error);
     } finally {
       setSavingPreferences(false);
+    }
+  };
+
+  // Change the AI trader mode and persist it immediately.
+  const handleTraderModeChange = async (nextMode: string) => {
+    if (!isAiTraderModeId(nextMode)) return;
+    setAiTraderMode(nextMode as AiTraderModeId);
+    try {
+      await fetch('/api/crypto/preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ aiTraderMode: nextMode }),
+      });
+    } catch (error) {
+      console.error('Error saving AI trader mode:', error);
     }
   };
 
@@ -3261,6 +3285,31 @@ export default function CryptoAI() {
             <div className={`space-y-4 ${activeTab === 'alerts' ? 'block' : 'hidden'}`}>
             {/* Analyze Buttons - Compact layout with small reload icons */}
             <Card className="bg-[#1a1a1a] border-[#2a2e39] p-3">
+              {/* AI Trader Mode selector — chooses the AI's analysis lens (persona, validity criteria & preferred tools) */}
+              <div className="flex items-center justify-center gap-2 mb-3">
+                <Label htmlFor="ai-trader-mode" className="text-xs text-gray-400 whitespace-nowrap">
+                  Trader mode
+                </Label>
+                <Select value={aiTraderMode} onValueChange={handleTraderModeChange}>
+                  <SelectTrigger
+                    id="ai-trader-mode"
+                    className="h-8 w-[180px] bg-[#0e0e0e] border-[#2a2e39] text-gray-200 text-sm"
+                    data-testid="select-ai-trader-mode"
+                  >
+                    <SelectValue placeholder="Select mode" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1a1a1a] border-[#2a2e39] text-gray-200">
+                    {ENABLED_AI_TRADER_MODES.map((m) => (
+                      <SelectItem key={m.id} value={m.id} className="text-sm">
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="hidden sm:inline text-[11px] text-gray-500 max-w-[260px] truncate">
+                  {ENABLED_AI_TRADER_MODES.find((m) => m.id === aiTraderMode)?.description}
+                </span>
+              </div>
               <div className="flex items-center justify-center gap-2">
                 {/* Small reload icon for single timeframe - left side */}
                 {cachedAnalysis?.cached && (tier === 'intermediate' || tier === 'pro' || tier === 'elite') && (

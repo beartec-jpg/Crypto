@@ -90,6 +90,7 @@ export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
   minRiskReward: decimal("min_risk_reward", { precision: 4, scale: 2 }).notNull().default("1.5"), // User-tunable min R/R threshold
   minConfluence: integer("min_confluence").notNull().default(3), // User-tunable min confluence threshold
   aiModelPref: varchar("ai_model_pref").notNull().default("fast"), // Preferred narrator model: 'fast' | 'deep'
+  aiTraderMode: varchar("ai_trader_mode").notNull().default("smc"), // Selected AI trader mode for /cryptoai page: 'indicator' | 'smc' | ...
   elliottScanEnabled: boolean("elliott_scan_enabled").notNull().default(false), // Opt-in to Elliott mode in scanner
   pushSubscription: jsonb("push_subscription"), // Store push subscription data
   stripeSubscriptionId: varchar("stripe_subscription_id"),
@@ -126,6 +127,7 @@ export const insertCryptoSubscriptionSchema = z.object({
   minRiskReward: z.union([z.string(), z.number()]).optional().default("1.5"),
   minConfluence: z.number().int().optional().default(3),
   aiModelPref: z.enum(['fast', 'deep']).optional().default('fast'),
+  aiTraderMode: z.string().optional().default('smc'),
   elliottScanEnabled: z.boolean().optional().default(false),
   pushSubscription: z.any().optional().nullable(),
   stripeSubscriptionId: z.string().optional().nullable(),
