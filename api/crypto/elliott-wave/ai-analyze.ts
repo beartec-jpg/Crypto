@@ -208,7 +208,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     const completion = await openai.chat.completions.create({
-      model: process.env.XAI_ELLIOTT_MODEL || 'grok-4',
+      model: process.env.XAI_ELLIOTT_MODEL || 'grok-4.5',
       messages: [
         {
           role: 'system',

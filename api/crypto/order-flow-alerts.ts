@@ -16,7 +16,7 @@ const ALLOWED_TIERS = ['intermediate', 'pro', 'elite'];
 const ADMIN_EMAIL = 'beartec@beartec.uk';
 
 const AI_MIN_RISK_REWARD_RATIO = 1.5;
-const XAI_PRIMARY_MODEL = 'grok-4';
+const XAI_PRIMARY_MODEL = 'grok-4.5';
 const XAI_FALLBACK_MODEL = 'grok-4-1-fast-reasoning';
 const XAI_THINKING_BUDGET = parseInt(process.env.XAI_THINKING_BUDGET || '5000', 10);
 

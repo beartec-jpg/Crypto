@@ -15,7 +15,7 @@ function getXaiClient(): OpenAI {
 }
 
 // Use OpenAI SDK with xAI base URL for reliable API calls
-async function callGrokAPI(messages: any[], model: string = "grok-4", maxTokens: number = 600): Promise<string> {
+async function callGrokAPI(messages: any[], model: string = "grok-4.5", maxTokens: number = 600): Promise<string> {
   const startTime = Date.now();
   
   console.log(`🌐 API call: model=${model}, max_tokens=${maxTokens}`);
@@ -134,13 +134,13 @@ Return ONLY this JSON (no extra text):
 
 async function _detectPivots(candleData: string, _timeoutMs: number = 60000): Promise<Pivot[]> {
   const startTime = Date.now();
-  console.log(`⏱️ CALL 1 START: Sending to Grok-4 for pivot detection...`);
+  console.log(`⏱️ CALL 1 START: Sending to Grok-4.5 for pivot detection...`);
   
   try {
     const content = await callGrokAPI([
       { role: "system", content: PIVOT_DETECTION_PROMPT },
       { role: "user", content: `Data:\n${candleData}` }
-    ], "grok-4", 2000);
+    ], "grok-4.5", 2000);
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`⏱️ CALL 1 DONE: ${elapsed}s`);
@@ -307,7 +307,7 @@ export async function analyzeChartWithGrok(
   
   // Limit to max 100 candles (take most recent)
   const limitedCandles = candles.length > 100 ? candles.slice(-100) : candles;
-  console.log(`\n🎯 Sending ${limitedCandles.length} candles as JSON to Grok-4`);
+  console.log(`\n🎯 Sending ${limitedCandles.length} candles as JSON to Grok-4.5`);
   
   // Send as JSON array
   const candleJson = JSON.stringify(limitedCandles);
@@ -328,8 +328,8 @@ Return ONLY valid JSON:
     // Use text-only model when no image is provided
     const hasImage = base64Image && base64Image!.length > 0;
     
-    // Use grok-4 for all tasks (supports both text and vision)
-    const modelToUse = hasImage ? "grok-4" : "grok-4";
+    // Use grok-4.5 for all tasks (supports both text and vision)
+    const modelToUse = hasImage ? "grok-4.5" : "grok-4.5";
     console.log(`⏱️ Sending to ${modelToUse} via native fetch...`);
     
     const messages: any[] = [
@@ -443,7 +443,7 @@ What is the most likely next wave and price target? Respond with JSON:
     },
   ];
 
-  const content = await callGrokAPI(messages, "grok-4", 500);
+  const content = await callGrokAPI(messages, "grok-4.5", 500);
   if (!content) {
     throw new Error("No response from Grok");
   }
