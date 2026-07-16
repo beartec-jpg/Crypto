@@ -185,8 +185,7 @@ export default function CryptoAI() {
 
   const trackedTickers = useMemo(() => {
     const fallbackTickers = preferences?.selectedTickers ?? [];
-    const combined = watchlistTickers.length > 0 ? watchlistTickers : fallbackTickers;
-    return Array.from(new Set(combined.filter(Boolean)));
+    return Array.from(new Set([...watchlistTickers, ...fallbackTickers].filter(Boolean)));
   }, [preferences?.selectedTickers, watchlistTickers]);
 
   const timeframeKey = `${aiHigherTimeframe}:${aiLowerTimeframe}`;
