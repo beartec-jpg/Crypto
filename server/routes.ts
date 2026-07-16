@@ -835,58 +835,98 @@ function calculateADX(bars: CandleBar[], period: number = 14): number {
 // ===== SMC / STRUCTURAL HELPERS (used by multi-TF and single-TF AI endpoints) =====
 
 // Thresholds for structural detection helpers
-const MIN_FVG_GAP_ATR_MULTIPLE = 0.5;    // FVG must span at least 50% of ATR to be significant
 const MIN_OB_BODY_ATR_MULTIPLE = 0.8;    // Order Block candle body must be ≥ 80% of ATR
 const MIN_OB_VOLUME_MULTIPLE = 1.2;      // Order Block candle volume must be ≥ 120% of avg volume
 const DEFAULT_VOLUME_PROFILE_BINS = 40;  // Resolution for volume profile histogram
 const VALUE_AREA_PERCENTAGE = 0.7;       // Standard 70% value area (VAH/VAL)
 
-// Lightweight FVG detection (server-side) — returns only unmitigated FVGs
+// Compute Fibonacci retracement OTE zone from the most recent pivot swing
+function computeFibLevelsServer(bars: CandleBar[]): { swingLow: number; swingHigh: number; oteHigh: number; oteLow: number } | null {
+  const recent = bars.slice(-100);
+  if (recent.length < 15) return null;
+  let swingHigh = -Infinity, swingLow = Infinity;
+  const lookback = 5;
+  for (let i = lookback; i < recent.length - lookback; i++) {
+    let isH = true, isL = true;
+    for (let j = 1; j <= lookback; j++) {
+      if (recent[i].high <= recent[i - j].high || recent[i].high <= recent[i + j].high) isH = false;
+      if (recent[i].low >= recent[i - j].low || recent[i].low >= recent[i + j].low) isL = false;
+    }
+    if (isH && recent[i].high > swingHigh) swingHigh = recent[i].high;
+    if (isL && recent[i].low < swingLow)  swingLow  = recent[i].low;
+  }
+  if (swingHigh === -Infinity || swingLow === Infinity || swingHigh <= swingLow) return null;
+  const range = swingHigh - swingLow;
+  return {
+    swingLow,
+    swingHigh,
+    oteHigh: swingHigh - range * 0.382,
+    oteLow:  swingHigh - range * 0.705,
+  };
+}
+
+// Lightweight FVG detection (server-side) with structural quality gate
 function detectFVGServer(
   bars: CandleBar[],
-  minGapAtrMultiple: number = MIN_FVG_GAP_ATR_MULTIPLE,
 ): { bullFVG: { low: number; high: number }[]; bearFVG: { low: number; high: number }[] } {
   const bullFVG: { low: number; high: number }[] = [];
   const bearFVG: { low: number; high: number }[] = [];
   if (bars.length < 10) return { bullFVG, bearFVG };
 
-  const atr = calculateATR(bars, 14);
-
+  // Collect raw unmitigated FVGs (no ATR filter)
+  const rawBull: { low: number; high: number }[] = [];
+  const rawBear: { low: number; high: number }[] = [];
   for (let i = 2; i < bars.length; i++) {
-    // Bullish FVG: current low > two-bars-ago high
     if (bars[i].low > bars[i - 2].high) {
-      const gapSize = bars[i].low - bars[i - 2].high;
-      if (gapSize >= atr * minGapAtrMultiple) {
-        const low = bars[i - 2].high;
-        const high = bars[i].low;
-        // Check if mitigated by a later bar
-        let mitigated = false;
-        for (let j = i + 1; j < bars.length; j++) {
-          if (bars[j].low <= low) { mitigated = true; break; }
-        }
-        if (!mitigated) bullFVG.push({ low, high });
+      const low = bars[i - 2].high;
+      const high = bars[i].low;
+      let mitigated = false;
+      for (let j = i + 1; j < bars.length; j++) {
+        if (bars[j].low <= low) { mitigated = true; break; }
       }
+      if (!mitigated) rawBull.push({ low, high });
     }
-    // Bearish FVG: current high < two-bars-ago low
     if (bars[i].high < bars[i - 2].low) {
-      const gapSize = bars[i - 2].low - bars[i].high;
-      if (gapSize >= atr * minGapAtrMultiple) {
-        const low = bars[i].high;
-        const high = bars[i - 2].low;
-        let mitigated = false;
-        for (let j = i + 1; j < bars.length; j++) {
-          if (bars[j].high >= high) { mitigated = true; break; }
-        }
-        if (!mitigated) bearFVG.push({ low, high });
+      const low = bars[i].high;
+      const high = bars[i - 2].low;
+      let mitigated = false;
+      for (let j = i + 1; j < bars.length; j++) {
+        if (bars[j].high >= high) { mitigated = true; break; }
       }
+      if (!mitigated) rawBear.push({ low, high });
     }
   }
 
-  // Return most recent 3 of each (closest to current price action)
-  return {
-    bullFVG: bullFVG.slice(-3),
-    bearFVG: bearFVG.slice(-3),
+  // Structural quality gate
+  const swings = detectSwingPoints(bars, 5);
+  const obs = detectOrderBlocksServer(bars);
+  const fib = computeFibLevelsServer(bars);
+  const closes = bars.map(b => b.close);
+  const ema20  = calculateEMA(closes, 20);
+  const ema50  = calculateEMA(closes, 50);
+  const ema200 = calculateEMA(closes, 200);
+
+  const isAtStructure = (fvgLow: number, fvgHigh: number): boolean => {
+    const fvgMid = (fvgLow + fvgHigh) / 2;
+    const tolerance = Math.max((fvgHigh - fvgLow) * 2, fvgMid * 0.005);
+    const swingPrices = [
+      ...swings.swingHighs.map(s => s.price),
+      ...swings.swingLows.map(s => s.price),
+    ];
+    if (swingPrices.some(s => Math.abs(s - fvgMid) <= tolerance)) return true;
+    if ([...obs.bullishOB, ...obs.bearishOB].some(ob => ob.low <= fvgHigh && ob.high >= fvgLow)) return true;
+    if (fib && fvgHigh >= fib.oteLow && fvgLow <= fib.oteHigh) return true;
+    if ([ema20, ema50, ema200].some(e => e > 0 && Math.abs(e - fvgMid) <= tolerance)) return true;
+    return false;
   };
+
+  for (const fvg of rawBull.slice(-10)) {
+    if (isAtStructure(fvg.low, fvg.high)) bullFVG.push(fvg);
+  }
+  for (const fvg of rawBear.slice(-10)) {
+    if (isAtStructure(fvg.low, fvg.high)) bearFVG.push(fvg);
+  }
+  return { bullFVG: bullFVG.slice(-3), bearFVG: bearFVG.slice(-3) };
 }
 
 // Lightweight Order Block detection (server-side) — impulse candle before displacement
@@ -4061,8 +4101,6 @@ Be concise and direct.`;
       const pairInterval = encodeCryptoAiPairInterval(higherTimeframe, lowerTimeframe);
       const minRiskReward = Number(subscription.minRiskReward ?? AI_MIN_RISK_REWARD_RATIO);
       const minConfluence = Number(subscription.minConfluence ?? 3);
-      const atrStopBuffer = Number(subscription.atrStopBuffer ?? 0.75);
-      const fvgAtrFactor = Number(subscription.fvgAtrFactor ?? 0.5);
 
       let creditResult = { success: true, remaining: subscription.aiCredits ?? 0 };
       if (analysisType === 'deep') {
@@ -4215,15 +4253,33 @@ Be concise and direct.`;
         const vwapCalc = calculateVWAP(bars);
         const obv = calculateOBV(bars);
         const boschoch = detectBOSCHoCH(bars);
-        const fvgs = detectFVGServer(bars, fvgAtrFactor);
+        const fvgs = detectFVGServer(bars);
         const obs = detectOrderBlocksServer(bars);
         const vp = calculateVolumeProfileServer(bars);
-        
+
         // Recent swing pivots (last 5 of each)
         const swingPts = detectSwingPoints(bars, 5);
 
         const recentHigh = Math.max(...bars.slice(-20).map((b: CandleBar) => b.high));
         const recentLow = Math.min(...bars.slice(-20).map((b: CandleBar) => b.low));
+
+        // Fibonacci OTE zone
+        const fib = computeFibLevelsServer(bars);
+        const fibOteZone = fib
+          ? `$${fib.oteLow.toFixed(4)}-$${fib.oteHigh.toFixed(4)} (swing $${fib.swingLow.toFixed(4)}-$${fib.swingHigh.toFixed(4)})`
+          : 'n/a';
+        const inFibOte = fib ? (currentPrice <= fib.oteHigh && currentPrice >= fib.oteLow) : false;
+
+        // Key EMAs
+        const closes = bars.map((b: CandleBar) => b.close);
+        const ema20  = calculateEMA(closes, 20);
+        const ema50  = calculateEMA(closes, 50);
+        const ema200 = calculateEMA(closes, 200);
+        const emaTol = currentPrice * 0.005;
+        const emaConf: string[] = [];
+        if (Math.abs(ema20  - currentPrice) <= emaTol) emaConf.push(`EMA20@$${ema20.toFixed(4)}`);
+        if (Math.abs(ema50  - currentPrice) <= emaTol) emaConf.push(`EMA50@$${ema50.toFixed(4)}`);
+        if (Math.abs(ema200 - currentPrice) <= emaTol) emaConf.push(`EMA200@$${ema200.toFixed(4)}`);
 
         return {
           currentPrice,
@@ -4250,6 +4306,12 @@ Be concise and direct.`;
             bearish: obs.bearishOB.map(o => `$${o.low.toFixed(4)}-$${o.high.toFixed(4)}`),
           },
           volumeProfile: { poc: vp.poc.toFixed(4), vah: vp.vah.toFixed(4), val: vp.val.toFixed(4) },
+          fibOteZone,
+          inFibOte,
+          ema20: ema20.toFixed(4),
+          ema50: ema50.toFixed(4),
+          ema200: ema200.toFixed(4),
+          emaConf: emaConf.length > 0 ? emaConf.join(', ') : 'None',
         };
       };
 
@@ -4275,12 +4337,14 @@ Be concise and direct.`;
 
       const fmt = (arr: string[]) => arr.length > 0 ? arr.join(', ') : 'none';
       const fmtTF = (label: string, data: ReturnType<typeof computeIndicators>) => `
-${label} (${label === higherTimeframe ? 'Higher TF bias' : 'Lower TF execution'}) | RSI:${data.rsi} MACD:${data.macd.histogram}${data.macd.crossover !== 'none' ? `(${data.macd.crossover})` : ''} Stoch:%K${data.stoch.k}/%D${data.stoch.d} ADX:${data.adx} ATR:${data.atr}
+${label} (${label === higherTimeframe ? 'Higher TF bias' : 'Lower TF execution'}) | RSI:${data.rsi} MACD:${data.macd.histogram}${data.macd.crossover !== 'none' ? `(${data.macd.crossover})` : ''} Stoch:%K${data.stoch.k}/%D${data.stoch.d} ADX:${data.adx}
   VWAP:$${data.vwap} OBV:${data.obv} Squeeze:${data.bb.squeeze ? 'YES' : 'no'} BOS:${data.bos} CHoCH:${data.choch}
   Range: H$${data.recentHigh}/L$${data.recentLow} VP: POC$${data.volumeProfile.poc}/VAH$${data.volumeProfile.vah}/VAL$${data.volumeProfile.val}
   Swing Highs: ${fmt(data.swingHighs)} | Swing Lows: ${fmt(data.swingLows)}
   Bullish FVGs: ${fmt(data.fvgs.bullish)} | Bearish FVGs: ${fmt(data.fvgs.bearish)}
-  Bullish OBs: ${fmt(data.orderBlocks.bullish)} | Bearish OBs: ${fmt(data.orderBlocks.bearish)}`;
+  Bullish OBs: ${fmt(data.orderBlocks.bullish)} | Bearish OBs: ${fmt(data.orderBlocks.bearish)}
+  EMAs: 20=$${data.ema20} 50=$${data.ema50} 200=$${data.ema200} | EMA confluence: ${data.emaConf}
+  Fib OTE zone (0.382-0.705): ${data.fibOteZone}${data.inFibOte ? ' ← price IN OTE' : ''}`;
 
       const generalPrompt = `Symbol: ${symbol} | General multi-timeframe overview
 Higher timeframe: ${higherTimeframe}
@@ -4312,9 +4376,9 @@ ${fmtTF(lowerTimeframe, lowerData)}
 TRADE PLANNING RULES:
 1. HTF bias is ${dominantBias}. All trades MUST align with this bias (no counter-trend trades unless bias is NEUTRAL with an A+ opposing setup).
 2. ENTRY: Place entry at an FVG zone, Order Block, or key swing level — NOT at current price unless price is exactly at that level. Prefer waiting for a pullback into an FVG or OB confluence.
-3. STOP LOSS: Place SL behind the nearest structural level — below the entry OB/FVG low for LONGs, above the entry OB/FVG high for SHORTs. ATR is only a small buffer (~0.5-1x); for this run target about ${atrStopBuffer}x ATR and do not over-pad.
+3. STOP LOSS: Place SL just behind the invalidation structure — below the entry OB/FVG low for LONGs, above the entry OB/FVG high for SHORTs. No ATR padding.
 4. TARGET: Trade level-to-level. TP1 = previous swing pivot or nearest opposing FVG/OB. TP2 = next major structural level (swing high/low, VAH/VAL, or POC on HTF).
-5. Treat valid FVGs from ${fvgAtrFactor}x ATR and above as eligible execution zones on the lower timeframe.
+5. CONFLUENCE SCORING: Fib OTE zone (0.382-0.705) overlap, EMA proximity (20/50/200), OB alignment, swing pivot alignment, BOS/CHoCH, liquidity sweep each add a confluence signal. More confluences = higher grade.
 6. Minimum R/R: ${MIN_RISK_REWARD_RATIO}:1 to TP1. Require at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}.
 7. LONG: SL strictly below entry, TP1/TP2 strictly above entry.
 8. SHORT: SL strictly above entry, TP1/TP2 strictly below entry.
@@ -4355,7 +4419,7 @@ OUTPUT: Valid JSON only, no markdown.
             role: "system",
             content: analysisType === 'general'
               ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Always respond with valid JSON only, no markdown.`
-              : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes (${higherTimeframe}, ${lowerTimeframe}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\nYour edge is cross-timeframe confluence: identify WHERE price is going (the target level), WHERE to enter (with a concrete justification appropriate to this mode — never a blind "enter at current price"), and WHERE your invalidation is (a structural stop behind the entry). You require a minimum ${MIN_RISK_REWARD_RATIO}:1 R/R to TP1, at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}, an ATR stop buffer near ${atrStopBuffer}x, and execution FVGs valid from ${fvgAtrFactor}x ATR. You never output contradictory LONG+SHORT setups. If no quality setup exists for this mode, you say so. Always respond with valid JSON only, no markdown.`
+              : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes (${higherTimeframe}, ${lowerTimeframe}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\nYour edge is cross-timeframe confluence: identify WHERE price is going (the target level), WHERE to enter (with a concrete justification appropriate to this mode — never a blind "enter at current price"), and WHERE your invalidation is (a structural stop behind the entry). Stop-loss goes just behind the invalidation structure — no ATR padding. Require minimum R/R ${MIN_RISK_REWARD_RATIO}:1 to TP1, at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}. Fib OTE zone (0.382-0.705), EMA proximity, OB/FVG alignment, and swing pivots all count as confluence signals. You never output contradictory LONG+SHORT setups. If no quality setup exists for this mode, you say so. Always respond with valid JSON only, no markdown.`
           },
           { role: "user", content: analysisType === 'general' ? generalPrompt : deepPrompt }
         ],
@@ -4628,8 +4692,6 @@ OUTPUT: Valid JSON only, no markdown.
       const traderMode = getAiTraderMode(requestedMode);
       const minRiskReward = Number(subscription.minRiskReward ?? AI_MIN_RISK_REWARD_RATIO);
       const minConfluence = Number(subscription.minConfluence ?? 3);
-      const atrStopBuffer = Number(subscription.atrStopBuffer ?? 0.75);
-      const fvgAtrFactor = Number(subscription.fvgAtrFactor ?? 0.5);
 
       if (!symbol || !currentPrice || !recentBars) {
         return res.status(400).json({ error: 'Missing required data' });
@@ -4932,9 +4994,9 @@ ${traderMode.validityCriteria}
 
 GENERAL RULES:
 - Trade level-to-level. Every entry must have a concrete justification appropriate to this mode — never a blind "enter at current price".
-- STOP LOSS behind the invalidation structure with only a small ATR buffer (~0.5-1x ATR). For this run use about ${atrStopBuffer}x ATR and do not over-pad.
-- Valid FVG execution zones can be as small as ${fvgAtrFactor}x ATR when the structure is otherwise clean.
+- STOP LOSS just behind the invalidation structure (the swing pivot, FVG boundary, or order block that would invalidate the setup). No ATR padding.
 - Min R/R ≥${minRiskReward}:1 to TP1. Discard any setup that cannot achieve this.
+- CONFLUENCE SCORING: Fib OTE zone (0.382-0.705) overlap, EMA proximity (20/50/200), OB alignment, swing pivot alignment, BOS/CHoCH, liquidity sweep each count as a confluence signal.
 - Require at least ${minConfluence} confirming signals. Grade: A+ (6+ confluence), A (5), B (4), C (3). Output 1-3 setups only if they genuinely qualify.
 - If no valid setup exists for this mode, output 0 alerts and explain the live read in marketInsights (still populate bias and keyLevels).
 
@@ -4949,7 +5011,7 @@ Return JSON only, no markdown:
       "stopLoss": 1.2280,
       "targets": [1.2420, 1.2520],
       "entryZone": "e.g. Bullish FVG $1.23-$1.235 + OB confluence, or RSI oversold reversal + MACD cross",
-      "slRationale": "Structural/ATR justification",
+      "slRationale": "Structural invalidation level",
       "tp1Rationale": "Level-to-level justification",
       "confluenceSignals": ["..."],
       "confluenceCount": 5,
@@ -4965,7 +5027,7 @@ Return JSON only, no markdown:
         messages: [
           {
             role: "system",
-            content: `${traderMode.systemPrompt} You require a minimum ${minRiskReward}:1 R/R to TP1, at least ${minConfluence} confirming signals, an ATR stop buffer near ${atrStopBuffer}x, and you may use valid FVGs from ${fvgAtrFactor}x ATR. If no genuine setup exists for your mode, say so clearly rather than forcing a trade.`,
+            content: `${traderMode.systemPrompt} You require a minimum ${minRiskReward}:1 R/R to TP1, at least ${minConfluence} confirming signals. Stop-loss goes just behind the invalidation structure (swing pivot / FVG boundary / order block) — no ATR padding. Fib OTE zone (0.382-0.705), EMA proximity, and structural alignment all count as confluence signals. If no genuine setup exists for your mode, say so clearly rather than forcing a trade.`,
           },
           {
             role: "user",
@@ -6149,8 +6211,6 @@ Return ONLY valid JSON in this exact format:
           : [],
         minRiskReward: subscription?.minRiskReward != null ? Number(subscription.minRiskReward) : 1.5,
         minConfluence: subscription?.minConfluence ?? 3,
-        atrStopBuffer: subscription?.atrStopBuffer != null ? Number(subscription.atrStopBuffer) : 0.75,
-        fvgAtrFactor: subscription?.fvgAtrFactor != null ? Number(subscription.fvgAtrFactor) : 0.5,
         aiTraderMode: subscription?.aiTraderMode || 'smc',
         aiHigherTimeframe: normalizeCryptoAiPair(subscription?.aiHigherTimeframe, subscription?.aiLowerTimeframe).higherTimeframe,
         aiLowerTimeframe: normalizeCryptoAiPair(subscription?.aiHigherTimeframe, subscription?.aiLowerTimeframe).lowerTimeframe,
@@ -6171,7 +6231,7 @@ Return ONLY valid JSON in this exact format:
         selectedTickers, alertGrades, alertTimeframes, alertTypes, alertsEnabled, pushSubscription,
         hlineAlertsEnabled, elliottAlertsEnabled, aiTradeAlertsEnabled, indicatorAlertsEnabled,
         scanTickers, aiTraderMode, aiHigherTimeframe, aiLowerTimeframe,
-        minRiskReward, minConfluence, atrStopBuffer, fvgAtrFactor
+        minRiskReward, minConfluence
       } = req.body;
       const getTickerSlotCap = (userTier: string) => {
         switch (userTier) {
@@ -6316,20 +6376,6 @@ Return ONLY valid JSON in this exact format:
           return res.status(400).json({ error: 'minConfluence must be an integer between 0 and 9.' });
         }
         updateData.minConfluence = minConfluenceValue;
-      }
-      if (atrStopBuffer !== undefined) {
-        const atrStopBufferValue = Number(atrStopBuffer);
-        if (!Number.isFinite(atrStopBufferValue) || atrStopBufferValue < 0 || atrStopBufferValue > 10) {
-          return res.status(400).json({ error: 'atrStopBuffer must be a number between 0 and 10.' });
-        }
-        updateData.atrStopBuffer = atrStopBufferValue.toFixed(2);
-      }
-      if (fvgAtrFactor !== undefined) {
-        const fvgAtrFactorValue = Number(fvgAtrFactor);
-        if (!Number.isFinite(fvgAtrFactorValue) || fvgAtrFactorValue < 0 || fvgAtrFactorValue > 10) {
-          return res.status(400).json({ error: 'fvgAtrFactor must be a number between 0 and 10.' });
-        }
-        updateData.fvgAtrFactor = fvgAtrFactorValue.toFixed(2);
       }
       updateData.tickerSlots = tickerSlots;
       if (aiTraderMode !== undefined) {

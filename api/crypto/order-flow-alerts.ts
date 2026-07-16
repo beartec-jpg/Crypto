@@ -143,8 +143,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let dbAvailable = false;
     let minRiskReward = AI_MIN_RISK_REWARD_RATIO;
     let minConfluence = 3;
-    let atrStopBuffer = 0.75;
-    let fvgAtrFactor = 0.5;
 
     try {
       pool = await getDb();
@@ -159,8 +157,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         dbAvailable = true;
 
         const subResult = await pool.query(
-          `SELECT tier, ai_credits, ai_credits_reset_at, min_risk_reward, min_confluence,
-                  atr_stop_buffer, fvg_atr_factor
+          `SELECT tier, ai_credits, ai_credits_reset_at, min_risk_reward, min_confluence
            FROM crypto_subscriptions WHERE user_id = $1`,
           [cryptoUserId]
         );
@@ -171,8 +168,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         aiCreditsUsed = subscription?.ai_credits || 0;
         minRiskReward = Number(subscription?.min_risk_reward ?? AI_MIN_RISK_REWARD_RATIO);
         minConfluence = Number(subscription?.min_confluence ?? 3);
-        atrStopBuffer = Number(subscription?.atr_stop_buffer ?? 0.75);
-        fvgAtrFactor = Number(subscription?.fvg_atr_factor ?? 0.5);
         const resetAt = subscription?.ai_credits_reset_at ? new Date(subscription.ai_credits_reset_at) : null;
 
         const now = new Date();
@@ -398,9 +393,8 @@ MODE VALIDITY CRITERIA:
 ${traderMode.validityCriteria}
 
 GENERAL RULES:
+- STOP LOSS just behind the invalidation structure (the swing pivot, FVG boundary, or order block that would invalidate the setup). No ATR padding.
 - Every entry must have a concrete justification appropriate to this mode — never a blind "enter at current price".
-- STOP LOSS behind the invalidation structure with only a small ATR buffer (~0.5-1x ATR). For this run use about ${atrStopBuffer}x ATR and do not over-pad.
-- Valid FVG execution zones can be as small as ${fvgAtrFactor}x ATR when the structure is otherwise clean.
 - Min R/R ≥ ${minRiskReward} to TP1. Discard any setup that cannot achieve this.
 - Require at least ${minConfluence} confirming signals for a trade. Grade A+ (6+), A (5), B (4), C (3).
 - If no valid setup exists for this mode, return empty alerts and explain the live read in marketInsights (still populate bias and keyLevels).
@@ -444,7 +438,7 @@ Return ONLY valid JSON:
     // pre-computed payloads, and it produces a final JSON answer.
     const runWithTools = async (): Promise<any> => {
       const messages: any[] = [
-        { role: 'system', content: `${traderMode.systemPrompt} You require a minimum ${minRiskReward}:1 R/R to TP1, at least ${minConfluence} confirming signals, an ATR stop buffer near ${atrStopBuffer}x, and you may use valid FVGs from ${fvgAtrFactor}x ATR. If no genuine setup exists for your mode, say so clearly rather than forcing a trade.` },
+        { role: 'system', content: `${traderMode.systemPrompt} You require a minimum ${minRiskReward}:1 R/R to TP1, at least ${minConfluence} confirming signals. Stop-loss goes just behind the invalidation structure (swing pivot / FVG boundary / order block). No ATR padding. If no genuine setup exists for your mode, say so clearly rather than forcing a trade.` },
         { role: 'user', content: userPrompt },
       ];
       const maxIterations = 6;
