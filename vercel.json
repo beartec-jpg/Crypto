@@ -32,6 +32,18 @@
     {
       "path": "/api/cron/check-alerts",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/refresh-crypto-ai-general",
+      "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-crypto-ai-general",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/refresh-crypto-ai-general",
+      "schedule": "0 13 * * *"
     }
   ],
   "rewrites": [

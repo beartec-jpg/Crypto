@@ -271,6 +271,233 @@ function detectSwingPivots(bars: any[], lookback = 5): { highs: number[]; lows: 
   return { highs: highs.slice(-5), lows: lows.slice(-5) };
 }
 
+async function fetchBarsForTF(symbol: string, tf: string) {
+  const url = `https://api.binance.us/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=500`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Failed to fetch ${tf} data`);
+  const data = await response.json();
+  return data.map((k: any) => ({
+    time: k[0] / 1000,
+    open: parseFloat(k[1]),
+    high: parseFloat(k[2]),
+    low: parseFloat(k[3]),
+    close: parseFloat(k[4]),
+    volume: parseFloat(k[5]),
+  }));
+}
+
+function computeIndicators(bars: any[]) {
+  const currentPrice = bars[bars.length - 1].close;
+  const rsi = calculateRSI(bars, 14);
+  const macd = calculateMACD(bars);
+  const stoch = calculateStochastic(bars, 14, 3);
+  const atr = calculateATR(bars, 14);
+  const adx = calculateADX(bars);
+  const bb = calculateBollingerBands(bars, 20, 2);
+  const vwapCalc = calculateVWAP(bars);
+  const obv = calculateOBV(bars);
+  const boschoch = detectBOSCHoCH(bars);
+  const fvgs = detectFVGs(bars);
+  const obs = detectOrderBlocks(bars);
+  const volProfile = calculateVolumeProfile(bars);
+  const swings = detectSwingPivots(bars);
+  const recentHigh = Math.max(...bars.slice(-20).map(b => b.high));
+  const recentLow = Math.min(...bars.slice(-20).map(b => b.low));
+
+  return {
+    currentPrice,
+    rsi: rsi.toFixed(2),
+    macd: { histogram: macd.histogram.toFixed(4), crossover: macd.crossover },
+    stoch: { k: stoch.k.toFixed(2), d: stoch.d.toFixed(2), crossover: stoch.crossover },
+    atr: atr.toFixed(6),
+    adx: adx.toFixed(2),
+    bb: { middle: bb.middle.toFixed(4), squeeze: bb.squeeze, bandwidth: (bb.bandwidth * 100).toFixed(2) },
+    vwap: vwapCalc.vwap.toFixed(4),
+    obv: (obv.obv / 1000000).toFixed(2) + 'M',
+    bos: boschoch.bos,
+    choch: boschoch.choch,
+    poc: volProfile.poc.toFixed(4),
+    vah: volProfile.vah.toFixed(4),
+    val: volProfile.val.toFixed(4),
+    bullFVGs: fvgs.bullish.map(f => `$${f.low.toFixed(4)}-$${f.high.toFixed(4)}`).join(' | ') || 'None',
+    bearFVGs: fvgs.bearish.map(f => `$${f.low.toFixed(4)}-$${f.high.toFixed(4)}`).join(' | ') || 'None',
+    bullOBs: obs.bullish.map(o => `$${o.low.toFixed(4)}-$${o.high.toFixed(4)}`).join(' | ') || 'None',
+    bearOBs: obs.bearish.map(o => `$${o.low.toFixed(4)}-$${o.high.toFixed(4)}`).join(' | ') || 'None',
+    swingHighs: swings.highs.map(h => `$${h.toFixed(4)}`).join(' → ') || 'None',
+    swingLows: swings.lows.map(l => `$${l.toFixed(4)}`).join(' → ') || 'None',
+    recentHigh: recentHigh.toFixed(4),
+    recentLow: recentLow.toFixed(4)
+  };
+}
+
+function buildGeneralPrompt(symbol: string, higherTimeframe: string, lowerTimeframe: string, higherData: ReturnType<typeof computeIndicators>, lowerData: ReturnType<typeof computeIndicators>) {
+  const fmtTF = (label: string, d: ReturnType<typeof computeIndicators>) => `
+**${label} (${label === higherTimeframe ? 'Higher TF bias' : 'Lower TF execution'}):**
+- Price: $${d.currentPrice}, RSI: ${d.rsi}, MACD hist: ${d.macd.histogram}${d.macd.crossover !== 'none' ? ` (${d.macd.crossover})` : ''}
+- Stoch: %K ${d.stoch.k}, %D ${d.stoch.d}${d.stoch.crossover !== 'none' ? ` (${d.stoch.crossover})` : ''} | ADX: ${d.adx} | ATR: ${d.atr}
+- Volume Profile: POC $${d.poc} | VAH $${d.vah} | VAL $${d.val}
+- VWAP: $${d.vwap} | OBV: ${d.obv} | BOS: ${d.bos} | CHoCH: ${d.choch}
+- Bullish FVGs: ${d.bullFVGs} | Bearish FVGs: ${d.bearFVGs}
+- Bullish OBs: ${d.bullOBs} | Bearish OBs: ${d.bearOBs}
+- Swing Highs: ${d.swingHighs} | Swing Lows: ${d.swingLows}
+- Range: $${d.recentLow} - $${d.recentHigh}`;
+
+  return `Symbol: ${symbol} | General multi-timeframe overview
+Higher timeframe: ${higherTimeframe}
+Lower timeframe: ${lowerTimeframe}
+${fmtTF(higherTimeframe, higherData)}
+${fmtTF(lowerTimeframe, lowerData)}
+
+Give a concise at-a-glance analysis only. Do NOT produce a trade plan, entry, stop, targets, or risk/reward.
+- Higher timeframe: focus on dominant bias/trend and key levels.
+- Lower timeframe: focus on momentum/structure, alignment with the higher timeframe, and nearby trigger levels.
+- Keep summaries brief and actionable.
+
+Respond with ONLY valid JSON:
+{
+  "multiTFInsights": {
+    "${higherTimeframe}": { "summary": "1-2 sentences on higher timeframe bias/trend", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["..."] },
+    "${lowerTimeframe}": { "summary": "1-2 sentences on lower timeframe momentum/structure", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["..."] },
+    "overallSummary": "1-2 sentences on alignment between the two timeframes and what matters next"
+  }
+}`;
+}
+
+async function generateGeneralPairAnalysis(apiKey: string, symbol: string, higherTimeframe: string, lowerTimeframe: string) {
+  const requestedFrames = Array.from(new Set([lowerTimeframe, higherTimeframe]));
+  const barsByTimeframe = Object.fromEntries(
+    await Promise.all(requestedFrames.map(async (tf) => [tf, await fetchBarsForTF(symbol, tf)]))
+  ) as Record<string, any[]>;
+
+  const lowerData = computeIndicators(barsByTimeframe[lowerTimeframe]);
+  const higherData = computeIndicators(barsByTimeframe[higherTimeframe]);
+  const generalPrompt = buildGeneralPrompt(symbol, higherTimeframe, lowerTimeframe, higherData, lowerData);
+
+  const openai = new OpenAI({
+    baseURL: 'https://api.x.ai/v1',
+    apiKey,
+    timeout: 250000,
+  });
+
+  let completion: any;
+  try {
+    completion = await (openai.chat.completions.create as any)({
+      model: XAI_PRIMARY_MODEL,
+      messages: [
+        { role: 'system', content: 'You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Always respond with valid JSON only.' },
+        { role: 'user', content: generalPrompt }
+      ],
+      temperature: 0.2,
+      max_tokens: 1200
+    });
+  } catch (primaryModelError: any) {
+    console.warn(`⚠️ ${XAI_PRIMARY_MODEL} failed (${primaryModelError.message}), falling back to ${XAI_FALLBACK_MODEL}`);
+    completion = await openai.chat.completions.create({
+      model: XAI_FALLBACK_MODEL,
+      messages: [
+        { role: 'system', content: 'You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Always respond with valid JSON only.' },
+        { role: 'user', content: generalPrompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 1200
+    });
+  }
+
+  const inputTokens = completion.usage?.prompt_tokens || 0;
+  const outputTokens = completion.usage?.completion_tokens || 0;
+  const estimatedCost = (inputTokens / 1_000_000 * 2) + (outputTokens / 1_000_000 * 10);
+
+  let multiTFInsights: any = null;
+  try {
+    let rawContent = extractTextContent(completion.choices[0]?.message);
+    rawContent = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
+    const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { multiTFInsights: null };
+    multiTFInsights = parsed.multiTFInsights || null;
+  } catch (parseError) {
+    console.error('Failed to parse Grok response:', parseError);
+  }
+
+  return {
+    multiTFInsights,
+    estimatedCost,
+    tokens: { input: inputTokens, output: outputTokens },
+  };
+}
+
+function normaliseSnapshots(rawSnapshots: any): any[] {
+  return Array.isArray(rawSnapshots) ? rawSnapshots.filter(Boolean) : [];
+}
+
+function rotateSnapshots(rawSnapshots: any, nextSnapshot: any) {
+  return [nextSnapshot, ...normaliseSnapshots(rawSnapshots)].slice(0, 3);
+}
+
+export async function runGeneralPairRefresh(pool: any, apiKey: string, symbol: string, higherTimeframe: string, lowerTimeframe: string) {
+  const {
+    encodeCryptoAiPairInterval,
+    getCryptoAiCycleSession,
+    getSessionDisplayName,
+  } = await import('../_lib/cryptoAiConfig.js');
+  const interval = encodeCryptoAiPairInterval(higherTimeframe as any, lowerTimeframe as any);
+  const generated = await generateGeneralPairAnalysis(apiKey, symbol, higherTimeframe, lowerTimeframe);
+  const session = getCryptoAiCycleSession();
+  const generatedAt = new Date().toISOString();
+  const snapshot = {
+    session,
+    label: getSessionDisplayName(session),
+    generatedAt,
+    higherTimeframe,
+    lowerTimeframe,
+    multiTFInsights: generated.multiTFInsights,
+    estimatedCost: generated.estimatedCost,
+    tokens: generated.tokens,
+  };
+
+  const existing = await pool.query(
+    `SELECT id, snapshots
+     FROM crypto_scan_cache
+     WHERE symbol = $1 AND interval = $2 AND mode = 'general'
+     LIMIT 1`,
+    [symbol, interval],
+  );
+
+  const snapshots = rotateSnapshots(existing.rows[0]?.snapshots, snapshot);
+  const aiNarration = {
+    multiTFInsights: generated.multiTFInsights,
+    estimatedCost: generated.estimatedCost,
+    tokens: generated.tokens,
+    refreshedAt: generatedAt,
+    session,
+  };
+
+  await pool.query(
+    `INSERT INTO crypto_scan_cache (
+       id, symbol, interval, mode, scores, ai_narration, higher_timeframe, lower_timeframe, snapshots, created_at, updated_at
+     ) VALUES (
+       gen_random_uuid(), $1, $2, 'general', '{}'::jsonb, $3::jsonb, $4, $5, $6::jsonb, NOW(), NOW()
+     )
+     ON CONFLICT (symbol, interval, mode)
+     DO UPDATE SET
+       ai_narration = EXCLUDED.ai_narration,
+       higher_timeframe = EXCLUDED.higher_timeframe,
+       lower_timeframe = EXCLUDED.lower_timeframe,
+       snapshots = EXCLUDED.snapshots,
+       updated_at = NOW()`,
+    [symbol, interval, JSON.stringify(aiNarration), higherTimeframe, lowerTimeframe, JSON.stringify(snapshots)],
+  );
+
+  return {
+    cached: false,
+    session,
+    refreshedAt: generatedAt,
+    snapshots,
+    multiTFInsights: generated.multiTFInsights,
+    estimatedCost: generated.estimatedCost,
+    tokens: generated.tokens,
+  };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
@@ -293,6 +520,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!apiKey) {
       return res.status(503).json({ error: 'AI service not configured', available: false });
     }
+    const {
+      DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
+      DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+      normalizeCryptoAiPair,
+      encodeCryptoAiPairInterval,
+      isCryptoAiCacheFresh,
+    } = await import('../_lib/cryptoAiConfig.js');
 
     const {
       symbol,
@@ -305,24 +539,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!symbol) {
       return res.status(400).json({ error: 'Symbol is required' });
     }
-
-    const TIMEFRAME_RANK: Record<string, number> = {
-      '5m': 1,
-      '15m': 2,
-      '1h': 3,
-      '4h': 4,
-      '1d': 5,
-      '1w': 6,
-    };
-    const fallbackFrames = Array.isArray(timeframes) ? timeframes.filter((tf: string) => tf in TIMEFRAME_RANK) : [];
-    const lowerTimeframe = requestedLowerTimeframe || fallbackFrames[0] || '15m';
-    const higherTimeframe = requestedHigherTimeframe || fallbackFrames[1] || '1d';
-    if (!(lowerTimeframe in TIMEFRAME_RANK) || !(higherTimeframe in TIMEFRAME_RANK)) {
-      return res.status(400).json({ error: 'Invalid timeframe selection' });
-    }
-    if (TIMEFRAME_RANK[higherTimeframe] <= TIMEFRAME_RANK[lowerTimeframe]) {
-      return res.status(400).json({ error: 'Higher timeframe must be greater than lower timeframe' });
-    }
+    const fallbackFrames = Array.isArray(timeframes) ? timeframes : [];
+    const normalizedPair = normalizeCryptoAiPair(
+      requestedHigherTimeframe || fallbackFrames[1] || DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
+      requestedLowerTimeframe || fallbackFrames[0] || DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+    );
+    const lowerTimeframe = normalizedPair.lowerTimeframe;
+    const higherTimeframe = normalizedPair.higherTimeframe;
 
     // Resolve the selected AI trader mode so multi-TF analysis uses the same lens.
     const { getAiTraderMode } = await import('../_lib/aiTraderModes.js');
@@ -346,11 +569,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const subscription = subResult.rows[0];
     const tier = subscription?.tier || 'free';
 
-    if (tier !== 'elite' && !isAdmin) {
+    if (tier === 'free' || tier === 'beginner') {
       await pool.end();
       return res.status(403).json({ 
-        error: 'Elite subscription required',
-        message: 'Multi-Timeframe Analysis is an Elite-only feature.',
+        error: 'Upgrade required',
+        message: 'AI Analysis is available on Intermediate, Pro, and Elite plans.',
         requireUpgrade: true
       });
     }
@@ -378,73 +601,86 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    const pairInterval = encodeCryptoAiPairInterval(higherTimeframe, lowerTimeframe);
     console.log(`📊 Multi-TF Analysis for ${symbol}: ${higherTimeframe}/${lowerTimeframe} (${analysisType})`);
 
-    const fetchBarsForTF = async (tf: string) => {
-      const url = `https://api.binance.us/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=500`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`Failed to fetch ${tf} data`);
-      const data = await response.json();
-      return data.map((k: any) => ({
-        time: k[0] / 1000,
-        open: parseFloat(k[1]),
-        high: parseFloat(k[2]),
-        low: parseFloat(k[3]),
-        close: parseFloat(k[4]),
-        volume: parseFloat(k[5])
-      }));
-    };
+    if (analysisType === 'general') {
+      const cachedResult = await pool.query(
+        `SELECT ai_narration, snapshots, updated_at
+         FROM crypto_scan_cache
+         WHERE symbol = $1 AND interval = $2 AND mode = 'general'
+         LIMIT 1`,
+        [symbol, pairInterval],
+      );
+
+      const cachedRow = cachedResult.rows[0];
+      if (cachedRow && isCryptoAiCacheFresh(cachedRow.updated_at)) {
+        const snapshots = Array.isArray(cachedRow.snapshots) ? cachedRow.snapshots : [];
+        const aiNarration = typeof cachedRow.ai_narration === 'string' ? JSON.parse(cachedRow.ai_narration) : (cachedRow.ai_narration || {});
+        await pool.end();
+        return res.json({
+          success: true,
+          cached: true,
+          multiTFInsights: aiNarration.multiTFInsights || null,
+          bestTrades: [],
+          estimatedCost: 0,
+          tokens: { input: 0, output: 0 },
+          creditsRemaining: isAdmin ? 999 : creditsRemaining,
+          sessionBoard: {
+            session: aiNarration.session || null,
+            refreshedAt: cachedRow.updated_at,
+            snapshots,
+          },
+        });
+      }
+
+      try {
+        const generated = await runGeneralPairRefresh(pool, apiKey, symbol, higherTimeframe, lowerTimeframe);
+        await pool.end();
+        return res.json({
+          success: true,
+          cached: false,
+          multiTFInsights: generated.multiTFInsights,
+          bestTrades: [],
+          estimatedCost: generated.estimatedCost,
+          tokens: generated.tokens,
+          creditsRemaining: isAdmin ? 999 : creditsRemaining,
+          sessionBoard: {
+            session: generated.session,
+            refreshedAt: generated.refreshedAt,
+            snapshots: generated.snapshots,
+          },
+        });
+      } catch (generalError: any) {
+        if (cachedRow) {
+          const snapshots = Array.isArray(cachedRow.snapshots) ? cachedRow.snapshots : [];
+          const aiNarration = typeof cachedRow.ai_narration === 'string' ? JSON.parse(cachedRow.ai_narration) : (cachedRow.ai_narration || {});
+          await pool.end();
+          return res.json({
+            success: true,
+            cached: true,
+            multiTFInsights: aiNarration.multiTFInsights || null,
+            bestTrades: [],
+            estimatedCost: 0,
+            tokens: { input: 0, output: 0 },
+            creditsRemaining: isAdmin ? 999 : creditsRemaining,
+            sessionBoard: {
+              session: aiNarration.session || null,
+              refreshedAt: cachedRow.updated_at,
+              snapshots,
+            },
+          });
+        }
+        throw generalError;
+      }
+    }
 
     const requestedFrames = Array.from(new Set([lowerTimeframe, higherTimeframe]));
     const barsByTimeframe = Object.fromEntries(
       await Promise.all(
-        requestedFrames.map(async (tf) => [tf, await fetchBarsForTF(tf)])
+        requestedFrames.map(async (tf) => [tf, await fetchBarsForTF(symbol, tf)])
       )
     ) as Record<string, any[]>;
-
-    const computeIndicators = (bars: any[]) => {
-      const currentPrice = bars[bars.length - 1].close;
-      const rsi = calculateRSI(bars, 14);
-      const macd = calculateMACD(bars);
-      const stoch = calculateStochastic(bars, 14, 3);
-      const atr = calculateATR(bars, 14);
-      const adx = calculateADX(bars);
-      const bb = calculateBollingerBands(bars, 20, 2);
-      const vwapCalc = calculateVWAP(bars);
-      const obv = calculateOBV(bars);
-      const boschoch = detectBOSCHoCH(bars);
-      const fvgs = detectFVGs(bars);
-      const obs = detectOrderBlocks(bars);
-      const volProfile = calculateVolumeProfile(bars);
-      const swings = detectSwingPivots(bars);
-      const recentHigh = Math.max(...bars.slice(-20).map(b => b.high));
-      const recentLow = Math.min(...bars.slice(-20).map(b => b.low));
-
-      return {
-        currentPrice,
-        rsi: rsi.toFixed(2),
-        macd: { histogram: macd.histogram.toFixed(4), crossover: macd.crossover },
-        stoch: { k: stoch.k.toFixed(2), d: stoch.d.toFixed(2), crossover: stoch.crossover },
-        atr: atr.toFixed(6),
-        adx: adx.toFixed(2),
-        bb: { middle: bb.middle.toFixed(4), squeeze: bb.squeeze, bandwidth: (bb.bandwidth * 100).toFixed(2) },
-        vwap: vwapCalc.vwap.toFixed(4),
-        obv: (obv.obv / 1000000).toFixed(2) + 'M',
-        bos: boschoch.bos,
-        choch: boschoch.choch,
-        poc: volProfile.poc.toFixed(4),
-        vah: volProfile.vah.toFixed(4),
-        val: volProfile.val.toFixed(4),
-        bullFVGs: fvgs.bullish.map(f => `$${f.low.toFixed(4)}-$${f.high.toFixed(4)}`).join(' | ') || 'None',
-        bearFVGs: fvgs.bearish.map(f => `$${f.low.toFixed(4)}-$${f.high.toFixed(4)}`).join(' | ') || 'None',
-        bullOBs: obs.bullish.map(o => `$${o.low.toFixed(4)}-$${o.high.toFixed(4)}`).join(' | ') || 'None',
-        bearOBs: obs.bearish.map(o => `$${o.low.toFixed(4)}-$${o.high.toFixed(4)}`).join(' | ') || 'None',
-        swingHighs: swings.highs.map(h => `$${h.toFixed(4)}`).join(' → ') || 'None',
-        swingLows: swings.lows.map(l => `$${l.toFixed(4)}`).join(' → ') || 'None',
-        recentHigh: recentHigh.toFixed(4),
-        recentLow: recentLow.toFixed(4)
-      };
-    };
 
     const lowerData = computeIndicators(barsByTimeframe[lowerTimeframe]);
     const higherData = computeIndicators(barsByTimeframe[higherTimeframe]);

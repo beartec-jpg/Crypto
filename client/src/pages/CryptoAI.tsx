@@ -9,6 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
@@ -16,32 +17,28 @@ import { useToast } from '@/hooks/use-toast';
 import { useWatchlistState } from '@/hooks/useWatchlistState';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
 import { authenticatedApiRequest } from '@/lib/apiAuth';
+import {
+  buildSessionBoardSections,
+  getLatestSnapshotInsights,
+  parseKlinesToCandles,
+} from '@/lib/cryptoAiSessionBoard';
 import { queryClient } from '@/lib/queryClient';
 import { formatTickerDisplay } from '@/lib/chart/priceUtils';
 import { DEFAULT_AI_TRADER_MODE, ENABLED_AI_TRADER_MODES, isAiTraderModeId, type AiTraderModeId } from '@shared/aiTraderModes';
 import type { CryptoPreferences } from '@shared/schema';
+import {
+  CRYPTO_AI_HIGHER_TIMEFRAMES,
+  CRYPTO_AI_LOWER_TIMEFRAMES,
+  DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
+  DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+  type CryptoAiHigherTimeframe,
+  type CryptoAiLowerTimeframe,
+  type CryptoAiSessionSnapshot,
+} from '@shared/cryptoAiConfig';
 
-const TIMEFRAME_OPTIONS = [
-  { label: '5m', value: '5m' },
-  { label: '15m', value: '15m' },
-  { label: '1h', value: '1h' },
-  { label: '4h', value: '4h' },
-  { label: '1d', value: '1d' },
-  { label: '1w', value: '1w' },
-] as const;
-type AiTimeframe = (typeof TIMEFRAME_OPTIONS)[number]['value'];
-
-const TIMEFRAME_RANK: Record<AiTimeframe, number> = {
-  '5m': 1,
-  '15m': 2,
-  '1h': 3,
-  '4h': 4,
-  '1d': 5,
-  '1w': 6,
-};
-
-const DEFAULT_HIGHER_TIMEFRAME = '1d';
-const DEFAULT_LOWER_TIMEFRAME = '15m';
+const HIGHER_TIMEFRAME_OPTIONS = CRYPTO_AI_HIGHER_TIMEFRAMES.map((value) => ({ label: value, value }));
+const LOWER_TIMEFRAME_OPTIONS = CRYPTO_AI_LOWER_TIMEFRAMES.map((value) => ({ label: value, value }));
+type AiTimeframe = CryptoAiHigherTimeframe | CryptoAiLowerTimeframe;
 
 type AnalysisSection = {
   summary?: string;
@@ -76,6 +73,12 @@ type AnalysisResponse = {
   tokens?: { input?: number; output?: number };
   estimatedCost?: number;
   creditsRemaining?: number;
+  cached?: boolean;
+  sessionBoard?: {
+    snapshots?: CryptoAiSessionSnapshot[];
+    refreshedAt?: string | null;
+    session?: string;
+  } | null;
 };
 
 type RequestState =
@@ -117,6 +120,9 @@ function formatUsage(data?: AnalysisResponse): string {
   const input = data.tokens?.input ?? 0;
   const output = data.tokens?.output ?? 0;
   const parts: string[] = [];
+  if (data.cached) {
+    parts.push('cached');
+  }
   if (input || output) {
     parts.push(`${input.toLocaleString()} in / ${output.toLocaleString()} out`);
   }
@@ -124,16 +130,6 @@ function formatUsage(data?: AnalysisResponse): string {
     parts.push(`~$${cost.toFixed(6)}`);
   }
   return parts.join(' • ');
-}
-
-function getNearestLowerTimeframe(higherTimeframe: AiTimeframe): AiTimeframe {
-  const lowerOptions = TIMEFRAME_OPTIONS.filter((option) => TIMEFRAME_RANK[option.value] < TIMEFRAME_RANK[higherTimeframe]);
-  return (lowerOptions[lowerOptions.length - 1]?.value ?? DEFAULT_LOWER_TIMEFRAME) as AiTimeframe;
-}
-
-function getNearestHigherTimeframe(lowerTimeframe: AiTimeframe): AiTimeframe {
-  const higherOptions = TIMEFRAME_OPTIONS.filter((option) => TIMEFRAME_RANK[option.value] > TIMEFRAME_RANK[lowerTimeframe]);
-  return (higherOptions[0]?.value ?? DEFAULT_HIGHER_TIMEFRAME) as AiTimeframe;
 }
 
 export default function CryptoAI() {
@@ -145,11 +141,12 @@ export default function CryptoAI() {
   const { watchlistTickers } = useWatchlistState();
 
   const [aiTraderMode, setAiTraderMode] = useState<AiTraderModeId>(DEFAULT_AI_TRADER_MODE);
-  const [aiHigherTimeframe, setAiHigherTimeframe] = useState<AiTimeframe>(DEFAULT_HIGHER_TIMEFRAME);
-  const [aiLowerTimeframe, setAiLowerTimeframe] = useState<AiTimeframe>(DEFAULT_LOWER_TIMEFRAME);
+  const [aiHigherTimeframe, setAiHigherTimeframe] = useState<CryptoAiHigherTimeframe>(DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME);
+  const [aiLowerTimeframe, setAiLowerTimeframe] = useState<CryptoAiLowerTimeframe>(DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME);
   const [savingPreferences, setSavingPreferences] = useState(false);
   const [generalStates, setGeneralStates] = useState<Record<string, RequestState>>({});
   const [deepDiveStates, setDeepDiveStates] = useState<Record<string, RequestState>>({});
+  const [sessionCandles, setSessionCandles] = useState<Record<string, ReturnType<typeof parseKlinesToCandles>>>({});
 
   const { data: preferences, isLoading: preferencesLoading } = useQuery<AiPreferences>({
     queryKey: ['/api/crypto/preferences'],
@@ -174,21 +171,28 @@ export default function CryptoAI() {
       setAiTraderMode(preferences.aiTraderMode);
     }
 
-    if (preferences.aiHigherTimeframe && preferences.aiHigherTimeframe in TIMEFRAME_RANK) {
-      setAiHigherTimeframe(preferences.aiHigherTimeframe as AiTimeframe);
+    if ((CRYPTO_AI_HIGHER_TIMEFRAMES as readonly string[]).includes(preferences.aiHigherTimeframe || '')) {
+      setAiHigherTimeframe(preferences.aiHigherTimeframe as CryptoAiHigherTimeframe);
     }
 
-    if (preferences.aiLowerTimeframe && preferences.aiLowerTimeframe in TIMEFRAME_RANK) {
-      setAiLowerTimeframe(preferences.aiLowerTimeframe as AiTimeframe);
+    if ((CRYPTO_AI_LOWER_TIMEFRAMES as readonly string[]).includes(preferences.aiLowerTimeframe || '')) {
+      setAiLowerTimeframe(preferences.aiLowerTimeframe as CryptoAiLowerTimeframe);
     }
   }, [preferences]);
 
+  const watchlistOptions = useMemo(
+    () => Array.from(new Set(watchlistTickers.filter(Boolean))),
+    [watchlistTickers],
+  );
+
   const trackedTickers = useMemo(() => {
-    const fallbackTickers = preferences?.selectedTickers ?? [];
-    return Array.from(new Set([...watchlistTickers, ...fallbackTickers].filter(Boolean)));
-  }, [preferences?.selectedTickers, watchlistTickers]);
+    const activeScanTickers = preferences?.scanTickers ?? [];
+    return activeScanTickers.filter((ticker) => watchlistOptions.includes(ticker));
+  }, [preferences?.scanTickers, watchlistOptions]);
 
   const timeframeKey = `${aiHigherTimeframe}:${aiLowerTimeframe}`;
+  const tickerSlotCap = Math.min(preferences?.tickerSlots ?? 0, 5);
+  const canUseAi = tickerSlotCap > 0;
 
   const persistPreferences = async (payload: Partial<AiPreferences>) => {
     setSavingPreferences(true);
@@ -224,8 +228,22 @@ export default function CryptoAI() {
     return await response.json();
   };
 
+  const toggleScanTicker = async (ticker: string, checked: boolean) => {
+    const currentTickers = preferences?.scanTickers ?? [];
+    const nextTickers = checked
+      ? [...currentTickers, ticker]
+      : currentTickers.filter((currentTicker) => currentTicker !== ticker);
+
+    const dedupedTickers = Array.from(new Set(nextTickers)).slice(0, tickerSlotCap);
+    try {
+      await persistPreferences({ scanTickers: dedupedTickers });
+    } catch {
+      return;
+    }
+  };
+
   useEffect(() => {
-    if (authLoading || !isAuthenticated || preferencesLoading) return;
+    if (authLoading || !isAuthenticated || preferencesLoading || !canUseAi) return;
 
     if (trackedTickers.length === 0) {
       setGeneralStates({});
@@ -254,54 +272,73 @@ export default function CryptoAI() {
     return () => {
       cancelled = true;
     };
-  }, [authLoading, isAuthenticated, preferencesLoading, trackedTickers, timeframeKey]);
+  }, [authLoading, canUseAi, isAuthenticated, preferencesLoading, trackedTickers, timeframeKey]);
+
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || preferencesLoading || !canUseAi) return;
+    if (trackedTickers.length === 0) {
+      setSessionCandles({});
+      return;
+    }
+
+    let cancelled = false;
+    const loadCandles = async () => {
+      const nextEntries = await Promise.all(
+        trackedTickers.map(async (ticker) => {
+          const response = await fetch(`/api/binance/klines?symbol=${ticker}&interval=${aiLowerTimeframe}&limit=500`);
+          const payload = await response.json();
+          return [ticker, parseKlinesToCandles(payload)] as const;
+        }),
+      );
+
+      if (!cancelled) {
+        setSessionCandles(Object.fromEntries(nextEntries));
+      }
+    };
+
+    loadCandles().catch(() => {
+      if (!cancelled) {
+        setSessionCandles({});
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [aiLowerTimeframe, authLoading, canUseAi, isAuthenticated, preferencesLoading, trackedTickers]);
 
   useEffect(() => {
     setDeepDiveStates({});
   }, [timeframeKey, aiTraderMode]);
 
   const handleHigherTimeframeChange = async (nextHigherTimeframe: string) => {
-    if (!(nextHigherTimeframe in TIMEFRAME_RANK)) return;
-    const nextHigher = nextHigherTimeframe as AiTimeframe;
+    if (!(CRYPTO_AI_HIGHER_TIMEFRAMES as readonly string[]).includes(nextHigherTimeframe)) return;
+    const nextHigher = nextHigherTimeframe as CryptoAiHigherTimeframe;
     const previousHigher = aiHigherTimeframe;
-    const previousLower = aiLowerTimeframe;
-    const nextLowerTimeframe = TIMEFRAME_RANK[nextHigher] <= TIMEFRAME_RANK[aiLowerTimeframe]
-      ? getNearestLowerTimeframe(nextHigher)
-      : aiLowerTimeframe;
 
     setAiHigherTimeframe(nextHigher);
-    setAiLowerTimeframe(nextLowerTimeframe);
 
     try {
       await persistPreferences({
         aiHigherTimeframe: nextHigher,
-        aiLowerTimeframe: nextLowerTimeframe,
       });
     } catch {
       setAiHigherTimeframe(previousHigher);
-      setAiLowerTimeframe(previousLower);
     }
   };
 
   const handleLowerTimeframeChange = async (nextLowerTimeframe: string) => {
-    if (!(nextLowerTimeframe in TIMEFRAME_RANK)) return;
-    const nextLower = nextLowerTimeframe as AiTimeframe;
-    const previousHigher = aiHigherTimeframe;
+    if (!(CRYPTO_AI_LOWER_TIMEFRAMES as readonly string[]).includes(nextLowerTimeframe)) return;
+    const nextLower = nextLowerTimeframe as CryptoAiLowerTimeframe;
     const previousLower = aiLowerTimeframe;
-    const nextHigherTimeframe = TIMEFRAME_RANK[nextLower] >= TIMEFRAME_RANK[aiHigherTimeframe]
-      ? getNearestHigherTimeframe(nextLower)
-      : aiHigherTimeframe;
 
     setAiLowerTimeframe(nextLower);
-    setAiHigherTimeframe(nextHigherTimeframe);
 
     try {
       await persistPreferences({
-        aiHigherTimeframe: nextHigherTimeframe,
         aiLowerTimeframe: nextLower,
       });
     } catch {
-      setAiHigherTimeframe(previousHigher);
       setAiLowerTimeframe(previousLower);
     }
   };
@@ -348,9 +385,6 @@ export default function CryptoAI() {
     );
   }
 
-  const higherTimeframeOptions = TIMEFRAME_OPTIONS.filter((option) => TIMEFRAME_RANK[option.value] > TIMEFRAME_RANK[aiLowerTimeframe]);
-  const lowerTimeframeOptions = TIMEFRAME_OPTIONS.filter((option) => TIMEFRAME_RANK[option.value] < TIMEFRAME_RANK[aiHigherTimeframe]);
-
   return (
     <div className="min-h-screen bg-background pb-28">
       <Helmet>
@@ -374,7 +408,7 @@ export default function CryptoAI() {
           <CardHeader>
             <CardTitle className="text-xl">Analysis preferences</CardTitle>
             <CardDescription>
-              Reusing your existing watchlist from the indicators page. Choose the higher and lower timeframe pair that matches your trading style, then use trader mode for deep-dive trade searches.
+              Reusing your existing watchlist from the indicators page. Choose one of the four launch pairs, manually activate the tickers you want on AI, then use trader mode for deep-dive trade searches.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-3">
@@ -382,10 +416,12 @@ export default function CryptoAI() {
               <div className="text-sm font-medium">Higher TF</div>
               <Select value={aiHigherTimeframe} onValueChange={handleHigherTimeframeChange}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select higher timeframe" />
+                  <SelectValue placeholder="Select higher timeframe">
+                    {HIGHER_TIMEFRAME_OPTIONS.find((option) => option.value === aiHigherTimeframe)?.label}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {higherTimeframeOptions.map((option) => (
+                  {HIGHER_TIMEFRAME_OPTIONS.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>
@@ -398,10 +434,12 @@ export default function CryptoAI() {
               <div className="text-sm font-medium">Lower TF</div>
               <Select value={aiLowerTimeframe} onValueChange={handleLowerTimeframeChange}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select lower timeframe" />
+                  <SelectValue placeholder="Select lower timeframe">
+                    {LOWER_TIMEFRAME_OPTIONS.find((option) => option.value === aiLowerTimeframe)?.label}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {lowerTimeframeOptions.map((option) => (
+                  {LOWER_TIMEFRAME_OPTIONS.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>
@@ -414,7 +452,9 @@ export default function CryptoAI() {
               <div className="text-sm font-medium">Trader mode</div>
               <Select value={aiTraderMode} onValueChange={handleTraderModeChange}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select trader mode" />
+                  <SelectValue placeholder="Select trader mode">
+                    {ENABLED_AI_TRADER_MODES.find((mode) => mode.id === aiTraderMode)?.label}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {ENABLED_AI_TRADER_MODES.map((mode) => (
@@ -426,8 +466,53 @@ export default function CryptoAI() {
               </Select>
             </div>
 
+            <div className="space-y-3 md:col-span-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium">AI watchlist slots</div>
+                  <div className="text-sm text-muted-foreground">
+                    {trackedTickers.length} of {tickerSlotCap} slots used
+                  </div>
+                </div>
+                <Badge variant="outline">
+                  Pair: {aiHigherTimeframe}/{aiLowerTimeframe}
+                </Badge>
+              </div>
+
+              {watchlistOptions.length === 0 ? (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>No watchlist tokens yet</AlertTitle>
+                  <AlertDescription>Add tokens on the indicators page before activating them for AI.</AlertDescription>
+                </Alert>
+              ) : (
+                <div className="grid gap-3 rounded-lg border border-border/60 p-4 md:grid-cols-2 xl:grid-cols-3">
+                  {watchlistOptions.map((ticker) => {
+                    const checked = trackedTickers.includes(ticker);
+                    const disableAdd = !checked && trackedTickers.length >= tickerSlotCap;
+                    return (
+                      <label key={ticker} className="flex items-center gap-3 rounded-md border border-border/40 p-3">
+                        <Checkbox
+                          checked={checked}
+                          disabled={!canUseAi || disableAdd || savingPreferences}
+                          onCheckedChange={(value) => void toggleScanTicker(ticker, value === true)}
+                        />
+                        <div className="min-w-0">
+                          <div className="font-medium">{formatTickerDisplay(ticker)}</div>
+                          {disableAdd ? (
+                            <div className="text-xs text-muted-foreground">Slot cap reached</div>
+                          ) : null}
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             <div className="md:col-span-3 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-              <Badge variant="outline">Watchlist tokens: {trackedTickers.length}</Badge>
+              <Badge variant="outline">Available watchlist: {watchlistOptions.length}</Badge>
+              <Badge variant="outline">Active AI tickers: {trackedTickers.length}</Badge>
               <Badge variant="outline">General analysis: {aiHigherTimeframe} / {aiLowerTimeframe}</Badge>
               <Badge variant="outline">Deep dive mode: {ENABLED_AI_TRADER_MODES.find((mode) => mode.id === aiTraderMode)?.label ?? 'SMC / ICT'}</Badge>
               {savingPreferences && (
@@ -440,12 +525,21 @@ export default function CryptoAI() {
           </CardContent>
         </Card>
 
-        {trackedTickers.length === 0 ? (
+        {!canUseAi ? (
+          <Card className="border-amber-500/30">
+            <CardHeader>
+              <CardTitle>Upgrade required</CardTitle>
+              <CardDescription>
+                Free accounts do not have access to AI Analysis. Upgrade to Intermediate, Pro, or Elite to unlock pair-based session boards and on-demand deep dives.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        ) : trackedTickers.length === 0 ? (
           <Card>
             <CardHeader>
-              <CardTitle>No watchlist tokens yet</CardTitle>
+              <CardTitle>No AI tickers active</CardTitle>
               <CardDescription>
-                Add tokens to your existing watchlist on the indicators page and they will appear here automatically.
+                Pick up to {tickerSlotCap} ticker{tickerSlotCap === 1 ? '' : 's'} from your watchlist above to start loading shared pair analyses.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -459,9 +553,12 @@ export default function CryptoAI() {
             {trackedTickers.map((ticker) => {
               const generalState = generalStates[ticker] ?? { status: 'idle' as const };
               const deepDiveState = deepDiveStates[ticker] ?? { status: 'idle' as const };
-              const generalInsights = generalState.status === 'success' ? generalState.data.multiTFInsights : null;
-              const higherSection = getSection(generalInsights, aiHigherTimeframe);
-              const lowerSection = getSection(generalInsights, aiLowerTimeframe);
+              const generalInsights = generalState.status === 'success'
+                ? (generalState.data.multiTFInsights ?? (getLatestSnapshotInsights(generalState.data.sessionBoard?.snapshots) as MultiTFInsights | null))
+                : null;
+              const sessionSections = generalState.status === 'success'
+                ? buildSessionBoardSections(sessionCandles[ticker] ?? [], generalState.data.sessionBoard?.snapshots ?? [])
+                : [];
               const deepInsights = deepDiveState.status === 'success' ? deepDiveState.data.multiTFInsights : null;
               const tradeIdeas = deepDiveState.status === 'success' ? (deepDiveState.data.bestTrades ?? []) : [];
 
@@ -486,8 +583,8 @@ export default function CryptoAI() {
                     <section className="space-y-4 rounded-lg border border-border/60 p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <h3 className="font-semibold">General analysis</h3>
-                          <p className="text-sm text-muted-foreground">Bias, trend alignment, momentum, and key levels across your selected timeframe pair.</p>
+                          <h3 className="font-semibold">Session board</h3>
+                          <p className="text-sm text-muted-foreground">Shared pair cache for {aiHigherTimeframe}/{aiLowerTimeframe}, rotated across Asia, London, and New York.</p>
                         </div>
                         {generalState.status === 'loading' && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                       </div>
@@ -510,26 +607,61 @@ export default function CryptoAI() {
 
                       {generalState.status === 'success' ? (
                         <div className="space-y-4">
-                          <div className="grid gap-4 md:grid-cols-2">
-                            {[
-                              { label: `Higher TF · ${aiHigherTimeframe}`, section: higherSection },
-                              { label: `Lower TF · ${aiLowerTimeframe}`, section: lowerSection },
-                            ].map(({ label, section }) => (
-                              <div key={label} className="rounded-lg bg-muted/40 p-4">
-                                <div className="mb-3 flex items-center justify-between gap-3">
-                                  <h4 className="text-sm font-semibold">{label}</h4>
-                                  <Badge variant={getBiasVariant(section?.bias)}>{section?.bias ?? 'Pending'}</Badge>
-                                </div>
-                                <p className="text-sm text-muted-foreground">{section?.summary ?? 'No summary returned.'}</p>
-                                {section?.keyLevels?.length ? (
-                                  <div className="mt-3 flex flex-wrap gap-2">
-                                    {section.keyLevels.map((level) => (
-                                      <Badge key={level} variant="secondary">{level}</Badge>
-                                    ))}
+                          <div className="grid gap-4 xl:grid-cols-3">
+                            {sessionSections.map(({ session, label, snapshot, metrics }) => {
+                              const sessionInsights = snapshot?.multiTFInsights ? (snapshot.multiTFInsights as MultiTFInsights) : null;
+                              const higherSection = getSection(sessionInsights, aiHigherTimeframe);
+                              const lowerSection = getSection(sessionInsights, aiLowerTimeframe);
+                              const summary = higherSection?.summary || lowerSection?.summary || getOverallSummary(sessionInsights) || 'Waiting for this session snapshot.';
+                              const bias = higherSection?.bias || lowerSection?.bias;
+
+                              return (
+                                <div key={`${ticker}-${session}`} className="rounded-lg bg-muted/40 p-4">
+                                  <div className="mb-3 flex items-center justify-between gap-3">
+                                    <div>
+                                      <h4 className="text-sm font-semibold">{label}</h4>
+                                      <div className="text-xs text-muted-foreground">
+                                        {snapshot?.generatedAt ? new Date(snapshot.generatedAt).toLocaleString() : 'No snapshot yet'}
+                                      </div>
+                                    </div>
+                                    <Badge variant={getBiasVariant(bias)}>{bias ?? 'Pending'}</Badge>
                                   </div>
-                                ) : null}
-                              </div>
-                            ))}
+
+                                  <p className="text-sm text-muted-foreground">{summary}</p>
+
+                                  <div className="mt-4 grid gap-3 text-sm">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span>% change</span>
+                                      <span className="font-medium">
+                                        {metrics.percentChange == null ? '—' : `${metrics.percentChange >= 0 ? '▲' : '▼'} ${Math.abs(metrics.percentChange).toFixed(2)}%`}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span>Session range</span>
+                                      <span className="font-medium">{metrics.range == null ? '—' : metrics.range.toFixed(4)}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span>Volume vs avg</span>
+                                      <span className="font-medium">{metrics.volumeRatio == null ? '—' : `${metrics.volumeRatio.toFixed(1)}×`}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span>Close in range</span>
+                                      <span className="font-medium">
+                                        {metrics.closePosition == null ? '—' : `${metrics.closePositionLabel} (${(metrics.closePosition * 100).toFixed(0)}%)`}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span>Divergence</span>
+                                      <Badge variant="outline">{metrics.divergenceBadge}</Badge>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-3">
+                                      <span>Handoff</span>
+                                      <Badge variant="secondary">{metrics.handoff}</Badge>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
 
                           <div className="rounded-lg border border-border/60 p-4">
