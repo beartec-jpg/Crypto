@@ -29,8 +29,9 @@ const TIMEFRAME_OPTIONS = [
   { label: '1d', value: '1d' },
   { label: '1w', value: '1w' },
 ] as const;
+type AiTimeframe = (typeof TIMEFRAME_OPTIONS)[number]['value'];
 
-const TIMEFRAME_RANK: Record<string, number> = {
+const TIMEFRAME_RANK: Record<AiTimeframe, number> = {
   '5m': 1,
   '15m': 2,
   '1h': 3,
@@ -74,7 +75,6 @@ type AnalysisResponse = {
   bestTrades?: TradeIdea[];
   tokens?: { input?: number; output?: number };
   estimatedCost?: number;
-  cost?: number;
   creditsRemaining?: number;
 };
 
@@ -85,8 +85,8 @@ type RequestState =
 
 type AiPreferences = CryptoPreferences & {
   aiTraderMode?: string;
-  aiHigherTimeframe?: string;
-  aiLowerTimeframe?: string;
+  aiHigherTimeframe?: AiTimeframe;
+  aiLowerTimeframe?: AiTimeframe;
 };
 
 function getSection(insights: MultiTFInsights | null | undefined, timeframe: string): AnalysisSection | null {
@@ -113,7 +113,7 @@ function formatValue(value?: string | number): string {
 
 function formatUsage(data?: AnalysisResponse): string {
   if (!data) return '';
-  const cost = data.estimatedCost ?? data.cost;
+  const cost = data.estimatedCost;
   const input = data.tokens?.input ?? 0;
   const output = data.tokens?.output ?? 0;
   const parts: string[] = [];
@@ -126,14 +126,14 @@ function formatUsage(data?: AnalysisResponse): string {
   return parts.join(' • ');
 }
 
-function getNearestLowerTimeframe(higherTimeframe: string): string {
+function getNearestLowerTimeframe(higherTimeframe: AiTimeframe): AiTimeframe {
   const lowerOptions = TIMEFRAME_OPTIONS.filter((option) => TIMEFRAME_RANK[option.value] < TIMEFRAME_RANK[higherTimeframe]);
-  return lowerOptions[lowerOptions.length - 1]?.value ?? DEFAULT_LOWER_TIMEFRAME;
+  return (lowerOptions[lowerOptions.length - 1]?.value ?? DEFAULT_LOWER_TIMEFRAME) as AiTimeframe;
 }
 
-function getNearestHigherTimeframe(lowerTimeframe: string): string {
+function getNearestHigherTimeframe(lowerTimeframe: AiTimeframe): AiTimeframe {
   const higherOptions = TIMEFRAME_OPTIONS.filter((option) => TIMEFRAME_RANK[option.value] > TIMEFRAME_RANK[lowerTimeframe]);
-  return higherOptions[0]?.value ?? DEFAULT_HIGHER_TIMEFRAME;
+  return (higherOptions[0]?.value ?? DEFAULT_HIGHER_TIMEFRAME) as AiTimeframe;
 }
 
 export default function CryptoAI() {
@@ -145,8 +145,8 @@ export default function CryptoAI() {
   const { watchlistTickers } = useWatchlistState();
 
   const [aiTraderMode, setAiTraderMode] = useState<AiTraderModeId>(DEFAULT_AI_TRADER_MODE);
-  const [aiHigherTimeframe, setAiHigherTimeframe] = useState(DEFAULT_HIGHER_TIMEFRAME);
-  const [aiLowerTimeframe, setAiLowerTimeframe] = useState(DEFAULT_LOWER_TIMEFRAME);
+  const [aiHigherTimeframe, setAiHigherTimeframe] = useState<AiTimeframe>(DEFAULT_HIGHER_TIMEFRAME);
+  const [aiLowerTimeframe, setAiLowerTimeframe] = useState<AiTimeframe>(DEFAULT_LOWER_TIMEFRAME);
   const [savingPreferences, setSavingPreferences] = useState(false);
   const [generalStates, setGeneralStates] = useState<Record<string, RequestState>>({});
   const [deepDiveStates, setDeepDiveStates] = useState<Record<string, RequestState>>({});
@@ -175,11 +175,11 @@ export default function CryptoAI() {
     }
 
     if (preferences.aiHigherTimeframe && preferences.aiHigherTimeframe in TIMEFRAME_RANK) {
-      setAiHigherTimeframe(preferences.aiHigherTimeframe);
+      setAiHigherTimeframe(preferences.aiHigherTimeframe as AiTimeframe);
     }
 
     if (preferences.aiLowerTimeframe && preferences.aiLowerTimeframe in TIMEFRAME_RANK) {
-      setAiLowerTimeframe(preferences.aiLowerTimeframe);
+      setAiLowerTimeframe(preferences.aiLowerTimeframe as AiTimeframe);
     }
   }, [preferences]);
 
@@ -261,18 +261,20 @@ export default function CryptoAI() {
   }, [timeframeKey, aiTraderMode]);
 
   const handleHigherTimeframeChange = async (nextHigherTimeframe: string) => {
+    if (!(nextHigherTimeframe in TIMEFRAME_RANK)) return;
+    const nextHigher = nextHigherTimeframe as AiTimeframe;
     const previousHigher = aiHigherTimeframe;
     const previousLower = aiLowerTimeframe;
-    const nextLowerTimeframe = TIMEFRAME_RANK[nextHigherTimeframe] <= TIMEFRAME_RANK[aiLowerTimeframe]
-      ? getNearestLowerTimeframe(nextHigherTimeframe)
+    const nextLowerTimeframe = TIMEFRAME_RANK[nextHigher] <= TIMEFRAME_RANK[aiLowerTimeframe]
+      ? getNearestLowerTimeframe(nextHigher)
       : aiLowerTimeframe;
 
-    setAiHigherTimeframe(nextHigherTimeframe);
+    setAiHigherTimeframe(nextHigher);
     setAiLowerTimeframe(nextLowerTimeframe);
 
     try {
       await persistPreferences({
-        aiHigherTimeframe: nextHigherTimeframe,
+        aiHigherTimeframe: nextHigher,
         aiLowerTimeframe: nextLowerTimeframe,
       });
     } catch {
@@ -282,19 +284,21 @@ export default function CryptoAI() {
   };
 
   const handleLowerTimeframeChange = async (nextLowerTimeframe: string) => {
+    if (!(nextLowerTimeframe in TIMEFRAME_RANK)) return;
+    const nextLower = nextLowerTimeframe as AiTimeframe;
     const previousHigher = aiHigherTimeframe;
     const previousLower = aiLowerTimeframe;
-    const nextHigherTimeframe = TIMEFRAME_RANK[nextLowerTimeframe] >= TIMEFRAME_RANK[aiHigherTimeframe]
-      ? getNearestHigherTimeframe(nextLowerTimeframe)
+    const nextHigherTimeframe = TIMEFRAME_RANK[nextLower] >= TIMEFRAME_RANK[aiHigherTimeframe]
+      ? getNearestHigherTimeframe(nextLower)
       : aiHigherTimeframe;
 
-    setAiLowerTimeframe(nextLowerTimeframe);
+    setAiLowerTimeframe(nextLower);
     setAiHigherTimeframe(nextHigherTimeframe);
 
     try {
       await persistPreferences({
         aiHigherTimeframe: nextHigherTimeframe,
-        aiLowerTimeframe: nextLowerTimeframe,
+        aiLowerTimeframe: nextLower,
       });
     } catch {
       setAiHigherTimeframe(previousHigher);

@@ -4343,7 +4343,6 @@ OUTPUT: Valid JSON only, no markdown.
         multiTFInsights: parsedResult.multiTFInsights,
         bestTrades: parsedResult.bestTrades || [],
         estimatedCost,
-        cost: estimatedCost,
         tokens: { input: inputTokens, output: outputTokens },
         creditsRemaining: analysisType === 'deep' ? creditResult.remaining : (subscription.aiCredits ?? 0)
       });

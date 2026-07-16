@@ -650,7 +650,6 @@ Respond with ONLY valid JSON:
       multiTFInsights: parsedResult.multiTFInsights,
       bestTrades: parsedResult.bestTrades || [],
       estimatedCost,
-      cost: estimatedCost,
       tokens: { input: inputTokens, output: outputTokens },
       creditsRemaining: analysisType === 'deep'
         ? (isAdmin ? 999 : Math.max(0, creditsRemaining - 1))

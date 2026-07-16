@@ -59,6 +59,8 @@ export const cryptoUsers = pgTable("crypto_users", {
 export type CryptoUser = typeof cryptoUsers.$inferSelect;
 export type InsertCryptoUser = typeof cryptoUsers.$inferInsert;
 
+const aiTimeframeSchema = z.enum(['5m', '15m', '1h', '4h', '1d', '1w']);
+
 // Crypto subscription table for alert preferences and subscription tiers
 export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -130,8 +132,8 @@ export const insertCryptoSubscriptionSchema = z.object({
   minConfluence: z.number().int().optional().default(3),
   aiModelPref: z.enum(['fast', 'deep']).optional().default('fast'),
   aiTraderMode: z.string().optional().default('smc'),
-  aiHigherTimeframe: z.string().optional().default('1d'),
-  aiLowerTimeframe: z.string().optional().default('15m'),
+  aiHigherTimeframe: aiTimeframeSchema.optional().default('1d'),
+  aiLowerTimeframe: aiTimeframeSchema.optional().default('15m'),
   elliottScanEnabled: z.boolean().optional().default(false),
   pushSubscription: z.any().optional().nullable(),
   stripeSubscriptionId: z.string().optional().nullable(),
@@ -262,8 +264,8 @@ export const cryptoPreferencesSchema = z.object({
   indicatorAlertsEnabled: z.boolean().default(true),
   pushSubscription: z.any().nullable().default(null),
   aiTraderMode: z.string().default('smc'),
-  aiHigherTimeframe: z.string().default('1d'),
-  aiLowerTimeframe: z.string().default('15m'),
+  aiHigherTimeframe: aiTimeframeSchema.default('1d'),
+  aiLowerTimeframe: aiTimeframeSchema.default('15m'),
   tier: z.string().default('free'),
 });
 
