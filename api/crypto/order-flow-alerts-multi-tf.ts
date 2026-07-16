@@ -294,9 +294,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(503).json({ error: 'AI service not configured', available: false });
     }
 
-    const { symbol, timeframes = ['5m', '15m', '1h', '4h'], mode: requestedMode } = req.body;
+    const {
+      symbol,
+      timeframes = ['15m', '1d'],
+      higherTimeframe: requestedHigherTimeframe,
+      lowerTimeframe: requestedLowerTimeframe,
+      analysisType = 'deep',
+      mode: requestedMode,
+    } = req.body;
     if (!symbol) {
       return res.status(400).json({ error: 'Symbol is required' });
+    }
+
+    const TIMEFRAME_RANK: Record<string, number> = {
+      '5m': 1,
+      '15m': 2,
+      '1h': 3,
+      '4h': 4,
+      '1d': 5,
+      '1w': 6,
+    };
+    const fallbackFrames = Array.isArray(timeframes) ? timeframes.filter((tf: string) => tf in TIMEFRAME_RANK) : [];
+    const lowerTimeframe = requestedLowerTimeframe || fallbackFrames[0] || '15m';
+    const higherTimeframe = requestedHigherTimeframe || fallbackFrames[1] || '1d';
+    if (!(lowerTimeframe in TIMEFRAME_RANK) || !(higherTimeframe in TIMEFRAME_RANK)) {
+      return res.status(400).json({ error: 'Invalid timeframe selection' });
+    }
+    if (TIMEFRAME_RANK[higherTimeframe] <= TIMEFRAME_RANK[lowerTimeframe]) {
+      return res.status(400).json({ error: 'Higher timeframe must be greater than lower timeframe' });
     }
 
     // Resolve the selected AI trader mode so multi-TF analysis uses the same lens.
@@ -344,7 +369,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const creditsRemaining = isAdmin ? 999 : (aiLimit - aiCreditsUsed);
-    if (!isAdmin && creditsRemaining <= 0) {
+    if (analysisType === 'deep' && !isAdmin && creditsRemaining <= 0) {
       await pool.end();
       return res.status(403).json({ 
         error: 'No AI credits remaining',
@@ -353,7 +378,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    console.log(`📊 Multi-TF Analysis for ${symbol}: ${timeframes.join(', ')}`);
+    console.log(`📊 Multi-TF Analysis for ${symbol}: ${higherTimeframe}/${lowerTimeframe} (${analysisType})`);
 
     const fetchBarsForTF = async (tf: string) => {
       const url = `https://api.binance.us/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=500`;
@@ -370,12 +395,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }));
     };
 
-    const [bars5m, bars15m, bars1h, bars4h] = await Promise.all([
-      fetchBarsForTF('5m'),
-      fetchBarsForTF('15m'),
-      fetchBarsForTF('1h'),
-      fetchBarsForTF('4h')
-    ]);
+    const requestedFrames = Array.from(new Set([lowerTimeframe, higherTimeframe]));
+    const barsByTimeframe = Object.fromEntries(
+      await Promise.all(
+        requestedFrames.map(async (tf) => [tf, await fetchBarsForTF(tf)])
+      )
+    ) as Record<string, any[]>;
 
     const computeIndicators = (bars: any[]) => {
       const currentPrice = bars[bars.length - 1].close;
@@ -421,13 +446,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
     };
 
-    const data5m = computeIndicators(bars5m);
-    const data15m = computeIndicators(bars15m);
-    const data1h = computeIndicators(bars1h);
-    const data4h = computeIndicators(bars4h);
+    const lowerData = computeIndicators(barsByTimeframe[lowerTimeframe]);
+    const higherData = computeIndicators(barsByTimeframe[higherTimeframe]);
 
     const fmtTF = (label: string, d: ReturnType<typeof computeIndicators>) => `
-**${label}:**
+**${label} (${label === higherTimeframe ? 'Higher TF bias' : 'Lower TF execution'}):**
 - Price: $${d.currentPrice}, RSI: ${d.rsi}, MACD hist: ${d.macd.histogram}${d.macd.crossover !== 'none' ? ` (${d.macd.crossover})` : ''}
 - Stoch: %K ${d.stoch.k}, %D ${d.stoch.d}${d.stoch.crossover !== 'none' ? ` (${d.stoch.crossover})` : ''} | ADX: ${d.adx} | ATR: ${d.atr}
 - Volume Profile: POC $${d.poc} | VAH $${d.vah} | VAL $${d.val}
@@ -436,47 +459,78 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 - Bullish OBs: ${d.bullOBs} | Bearish OBs: ${d.bearOBs}
 - Swing Highs: ${d.swingHighs} | Swing Lows: ${d.swingLows}
 - Range: $${d.recentLow} - $${d.recentHigh}`;
+    const htfBiasScore = (() => {
+      let score = 0;
+      const higherRsi = parseFloat(higherData.rsi);
+      const lowerRsi = parseFloat(lowerData.rsi);
+      if (higherRsi > 55) score += 2;
+      else if (higherRsi < 45) score -= 2;
+      if (lowerRsi > 55) score += 1;
+      else if (lowerRsi < 45) score -= 1;
+      if (parseFloat(higherData.macd.histogram) > 0) score += 2;
+      else if (parseFloat(higherData.macd.histogram) < 0) score -= 2;
+      if (parseFloat(lowerData.macd.histogram) > 0) score += 1;
+      else if (parseFloat(lowerData.macd.histogram) < 0) score -= 1;
+      return score;
+    })();
+    const dominantBias = htfBiasScore >= 2 ? 'BULLISH' : htfBiasScore <= -2 ? 'BEARISH' : 'NEUTRAL';
 
-    const prompt = `Symbol: ${symbol} | Multi-Timeframe SMC/ICT Analysis
-Think carefully through the structural analysis across all 4 timeframes before identifying trade setups.
-${fmtTF('5-Minute (Entry timing / scalp)', data5m)}
-${fmtTF('15-Minute (Short-term structure)', data15m)}
-${fmtTF('1-Hour (Medium-term bias)', data1h)}
-${fmtTF('4-Hour (Higher-timeframe bias)', data4h)}
+    const generalPrompt = `Symbol: ${symbol} | General multi-timeframe overview
+Higher timeframe: ${higherTimeframe}
+Lower timeframe: ${lowerTimeframe}
+${fmtTF(higherTimeframe, higherData)}
+${fmtTF(lowerTimeframe, lowerData)}
 
-**PROFESSIONAL SMC/ICT TRADING RULES — MANDATORY:**
-1. HIGHER TF SETS BIAS: Use 4h/1h to determine direction. Use 15m/5m for entry timing.
-2. ENTRY: MUST be at a specific FVG zone or OB level from the entry-timeframe data — NEVER at current market price.
-3. STOP LOSS: Place behind the entry structure. For LONG: below OB/FVG low + 1 ATR buffer. For SHORT: above OB/FVG high + 1 ATR buffer.
-4. TP1: Nearest opposing structural level on the entry timeframe (swing pivot, FVG, OB).
-5. TP2: Next major structural level aligned with the higher-TF bias.
-6. RISK/REWARD: Only include trades with R/R ≥ ${AI_MIN_RISK_REWARD_RATIO}. Calculate reward = |TP1 - entry|, risk = |entry - SL|. DISCARD any setup where R/R < ${AI_MIN_RISK_REWARD_RATIO}.
-7. If no valid cross-TF setup with R/R ≥ ${AI_MIN_RISK_REWARD_RATIO} exists, return an empty bestTrades array.
+Give a concise at-a-glance analysis only. Do NOT produce a trade plan, entry, stop, targets, or risk/reward.
+- Higher timeframe: focus on dominant bias/trend and key levels.
+- Lower timeframe: focus on momentum/structure, alignment with the higher timeframe, and nearby trigger levels.
+- Keep summaries brief and actionable.
 
 Respond with ONLY valid JSON:
 {
   "multiTFInsights": {
-    "5m": { "summary": "2 sentences on structure and bias", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
-    "15m": { "summary": "2 sentences on structure and bias", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
-    "1h": { "summary": "2 sentences on structure and bias", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
-    "4h": { "summary": "2 sentences on structure and bias", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["$X", "$Y"] },
-    "overallSummary": "2 sentences on cross-TF alignment and what it means for trade selection"
+    "${higherTimeframe}": { "summary": "1-2 sentences on higher timeframe bias/trend", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["..."] },
+    "${lowerTimeframe}": { "summary": "1-2 sentences on lower timeframe momentum/structure", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["..."] },
+    "overallSummary": "1-2 sentences on alignment between the two timeframes and what matters next"
+  }
+}`;
+
+    const deepPrompt = `Symbol: ${symbol} | Multi-timeframe trade search
+Dominant bias from ${higherTimeframe}: ${dominantBias}
+${fmtTF(higherTimeframe, higherData)}
+${fmtTF(lowerTimeframe, lowerData)}
+
+**TRADE SEARCH RULES — MANDATORY**
+1. ${higherTimeframe} sets the directional bias; ${lowerTimeframe} is for entry timing and execution.
+2. Every setup must align with the higher timeframe unless bias is NEUTRAL and the setup is exceptional.
+3. ENTRY: must be at a concrete structural/indicator level appropriate to the selected trader mode — never a blind entry at current price.
+4. STOP LOSS: behind the invalidation structure with ATR as a guide.
+5. TARGETS: level-to-level, with TP1 at the nearest opposing level and TP2 at the next major level.
+6. Only include trades with R/R ≥ ${AI_MIN_RISK_REWARD_RATIO} to TP1.
+7. If no valid trade exists, return an empty bestTrades array and explain why in overallSummary.
+
+Respond with ONLY valid JSON:
+{
+  "multiTFInsights": {
+    "${higherTimeframe}": { "summary": "2 sentences on higher timeframe bias/trend", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["..."] },
+    "${lowerTimeframe}": { "summary": "2 sentences on lower timeframe momentum/structure", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["..."] },
+    "overallSummary": "2 sentences on cross-timeframe alignment and whether a trade is actionable now"
   },
   "bestTrades": [
     {
       "grade": "A+/A/B/C",
-      "primaryTF": "15m/1h/4h",
+      "primaryTF": "${lowerTimeframe}/${higherTimeframe}",
       "direction": "LONG/SHORT",
-      "entryZone": "FVG/OB zone e.g. $X-$Y",
+      "entryZone": "FVG/OB/indicator trigger zone",
       "entry": "exact entry price",
       "stopLoss": "exact SL price",
-      "slRationale": "e.g. below OB low at $X + ATR buffer",
+      "slRationale": "why that invalidation level matters",
       "targets": ["TP1 price", "TP2 price"],
-      "tp1Rationale": "e.g. nearest opposing swing high / bearish OB at $X",
-      "tp2Rationale": "e.g. next major structural level / FVG fill at $X",
-      "confluenceSignals": ["4h BEARISH bias", "1h bearish OB at $X", "15m FVG entry zone", "RSI divergence", "CVD falling"],
+      "tp1Rationale": "nearest opposing level",
+      "tp2Rationale": "next major target level",
+      "confluenceSignals": ["signal1", "signal2", "signal3"],
       "riskRewardRatio": 2.1,
-      "reasoning": "Cross-TF logic: 4h/1h bias confirms direction, 15m FVG provides entry, structure-based SL and level-to-level targets"
+      "reasoning": "why the setup is valid now"
     }
   ]
 }`;
@@ -491,28 +545,30 @@ Respond with ONLY valid JSON:
     });
 
     let completion: any;
-    const mtfSystemContent = `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes. Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\nHigher timeframes set the bias; lower timeframes provide entry timing. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Always respond with valid JSON only.`;
+    const systemContent = analysisType === 'general'
+      ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Always respond with valid JSON only.`
+      : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes. Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\nHigher timeframes set the bias; lower timeframes provide entry timing. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Always respond with valid JSON only.`;
     try {
       completion = await (openai.chat.completions.create as any)({
         model: XAI_PRIMARY_MODEL,
         messages: [
-          { role: 'system', content: mtfSystemContent },
-          { role: 'user', content: prompt }
+          { role: 'system', content: systemContent },
+          { role: 'user', content: analysisType === 'general' ? generalPrompt : deepPrompt }
         ],
-        thinking: { type: 'enabled', budget_tokens: XAI_THINKING_BUDGET },
-        temperature: 1,
-        max_tokens: 16000
+        ...(analysisType === 'general' ? {} : { thinking: { type: 'enabled', budget_tokens: XAI_THINKING_BUDGET } }),
+        temperature: analysisType === 'general' ? 0.2 : 1,
+        max_tokens: analysisType === 'general' ? 1200 : 16000
       });
     } catch (primaryModelError: any) {
       console.warn(`⚠️ ${XAI_PRIMARY_MODEL} failed (${primaryModelError.message}), falling back to ${XAI_FALLBACK_MODEL}`);
       completion = await openai.chat.completions.create({
         model: XAI_FALLBACK_MODEL,
         messages: [
-          { role: 'system', content: mtfSystemContent },
-          { role: 'user', content: prompt }
+          { role: 'system', content: systemContent },
+          { role: 'user', content: analysisType === 'general' ? generalPrompt : deepPrompt }
         ],
         temperature: 0.3,
-        max_tokens: 8000
+        max_tokens: analysisType === 'general' ? 1200 : 8000
       });
     }
 
@@ -530,20 +586,21 @@ Respond with ONLY valid JSON:
       const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
       const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { multiTFInsights: null, bestTrades: [] };
 
-      // Post-processing: enforce R/R >= AI_MIN_RISK_REWARD_RATIO server-side
       const rawTrades = Array.isArray(parsed.bestTrades) ? parsed.bestTrades : [];
-      const filteredTrades = rawTrades
-        .map((t: any) => {
-          const entryNum = parseFloat(String(t.entry).replace(/[^0-9.-]/g, '')) || 0;
-          const slNum = parseFloat(String(t.stopLoss).replace(/[^0-9.-]/g, '')) || 0;
-          const tp1Num = parseFloat(String(t.targets?.[0]).replace(/[^0-9.-]/g, '')) || 0;
-          const risk = Math.abs(entryNum - slNum);
-          const reward = Math.abs(tp1Num - entryNum);
-          const rr = risk > 0 && reward > 0 ? reward / risk : 0;
-          return { ...t, riskRewardRatio: parseFloat(rr.toFixed(2)), _rr: rr };
-        })
-        .filter((t: any) => t._rr >= AI_MIN_RISK_REWARD_RATIO)
-        .map(({ _rr, ...t }: any) => t);
+      const filteredTrades = analysisType === 'general'
+      ? []
+      : rawTrades
+          .map((t: any) => {
+            const entryNum = parseFloat(String(t.entry).replace(/[^0-9.-]/g, '')) || 0;
+            const slNum = parseFloat(String(t.stopLoss).replace(/[^0-9.-]/g, '')) || 0;
+            const tp1Num = parseFloat(String(t.targets?.[0]).replace(/[^0-9.-]/g, '')) || 0;
+            const risk = Math.abs(entryNum - slNum);
+            const reward = Math.abs(tp1Num - entryNum);
+            const rr = risk > 0 && reward > 0 ? reward / risk : 0;
+            return { ...t, riskRewardRatio: parseFloat(rr.toFixed(2)), _rr: rr };
+          })
+          .filter((t: any) => t._rr >= AI_MIN_RISK_REWARD_RATIO)
+          .map(({ _rr, ...t }: any) => t);
 
       parsedResult = { multiTFInsights: parsed.multiTFInsights || null, bestTrades: filteredTrades };
     } catch (parseError) {
@@ -551,11 +608,12 @@ Respond with ONLY valid JSON:
       parsedResult = { multiTFInsights: null, bestTrades: [] };
     }
 
-    if (!isAdmin) {
+    if (analysisType === 'deep' && !isAdmin) {
       await pool.query('UPDATE crypto_subscriptions SET ai_credits = ai_credits + 1, updated_at = NOW() WHERE user_id = $1', [cryptoUserId]);
     }
 
-    try {
+    if (analysisType === 'deep') {
+      try {
       const existingCache = await pool.query(
         `SELECT id FROM crypto_ai_analyses WHERE user_id = $1 AND symbol = $2 AND interval = 'multi-tf'`,
         [cryptoUserId, symbol]
@@ -583,6 +641,7 @@ Respond with ONLY valid JSON:
     } catch (cacheError) {
       console.error('Failed to cache multi-TF analysis:', cacheError);
     }
+    }
 
     await pool.end();
 
@@ -590,9 +649,12 @@ Respond with ONLY valid JSON:
       success: true,
       multiTFInsights: parsedResult.multiTFInsights,
       bestTrades: parsedResult.bestTrades || [],
+      estimatedCost,
       cost: estimatedCost,
       tokens: { input: inputTokens, output: outputTokens },
-      creditsRemaining: isAdmin ? 999 : Math.max(0, creditsRemaining - 1)
+      creditsRemaining: analysisType === 'deep'
+        ? (isAdmin ? 999 : Math.max(0, creditsRemaining - 1))
+        : creditsRemaining
     });
 
   } catch (error: any) {

@@ -57,6 +57,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const pool = await getDb();
 
   try {
+    const ALLOWED_AI_TIMEFRAMES = ['5m', '15m', '1h', '4h', '1d', '1w'] as const;
+    const AI_TIMEFRAME_RANK: Record<string, number> = {
+      '5m': 1,
+      '15m': 2,
+      '1h': 3,
+      '4h': 4,
+      '1d': 5,
+      '1w': 6,
+    };
+
     // Get user ID from crypto_users
     const userResult = await pool.query(
       'SELECT id FROM crypto_users WHERE email = $1',
@@ -75,7 +85,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         `SELECT selected_tickers, alert_grades, alert_timeframes, alert_types, 
                 alerts_enabled, push_subscription, tier,
                 ticker_slots, strategy_groups, scan_tickers, min_risk_reward,
-                min_confluence, ai_model_pref, ai_trader_mode, elliott_scan_enabled
+                 min_confluence, ai_model_pref, ai_trader_mode, ai_higher_timeframe,
+                 ai_lower_timeframe, elliott_scan_enabled
          FROM crypto_subscriptions WHERE user_id = $1`,
         [cryptoUserId]
       );
@@ -98,6 +109,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           minConfluence: 3,
           aiModelPref: 'fast',
           aiTraderMode: 'smc',
+          aiHigherTimeframe: '1d',
+          aiLowerTimeframe: '15m',
           elliottScanEnabled: false,
         });
       }
@@ -118,17 +131,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         minConfluence: row.min_confluence ?? 3,
         aiModelPref: row.ai_model_pref || 'fast',
         aiTraderMode: row.ai_trader_mode || 'smc',
+        aiHigherTimeframe: row.ai_higher_timeframe || '1d',
+        aiLowerTimeframe: row.ai_lower_timeframe || '15m',
         elliottScanEnabled: row.elliott_scan_enabled || false,
       });
     }
 
     if (req.method === 'POST') {
       const { selectedTickers, alertGrades, alertTimeframes, alertTypes, alertsEnabled, pushSubscription,
-              strategyGroups, scanTickers, minRiskReward, minConfluence, aiModelPref, aiTraderMode, elliottScanEnabled } = req.body || {};
+              strategyGroups, scanTickers, minRiskReward, minConfluence, aiModelPref,
+              aiTraderMode, aiHigherTimeframe, aiLowerTimeframe, elliottScanEnabled } = req.body || {};
 
       // Get current tier for validation
       const tierResult = await pool.query(
-        'SELECT tier, ticker_slots FROM crypto_subscriptions WHERE user_id = $1',
+        'SELECT tier, ticker_slots, ai_higher_timeframe, ai_lower_timeframe FROM crypto_subscriptions WHERE user_id = $1',
         [cryptoUserId]
       );
       const tier = tierResult.rows[0]?.tier || 'free';
@@ -236,6 +252,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: `aiTraderMode must be one of: ${ALLOWED_AI_TRADER_MODES.join(', ')}.` });
       }
 
+      if (aiHigherTimeframe !== undefined && !(ALLOWED_AI_TIMEFRAMES as readonly string[]).includes(aiHigherTimeframe)) {
+        await pool.end();
+        return res.status(400).json({ error: `aiHigherTimeframe must be one of: ${ALLOWED_AI_TIMEFRAMES.join(', ')}.` });
+      }
+
+      if (aiLowerTimeframe !== undefined && !(ALLOWED_AI_TIMEFRAMES as readonly string[]).includes(aiLowerTimeframe)) {
+        await pool.end();
+        return res.status(400).json({ error: `aiLowerTimeframe must be one of: ${ALLOWED_AI_TIMEFRAMES.join(', ')}.` });
+      }
+
+      const currentHigher = tierResult.rows[0]?.ai_higher_timeframe || '1d';
+      const currentLower = tierResult.rows[0]?.ai_lower_timeframe || '15m';
+      const nextHigher = aiHigherTimeframe ?? currentHigher;
+      const nextLower = aiLowerTimeframe ?? currentLower;
+      if ((aiHigherTimeframe !== undefined || aiLowerTimeframe !== undefined) && AI_TIMEFRAME_RANK[nextHigher] <= AI_TIMEFRAME_RANK[nextLower]) {
+        await pool.end();
+        return res.status(400).json({ error: 'Higher timeframe must be greater than lower timeframe.' });
+      }
+
       if (elliottScanEnabled !== undefined && typeof elliottScanEnabled !== 'boolean') {
         await pool.end();
         return res.status(400).json({ error: 'elliottScanEnabled must be a boolean.' });
@@ -251,8 +286,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Insert new subscription
         await pool.query(
           `INSERT INTO crypto_subscriptions 
-           (id, user_id, selected_tickers, alert_grades, alert_timeframes, alert_types, alerts_enabled, push_subscription, tier, created_at, updated_at)
-           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'free', NOW(), NOW())`,
+           (id, user_id, selected_tickers, alert_grades, alert_timeframes, alert_types, alerts_enabled, push_subscription, tier, ai_trader_mode, ai_higher_timeframe, ai_lower_timeframe, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'free', $8, $9, $10, NOW(), NOW())`,
           [
             cryptoUserId,
             selectedTickers || [],
@@ -260,7 +295,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             alertTimeframes || ['15m', '1h', '4h'],
             alertTypes || ['bos', 'choch'],
             alertsEnabled || false,
-            pushSubscription ? JSON.stringify(pushSubscription) : null
+            pushSubscription ? JSON.stringify(pushSubscription) : null,
+            aiTraderMode || 'smc',
+            aiHigherTimeframe || '1d',
+            aiLowerTimeframe || '15m',
           ]
         );
       } else {
@@ -316,6 +354,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (aiTraderMode !== undefined) {
           updates.push(`ai_trader_mode = $${paramIndex++}`);
           values.push(aiTraderMode);
+        }
+        if (aiHigherTimeframe !== undefined) {
+          updates.push(`ai_higher_timeframe = $${paramIndex++}`);
+          values.push(aiHigherTimeframe);
+        }
+        if (aiLowerTimeframe !== undefined) {
+          updates.push(`ai_lower_timeframe = $${paramIndex++}`);
+          values.push(aiLowerTimeframe);
         }
         if (elliottScanEnabled !== undefined) {
           updates.push(`elliott_scan_enabled = $${paramIndex++}`);
