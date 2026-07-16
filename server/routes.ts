@@ -838,6 +838,10 @@ function calculateADX(bars: CandleBar[], period: number = 14): number {
 const MIN_OB_BODY_ATR_MULTIPLE = 0.8;    // Order Block candle body must be ≥ 80% of ATR
 const MIN_OB_VOLUME_MULTIPLE = 1.2;      // Order Block candle volume must be ≥ 120% of avg volume
 const DEFAULT_VOLUME_PROFILE_BINS = 40;  // Resolution for volume profile histogram
+const FIB_OTE_RETRACEMENT_HIGH = 0.382;  // Upper bound of the ICT OTE zone
+const FIB_OTE_RETRACEMENT_LOW  = 0.705;  // Lower bound of the ICT OTE zone
+const FVG_STRUCT_SIZE_MULTIPLIER  = 2;   // FVG size × this = structural tolerance radius
+const FVG_STRUCT_PRICE_TOLERANCE  = 0.005; // 0.5% price tolerance for structural proximity
 const VALUE_AREA_PERCENTAGE = 0.7;       // Standard 70% value area (VAH/VAL)
 
 // Compute Fibonacci retracement OTE zone from the most recent pivot swing
@@ -860,8 +864,8 @@ function computeFibLevelsServer(bars: CandleBar[]): { swingLow: number; swingHig
   return {
     swingLow,
     swingHigh,
-    oteHigh: swingHigh - range * 0.382,
-    oteLow:  swingHigh - range * 0.705,
+    oteHigh: swingHigh - range * FIB_OTE_RETRACEMENT_HIGH,
+    oteLow:  swingHigh - range * FIB_OTE_RETRACEMENT_LOW,
   };
 }
 
@@ -908,7 +912,7 @@ function detectFVGServer(
 
   const isAtStructure = (fvgLow: number, fvgHigh: number): boolean => {
     const fvgMid = (fvgLow + fvgHigh) / 2;
-    const tolerance = Math.max((fvgHigh - fvgLow) * 2, fvgMid * 0.005);
+    const tolerance = Math.max((fvgHigh - fvgLow) * FVG_STRUCT_SIZE_MULTIPLIER, fvgMid * FVG_STRUCT_PRICE_TOLERANCE);
     const swingPrices = [
       ...swings.swingHighs.map(s => s.price),
       ...swings.swingLows.map(s => s.price),
@@ -4275,7 +4279,7 @@ Be concise and direct.`;
         const ema20  = calculateEMA(closes, 20);
         const ema50  = calculateEMA(closes, 50);
         const ema200 = calculateEMA(closes, 200);
-        const emaTol = currentPrice * 0.005;
+        const emaTol = currentPrice * FVG_STRUCT_PRICE_TOLERANCE;
         const emaConf: string[] = [];
         if (Math.abs(ema20  - currentPrice) <= emaTol) emaConf.push(`EMA20@$${ema20.toFixed(4)}`);
         if (Math.abs(ema50  - currentPrice) <= emaTol) emaConf.push(`EMA50@$${ema50.toFixed(4)}`);

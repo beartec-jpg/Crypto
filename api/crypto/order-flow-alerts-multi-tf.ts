@@ -54,6 +54,12 @@ async function getDb() {
   return pool;
 }
 
+// Structural quality gate constants
+const FIB_OTE_RETRACEMENT_HIGH = 0.382;  // Upper bound of the ICT OTE zone
+const FIB_OTE_RETRACEMENT_LOW  = 0.705;  // Lower bound of the ICT OTE zone
+const FVG_STRUCT_SIZE_MULTIPLIER  = 2;   // FVG size × this = structural tolerance radius
+const FVG_STRUCT_PRICE_TOLERANCE  = 0.005; // 0.5% price tolerance for structural proximity
+
 function calculateRSI(bars: any[], period = 14): number {
   if (bars.length < period + 1) return 50;
   const closes = bars.map(b => b.close);
@@ -197,12 +203,12 @@ function computeFibLevels(bars: any[]): { oteHigh: number; oteLow: number; swing
   }
   if (swingHigh === -Infinity || swingLow === Infinity || swingHigh <= swingLow) return null;
   const range = swingHigh - swingLow;
-  // OTE zone: 0.382–0.705 retracement from the swing high (price pulling back into range)
+  // OTE zone: 0.382-0.705 retracement from the swing high (price pulling back into range)
   return {
     swingLow,
     swingHigh,
-    oteHigh: swingHigh - range * 0.382,  // 0.382 retracement
-    oteLow:  swingHigh - range * 0.705,  // 0.705 retracement
+    oteHigh: swingHigh - range * FIB_OTE_RETRACEMENT_HIGH,
+    oteLow:  swingHigh - range * FIB_OTE_RETRACEMENT_LOW,
   };
 }
 
@@ -235,7 +241,7 @@ function detectFVGs(
 
   const isAtStructure = (fvgLow: number, fvgHigh: number): boolean => {
     const fvgMid = (fvgLow + fvgHigh) / 2;
-    const tolerance = Math.max((fvgHigh - fvgLow) * 2, fvgMid * 0.005);
+    const tolerance = Math.max((fvgHigh - fvgLow) * FVG_STRUCT_SIZE_MULTIPLIER, fvgMid * FVG_STRUCT_PRICE_TOLERANCE);
     if ([...swings.highs, ...swings.lows].some(s => Math.abs(s - fvgMid) <= tolerance)) return true;
     if ([...obs.bullish, ...obs.bearish].some(ob => ob.low <= fvgHigh && ob.high >= fvgLow)) return true;
     if (fib && fvgHigh >= fib.oteLow && fvgLow <= fib.oteHigh) return true;
@@ -369,7 +375,7 @@ function computeIndicators(bars: any[]) {
   const ema200 = calculateEMA(bars.map(b => b.close), 200);
 
   // EMA confluence flags
-  const emaTol = currentPrice * 0.005;
+  const emaTol = currentPrice * FVG_STRUCT_PRICE_TOLERANCE;
   const emaConf: string[] = [];
   if (Math.abs(ema20  - currentPrice) <= emaTol) emaConf.push(`EMA20@$${ema20.toFixed(4)}`);
   if (Math.abs(ema50  - currentPrice) <= emaTol) emaConf.push(`EMA50@$${ema50.toFixed(4)}`);
