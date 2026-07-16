@@ -212,8 +212,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Validate min confluence (integer, sane bounds)
+      let minConfluenceValue: number | undefined;
       if (minConfluence !== undefined) {
-        if (!Number.isInteger(minConfluence) || minConfluence < 0 || minConfluence > 9) {
+        minConfluenceValue = Number(minConfluence);
+        if (!Number.isInteger(minConfluenceValue) || minConfluenceValue < 0 || minConfluenceValue > 9) {
           await pool.end();
           return res.status(400).json({ error: 'minConfluence must be an integer between 0 and 9.' });
         }
@@ -296,7 +298,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         if (minConfluence !== undefined) {
           updates.push(`min_confluence = $${paramIndex++}`);
-          values.push(minConfluence);
+          values.push(minConfluenceValue);
         }
         if (aiModelPref !== undefined) {
           updates.push(`ai_model_pref = $${paramIndex++}`);
