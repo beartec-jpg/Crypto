@@ -96,7 +96,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         `SELECT selected_tickers, alert_grades, alert_timeframes, alert_types, 
                 alerts_enabled, push_subscription, tier,
                 ticker_slots, strategy_groups, scan_tickers, min_risk_reward,
-                 min_confluence, atr_stop_buffer, fvg_atr_factor, ai_model_pref, ai_trader_mode, ai_higher_timeframe,
+                 min_confluence, ai_model_pref, ai_trader_mode, ai_higher_timeframe,
                  ai_lower_timeframe, elliott_scan_enabled
          FROM crypto_subscriptions WHERE user_id = $1`,
         [cryptoUserId]
@@ -118,8 +118,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           scanTickers: [],
           minRiskReward: 1.5,
           minConfluence: 3,
-          atrStopBuffer: 0.75,
-          fvgAtrFactor: 0.5,
           aiModelPref: 'fast',
           aiTraderMode: 'smc',
           aiHigherTimeframe: DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
@@ -148,8 +146,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         scanTickers,
         minRiskReward: row.min_risk_reward != null ? Number(row.min_risk_reward) : 1.5,
         minConfluence: row.min_confluence ?? 3,
-        atrStopBuffer: row.atr_stop_buffer != null ? Number(row.atr_stop_buffer) : 0.75,
-        fvgAtrFactor: row.fvg_atr_factor != null ? Number(row.fvg_atr_factor) : 0.5,
         aiModelPref: row.ai_model_pref || 'fast',
         aiTraderMode: row.ai_trader_mode || 'smc',
         aiHigherTimeframe: normalizedPair.higherTimeframe,
@@ -161,8 +157,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'POST') {
       const { selectedTickers, alertGrades, alertTimeframes, alertTypes, alertsEnabled, pushSubscription,
               strategyGroups, scanTickers, minRiskReward, minConfluence, aiModelPref,
-              aiTraderMode, aiHigherTimeframe, aiLowerTimeframe, elliottScanEnabled,
-              atrStopBuffer, fvgAtrFactor } = req.body || {};
+              aiTraderMode, aiHigherTimeframe, aiLowerTimeframe, elliottScanEnabled } = req.body || {};
 
       // Get current tier for validation
       const tierResult = await pool.query(
@@ -260,24 +255,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      let atrStopBufferValue: number | undefined;
-      if (atrStopBuffer !== undefined) {
-        atrStopBufferValue = Number(atrStopBuffer);
-        if (!Number.isFinite(atrStopBufferValue) || atrStopBufferValue < 0 || atrStopBufferValue > 10) {
-          await pool.end();
-          return res.status(400).json({ error: 'atrStopBuffer must be a number between 0 and 10.' });
-        }
-      }
-
-      let fvgAtrFactorValue: number | undefined;
-      if (fvgAtrFactor !== undefined) {
-        fvgAtrFactorValue = Number(fvgAtrFactor);
-        if (!Number.isFinite(fvgAtrFactorValue) || fvgAtrFactorValue < 0 || fvgAtrFactorValue > 10) {
-          await pool.end();
-          return res.status(400).json({ error: 'fvgAtrFactor must be a number between 0 and 10.' });
-        }
-      }
-
       // Validate narrator model preference
       if (aiModelPref !== undefined && !['fast', 'deep'].includes(aiModelPref)) {
         await pool.end();
@@ -327,8 +304,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Insert new subscription
         await pool.query(
           `INSERT INTO crypto_subscriptions 
-           (id, user_id, selected_tickers, alert_grades, alert_timeframes, alert_types, alerts_enabled, push_subscription, tier, ticker_slots, scan_tickers, min_risk_reward, min_confluence, atr_stop_buffer, fvg_atr_factor, ai_trader_mode, ai_higher_timeframe, ai_lower_timeframe, created_at, updated_at)
-           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'free', $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())`,
+           (id, user_id, selected_tickers, alert_grades, alert_timeframes, alert_types, alerts_enabled, push_subscription, tier, ticker_slots, scan_tickers, min_risk_reward, min_confluence, ai_trader_mode, ai_higher_timeframe, ai_lower_timeframe, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'free', $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())`,
           [
             cryptoUserId,
             selectedTickers || [],
@@ -341,8 +318,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             sanitizedScanTickers || [],
             minRiskRewardValue ?? 1.5,
             minConfluenceValue ?? 3,
-            atrStopBufferValue ?? 0.75,
-            fvgAtrFactorValue ?? 0.5,
             aiTraderMode || 'smc',
             aiHigherTimeframe || DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
             aiLowerTimeframe || DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
@@ -393,14 +368,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (minConfluence !== undefined) {
           updates.push(`min_confluence = $${paramIndex++}`);
           values.push(minConfluenceValue);
-        }
-        if (atrStopBufferValue !== undefined) {
-          updates.push(`atr_stop_buffer = $${paramIndex++}`);
-          values.push(atrStopBufferValue);
-        }
-        if (fvgAtrFactorValue !== undefined) {
-          updates.push(`fvg_atr_factor = $${paramIndex++}`);
-          values.push(fvgAtrFactorValue);
         }
         if (aiModelPref !== undefined) {
           updates.push(`ai_model_pref = $${paramIndex++}`);

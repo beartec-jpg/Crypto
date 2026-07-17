@@ -64,7 +64,7 @@ export function calculateFVGs(
   data: CandleData[], 
   footprintData: FootprintData[],
   fvgVolumeThreshold: number = 1.5,
-  useAtrFilter: boolean = true, 
+  useAtrFilter: boolean = false, 
   atrFactor: number = 0.5
 ): FVG[] {
   const atr = calculateATR(data);

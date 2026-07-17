@@ -142,8 +142,6 @@ export default function CryptoAI() {
   const [savingPreferences, setSavingPreferences] = useState(false);
   const [minRiskReward, setMinRiskReward] = useState('1.5');
   const [minConfluence, setMinConfluence] = useState('3');
-  const [atrStopBuffer, setAtrStopBuffer] = useState('0.75');
-  const [fvgAtrFactor, setFvgAtrFactor] = useState('0.5');
   const [generalStates, setGeneralStates] = useState<Record<string, RequestState>>({});
   const [deepDiveStates, setDeepDiveStates] = useState<Record<string, RequestState>>({});
   const [sessionCandles, setSessionCandles] = useState<Record<string, ReturnType<typeof parseKlinesToCandles>>>({});
@@ -190,8 +188,6 @@ export default function CryptoAI() {
 
     setMinRiskReward(String(preferences.minRiskReward ?? 1.5));
     setMinConfluence(String(preferences.minConfluence ?? 3));
-    setAtrStopBuffer(String(preferences.atrStopBuffer ?? 0.75));
-    setFvgAtrFactor(String(preferences.fvgAtrFactor ?? 0.5));
   }, [preferences]);
 
   const watchlistOptions = useMemo(
@@ -370,15 +366,13 @@ export default function CryptoAI() {
   };
 
   const persistNumericPreference = async (
-    key: 'minRiskReward' | 'minConfluence' | 'atrStopBuffer' | 'fvgAtrFactor',
+    key: 'minRiskReward' | 'minConfluence',
     rawValue: string,
   ) => {
     const nextValue = key === 'minConfluence' ? Math.round(Number(rawValue)) : Number(rawValue);
     if (!Number.isFinite(nextValue)) {
       setMinRiskReward(String(preferences?.minRiskReward ?? 1.5));
       setMinConfluence(String(preferences?.minConfluence ?? 3));
-      setAtrStopBuffer(String(preferences?.atrStopBuffer ?? 0.75));
-      setFvgAtrFactor(String(preferences?.fvgAtrFactor ?? 0.5));
       return;
     }
 
@@ -388,8 +382,6 @@ export default function CryptoAI() {
     } catch {
       setMinRiskReward(String(preferences?.minRiskReward ?? 1.5));
       setMinConfluence(String(preferences?.minConfluence ?? 3));
-      setAtrStopBuffer(String(preferences?.atrStopBuffer ?? 0.75));
-      setFvgAtrFactor(String(preferences?.fvgAtrFactor ?? 0.5));
     }
   };
 
@@ -593,32 +585,6 @@ export default function CryptoAI() {
                     disabled={savingPreferences}
                     onChange={(event) => setMinConfluence(event.target.value)}
                     onBlur={() => void persistNumericPreference('minConfluence', minConfluence)}
-                  />
-                </label>
-                <label className="space-y-2">
-                  <div className="text-sm font-medium">ATR stop buffer</div>
-                  <Input
-                    type="number"
-                    step="0.05"
-                    min="0"
-                    max="10"
-                    value={atrStopBuffer}
-                    disabled={savingPreferences}
-                    onChange={(event) => setAtrStopBuffer(event.target.value)}
-                    onBlur={() => void persistNumericPreference('atrStopBuffer', atrStopBuffer)}
-                  />
-                </label>
-                <label className="space-y-2">
-                  <div className="text-sm font-medium">FVG ATR factor</div>
-                  <Input
-                    type="number"
-                    step="0.05"
-                    min="0"
-                    max="10"
-                    value={fvgAtrFactor}
-                    disabled={savingPreferences}
-                    onChange={(event) => setFvgAtrFactor(event.target.value)}
-                    onBlur={() => void persistNumericPreference('fvgAtrFactor', fvgAtrFactor)}
                   />
                 </label>
               </div>
