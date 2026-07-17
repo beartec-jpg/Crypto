@@ -395,9 +395,13 @@ ${traderMode.validityCriteria}
 GENERAL RULES:
 - STOP LOSS just behind the invalidation structure (the swing pivot, FVG boundary, or order block that would invalidate the setup). No ATR padding.
 - Every entry must have a concrete justification appropriate to this mode — never a blind "enter at current price".
+- Prefer mapping the next high-probability setup(s), even if they are still pending. A valid setup can wait for price to reach a trigger zone before activating.
+- Explicitly detect reversal/structure-shift triggers such as a higher-low after a downtrend or a lower-high after an uptrend when the local confluence supports it.
+- Populate htfRelationship as "with-trend" when the setup follows the dominant local structure/bias, or "counter-trend" when it fades that structure.
 - Min R/R ≥ ${minRiskReward} to TP1. Discard any setup that cannot achieve this.
 - Require at least ${minConfluence} confirming signals for a trade. Grade A+ (6+), A (5), B (4), C (3).
-- If no valid setup exists for this mode, return empty alerts and explain the live read in marketInsights (still populate bias and keyLevels).
+- Do NOT force sequenced or linked trades. Return any standalone valid setup on its own merit; a natural flow into another zone is optional commentary only.
+- If no valid setup exists for this mode, return empty alerts and explain the live read plus the key zones to watch in marketInsights (still populate bias and keyLevels).
 
 Return ONLY valid JSON:
 {
@@ -405,21 +409,24 @@ Return ONLY valid JSON:
     {
       "grade": "A+/A/B/C",
       "direction": "LONG/SHORT",
+      "htfRelationship": "with-trend/counter-trend",
+      "triggerZone": "e.g. $1.3200-$1.3250 demand FVG",
+      "triggerCondition": "e.g. price trades into the zone and reacts with confirmation",
       "entryZone": "e.g. $1.3200-$1.3250 or 'RSI oversold reversal + MACD cross'",
       "entry": "exact entry price",
       "stopLoss": "exact SL price",
-      "slRationale": "structural/ATR justification",
+      "slRationale": "structural invalidation justification",
       "targets": ["TP1 price", "TP2 price"],
       "tp1Rationale": "level-to-level justification",
       "tp2Rationale": "next major level",
       "confluenceSignals": ["signal1", "signal2", "signal3"],
       "confluenceCount": 5,
       "riskRewardRatio": 2.1,
-      "reasoning": "why this entry and what confirms the direction"
+      "reasoning": "why this setup is valid and what activates it"
     }
   ],
   "marketInsights": {
-    "summary": "structure/momentum, key levels and why a trade is or is not valid for this mode.",
+    "summary": "structure/momentum, the next valid setup(s) or key zones to watch, and why a trade is or is not valid for this mode.",
     "bias": "BULLISH/BEARISH/NEUTRAL",
     "keyLevels": ["level 1", "level 2"]
   }
@@ -438,7 +445,7 @@ Return ONLY valid JSON:
     // pre-computed payloads, and it produces a final JSON answer.
     const runWithTools = async (): Promise<any> => {
       const messages: any[] = [
-        { role: 'system', content: `${traderMode.systemPrompt} You require a minimum ${minRiskReward}:1 R/R to TP1, at least ${minConfluence} confirming signals. Stop-loss goes just behind the invalidation structure (swing pivot / FVG boundary / order block). No ATR padding. If no genuine setup exists for your mode, say so clearly rather than forcing a trade.` },
+        { role: 'system', content: `${traderMode.systemPrompt} You require a minimum ${minRiskReward}:1 R/R to TP1, at least ${minConfluence} confirming signals. Stop-loss goes just behind the invalidation structure (swing pivot / FVG boundary / order block). No ATR padding. Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Return standalone setups without forcing sequencing. If no genuine setup exists for your mode, say so clearly rather than forcing a trade.` },
         { role: 'user', content: userPrompt },
       ];
       const maxIterations = 6;
@@ -513,6 +520,9 @@ Return ONLY valid JSON:
             return {
               grade: a.grade || 'C',
               direction: a.direction || 'NEUTRAL',
+              htfRelationship: a.htfRelationship === 'counter-trend' ? 'counter-trend' : 'with-trend',
+              triggerZone: a.triggerZone || '',
+              triggerCondition: a.triggerCondition || '',
               entryZone: a.entryZone || '',
               entry: a.entry || 'N/A',
               stopLoss: a.stopLoss || 'N/A',

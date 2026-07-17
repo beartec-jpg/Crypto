@@ -19,6 +19,16 @@ import { useWatchlistState } from '@/hooks/useWatchlistState';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
 import { authenticatedApiRequest } from '@/lib/apiAuth';
 import {
+  collectWatchLevels,
+  getHtfRelationshipBadgeVariant,
+  getHtfRelationshipLabel,
+  getOverallSummary,
+  getSection,
+  isPendingTradeIdea,
+  type MultiTFInsights,
+  type TradeIdea,
+} from '@/lib/cryptoAiTradePlans';
+import {
   buildSessionBoardSections,
   getLatestSnapshotInsights,
   parseKlinesToCandles,
@@ -40,32 +50,6 @@ import {
 const HIGHER_TIMEFRAME_OPTIONS = CRYPTO_AI_HIGHER_TIMEFRAMES.map((value) => ({ label: value, value }));
 const LOWER_TIMEFRAME_OPTIONS = CRYPTO_AI_LOWER_TIMEFRAMES.map((value) => ({ label: value, value }));
 type AiTimeframe = CryptoAiHigherTimeframe | CryptoAiLowerTimeframe;
-
-type AnalysisSection = {
-  summary?: string;
-  bias?: string;
-  keyLevels?: string[];
-};
-
-type MultiTFInsights = {
-  overallSummary?: string;
-  [key: string]: AnalysisSection | string | undefined;
-};
-
-type TradeIdea = {
-  grade?: string;
-  primaryTF?: string;
-  direction?: 'LONG' | 'SHORT';
-  entryZone?: string;
-  entry?: string | number;
-  stopLoss?: string | number;
-  targets?: Array<string | number>;
-  confluenceSignals?: string[];
-  reasoning?: string;
-  slRationale?: string;
-  tp1Rationale?: string;
-  tp2Rationale?: string;
-};
 
 type AnalysisResponse = {
   success?: boolean;
@@ -105,16 +89,6 @@ type AiPreferences = CryptoPreferences & {
   aiHigherTimeframe?: AiTimeframe;
   aiLowerTimeframe?: AiTimeframe;
 };
-
-function getSection(insights: MultiTFInsights | null | undefined, timeframe: string): AnalysisSection | null {
-  if (!insights) return null;
-  const section = insights[timeframe];
-  return section && typeof section === 'object' ? (section as AnalysisSection) : null;
-}
-
-function getOverallSummary(insights: MultiTFInsights | null | undefined): string {
-  return typeof insights?.overallSummary === 'string' ? insights.overallSummary : '';
-}
 
 function getBiasVariant(bias?: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   if (bias === 'BULLISH') return 'default';
@@ -661,6 +635,7 @@ export default function CryptoAI() {
                 : [];
               const deepInsights = deepDiveState.status === 'success' ? deepDiveState.data.multiTFInsights : null;
               const tradeIdeas = deepDiveState.status === 'success' ? (deepDiveState.data.bestTrades ?? []) : [];
+              const deepDiveWatchLevels = collectWatchLevels(deepInsights, [aiLowerTimeframe, aiHigherTimeframe]);
 
               return (
                 <Card key={`${ticker}-${timeframeKey}`} className="h-full border-border/60">
@@ -811,13 +786,24 @@ export default function CryptoAI() {
                           </div>
 
                           {tradeIdeas.length === 0 ? (
-                            <Alert>
-                              <AlertCircle className="h-4 w-4" />
-                              <AlertTitle>No trades right now</AlertTitle>
-                              <AlertDescription>
-                                The deep dive did not find a valid plan that meets the current bias, structure, and risk/reward rules.
-                              </AlertDescription>
-                            </Alert>
+                            <div className="rounded-lg border border-dashed border-border/60 p-4">
+                              <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                                <Search className="h-4 w-4" />
+                                Key zones to watch
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                No setup has cleared the confluence and risk/reward gates yet. Wait for price to reach one of the next structural zones below.
+                              </p>
+                              {deepDiveWatchLevels.length > 0 ? (
+                                <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+                                  {deepDiveWatchLevels.map((level) => (
+                                    <li key={level} className="rounded-md bg-muted/40 px-3 py-2">
+                                      {level}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : null}
+                            </div>
                           ) : (
                             <div className="space-y-4">
                               {tradeIdeas.map((trade, index) => (
@@ -827,10 +813,24 @@ export default function CryptoAI() {
                                       {trade.direction ?? 'Setup'}
                                     </Badge>
                                     <Badge variant="secondary">{trade.grade ?? 'Unrated'}</Badge>
+                                    <Badge variant={getHtfRelationshipBadgeVariant(trade.htfRelationship)}>
+                                      {getHtfRelationshipLabel(trade.htfRelationship)}
+                                    </Badge>
+                                    <Badge variant="outline">{isPendingTradeIdea(trade) ? 'Pending plan' : 'Live setup'}</Badge>
                                     <Badge variant="outline">{trade.primaryTF ?? `${aiLowerTimeframe}/${aiHigherTimeframe}`}</Badge>
                                   </div>
 
-                                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                  {(trade.triggerZone || trade.triggerCondition) ? (
+                                    <div className="mb-3 rounded-md bg-muted/40 p-3">
+                                      <div className="text-xs uppercase text-muted-foreground">Trigger</div>
+                                      <div className="font-medium">{trade.triggerZone ?? trade.entryZone ?? '—'}</div>
+                                      {trade.triggerCondition ? (
+                                        <div className="mt-1 text-sm text-muted-foreground">{trade.triggerCondition}</div>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
+
+                                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                                     <div>
                                       <div className="text-xs uppercase text-muted-foreground">Entry</div>
                                       <div className="font-medium">{formatValue(trade.entry)}</div>
@@ -846,6 +846,12 @@ export default function CryptoAI() {
                                       <div className="font-medium">{trade.targets?.map((target) => formatValue(target)).join(' / ') || '—'}</div>
                                       {trade.tp1Rationale ? <div className="text-xs text-muted-foreground">TP1: {trade.tp1Rationale}</div> : null}
                                       {trade.tp2Rationale ? <div className="text-xs text-muted-foreground">TP2: {trade.tp2Rationale}</div> : null}
+                                    </div>
+                                    <div>
+                                      <div className="text-xs uppercase text-muted-foreground">R:R</div>
+                                      <div className="font-medium">
+                                        {trade.riskRewardRatio == null ? '—' : `${trade.riskRewardRatio.toFixed(2)}R`}
+                                      </div>
                                     </div>
                                     <div>
                                       <div className="text-xs uppercase text-muted-foreground">Rationale</div>
