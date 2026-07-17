@@ -4527,18 +4527,37 @@ OUTPUT: Valid JSON only, no markdown.
           const conflictAlignsBias = (dominantBias === 'BULLISH' && conflicting.direction === 'LONG') || (dominantBias === 'BEARISH' && conflicting.direction === 'SHORT');
           const confluenceScore = (candidate: any) => Math.max(
             Number(candidate.confluenceCount || 0),
-            Array.isArray(candidate.confluenceSignals) ? candidate.confluenceSignals.length : 0,
+            Array.isArray(candidate.confluenceSignals) ? candidate.confluenceSignals.length : 0
           );
-          const gradeOrder = ['A+', 'A', 'B', 'C'];
-          const qualityScore = (candidate: any, rr: number, alignsBias: boolean) => {
-            const gradeIndex = gradeOrder.indexOf(candidate.grade || 'C');
-            const gradeScore = gradeIndex === -1 ? 0 : (gradeOrder.length - gradeIndex) * 10;
-            return gradeScore + confluenceScore(candidate) + rr + (alignsBias ? 0.5 : 0);
+          const gradeScore = (candidate: any) => {
+            switch (candidate.grade) {
+              case 'A+':
+                return 4;
+              case 'A':
+                return 3;
+              case 'B':
+                return 2;
+              default:
+                return 1;
+            }
           };
+          const shouldReplaceConflict =
+            gradeScore(trade) > gradeScore(conflicting)
+            || (
+              gradeScore(trade) === gradeScore(conflicting)
+              && (
+                confluenceScore(trade) > confluenceScore(conflicting)
+                || (
+                  confluenceScore(trade) === confluenceScore(conflicting)
+                  && (
+                    tradeRR > conflictRR
+                    || (tradeRR === conflictRR && tradeAlignsBias && !conflictAlignsBias)
+                  )
+                )
+              )
+            );
 
-          const tradeScore = qualityScore(trade, tradeRR, tradeAlignsBias);
-          const conflictScore = qualityScore(conflicting, conflictRR, conflictAlignsBias);
-          if (tradeScore > conflictScore) {
+          if (shouldReplaceConflict) {
             const idx = dedupedTrades.indexOf(conflicting);
             dedupedTrades.splice(idx, 1, trade);
           }
