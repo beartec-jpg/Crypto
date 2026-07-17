@@ -860,33 +860,41 @@ Respond with ONLY valid JSON:
   }
 }`;
 
+    const counterTrendMinConfluence = minConfluence + 1;
     const deepPrompt = `Symbol: ${symbol} | Multi-timeframe trade search
 Dominant bias from ${higherTimeframe}: ${dominantBias}
 ${fmtTF(higherTimeframe, higherData)}
 ${fmtTF(lowerTimeframe, lowerData)}
 
 **TRADE SEARCH RULES — MANDATORY**
-1. ${higherTimeframe} sets the directional bias; ${lowerTimeframe} is for entry timing and execution.
-2. Every setup must align with the higher timeframe unless bias is NEUTRAL and the setup is exceptional.
-3. ENTRY: must be at a concrete structural/indicator level appropriate to the selected trader mode — never a blind entry at current price.
-4. STOP LOSS: behind the invalidation structure — below the entry OB/FVG low for LONGs, above the entry OB/FVG high for SHORTs. No ATR padding.
-5. TARGETS: level-to-level, with TP1 at the nearest opposing level and TP2 at the next major level.
-6. CONFLUENCE SCORING: Fib OTE zone overlap, EMA proximity, OB alignment, swing pivot alignment, BOS/CHoCH, liquidity sweep each count as a confluence signal. More confluences = higher grade.
-7. Only include trades with R/R ≥ ${minRiskReward} to TP1 and at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}.
-8. If no valid trade exists, return an empty bestTrades array and explain why in overallSummary.
+1. ${higherTimeframe} sets directional context and the dominant destination; it is NOT a hard veto.
+2. Favour with-trend setups and tag them as "with-trend". Counter-trend intraday setups are explicitly allowed when local structure and confluence justify them; tag them as "counter-trend" and require a higher bar.
+3. Explicitly detect reversal/structure-shift triggers: a higher-low after a downtrend can trigger a LONG, and a lower-high after an uptrend can trigger a SHORT, even against the HTF bias.
+4. Map the NEXT high-probability setup(s), even if price has not reached the zone yet. Pending/conditional plans are valid and should be returned.
+5. For pending setups, include triggerZone and triggerCondition that describe what price must do before the setup activates.
+6. ENTRY: must be at a concrete structural/indicator level appropriate to the selected trader mode — never a blind entry at current price.
+7. STOP LOSS: behind the invalidation structure — below the entry OB/FVG low for LONGs, above the entry OB/FVG high for SHORTs. No ATR padding.
+8. TARGETS: level-to-level, with TP1 at the nearest opposing level and TP2 at the next major level.
+9. CONFLUENCE SCORING: Fib OTE zone overlap, EMA proximity, OB alignment, swing pivot alignment, BOS/CHoCH, liquidity sweep, and trendline alignment each count as a confluence signal. More confluences = higher grade.
+10. Only include trades with R/R ≥ ${minRiskReward} to TP1. With-trend setups need at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}; counter-trend setups need at least ${counterTrendMinConfluence}.
+11. Return the valid standalone setup(s) you actually find. Do NOT force sequenced or linked trades. You MAY mention a natural flow into another zone in overallSummary, but never withhold a good standalone setup for lack of a second leg.
+12. If no valid trade exists yet, return an empty bestTrades array and use overallSummary plus keyLevels to explain the key zones to watch next.
 
 Respond with ONLY valid JSON:
 {
   "multiTFInsights": {
     "${higherTimeframe}": { "summary": "2 sentences on higher timeframe bias/trend", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["..."] },
     "${lowerTimeframe}": { "summary": "2 sentences on lower timeframe momentum/structure", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["..."] },
-    "overallSummary": "2 sentences on cross-timeframe alignment and whether a trade is actionable now"
+    "overallSummary": "2 sentences on the next high-probability setup(s) or the zones to watch next"
   },
   "bestTrades": [
     {
       "grade": "A+/A/B/C",
       "primaryTF": "${lowerTimeframe}/${higherTimeframe}",
       "direction": "LONG/SHORT",
+      "htfRelationship": "with-trend/counter-trend",
+      "triggerZone": "e.g. 1.0800-1.0850 demand FVG",
+      "triggerCondition": "e.g. price drops into the zone and reacts with local confirmation",
       "entryZone": "FVG/OB/indicator trigger zone",
       "entry": "exact entry price",
       "stopLoss": "exact SL price",
@@ -896,7 +904,7 @@ Respond with ONLY valid JSON:
       "tp2Rationale": "next major target level",
       "confluenceSignals": ["signal1", "signal2", "signal3"],
       "riskRewardRatio": 2.1,
-      "reasoning": "why the setup is valid now"
+      "reasoning": "why the setup is valid and what activates it"
     }
   ]
 }`;
@@ -913,7 +921,7 @@ Respond with ONLY valid JSON:
     let completion: any;
     const systemContent = analysisType === 'general'
       ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Always respond with valid JSON only.`
-      : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes. Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\nHigher timeframes set the bias; lower timeframes provide entry timing. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Stop-loss goes just behind the invalidation structure (swing pivot / FVG boundary / order block) — no ATR padding. Respect the user's settings: minimum R/R ${minRiskReward}:1, minimum confluence ${minConfluence}. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, and swing pivots all count as confluence signals. Always respond with valid JSON only.`;
+      : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes. Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Favour with-trend setups, but allow counter-trend intraday setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Stop-loss goes just behind the invalidation structure (swing pivot / FVG boundary / order block) — no ATR padding. Respect the user's settings: minimum R/R ${minRiskReward}:1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
     try {
       completion = await (openai.chat.completions.create as any)({
         model: XAI_PRIMARY_MODEL,
@@ -963,15 +971,27 @@ Respond with ONLY valid JSON:
             const risk = Math.abs(entryNum - slNum);
             const reward = Math.abs(tp1Num - entryNum);
             const rr = risk > 0 && reward > 0 ? reward / risk : 0;
-            return { ...t, riskRewardRatio: parseFloat(rr.toFixed(2)), _rr: rr };
-          })
-          .filter((t: any) => {
+            const derivedRelationship = t.htfRelationship === 'counter-trend' || t.htfRelationship === 'with-trend'
+              ? t.htfRelationship
+              : ((dominantBias === 'BULLISH' && t.direction === 'LONG') || (dominantBias === 'BEARISH' && t.direction === 'SHORT')
+                  ? 'with-trend'
+                  : 'counter-trend');
             const confluenceCount = Array.isArray(t.confluenceSignals)
               ? t.confluenceSignals.length
               : Number(t.confluenceCount ?? 0);
-            return t._rr >= minRiskReward && confluenceCount >= minConfluence;
+            return {
+              ...t,
+              htfRelationship: derivedRelationship,
+              confluenceCount,
+              riskRewardRatio: parseFloat(rr.toFixed(2)),
+              _rr: rr,
+              _requiredConfluence: derivedRelationship === 'counter-trend' ? counterTrendMinConfluence : minConfluence,
+            };
           })
-          .map(({ _rr, ...t }: any) => t);
+          .filter((t: any) => {
+            return t._rr >= minRiskReward && t.confluenceCount >= t._requiredConfluence;
+          })
+          .map(({ _rr, _requiredConfluence, ...t }: any) => t);
 
       parsedResult = { multiTFInsights: parsed.multiTFInsights || null, bestTrades: filteredTrades };
     } catch (parseError) {
