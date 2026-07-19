@@ -146,6 +146,8 @@ export function TradePanel({
   const wins = trades.filter(t => t.outcome === 'win').length;
   const losses = trades.filter(t => t.outcome === 'loss').length;
   const pending = trades.filter(t => !t.outcome).length;
+  const pendingEntry = trades.filter(t => !t.outcome && !t.entryHit).length;
+  const active = trades.filter(t => !t.outcome && t.entryHit).length;
   const winRate = wins + losses > 0 ? Math.round((wins / (wins + losses)) * 100) : 0;
 
   const avgRR = (() => {
@@ -195,7 +197,7 @@ export function TradePanel({
             Results
             {trades.length > 0 && (
               <span className="ml-1 text-xs text-slate-400">
-                ({wins}W / {losses}L{pending > 0 ? ` / ${pending}P` : ''})
+                ({wins}W / {losses}L{active > 0 ? ` / ${active}A` : ''}{pendingEntry > 0 ? ` / ${pendingEntry}P` : ''})
               </span>
             )}
           </Button>
@@ -627,7 +629,9 @@ export function TradePanel({
                           {trade.outcome === 'win' ? '✓ WIN' : trade.outcome === 'loss' ? '✗ LOSS' : '◉ MANUAL'}
                         </span>
                       ) : (
-                        <span className="text-[10px] text-slate-400">Pending</span>
+                        <span className={cn('text-[10px]', trade.entryHit ? 'text-white' : 'text-yellow-400')}>
+                          {trade.entryHit ? 'Active' : '⏳ Pending Entry'}
+                        </span>
                       )}
                     </div>
                     <div className="flex items-center gap-1">
