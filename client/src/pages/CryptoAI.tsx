@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { Link, useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
-import { AlertCircle, Brain, Loader2, Search, Sparkles } from 'lucide-react';
+import { AlertCircle, Brain, Loader2, Printer, Search, Sparkles } from 'lucide-react';
 
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -18,6 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useWatchlistState } from '@/hooks/useWatchlistState';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
 import { authenticatedApiRequest } from '@/lib/apiAuth';
+import { cn } from '@/lib/utils';
 import {
   collectWatchLevels,
   getHtfRelationshipBadgeVariant,
@@ -403,7 +404,7 @@ export default function CryptoAI() {
               AI Analysis
             </CardTitle>
             <CardDescription className="max-w-3xl text-base">
-              Watchlist-driven token cards with a lightweight multi-timeframe read on every token and an on-demand trade search when you want the full deep dive.
+              Multi-timeframe overview with on-demand deep-dive trade search.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -412,7 +413,7 @@ export default function CryptoAI() {
           <CardHeader>
             <CardTitle className="text-xl">Analysis preferences</CardTitle>
             <CardDescription>
-              Reusing your existing watchlist from the indicators page. Choose one of the four launch pairs, manually activate the tickers you want on AI, then tune deep-dive thresholds to match your style.
+              Activate watchlist tickers and tune thresholds.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-3">
@@ -530,9 +531,6 @@ export default function CryptoAI() {
             <div className="space-y-3 md:col-span-3">
               <div>
                 <div className="text-sm font-medium">Deep-dive thresholds</div>
-                <div className="text-sm text-muted-foreground">
-                  Tighten or loosen the trade search without lowering your structural standards.
-                </div>
               </div>
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <label className="space-y-2">
@@ -643,9 +641,6 @@ export default function CryptoAI() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <CardTitle className="text-2xl">{formatTickerDisplay(ticker)}</CardTitle>
-                        <CardDescription>
-                          Cheap running overview first, then search for trade ideas only when you want the heavier analysis.
-                        </CardDescription>
                       </div>
                       <div className="flex flex-wrap justify-end gap-2">
                         <Badge variant="outline">HTF {aiHigherTimeframe}</Badge>
@@ -659,7 +654,7 @@ export default function CryptoAI() {
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <h3 className="font-semibold">Session board</h3>
-                          <p className="text-sm text-muted-foreground">Rotated across Asia, London, and New York for the selected pair.</p>
+                          <p className="text-sm text-muted-foreground">Asia · London · New York</p>
                         </div>
                         {generalState.status === 'loading' && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                       </div>
@@ -691,7 +686,7 @@ export default function CryptoAI() {
                               const bias = higherSection?.bias || lowerSection?.bias;
 
                               return (
-                                <div key={`${ticker}-${session}`} className="rounded-lg bg-muted/40 p-4">
+                                <div key={`${ticker}-${session}`} className={cn("rounded-lg p-4", metrics.isActive ? "bg-green-500/15 border border-green-500/30" : "bg-muted/40")}>
                                   <div className="mb-3 flex items-center justify-between gap-3">
                                     <div>
                                       <h4 className="text-sm font-semibold">{label}</h4>
@@ -749,7 +744,7 @@ export default function CryptoAI() {
                         <div>
                           <h3 className="font-semibold">Deep-dive trade search</h3>
                           <p className="text-sm text-muted-foreground">
-                            Uses {ENABLED_AI_TRADER_MODES.find((mode) => mode.id === aiTraderMode)?.label ?? 'SMC / ICT'} mode and only runs when you click the button.
+                            Uses {ENABLED_AI_TRADER_MODES.find((mode) => mode.id === aiTraderMode)?.label ?? 'SMC / ICT'} mode.
                           </p>
                         </div>
                         <Button onClick={() => handleDeepDive(ticker)} disabled={deepDiveState.status === 'loading'}>
@@ -866,6 +861,47 @@ export default function CryptoAI() {
                                       ))}
                                     </div>
                                   ) : null}
+
+                                  <div className="mt-3 flex justify-end">
+                                   <Button
+                                     variant="outline"
+                                     size="sm"
+                                     onClick={() => {
+                                       const dir = trade.direction;
+                                       if (dir !== 'LONG' && dir !== 'SHORT') {
+                                         toast({ title: 'Cannot print trade', description: 'Trade direction must be LONG or SHORT.', variant: 'destructive' });
+                                         return;
+                                       }
+                                       const entry = Number(trade.entry);
+                                       const sl = Number(trade.stopLoss);
+                                       const tp = Number(trade.targets?.[0]);
+                                       if (!entry || !sl || !tp) {
+                                         toast({ title: 'Cannot print trade', description: 'Missing entry, stop-loss, or target price.', variant: 'destructive' });
+                                         return;
+                                       }
+                                       const STORAGE_KEY = 'manual_trades_v1';
+                                       const existing: import('@/lib/chartPrimitives/TradePrimitive').ManualTrade[] = (() => {
+                                         try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
+                                       })();
+                                       const newTrade: import('@/lib/chartPrimitives/TradePrimitive').ManualTrade = {
+                                         id: `trade_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                                         symbol: ticker,
+                                         timeframe: aiLowerTimeframe,
+                                         direction: dir,
+                                         entryPrice: entry,
+                                         slPrice: sl,
+                                         tpPrice: tp,
+                                         entryTime: Math.floor(Date.now() / 1000),
+                                       };
+                                       existing.push(newTrade);
+                                       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(existing)); } catch { /* ignore quota */ }
+                                       toast({ title: 'Trade printed to chart', description: `Open ${formatTickerDisplay(ticker)} on ${aiLowerTimeframe} to see it.` });
+                                     }}
+                                   >
+                                     <Printer className="mr-2 h-4 w-4" />
+                                     Print to chart
+                                   </Button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
