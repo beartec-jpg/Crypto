@@ -20,6 +20,9 @@ export interface ManualTrade {
   entryTime: number;
   closeTime?: number;
   outcome?: 'win' | 'loss' | 'manual';
+  /** Whether the entry price has been reached by price action. Pending-entry
+   *  trades should not evaluate SL/TP until this flag is true. */
+  entryHit?: boolean;
 }
 
 type RequestUpdateCallback = () => void;
@@ -86,16 +89,19 @@ class TradeRenderer implements IPrimitivePaneRenderer {
         const rectX = Math.min(xStart, xEnd);
         const rectW = Math.max(1, Math.abs(xEnd - xStart));
 
+        // Pending trades (entry not yet hit) use dashed, muted styling
+        const tradePending = !trade.entryHit && !trade.outcome;
+
         // TP zone (green)
         const tpZoneTop = Math.min(yEntry, yTp);
         const tpZoneBottom = Math.max(yEntry, yTp);
         const tpZoneH = Math.max(1, tpZoneBottom - tpZoneTop);
 
-        ctx.fillStyle = 'rgba(34, 197, 94, 0.15)';
+        ctx.fillStyle = tradePending ? 'rgba(34, 197, 94, 0.06)' : 'rgba(34, 197, 94, 0.15)';
         ctx.fillRect(rectX, tpZoneTop, rectW, tpZoneH);
-        ctx.strokeStyle = 'rgba(34, 197, 94, 0.6)';
+        ctx.strokeStyle = tradePending ? 'rgba(34, 197, 94, 0.3)' : 'rgba(34, 197, 94, 0.6)';
         ctx.lineWidth = 1;
-        ctx.setLineDash([]);
+        ctx.setLineDash(tradePending ? [4, 4] : []);
         ctx.strokeRect(rectX, tpZoneTop, rectW, tpZoneH);
 
         // SL zone (red)
@@ -103,11 +109,12 @@ class TradeRenderer implements IPrimitivePaneRenderer {
         const slZoneBottom = Math.max(yEntry, ySl);
         const slZoneH = Math.max(1, slZoneBottom - slZoneTop);
 
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
+        ctx.fillStyle = tradePending ? 'rgba(239, 68, 68, 0.06)' : 'rgba(239, 68, 68, 0.15)';
         ctx.fillRect(rectX, slZoneTop, rectW, slZoneH);
-        ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
+        ctx.strokeStyle = tradePending ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.6)';
         ctx.lineWidth = 1;
         ctx.strokeRect(rectX, slZoneTop, rectW, slZoneH);
+        ctx.setLineDash([]);
 
         // Entry line (white dashed)
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
@@ -145,12 +152,13 @@ class TradeRenderer implements IPrimitivePaneRenderer {
         // Direction label at entry – placed near the right edge of the box so it
         // doesn't overlap the candles that are anchored to the left (activation) edge.
         const rr = risk > 0 ? (reward / risk).toFixed(1) : '—';
-        const dirLabel = `${trade.direction} @ ${trade.entryPrice}  R/R ${rr}`;
+        const isPending = !trade.entryHit && !trade.outcome;
+        const dirLabel = `${isPending ? '⏳ ' : ''}${trade.direction} @ ${trade.entryPrice}  R/R ${rr}${isPending ? '  (Pending)' : ''}`;
         const dirLabelW = ctx.measureText(dirLabel).width + 6;
         const dirLabelX = Math.max(rectX + 2, rectX + rectW - dirLabelW - 4);
         ctx.fillStyle = 'rgba(0,0,0,0.75)';
         ctx.fillRect(dirLabelX, yEntry - 14, dirLabelW, 13);
-        ctx.fillStyle = trade.outcome === 'win' ? '#22c55e' : trade.outcome === 'loss' ? '#ef4444' : trade.outcome === 'manual' ? '#a78bfa' : '#ffffff';
+        ctx.fillStyle = trade.outcome === 'win' ? '#22c55e' : trade.outcome === 'loss' ? '#ef4444' : trade.outcome === 'manual' ? '#a78bfa' : isPending ? '#facc15' : '#ffffff';
         ctx.fillText(dirLabel, dirLabelX + 3, yEntry - 3);
       }
     });

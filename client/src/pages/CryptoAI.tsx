@@ -892,6 +892,7 @@ export default function CryptoAI() {
                                          slPrice: sl,
                                          tpPrice: tp,
                                          entryTime: Math.floor(Date.now() / 1000),
+                                         entryHit: false,
                                        };
                                        existing.push(newTrade);
                                        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(existing)); } catch { toast({ title: 'Storage full', description: 'Could not save trade – browser storage quota exceeded.', variant: 'destructive' }); return; }

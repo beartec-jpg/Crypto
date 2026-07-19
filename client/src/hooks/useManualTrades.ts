@@ -31,6 +31,11 @@ function scanTrade(
   startIdx: number,
 ): [ManualTrade, number] {
   if (candles.length === 0) return [trade, 0];
+
+  // Track whether entry has been filled.  For backward-compat, trades that
+  // were persisted before the entryHit field existed are treated as filled.
+  let entryFilled = trade.entryHit ?? true;
+
   for (let i = startIdx; i < candles.length; i++) {
     const c = candles[i];
 
@@ -38,16 +43,33 @@ function scanTrade(
     // closeTime candle through to the TP/SL checks below first.  Only stop
     // (mark as manual) when we step *past* that candle.
     if (trade.closeTime && c.time > trade.closeTime) {
-      return [{ ...trade, outcome: 'manual' as const }, i];
+      return [{ ...trade, entryHit: entryFilled, outcome: 'manual' as const }, i];
+    }
+
+    // Before checking SL/TP, verify that the entry price has actually been
+    // reached.  A LONG entry is filled when price dips to or below the entry;
+    // a SHORT entry is filled when price rises to or above the entry.
+    if (!entryFilled) {
+      if (trade.direction === 'LONG') {
+        if (c.low <= trade.entryPrice) entryFilled = true;
+      } else {
+        if (c.high >= trade.entryPrice) entryFilled = true;
+      }
+      // If still not filled after this candle, skip SL/TP checks
+      if (!entryFilled) continue;
     }
 
     if (trade.direction === 'LONG') {
-      if (c.low <= trade.slPrice) return [{ ...trade, outcome: 'loss' as const, closeTime: c.time }, i];
-      if (c.high >= trade.tpPrice) return [{ ...trade, outcome: 'win' as const, closeTime: c.time }, i];
+      if (c.low <= trade.slPrice) return [{ ...trade, entryHit: true, outcome: 'loss' as const, closeTime: c.time }, i];
+      if (c.high >= trade.tpPrice) return [{ ...trade, entryHit: true, outcome: 'win' as const, closeTime: c.time }, i];
     } else {
-      if (c.high >= trade.slPrice) return [{ ...trade, outcome: 'loss' as const, closeTime: c.time }, i];
-      if (c.low <= trade.tpPrice) return [{ ...trade, outcome: 'win' as const, closeTime: c.time }, i];
+      if (c.high >= trade.slPrice) return [{ ...trade, entryHit: true, outcome: 'loss' as const, closeTime: c.time }, i];
+      if (c.low <= trade.tpPrice) return [{ ...trade, entryHit: true, outcome: 'win' as const, closeTime: c.time }, i];
     }
+  }
+  // Persist whether entry was hit so far (even if trade is still open)
+  if (entryFilled && !trade.entryHit) {
+    return [{ ...trade, entryHit: true }, candles.length - 1];
   }
   return [trade, candles.length - 1];
 }
