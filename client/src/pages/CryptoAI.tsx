@@ -894,7 +894,7 @@ export default function CryptoAI() {
                                          entryTime: Math.floor(Date.now() / 1000),
                                        };
                                        existing.push(newTrade);
-                                       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(existing)); } catch { /* ignore quota */ }
+                                       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(existing)); } catch { toast({ title: 'Storage full', description: 'Could not save trade – browser storage quota exceeded.', variant: 'destructive' }); return; }
                                        toast({ title: 'Trade printed to chart', description: `Open ${formatTickerDisplay(ticker)} on ${aiLowerTimeframe} to see it.` });
                                      }}
                                    >
