@@ -298,7 +298,6 @@ export interface Drawing {
     degreeLabel?: string;
     /** For elliott_wave drawings: the specific wave being labeled e.g. "3", "iii" */
     waveLabel?: string;
-    /** For elliott_wave drawings: font size of the label */
     /** For elliott_wave drawings: color of impulse waves */
     impulseColor?: string;
     /** For elliott_wave drawings: color of corrective/zigzag waves */

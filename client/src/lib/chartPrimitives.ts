@@ -269,7 +269,7 @@ class TrendLineRenderer implements IPrimitivePaneRenderer {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      const labelText = this._style.label?.trim();
+      const labelText = this._style.label;
       if (shouldDrawLabel(this._style, labelText)) {
         const isRightLabel = this._style.labelPosition !== 'left';
         const labelX = isRightLabel ? Math.min(chartWidth - 6, drawX2 + 8) : Math.max(6, drawX1 - 8);
@@ -439,7 +439,7 @@ class HorizontalLineRenderer implements IPrimitivePaneRenderer {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      const labelText = this._style.label?.trim();
+      const labelText = this._style.label;
       if (shouldDrawLabel(this._style, labelText)) {
         const isRightLabel = this._style.labelPosition !== 'left';
         drawDrawingLabel(
@@ -799,7 +799,7 @@ class RectangleRenderer implements IPrimitivePaneRenderer {
       ctx.strokeRect(rectLeft, top, width, height);
 
       // Draw label if present
-      const labelText = this._style.label?.trim();
+      const labelText = this._style.label;
       if (shouldDrawLabel(this._style, labelText)) {
         const isRightLabel = this._style.labelPosition === 'right';
         drawDrawingLabel(
