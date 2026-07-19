@@ -50,6 +50,33 @@ import {
 
 const HIGHER_TIMEFRAME_OPTIONS = CRYPTO_AI_HIGHER_TIMEFRAMES.map((value) => ({ label: value, value }));
 const LOWER_TIMEFRAME_OPTIONS = CRYPTO_AI_LOWER_TIMEFRAMES.map((value) => ({ label: value, value }));
+const DEEP_DIVE_LOADING_MESSAGES = [
+  'Weighing the candles…',
+  'Training the hamsters…',
+  'Discombobulating the RSI matrix…',
+  'Shaking the Fibonacci tree…',
+  'Interrogating the order book…',
+  'Consulting the sacred moving averages…',
+  'Bribing the market makers…',
+  'Untangling the Bollinger Bands…',
+  'Polishing the crystal ball…',
+  'Asking the whales nicely…',
+  'Decoding whale whispers…',
+  'Feeding the algorithm…',
+  'Counting Elliott waves by hand…',
+  'Recalibrating the hopium meter…',
+  'Cross-examining the volume profile…',
+  'Warming up the neural hamsters…',
+  'Reading the tea leaves (and the candles)…',
+  'Aligning the liquidity chakras…',
+  'Reverse-engineering Satoshi\'s diary…',
+  'Stress-testing the crayons…',
+  'Poking the smart money…',
+  'Calibrating the moon laser…',
+  'Waking up the quant bots…',
+  'Flipping coins (just kidding)…',
+  'Summoning the liquidity gods…',
+] as const;
 type AiTimeframe = CryptoAiHigherTimeframe | CryptoAiLowerTimeframe;
 
 type AnalysisResponse = {
@@ -103,6 +130,10 @@ function formatValue(value?: string | number): string {
   return String(value);
 }
 
+function getRandomDeepDiveLoadingMessage(): string {
+  return DEEP_DIVE_LOADING_MESSAGES[Math.floor(Math.random() * DEEP_DIVE_LOADING_MESSAGES.length)];
+}
+
 export default function CryptoAI() {
   usePageViewTracking('crypto-ai');
 
@@ -120,6 +151,7 @@ export default function CryptoAI() {
   const [generalStates, setGeneralStates] = useState<Record<string, RequestState>>({});
   const [deepDiveStates, setDeepDiveStates] = useState<Record<string, RequestState>>({});
   const [sessionCandles, setSessionCandles] = useState<Record<string, ReturnType<typeof parseKlinesToCandles>>>({});
+  const [deepDiveLoadingMessage, setDeepDiveLoadingMessage] = useState(() => getRandomDeepDiveLoadingMessage());
 
   const { data: preferences, isLoading: preferencesLoading } = useQuery<AiPreferences>({
     queryKey: ['/api/crypto/preferences'],
@@ -178,6 +210,21 @@ export default function CryptoAI() {
   const timeframeKey = `${aiHigherTimeframe}:${aiLowerTimeframe}`;
   const tickerSlotCap = Math.min(preferences?.tickerSlots ?? 0, 5);
   const canUseAi = tickerSlotCap > 0;
+  const isAnyDeepDiveLoading = useMemo(
+    () => Object.values(deepDiveStates).some((state) => state.status === 'loading'),
+    [deepDiveStates],
+  );
+
+  useEffect(() => {
+    if (!isAnyDeepDiveLoading) return;
+
+    setDeepDiveLoadingMessage(getRandomDeepDiveLoadingMessage());
+    const intervalId = window.setInterval(() => {
+      setDeepDiveLoadingMessage(getRandomDeepDiveLoadingMessage());
+    }, 3000);
+
+    return () => window.clearInterval(intervalId);
+  }, [isAnyDeepDiveLoading]);
 
   const persistPreferences = async (payload: Partial<AiPreferences>) => {
     setSavingPreferences(true);
@@ -751,7 +798,7 @@ export default function CryptoAI() {
                           {deepDiveState.status === 'loading' ? (
                             <>
                               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Searching…
+                              {deepDiveLoadingMessage}
                             </>
                           ) : (
                             <>
