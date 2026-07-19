@@ -2,6 +2,7 @@ import { ColorPicker } from './shared/ColorPicker';
 import { OpacitySlider } from './shared/OpacitySlider';
 import { LineWidthSelector } from './shared/LineWidthSelector';
 import { LineStyleSelector } from './shared/LineStyleSelector';
+import { LabelSettings } from './shared/LabelSettings';
 
 interface TrendlineSettingsProps {
   drawing: any;
@@ -15,6 +16,11 @@ export function TrendlineSettings({ drawing, onUpdate }: TrendlineSettingsProps)
   const lineStyle = drawing.style?.lineStyle || 'solid';
   const extendLeft = drawing.style?.extendLeft || false;
   const extendRight = drawing.style?.extendRight || false;
+  const label = drawing.style?.label || '';
+  const showLabel = drawing.style?.showLabel ?? drawing.style?.showLabels ?? true;
+  const labelPosition = drawing.style?.labelPosition || 'right';
+  const labelColor = drawing.style?.labelColor || color;
+  const labelSize = drawing.style?.labelSize || 'md';
 
   // Helper to wrap updates in { style: { ... } } format
   const handleUpdate = (styleUpdates: any) => {
@@ -76,6 +82,15 @@ export function TrendlineSettings({ drawing, onUpdate }: TrendlineSettingsProps)
           <label htmlFor="extend-right" className="text-xs text-gray-300 cursor-pointer">Extend Right</label>
         </div>
       </div>
+
+      <LabelSettings
+        label={label}
+        showLabel={showLabel}
+        labelPosition={labelPosition}
+        labelColor={labelColor}
+        labelSize={labelSize}
+        onUpdate={handleUpdate}
+      />
     </div>
   );
 }

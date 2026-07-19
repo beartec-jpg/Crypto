@@ -588,9 +588,12 @@ export const chartDrawings = pgTable("chart_drawings", {
     lineWidth?: number;
     lineStyle?: number;
     fillColor?: string;
+    showLabel?: boolean;
     showLabels?: boolean;
     label?: string;
     labelPosition?: 'left' | 'right';
+    labelColor?: string;
+    labelSize?: 'sm' | 'md' | 'lg';
     hiddenLevels?: number[];
     alertActive?: boolean;  // For horizontal line price alerts (legacy)
     alertTriggered?: boolean;  // Track if alert has been triggered (legacy)
@@ -643,9 +646,12 @@ export const insertChartDrawingSchema = z.object({
     lineWidth: z.number().optional(),
     lineStyle: z.number().optional(),
     fillColor: z.string().optional(),
+    showLabel: z.boolean().optional(),
     showLabels: z.boolean().optional(),
     label: z.string().optional(),
     labelPosition: z.enum(['left', 'right']).optional(),
+    labelColor: z.string().optional(),
+    labelSize: z.enum(['sm', 'md', 'lg']).optional(),
     hiddenLevels: z.array(z.number()).optional(),
     customLabels: z.record(z.string(), z.string()).optional(),
     autoColor: z.boolean().optional(),

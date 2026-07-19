@@ -60,6 +60,7 @@ export type FibLabelPosition =
   | 'bottom-right';
 
 export type FibExtendDirection = 'none' | 'left' | 'right' | 'both';
+export type DrawingLabelSize = 'sm' | 'md' | 'lg';
 
 export interface TrendlineData {
   id: string;
@@ -272,10 +273,14 @@ export interface Drawing {
     /** When true, fib lines extend to the current (latest) candle's x position */
     autoTrack?: boolean;
     labelPosition?: 'left' | 'right';
+    showLabel?: boolean;
+    showLabels?: boolean;
     hiddenLevels?: number[];
     customLabels?: Record<number | string, string>;
     customValues?: Record<number, number>;
     label?: string;
+    labelColor?: string;
+    labelSize?: DrawingLabelSize;
     autoColor?: boolean;
     hideLabels?: boolean;
     levelColors?: Record<number, string>;
@@ -293,8 +298,6 @@ export interface Drawing {
     degreeLabel?: string;
     /** For elliott_wave drawings: the specific wave being labeled e.g. "3", "iii" */
     waveLabel?: string;
-    /** For elliott_wave drawings: whether to show the label */
-    showLabel?: boolean;
     /** For elliott_wave drawings: font size of the label */
     /** For elliott_wave drawings: color of impulse waves */
     impulseColor?: string;
@@ -340,10 +343,14 @@ export interface DrawingDefaults {
   /** When true, fib lines extend to the current (latest) candle's x position */
   autoTrack?: boolean;
   labelPosition?: 'left' | 'right';
+  showLabel?: boolean;
+  showLabels?: boolean;
   hiddenLevels?: number[];
   customLabels?: Record<number | string, string>;
   customValues?: Record<number, number>;
   label?: string;
+  labelColor?: string;
+  labelSize?: DrawingLabelSize;
   autoColor?: boolean;
   hideLabels?: boolean;
   levelColors?: Record<number, string>;

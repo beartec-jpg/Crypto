@@ -2,6 +2,7 @@ import { ColorPicker } from './shared/ColorPicker';
 import { OpacitySlider } from './shared/OpacitySlider';
 import { LineWidthSelector } from './shared/LineWidthSelector';
 import { LineStyleSelector } from './shared/LineStyleSelector';
+import { LabelSettings } from './shared/LabelSettings';
 
 interface HorizontalLineSettingsProps {
   drawing: any;
@@ -13,6 +14,11 @@ export function HorizontalLineSettings({ drawing, onUpdate }: HorizontalLineSett
   const opacity = drawing.style?.opacity ?? 1;
   const lineWidth = drawing.style?.lineWidth || 2;
   const lineStyle = drawing.style?.lineStyle || 'solid';
+  const label = drawing.style?.label || '';
+  const showLabel = drawing.style?.showLabel ?? drawing.style?.showLabels ?? true;
+  const labelPosition = drawing.style?.labelPosition || 'right';
+  const labelColor = drawing.style?.labelColor || color;
+  const labelSize = drawing.style?.labelSize || 'md';
 
   // Helper to wrap updates in { style: { ... } } format
   const handleUpdate = (styleUpdates: any) => {
@@ -48,6 +54,15 @@ export function HorizontalLineSettings({ drawing, onUpdate }: HorizontalLineSett
       <LineStyleSelector
         value={lineStyle}
         onChange={(style) => handleUpdate({ lineStyle: style })}
+      />
+
+      <LabelSettings
+        label={label}
+        showLabel={showLabel}
+        labelPosition={labelPosition}
+        labelColor={labelColor}
+        labelSize={labelSize}
+        onUpdate={handleUpdate}
       />
     </div>
   );

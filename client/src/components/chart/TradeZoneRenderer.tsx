@@ -13,6 +13,15 @@ interface TradeZoneRendererProps {
 
 export function TradeZoneRenderer({ chart, candleSeries, trades, currentTime, timeframe }: TradeZoneRendererProps) {
   const primitiveRef = useRef<TradePrimitive | null>(null);
+  const lastKnownCurrentTimeRef = useRef(0);
+
+  useEffect(() => {
+    if (currentTime > 0) {
+      lastKnownCurrentTimeRef.current = currentTime;
+    }
+  }, [currentTime]);
+
+  const effectiveCurrentTime = currentTime > 0 ? currentTime : lastKnownCurrentTimeRef.current;
 
   // Render trades that belong to the current timeframe.
   // Also include legacy trades that pre-date the timeframe field so they remain visible.
@@ -21,14 +30,14 @@ export function TradeZoneRenderer({ chart, candleSeries, trades, currentTime, ti
   useEffect(() => {
     if (!chart || !candleSeries) return;
 
-    const primitive = new TradePrimitive(timeframeTrades, currentTime);
+    const primitive = new TradePrimitive(timeframeTrades, effectiveCurrentTime);
     try {
       candleSeries.attachPrimitive(primitive);
       primitiveRef.current = primitive;
       // Explicitly trigger an update after attachment so the primitive redraws
       // with the current trades in case _requestUpdate was not yet available
       // during construction.
-      primitive.update(timeframeTrades, currentTime);
+      primitive.update(timeframeTrades, effectiveCurrentTime);
     } catch (e) {
       console.error('Failed to attach TradePrimitive:', e);
     }
@@ -40,13 +49,13 @@ export function TradeZoneRenderer({ chart, candleSeries, trades, currentTime, ti
       if (primitiveRef.current === primitive) primitiveRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chart, candleSeries]);
+  }, [chart, candleSeries, timeframe]);
 
   useEffect(() => {
     if (primitiveRef.current) {
-      primitiveRef.current.update(timeframeTrades, currentTime);
+      primitiveRef.current.update(timeframeTrades, effectiveCurrentTime);
     }
-  }, [timeframeTrades, currentTime]);
+  }, [timeframeTrades, effectiveCurrentTime, timeframe]);
 
   return null;
 }

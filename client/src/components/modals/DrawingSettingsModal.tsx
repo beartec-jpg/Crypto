@@ -12,6 +12,10 @@ interface Drawing {
     lineWidth?: number;
     showLabel?: boolean;
     labelText?: string;
+    label?: string;
+    labelPosition?: 'left' | 'right';
+    labelColor?: string;
+    labelSize?: 'sm' | 'md' | 'lg';
   };
 }
 

@@ -24,6 +24,28 @@ export interface ManualTrade {
 
 type RequestUpdateCallback = () => void;
 
+export const OPEN_TRADE_RIGHT_PADDING = 20;
+export const MIN_OPEN_TRADE_WIDTH = 48;
+
+export function getOpenTradeXEnd(
+  xStart: number,
+  xCurrent: number | null,
+  chartWidth: number,
+): number {
+  const projectedXEnd = xCurrent !== null ? xCurrent + OPEN_TRADE_RIGHT_PADDING : null;
+  const fallbackXEnd = chartWidth > xStart ? chartWidth : xStart + MIN_OPEN_TRADE_WIDTH;
+
+  if (projectedXEnd !== null && projectedXEnd > xStart) {
+    return projectedXEnd;
+  }
+
+  if (fallbackXEnd > xStart) {
+    return fallbackXEnd;
+  }
+
+  return xStart + MIN_OPEN_TRADE_WIDTH;
+}
+
 class TradeRenderer implements IPrimitivePaneRenderer {
   private _trades: ManualTrade[];
   private _series: ISeriesApi<SeriesType> | null;
@@ -61,10 +83,11 @@ class TradeRenderer implements IPrimitivePaneRenderer {
           xEnd = xClose !== null ? xClose : chartWidth;
         } else {
           // Extend past the current candle by a small padding so the zone right edge is
-          // clearly visible beyond the latest candle body.
-          const ACTIVE_ZONE_RIGHT_PADDING = 20;
+          // clearly visible beyond the latest candle body. If the latest candle time
+          // is missing/stale after re-hydration, fall back to the chart edge instead
+          // of collapsing the open trade to its entry candle.
           const xCurrent = timeScale.timeToCoordinate(this._currentTime as Time);
-          xEnd = xCurrent !== null ? xCurrent + ACTIVE_ZONE_RIGHT_PADDING : chartWidth;
+          xEnd = getOpenTradeXEnd(xStart, xCurrent, chartWidth);
         }
 
         const yEntry = this._series!.priceToCoordinate(trade.entryPrice);
@@ -168,7 +191,7 @@ class TradePaneView implements IPrimitivePaneView {
   }
 }
 
-export class TradePrimitive implements ISeriesPrimitive<SeriesType> {
+export class TradePrimitive implements ISeriesPrimitive<Time> {
   trades: ManualTrade[] = [];
   series: ISeriesApi<SeriesType> | null = null;
   chart: IChartApi | null = null;
@@ -187,6 +210,7 @@ export class TradePrimitive implements ISeriesPrimitive<SeriesType> {
     this.series = param.series as unknown as ISeriesApi<SeriesType>;
     this.chart = param.chart as unknown as IChartApi;
     this._requestUpdate = param.requestUpdate;
+    this._requestUpdate?.();
   }
 
   detached() {

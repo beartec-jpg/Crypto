@@ -4209,6 +4209,13 @@ const handleAIMarketReview = () => {
                       const p2 = toPixel(drawing.points[1], 1);
                       if (p1.x === null || p2.x === null) return null;
                       const label = drawing.style?.label || '';
+                      const showLabel = drawing.style?.showLabel ?? drawing.style?.showLabels ?? true;
+                      const labelColor = drawing.style?.labelColor || color;
+                      const labelFontSize = drawing.style?.labelSize === 'sm'
+                        ? 10
+                        : drawing.style?.labelSize === 'lg'
+                          ? 15
+                          : 12;
                       const labelRight = drawing.style?.labelPosition === 'right';
                       const extendLeft = drawing.style?.extendLeft || false;
                       const extendRight = drawing.style?.extendRight || false;
@@ -4325,12 +4332,12 @@ const handleAIMarketReview = () => {
                               strokeWidth={isSelected ? 3 : 2}
                             />
                           )}
-                          {renderVisible && label && (
+                          {renderVisible && label && showLabel && (
                             <text 
                               x={labelX}
                               y={labelY}
-                              fill={isSelected ? '#22c55e' : color}
-                              fontSize="11"
+                              fill={labelColor}
+                              fontSize={labelFontSize}
                               fontWeight="500"
                               textAnchor={effectiveAnchor}
                             >
@@ -4398,6 +4405,13 @@ const handleAIMarketReview = () => {
                       }
                       
                       const label = drawing.style?.label || '';
+                      const showLabel = drawing.style?.showLabel ?? drawing.style?.showLabels ?? true;
+                      const labelColor = drawing.style?.labelColor || color;
+                      const labelFontSize = drawing.style?.labelSize === 'sm'
+                        ? 10
+                        : drawing.style?.labelSize === 'lg'
+                          ? 15
+                          : 12;
                       const labelRight = drawing.style?.labelPosition === 'right';
                       const labelX = labelRight ? Math.min(p1.x, p2.x) + Math.abs(p2.x - p1.x) - 5 : Math.min(p1.x, p2.x) + 5;
                       
@@ -4419,12 +4433,12 @@ const handleAIMarketReview = () => {
                               strokeWidth={isSelected ? 3 : 2}
                             />
                           )}
-                          {renderVisible && label && (
+                          {renderVisible && label && showLabel && (
                             <text 
                               x={labelX}
                               y={y + 14}
-                              fill={isSelected ? '#22c55e' : color}
-                              fontSize="11"
+                              fill={labelColor}
+                              fontSize={labelFontSize}
                               fontWeight="500"
                               textAnchor={labelRight ? 'end' : 'start'}
                             >

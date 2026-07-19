@@ -29,10 +29,14 @@ interface DrawingStyle {
   /** Injected at render time: the timestamp of the latest candle for autoTrack */
   _trackToTime?: number;
   labelPosition?: 'left' | 'right';
+  showLabel?: boolean;
+  showLabels?: boolean;
   hiddenLevels?: number[];
   customLabels?: Record<number | string, string>;
   customValues?: Record<number, number>;
   label?: string;
+  labelColor?: string;
+  labelSize?: 'sm' | 'md' | 'lg';
   autoColor?: boolean;
   hideLabels?: boolean;
   levelColors?: Record<number, string>;
@@ -84,6 +88,55 @@ function applyLineStyle(ctx: CanvasRenderingContext2D, lineStyle?: 'solid' | 'da
   } else if (style === 'dashed') {
     ctx.setLineDash([5, 5]);
   }
+}
+
+function getLabelFontSize(labelSize?: 'sm' | 'md' | 'lg'): number {
+  switch (labelSize) {
+    case 'sm':
+      return 10;
+    case 'lg':
+      return 15;
+    case 'md':
+    default:
+      return 12;
+  }
+}
+
+function shouldDrawLabel(style: DrawingStyle, labelText?: string): boolean {
+  if (!labelText?.trim()) return false;
+  return (style.showLabel ?? style.showLabels ?? true) !== false;
+}
+
+function drawDrawingLabel(
+  ctx: CanvasRenderingContext2D,
+  style: DrawingStyle,
+  labelText: string,
+  fallbackColor: string,
+  x: number,
+  y: number,
+  align: CanvasTextAlign,
+) {
+  const fontSize = getLabelFontSize(style.labelSize);
+  const textColor = applyOpacity(style.labelColor || fallbackColor, style.opacity ?? 1);
+  const paddingX = 4;
+  const paddingY = 3;
+
+  ctx.save();
+  ctx.font = `${fontSize}px sans-serif`;
+  ctx.textAlign = align;
+  ctx.textBaseline = 'middle';
+
+  const textMetrics = ctx.measureText(labelText);
+  const textWidth = textMetrics.width;
+  const bgX = align === 'right' ? x - textWidth - paddingX : x - paddingX;
+  const bgY = y - fontSize / 2 - paddingY;
+
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+  ctx.fillRect(bgX, bgY, textWidth + paddingX * 2, fontSize + paddingY * 2);
+
+  ctx.fillStyle = textColor;
+  ctx.fillText(labelText, x, y + 0.5);
+  ctx.restore();
 }
 
 /**
@@ -215,6 +268,22 @@ class TrendLineRenderer implements IPrimitivePaneRenderer {
       ctx.lineTo(drawX2, drawY2);
       ctx.stroke();
       ctx.setLineDash([]);
+
+      const labelText = this._style.label?.trim();
+      if (shouldDrawLabel(this._style, labelText)) {
+        const isRightLabel = this._style.labelPosition !== 'left';
+        const labelX = isRightLabel ? Math.min(chartWidth - 6, drawX2 + 8) : Math.max(6, drawX1 - 8);
+        const labelY = Math.max(10, Math.min(scope.mediaSize.height - 10, (isRightLabel ? drawY2 : drawY1) - 8));
+        drawDrawingLabel(
+          ctx,
+          this._style,
+          labelText!,
+          colorWithOpacity,
+          labelX,
+          labelY,
+          isRightLabel ? 'left' : 'right',
+        );
+      }
 
       // Draw selection handles at original or extrapolated points
       if (this._isSelected) {
@@ -369,6 +438,20 @@ class HorizontalLineRenderer implements IPrimitivePaneRenderer {
       ctx.lineTo(width, y);
       ctx.stroke();
       ctx.setLineDash([]);
+
+      const labelText = this._style.label?.trim();
+      if (shouldDrawLabel(this._style, labelText)) {
+        const isRightLabel = this._style.labelPosition !== 'left';
+        drawDrawingLabel(
+          ctx,
+          this._style,
+          labelText!,
+          colorWithOpacity,
+          isRightLabel ? width - 8 : 8,
+          Math.max(10, y - 10),
+          isRightLabel ? 'right' : 'left',
+        );
+      }
 
       if (this._isSelected) {
         const timeScale = this._chart!.timeScale();
@@ -716,25 +799,18 @@ class RectangleRenderer implements IPrimitivePaneRenderer {
       ctx.strokeRect(rectLeft, top, width, height);
 
       // Draw label if present
-      const labelText = this._style.label;
-      if (labelText) {
-        ctx.font = '11px sans-serif';
-        const textMetrics = ctx.measureText(labelText);
-        const textHeight = 12;
-        const padding = 3;
-        
+      const labelText = this._style.label?.trim();
+      if (shouldDrawLabel(this._style, labelText)) {
         const isRightLabel = this._style.labelPosition === 'right';
-        const labelX = isRightLabel ? rectRight - 5 : rectLeft + 5;
-        const labelY = top + 15;
-        
-        const bgX = isRightLabel ? labelX - textMetrics.width - padding : labelX - padding;
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-        ctx.fillRect(bgX, labelY - textHeight + 2, textMetrics.width + padding * 2, textHeight + padding);
-        
-        ctx.fillStyle = colorWithOpacity;
-        ctx.textAlign = isRightLabel ? 'right' : 'left';
-        ctx.fillText(labelText, labelX, labelY + 4);
-        ctx.textAlign = 'left';
+        drawDrawingLabel(
+          ctx,
+          this._style,
+          labelText!,
+          colorWithOpacity,
+          isRightLabel ? rectRight - 5 : rectLeft + 5,
+          top + 14,
+          isRightLabel ? 'right' : 'left',
+        );
       }
 
       // Draw selection handles at original points (not extended edges)
@@ -2192,4 +2268,3 @@ export class FreeDrawPrimitive implements ISeriesPrimitive<Time> {
     this._requestUpdate?.();
   }
 }
-
