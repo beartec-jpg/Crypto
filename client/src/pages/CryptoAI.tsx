@@ -130,8 +130,12 @@ function formatValue(value?: string | number): string {
   return String(value);
 }
 
-function getRandomDeepDiveLoadingMessage(): string {
-  return DEEP_DIVE_LOADING_MESSAGES[Math.floor(Math.random() * DEEP_DIVE_LOADING_MESSAGES.length)];
+function getNextLoadingMessageIndex(previousIndex?: number): number {
+  const nextIndex = Math.floor(Math.random() * DEEP_DIVE_LOADING_MESSAGES.length);
+  if (DEEP_DIVE_LOADING_MESSAGES.length <= 1 || nextIndex !== previousIndex) {
+    return nextIndex;
+  }
+  return (nextIndex + 1) % DEEP_DIVE_LOADING_MESSAGES.length;
 }
 
 export default function CryptoAI() {
@@ -151,7 +155,7 @@ export default function CryptoAI() {
   const [generalStates, setGeneralStates] = useState<Record<string, RequestState>>({});
   const [deepDiveStates, setDeepDiveStates] = useState<Record<string, RequestState>>({});
   const [sessionCandles, setSessionCandles] = useState<Record<string, ReturnType<typeof parseKlinesToCandles>>>({});
-  const [deepDiveLoadingMessage, setDeepDiveLoadingMessage] = useState(() => getRandomDeepDiveLoadingMessage());
+  const [deepDiveLoadingMessageIndex, setDeepDiveLoadingMessageIndex] = useState(() => getNextLoadingMessageIndex());
 
   const { data: preferences, isLoading: preferencesLoading } = useQuery<AiPreferences>({
     queryKey: ['/api/crypto/preferences'],
@@ -218,9 +222,9 @@ export default function CryptoAI() {
   useEffect(() => {
     if (!isAnyDeepDiveLoading) return;
 
-    setDeepDiveLoadingMessage(getRandomDeepDiveLoadingMessage());
+    setDeepDiveLoadingMessageIndex((currentIndex) => getNextLoadingMessageIndex(currentIndex));
     const intervalId = window.setInterval(() => {
-      setDeepDiveLoadingMessage(getRandomDeepDiveLoadingMessage());
+      setDeepDiveLoadingMessageIndex((currentIndex) => getNextLoadingMessageIndex(currentIndex));
     }, 3000);
 
     return () => window.clearInterval(intervalId);
@@ -798,7 +802,7 @@ export default function CryptoAI() {
                           {deepDiveState.status === 'loading' ? (
                             <>
                               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              {deepDiveLoadingMessage}
+                              {DEEP_DIVE_LOADING_MESSAGES[deepDiveLoadingMessageIndex]}
                             </>
                           ) : (
                             <>
