@@ -296,7 +296,7 @@ export interface Drawing {
     waveType?: string;
     /** For elliott_wave drawings: degree name e.g. "Minor", "Minute" */
     degreeLabel?: string;
-    /** For elliott_wave drawings: the specific wave being labeled e.g. "3", "iii" */
+    /** For elliott_wave drawings: the specific wave text rendered at the label, e.g. "3", "iii", or "C" */
     waveLabel?: string;
     /** For elliott_wave drawings: color of impulse waves */
     impulseColor?: string;

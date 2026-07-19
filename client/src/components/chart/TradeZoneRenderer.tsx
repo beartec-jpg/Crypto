@@ -49,13 +49,13 @@ export function TradeZoneRenderer({ chart, candleSeries, trades, currentTime, ti
       if (primitiveRef.current === primitive) primitiveRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chart, candleSeries, timeframe]);
+  }, [chart, candleSeries]);
 
   useEffect(() => {
     if (primitiveRef.current) {
       primitiveRef.current.update(timeframeTrades, effectiveCurrentTime);
     }
-  }, [timeframeTrades, effectiveCurrentTime, timeframe]);
+  }, [timeframeTrades, effectiveCurrentTime]);
 
   return null;
 }
