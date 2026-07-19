@@ -197,7 +197,7 @@ export function TradePanel({
             Results
             {trades.length > 0 && (
               <span className="ml-1 text-xs text-slate-400">
-                ({wins}W / {losses}L{active > 0 ? ` / ${active}A` : ''}{pendingEntry > 0 ? ` / ${pendingEntry}P` : ''})
+                ({wins}W / {losses}L{pending > 0 ? ` / ${pending}P` : ''})
               </span>
             )}
           </Button>

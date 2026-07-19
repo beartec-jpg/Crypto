@@ -34,7 +34,7 @@ function scanTrade(
 
   // Track whether entry has been filled.  For backward-compat, trades that
   // were persisted before the entryHit field existed are treated as filled.
-  let entryFilled = trade.entryHit ?? false;
+  let entryFilled = trade.entryHit ?? true;
 
   for (let i = startIdx; i < candles.length; i++) {
     const c = candles[i];
