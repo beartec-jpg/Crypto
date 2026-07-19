@@ -21,6 +21,10 @@ export function TradeZoneRenderer({ chart, candleSeries, trades, currentTime, ti
   useEffect(() => {
     if (!chart || !candleSeries) return;
 
+    // Use the latest currentTime available at mount time.  When navigating
+    // back to the page, candle data may already be loaded so currentTime is
+    // the timestamp of the most recent candle – exactly what the primitive
+    // needs to avoid collapsing open trade boxes to 1 px.
     const primitive = new TradePrimitive(timeframeTrades, currentTime);
     try {
       candleSeries.attachPrimitive(primitive);
@@ -39,8 +43,11 @@ export function TradeZoneRenderer({ chart, candleSeries, trades, currentTime, ti
       }
       if (primitiveRef.current === primitive) primitiveRef.current = null;
     };
+    // Re-create the primitive when currentTime becomes available (0 → real
+    // timestamp) so open trades don't stay collapsed if the chart/series
+    // refs were ready before candle data loaded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chart, candleSeries]);
+  }, [chart, candleSeries, currentTime]);
 
   useEffect(() => {
     if (primitiveRef.current) {
