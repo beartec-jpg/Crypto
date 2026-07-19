@@ -63,8 +63,18 @@ class TradeRenderer implements IPrimitivePaneRenderer {
           // Extend past the current candle by a small padding so the zone right edge is
           // clearly visible beyond the latest candle body.
           const ACTIVE_ZONE_RIGHT_PADDING = 20;
-          const xCurrent = timeScale.timeToCoordinate(this._currentTime as Time);
-          xEnd = xCurrent !== null ? xCurrent + ACTIVE_ZONE_RIGHT_PADDING : chartWidth;
+          const xCurrent = this._currentTime
+            ? timeScale.timeToCoordinate(this._currentTime as Time)
+            : null;
+          // Guard: if xCurrent resolves to null (primitive re-hydrated before
+          // _currentTime is set) OR the resulting xEnd would collapse to near
+          // xStart (e.g. _currentTime ≈ entryTime on reload), fall back to
+          // chartWidth so open trades always render a visible width.
+          if (xCurrent !== null && xCurrent + ACTIVE_ZONE_RIGHT_PADDING > xStart + 20) {
+            xEnd = xCurrent + ACTIVE_ZONE_RIGHT_PADDING;
+          } else {
+            xEnd = chartWidth;
+          }
         }
 
         const yEntry = this._series!.priceToCoordinate(trade.entryPrice);

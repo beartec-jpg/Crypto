@@ -293,8 +293,12 @@ export interface Drawing {
     degreeLabel?: string;
     /** For elliott_wave drawings: the specific wave being labeled e.g. "3", "iii" */
     waveLabel?: string;
-    /** For elliott_wave drawings: whether to show the label */
+    /** Whether to show the label (used by rectangle, trendline, horizontal) */
     showLabel?: boolean;
+    /** Label text color (independent of drawing color) */
+    labelColor?: string;
+    /** Label text size preset */
+    labelSize?: 'sm' | 'md' | 'lg';
     /** For elliott_wave drawings: font size of the label */
     /** For elliott_wave drawings: color of impulse waves */
     impulseColor?: string;

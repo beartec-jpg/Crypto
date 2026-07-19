@@ -33,6 +33,9 @@ interface DrawingStyle {
   customLabels?: Record<number | string, string>;
   customValues?: Record<number, number>;
   label?: string;
+  showLabel?: boolean;
+  labelColor?: string;
+  labelSize?: 'sm' | 'md' | 'lg';
   autoColor?: boolean;
   hideLabels?: boolean;
   levelColors?: Record<number, string>;
@@ -84,6 +87,13 @@ function applyLineStyle(ctx: CanvasRenderingContext2D, lineStyle?: 'solid' | 'da
   } else if (style === 'dashed') {
     ctx.setLineDash([5, 5]);
   }
+}
+
+// Helper to map labelSize preset to font pixel size
+function labelSizeToPx(size?: 'sm' | 'md' | 'lg'): number {
+  if (size === 'sm') return 10;
+  if (size === 'lg') return 15;
+  return 12; // 'md' default
 }
 
 /**
@@ -215,6 +225,30 @@ class TrendLineRenderer implements IPrimitivePaneRenderer {
       ctx.lineTo(drawX2, drawY2);
       ctx.stroke();
       ctx.setLineDash([]);
+
+      // Draw label if present and showLabel is not explicitly false
+      const labelText = this._style.label;
+      if (labelText && this._style.showLabel !== false) {
+        const fontSize = labelSizeToPx(this._style.labelSize);
+        ctx.font = `${fontSize}px sans-serif`;
+        const textMetrics = ctx.measureText(labelText);
+        const textHeight = fontSize + 1;
+        const padding = 3;
+        
+        const isRightLabel = this._style.labelPosition === 'right';
+        // Position label at the appropriate end of the line
+        const labelX = isRightLabel ? x2 - 5 : x1 + 5;
+        const labelY = isRightLabel ? y2 - 8 : y1 - 8;
+        
+        const bgX = isRightLabel ? labelX - textMetrics.width - padding : labelX - padding;
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        ctx.fillRect(bgX, labelY - textHeight + 2, textMetrics.width + padding * 2, textHeight + padding);
+        
+        ctx.fillStyle = this._style.labelColor || colorWithOpacity;
+        ctx.textAlign = isRightLabel ? 'right' : 'left';
+        ctx.fillText(labelText, labelX, labelY + 4);
+        ctx.textAlign = 'left';
+      }
 
       // Draw selection handles at original or extrapolated points
       if (this._isSelected) {
@@ -369,6 +403,29 @@ class HorizontalLineRenderer implements IPrimitivePaneRenderer {
       ctx.lineTo(width, y);
       ctx.stroke();
       ctx.setLineDash([]);
+
+      // Draw label if present and showLabel is not explicitly false
+      const labelText = this._style.label;
+      if (labelText && this._style.showLabel !== false) {
+        const fontSize = labelSizeToPx(this._style.labelSize);
+        ctx.font = `${fontSize}px sans-serif`;
+        const textMetrics = ctx.measureText(labelText);
+        const textHeight = fontSize + 1;
+        const padding = 3;
+        
+        const isRightLabel = this._style.labelPosition === 'right';
+        const labelX = isRightLabel ? width - 5 : 5;
+        const labelY = y - 8;
+        
+        const bgX = isRightLabel ? labelX - textMetrics.width - padding : labelX - padding;
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        ctx.fillRect(bgX, labelY - textHeight + 2, textMetrics.width + padding * 2, textHeight + padding);
+        
+        ctx.fillStyle = this._style.labelColor || colorWithOpacity;
+        ctx.textAlign = isRightLabel ? 'right' : 'left';
+        ctx.fillText(labelText, labelX, labelY + 4);
+        ctx.textAlign = 'left';
+      }
 
       if (this._isSelected) {
         const timeScale = this._chart!.timeScale();
@@ -715,12 +772,13 @@ class RectangleRenderer implements IPrimitivePaneRenderer {
       ctx.lineWidth = this._style.lineWidth || 2;
       ctx.strokeRect(rectLeft, top, width, height);
 
-      // Draw label if present
+      // Draw label if present and showLabel is not explicitly false
       const labelText = this._style.label;
-      if (labelText) {
-        ctx.font = '11px sans-serif';
+      if (labelText && this._style.showLabel !== false) {
+        const fontSize = labelSizeToPx(this._style.labelSize);
+        ctx.font = `${fontSize}px sans-serif`;
         const textMetrics = ctx.measureText(labelText);
-        const textHeight = 12;
+        const textHeight = fontSize + 1;
         const padding = 3;
         
         const isRightLabel = this._style.labelPosition === 'right';
@@ -731,7 +789,7 @@ class RectangleRenderer implements IPrimitivePaneRenderer {
         ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
         ctx.fillRect(bgX, labelY - textHeight + 2, textMetrics.width + padding * 2, textHeight + padding);
         
-        ctx.fillStyle = colorWithOpacity;
+        ctx.fillStyle = this._style.labelColor || colorWithOpacity;
         ctx.textAlign = isRightLabel ? 'right' : 'left';
         ctx.fillText(labelText, labelX, labelY + 4);
         ctx.textAlign = 'left';
