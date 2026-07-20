@@ -11,10 +11,13 @@ describe('LoadingSpinner', () => {
       expect(spinner).toBeInTheDocument()
     })
 
-    it('should show default loading text', () => {
+    it('should show a cycling loading message by default', () => {
       render(<LoadingSpinner />)
 
-      expect(screen.getByText('Loading...')).toBeInTheDocument()
+      // Should show one of the cycling messages (any text in the paragraph)
+      const paragraph = screen.getByRole('status').querySelector('p')
+      expect(paragraph).toBeInTheDocument()
+      expect(paragraph!.textContent).not.toBe('')
     })
 
     it('should show custom message', () => {
@@ -23,10 +26,11 @@ describe('LoadingSpinner', () => {
       expect(screen.getByText('Please wait')).toBeInTheDocument()
     })
 
-    it('should not show message when not provided', () => {
+    it('should not show message when empty string provided', () => {
       render(<LoadingSpinner message="" />)
 
-      expect(screen.queryByText('Loading...')).not.toBeInTheDocument()
+      const paragraph = screen.getByRole('status').querySelector('p')
+      expect(paragraph).not.toBeInTheDocument()
     })
   })
 

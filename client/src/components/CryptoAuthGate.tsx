@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { lazy, Suspense } from 'react';
+import { useLoadingMessages } from '@/hooks/useLoadingMessages';
 
 const isDevelopment = typeof window !== 'undefined' && 
   (window.location.hostname.includes('replit') || 
@@ -44,11 +45,12 @@ function DevelopmentAuthGate({ children }: CryptoAuthGateProps) {
 }
 
 function LoadingFallback() {
+  const message = useLoadingMessages(true);
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0e0e0e]">
       <div className="text-center">
         <Loader2 className="w-12 h-12 text-[#00c4b4] animate-spin mx-auto mb-4" />
-        <p className="text-gray-400">Loading...</p>
+        <p className="text-gray-400">{message}</p>
       </div>
     </div>
   );
