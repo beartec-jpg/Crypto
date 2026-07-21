@@ -47,6 +47,7 @@ import {
   isValidQBTCAddress,
   type QBTCRpcSettings,
 } from '@/lib/qbtcService';
+import { SHOW_QBTC } from '@/constants/featureFlags';
 import TransactionPreviewModal from './TransactionPreviewModal';
 import PinEntryModal from './PinEntryModal';
 import PasswordModal from './PasswordModal';
@@ -1027,7 +1028,7 @@ export default function SendForm({
             <option value="xrp">XRP Ledger (XRP)</option>
             <option value="bitcoin">Bitcoin (BTC)</option>
             <option value="solana">Solana (SOL)</option>
-            <option value="qbtc">QuantumBTC (QBTC)</option>
+            {SHOW_QBTC && <option value="qbtc">QuantumBTC (QBTC)</option>}
           </select>
         </div>
 

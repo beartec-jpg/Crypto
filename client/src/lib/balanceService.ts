@@ -8,6 +8,7 @@ import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { QBTCChain } from './qbtcService';
 import type { TokenNetwork } from './tokenService';
 import { getChainNetworkAddress, type WalletAddresses } from './networkAddress';
+import { SHOW_QBTC } from '@/constants/featureFlags';
 
 export type Chain = 'ethereum' | 'bitcoin' | 'bsc' | 'bsc_testnet' | 'xrp' | 'solana' | 'qbtc';
 
@@ -460,7 +461,7 @@ export async function fetchAllBalances(
       bscTestnetAddress ? fetchBSCBalance(bscTestnetAddress, 'testnet') : Promise.resolve('0'),
       chainAddresses.xrp ? fetchXRPBalance(chainAddresses.xrp, network) : Promise.resolve('0'),
       chainAddresses.solana ? fetchSolanaBalance(chainAddresses.solana, network) : Promise.resolve('0'),
-      chainAddresses.qbtc ? fetchQBTCBalance(chainAddresses.qbtc) : Promise.resolve('0'),
+      SHOW_QBTC && chainAddresses.qbtc ? fetchQBTCBalance(chainAddresses.qbtc) : Promise.resolve('0'),
     ]);
 
     const balances: ChainBalance[] = [
@@ -506,13 +507,15 @@ export async function fetchAllBalances(
         usdPrice: shouldValueInUsd ? prices.solana.usd : 0,
         priceChange24h: shouldValueInUsd ? prices.solana.usd_24h_change : 0,
       },
-      {
-        chain: 'qbtc',
-        balance: qbtcBalance,
-        usdValue: 0,
-        usdPrice: 0,
-        priceChange24h: 0,
-      },
+      ...(SHOW_QBTC
+        ? [{
+            chain: 'qbtc' as const,
+            balance: qbtcBalance,
+            usdValue: 0,
+            usdPrice: 0,
+            priceChange24h: 0,
+          }]
+        : []),
     ];
 
     localStorage.setItem('cached_balances', JSON.stringify({

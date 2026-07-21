@@ -35,6 +35,7 @@ import {
   postV2Offer,
   postV2Accept,
 } from '@/lib/swapV2Api';
+import { SHOW_QBTC } from '@/constants/featureFlags';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -53,7 +54,9 @@ interface MultiChainMarketTabProps {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const ALL_CHAINS: ChainId[] = ['QBTC', 'BTC', 'ETH', 'BNB', 'USDC', 'XRP'];
+const ALL_CHAINS: ChainId[] = SHOW_QBTC
+  ? ['QBTC', 'BTC', 'ETH', 'BNB', 'USDC', 'XRP']
+  : ['BTC', 'ETH', 'BNB', 'USDC', 'XRP'];
 
 const CHAIN_COLORS: Record<ChainId, string> = {
   QBTC: 'text-cyan-400 bg-cyan-400/10 border-cyan-500/30',
@@ -420,7 +423,11 @@ function EntryScreen({ onBuy, onSell }: { onBuy: () => void; onSell: () => void 
     <div className="space-y-4 py-2">
       <div className="text-center space-y-1 mb-6">
         <h2 className="text-lg font-bold text-white">Multi-Chain Marketplace</h2>
-        <p className="text-sm text-slate-400">Atomic swaps across QBTC, BTC, ETH, BNB, USDC and XRP</p>
+        <p className="text-sm text-slate-400">
+          {SHOW_QBTC
+            ? 'Atomic swaps across QBTC, BTC, ETH, BNB, USDC and XRP'
+            : 'Atomic swaps across BTC, ETH, BNB, USDC and XRP'}
+        </p>
       </div>
 
       <button
@@ -494,6 +501,7 @@ function BuyView({
   }, [loadOffers]);
 
   const filtered = allOffers
+    .filter(o => SHOW_QBTC || (o.baseChain !== 'QBTC' && o.quoteChain !== 'QBTC'))
     .filter(o => filterSelling === 'All' || o.baseChain === filterSelling)
     .filter(o => filterPayWith === 'All' || o.quoteChain === filterPayWith)
     .sort((a, b) => {

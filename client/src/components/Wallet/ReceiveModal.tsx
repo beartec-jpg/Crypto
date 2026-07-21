@@ -6,6 +6,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Copy, Check, X, ChevronDown, AlertTriangle, Download, Share2 } from 'lucide-react';
 import type { Chain } from '@/lib/balanceService';
 import { getChainNetworkAddress, type WalletAddresses } from '@/lib/networkAddress';
+import { SHOW_QBTC } from '@/constants/featureFlags';
 
 interface ReceiveModalProps {
   addresses: WalletAddresses;
@@ -69,7 +70,9 @@ const CHAIN_CONFIG: Record<Chain, { name: string; symbol: string; color: string;
   },
 };
 
-const CHAINS: Chain[] = ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana', 'qbtc'];
+const CHAINS: Chain[] = SHOW_QBTC
+  ? ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana', 'qbtc']
+  : ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana'];
 
 export default function ReceiveModal({
   addresses,

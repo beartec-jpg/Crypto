@@ -6,6 +6,7 @@ import { Contract, JsonRpcProvider } from 'ethers';
 import { xrplService } from './xrpService';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { getChainNetworkAddress, type WalletAddresses } from './networkAddress';
+import { SHOW_QBTC } from '@/constants/featureFlags';
 
 // ERC-20 ABI (string-returning metadata)
 const ERC20_ABI = [
@@ -876,7 +877,9 @@ export async function ensureNativeTokens(walletId: string, network: TokenNetwork
     qbtc: { symbol: 'QBTC', name: 'QuantumBTC', decimals: 8 },
   };
 
-  const chains: Chain[] = ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana', 'qbtc'];
+  const chains: Chain[] = SHOW_QBTC
+    ? ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana', 'qbtc']
+    : ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana'];
   let tokensAdded = false;
 
   for (const chain of chains) {

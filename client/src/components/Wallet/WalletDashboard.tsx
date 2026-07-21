@@ -28,6 +28,7 @@ import {
   type Token,
   type TokenNetwork,
 } from '@/lib/tokenService';
+import { SHOW_QBTC } from '@/constants/featureFlags';
 import { setXRPLTrustline, calculateXRPReserve } from '@/lib/xrpReserveService';
 import PendingTransactionCard from './PendingTransactionCard';
 import ChainSection from './ChainSection';
@@ -282,7 +283,9 @@ export default function WalletDashboard({
     }
 
     try {
-      const chains: Chain[] = ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana', 'qbtc'];
+      const chains: Chain[] = SHOW_QBTC
+        ? ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana', 'qbtc']
+        : ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana'];
       
       // Fetch from all chains in parallel
       const transactionPromises = chains.map(async (chain) => {
@@ -659,20 +662,22 @@ To: ${tx.to}`;
               onRemoveToken={handleRemoveToken}
             />
 
-            {/* QuantumBTC (no tokens) */}
-            <ChainSection
-              chain="qbtc"
-              nativeBalance={getChainBalance('qbtc')?.balance || '0'}
-              nativeUsdValue={getChainBalance('qbtc')?.usdValue}
-              nativePriceChange24h={getChainBalance('qbtc')?.priceChange24h}
-              tokens={[]}
-              isExpanded={false}
-              hideBalances={hideBalances}
-              onToggleExpand={() => {}}
-              onAddToken={() => {}}
-              onSelectToken={handleSelectToken}
-              onRemoveToken={handleRemoveToken}
-            />
+            {/* QuantumBTC (no tokens) — hidden when SHOW_QBTC is false */}
+            {SHOW_QBTC && (
+              <ChainSection
+                chain="qbtc"
+                nativeBalance={getChainBalance('qbtc')?.balance || '0'}
+                nativeUsdValue={getChainBalance('qbtc')?.usdValue}
+                nativePriceChange24h={getChainBalance('qbtc')?.priceChange24h}
+                tokens={[]}
+                isExpanded={false}
+                hideBalances={hideBalances}
+                onToggleExpand={() => {}}
+                onAddToken={() => {}}
+                onSelectToken={handleSelectToken}
+                onRemoveToken={handleRemoveToken}
+              />
+            )}
           </div>
 
           {/* Recent Transactions */}

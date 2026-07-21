@@ -38,6 +38,7 @@ import { ethers } from 'ethers';
 import MultiChainMarketTab from '@/components/MultiChainMarketTab';
 import DeployCollateralLockPanel from '@/components/Wallet/DeployCollateralLockPanel';
 import ReleaseLegacyLockPanel from '@/components/Wallet/ReleaseLegacyLockPanel';
+import { SHOW_QBTC } from '@/constants/featureFlags';
 import { fetchV2SwapsByAddress, buildV2Message, postV2LockSideA, postV2LockSideB, postV2ClaimSideB, cancelV2Swap, type V2Swap, type ChainId } from '@/lib/swapV2Api';
 import { BitcoinAdapter, getUtxosBtc } from '@/lib/adapters/BitcoinAdapter';
 import { XrplAdapter, encodeConditionFromHash } from '@/lib/adapters/XrplAdapter';
@@ -2762,8 +2763,10 @@ export default function MarketplaceTab({
   const [selectedOffer, setSelectedOffer] = useState<SwapOffer | null>(null);
   const [selectedBuyOffer, setSelectedBuyOffer] = useState<SwapOffer | null>(null);
 
-  // Market mode: sell QBTC or buy QBTC or multi-chain
-  const [marketMode, setMarketMode] = useState<'sell' | 'buy' | 'active' | 'multichain'>('sell');
+  // Market mode: sell QBTC or buy QBTC or multi-chain (default multi-chain when QBTC UI is hidden)
+  const [marketMode, setMarketMode] = useState<'sell' | 'buy' | 'active' | 'multichain'>(
+    SHOW_QBTC ? 'sell' : 'multichain',
+  );
 
   // Create offer form
   const [qbtcAmount, setQbtcAmount] = useState('');
@@ -3083,6 +3086,32 @@ export default function MarketplaceTab({
     const isBuyer = s.buyerQbtcAddress?.toLowerCase() === walletAddress.toLowerCase();
     return isBuyer && s.status === 'COMPLETE' && s.secret && !s.buyerQbtcClaimTxid;
   }).length;
+
+  // Multi-chain only: hide QBTC sell/buy chrome, legacy USDC panel, and QBTC address strip
+  if (!SHOW_QBTC) {
+    return (
+      <div className="space-y-6">
+        <div className={`rounded-xl border p-3 flex items-start gap-3 ${isMainnet ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-amber-500/40 bg-amber-500/10'}`}>
+          <AlertTriangle className={`w-4 h-4 flex-shrink-0 mt-0.5 ${isMainnet ? 'text-emerald-400' : 'text-amber-400'}`} />
+          <p className={`text-sm ${isMainnet ? 'text-emerald-200' : 'text-amber-200'}`}>
+            <span className="font-semibold">{isMainnet ? 'Mainnet' : 'Testnet'}</span> — Multi-chain atomic swaps.
+            {!isMainnet && ' Tokens have no real value.'}
+          </p>
+        </div>
+        <MultiChainMarketTab
+          walletId={walletId}
+          userId={userId}
+          walletEvmAddress={walletEvmAddress}
+          walletAddress={walletAddress}
+          walletPubKey={walletPubKey}
+          walletBtcPubKey={walletBtcPubKey}
+          walletBtcAddress={walletBtcAddress}
+          walletXrpAddress={walletXrpAddress}
+          masterSeed={masterSeed}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

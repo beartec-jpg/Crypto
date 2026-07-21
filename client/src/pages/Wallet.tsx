@@ -18,6 +18,7 @@ import SecuritySettings from '@/components/Wallet/SecuritySettings';
 import SecurityEducationCenter from '@/components/Security/SecurityEducationCenter';
 import MarketplaceTab from '@/components/Wallet/MarketplaceTab';
 import VaultTab from '@/components/Wallet/VaultTab';
+import { SHOW_QBTC } from '@/constants/featureFlags';
 
 import { getCurrentWallet, migrateWalletToUser, deleteWallet, removeAllWalletsForUser } from '@/lib/walletService';
 import { securityManager, getSecurityRequirements, hasPinSetup, setupPin } from '@/lib/securityService';
@@ -103,7 +104,10 @@ export default function WalletPage() {
       setMode('send');
     }
 
-    if (chain && ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana', 'qbtc'].includes(chain)) {
+    const allowedChains = SHOW_QBTC
+      ? ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana', 'qbtc']
+      : ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana'];
+    if (chain && allowedChains.includes(chain)) {
       setSelectedChain(chain as Chain);
     }
 
@@ -582,10 +586,12 @@ export default function WalletPage() {
                   label="Install Cold Signer app before unlocking"
                   className="mt-4 inline-flex items-center gap-2 text-sm text-cyan-300 hover:text-cyan-200 transition-colors"
                 />
-                <QbtcWalletPWAButton
-                  qbtcAddress={sovereignWallet?.addresses?.qbtc}
-                  className="mt-2 inline-flex items-center gap-2 text-sm text-cyan-300 hover:text-cyan-200 transition-colors"
-                />
+                {SHOW_QBTC && (
+                  <QbtcWalletPWAButton
+                    qbtcAddress={sovereignWallet?.addresses?.qbtc}
+                    className="mt-2 inline-flex items-center gap-2 text-sm text-cyan-300 hover:text-cyan-200 transition-colors"
+                  />
+                )}
                 <div className="mt-6 pt-4 border-t border-gray-700">
                   <p className="text-xs text-gray-500 mb-2">
                     Passkey not available on this device?
@@ -628,10 +634,12 @@ export default function WalletPage() {
                     label="Install Cold Signer on your offline device first"
                     className="text-center text-sm text-cyan-300 hover:text-cyan-200 transition-colors"
                   />
-                  <QbtcWalletPWAButton
-                    qbtcAddress={sovereignWallet?.addresses?.qbtc}
-                    className="text-center text-sm text-cyan-300 hover:text-cyan-200 transition-colors inline-flex items-center gap-2"
-                  />
+                  {SHOW_QBTC && (
+                    <QbtcWalletPWAButton
+                      qbtcAddress={sovereignWallet?.addresses?.qbtc}
+                      className="text-center text-sm text-cyan-300 hover:text-cyan-200 transition-colors inline-flex items-center gap-2"
+                    />
+                  )}
                 </div>
 
                 <div className="mt-8 p-4 rounded-xl bg-gray-900/50 border border-gray-700 max-w-2xl mx-auto">
@@ -666,18 +674,20 @@ export default function WalletPage() {
                   <WalletIcon className="w-4 h-4 flex-shrink-0" />
                   <span className="hidden sm:inline">Wallet</span>
                 </button>
-                <button
-                  onClick={() => setMode('vault')}
-                  className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 ${
-                    mode === 'vault'
-                      ? 'bg-cyan-600 text-white'
-                      : 'text-gray-400 hover:text-white'
-                  }`}
-                  title="Quantum Vault"
-                >
-                  <Lock className="w-4 h-4 flex-shrink-0" />
-                  <span className="hidden sm:inline">qVault</span>
-                </button>
+                {SHOW_QBTC && (
+                  <button
+                    onClick={() => setMode('vault')}
+                    className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 ${
+                      mode === 'vault'
+                        ? 'bg-cyan-600 text-white'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                    title="Quantum Vault"
+                  >
+                    <Lock className="w-4 h-4 flex-shrink-0" />
+                    <span className="hidden sm:inline">qVault</span>
+                  </button>
+                )}
                 <button
                   onClick={() => setMode('send')}
                   className={`flex-1 min-w-0 px-2 sm:px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-1 sm:gap-2 ${
@@ -757,7 +767,7 @@ export default function WalletPage() {
                 />
               )}
 
-              {mode === 'vault' && sovereignWallet && (
+              {SHOW_QBTC && mode === 'vault' && sovereignWallet && (
                 <VaultTab
                   userId={userId}
                   sovereignWallet={sovereignWallet}
@@ -1242,15 +1252,19 @@ function SettingsSection({
                   <span className="text-gray-400">SOL:</span>
                   <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.solana}</span>
                 </div>
-                <div>
-                  <span className="text-gray-400">QBTC Hot:</span>
-                  <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.qbtc}</span>
-                </div>
-                {sovereignWallet.addresses.qbtcVault && (
-                  <div>
-                    <span className="text-cyan-400">QBTC Vault:</span>
-                    <span className="ml-2 text-cyan-300 break-all">{sovereignWallet.addresses.qbtcVault}</span>
-                  </div>
+                {SHOW_QBTC && (
+                  <>
+                    <div>
+                      <span className="text-gray-400">QBTC Hot:</span>
+                      <span className="ml-2 text-gray-300 break-all">{sovereignWallet.addresses.qbtc}</span>
+                    </div>
+                    {sovereignWallet.addresses.qbtcVault && (
+                      <div>
+                        <span className="text-cyan-400">QBTC Vault:</span>
+                        <span className="ml-2 text-cyan-300 break-all">{sovereignWallet.addresses.qbtcVault}</span>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
