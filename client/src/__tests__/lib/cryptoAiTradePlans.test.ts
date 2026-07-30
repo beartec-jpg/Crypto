@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   collectWatchLevels,
+  formatTargetWithPercent,
+  formatTargetsWithPercent,
   getHtfRelationshipBadgeVariant,
   getHtfRelationshipLabel,
   getOverallSummary,
   isPendingTradeIdea,
+  targetMovePercent,
   type MultiTFInsights,
 } from '@/lib/cryptoAiTradePlans';
 
@@ -14,6 +17,13 @@ describe('cryptoAiTradePlans', () => {
     expect(isPendingTradeIdea({ triggerZone: '1.0800-1.0850 demand FVG' })).toBe(true);
     expect(isPendingTradeIdea({ triggerCondition: 'Wait for price to tap the zone and bounce' })).toBe(true);
     expect(isPendingTradeIdea({ entry: 1.08, stopLoss: 1.05 })).toBe(false);
+  });
+
+  it('computes target percent moves for long and short', () => {
+    expect(targetMovePercent(100, 110, 'LONG')).toBeCloseTo(10, 5);
+    expect(targetMovePercent(100, 90, 'SHORT')).toBeCloseTo(10, 5);
+    expect(formatTargetWithPercent(100, 105, 'LONG')).toBe('105 (+5.00%)');
+    expect(formatTargetsWithPercent(100, [110, 120], 'LONG')).toBe('110 (+10.00%) / 120 (+20.00%)');
   });
 
   it('collects deduplicated watch levels with preferred timeframe order', () => {

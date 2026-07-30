@@ -22,6 +22,7 @@ import { authenticatedApiRequest } from '@/lib/apiAuth';
 import { cn } from '@/lib/utils';
 import {
   collectWatchLevels,
+  formatTargetWithPercent,
   getHtfRelationshipBadgeVariant,
   getHtfRelationshipLabel,
   getOverallSummary,
@@ -484,7 +485,7 @@ export default function CryptoAI() {
             <div className="space-y-2">
               <div className="text-sm font-medium">Lower TF</div>
               <Select value={aiLowerTimeframe} onValueChange={handleLowerTimeframeChange}>
-                <SelectTrigger>
+                <SelectTrigger className="bg-background text-foreground border-input">
                   <SelectValue placeholder="Select lower timeframe">
                     {LOWER_TIMEFRAME_OPTIONS.find((option) => option.value === aiLowerTimeframe)?.label}
                   </SelectValue>
@@ -502,7 +503,7 @@ export default function CryptoAI() {
             <div className="space-y-2">
               <div className="text-sm font-medium">Trader mode</div>
               <Select value={aiTraderMode} onValueChange={handleTraderModeChange}>
-                <SelectTrigger>
+                <SelectTrigger className="bg-background text-foreground border-input">
                   <SelectValue placeholder="Select trader mode">
                     {ENABLED_AI_TRADER_MODES.find((mode) => mode.id === aiTraderMode)?.label}
                   </SelectValue>
@@ -520,7 +521,7 @@ export default function CryptoAI() {
             <div className="space-y-2">
               <div className="text-sm font-medium">Trade length</div>
               <Select value={aiTradeHorizon} onValueChange={handleTradeHorizonChange}>
-                <SelectTrigger>
+                <SelectTrigger className="bg-background text-foreground border-input">
                   <SelectValue placeholder="Select trade length">
                     {getCryptoAiTradeHorizon(aiTradeHorizon).label}
                   </SelectValue>
@@ -528,8 +529,8 @@ export default function CryptoAI() {
                 <SelectContent>
                   {TRADE_HORIZON_OPTIONS.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
-                      <div className="flex flex-col gap-0.5 py-0.5">
-                        <span>{option.label}</span>
+                      <div className="flex flex-col gap-0.5 py-0.5 text-left">
+                        <span className="text-popover-foreground">{option.label}</span>
                         <span className="text-xs text-muted-foreground">{option.description}</span>
                       </div>
                     </SelectItem>
@@ -1023,7 +1024,17 @@ export default function CryptoAI() {
                                     </div>
                                     <div>
                                       <div className="text-xs uppercase text-muted-foreground">Targets</div>
-                                      <div className="font-medium">{trade.targets?.map((target) => formatValue(target)).join(' / ') || '—'}</div>
+                                      <div className="font-medium space-y-0.5">
+                                        {trade.targets?.length ? (
+                                          trade.targets.map((target, tpIndex) => (
+                                            <div key={`${ticker}-tp-${tpIndex}`}>
+                                              TP{tpIndex + 1}: {formatTargetWithPercent(trade.entry, target, trade.direction)}
+                                            </div>
+                                          ))
+                                        ) : (
+                                          '—'
+                                        )}
+                                      </div>
                                       {trade.tp1Rationale ? <div className="text-xs text-muted-foreground">TP1: {trade.tp1Rationale}</div> : null}
                                       {trade.tp2Rationale ? <div className="text-xs text-muted-foreground">TP2: {trade.tp2Rationale}</div> : null}
                                     </div>

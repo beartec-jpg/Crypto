@@ -6,6 +6,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { SimpleCanvas, type Rgba } from './simplePng.js';
+import { formatTargetsWithPercent } from './tradePriceUtils.js';
 
 export type DiscordTradeIdea = {
   direction?: string;
@@ -292,7 +293,7 @@ function buildSvg(input: DiscordRenderInput): { svg: string; width: number; heig
         );
         ty += 22;
       }
-      const tps = (t.targets || []).map(fmt).join('  /  ') || '—';
+      const tps = formatTargetsWithPercent(t.entry, t.targets, t.direction, '  |  ');
       const rr = t.riskRewardRatio == null ? '—' : `${Number(t.riskRewardRatio).toFixed(2)}R`;
       const prices = `Entry ${fmt(t.entry)}    Stop ${fmt(t.stopLoss)}    Targets ${tps}    R:R ${rr}`;
       parts.push(

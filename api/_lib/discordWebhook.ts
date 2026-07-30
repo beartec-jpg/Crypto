@@ -1,6 +1,7 @@
 /**
  * Discord incoming-webhook helpers (multipart file + embeds).
  */
+import { formatTargetsWithPercent } from './tradePriceUtils.js';
 
 export type DiscordEmbed = {
   title?: string;
@@ -68,7 +69,7 @@ export function tradeEmbeds(
   return trades.slice(0, 2).map((t, i) => {
     const dir = (t.direction || 'SETUP').toUpperCase();
     const color = dir === 'LONG' ? 0x22c55e : dir === 'SHORT' ? 0xef4444 : 0xa855f7;
-    const tps = (t.targets || []).map(String).join(' / ') || '—';
+    const tps = formatTargetsWithPercent(t.entry, t.targets, t.direction, '\n') || '—';
     const rr = t.riskRewardRatio == null ? '—' : `${Number(t.riskRewardRatio).toFixed(2)}R`;
     return {
       title: `${symbol} · Setup ${i + 1} · ${dir}${t.grade ? ` (${t.grade})` : ''}`,
@@ -78,7 +79,7 @@ export function tradeEmbeds(
         { name: 'Entry', value: String(t.entry ?? '—'), inline: true },
         { name: 'Stop', value: String(t.stopLoss ?? '—'), inline: true },
         { name: 'R:R', value: rr, inline: true },
-        { name: 'Targets', value: tps, inline: false },
+        { name: 'Targets (% from entry)', value: tps, inline: false },
       ],
       timestamp: new Date().toISOString(),
     };

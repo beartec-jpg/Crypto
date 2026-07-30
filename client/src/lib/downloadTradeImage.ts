@@ -1,6 +1,7 @@
 import type { MultiTFInsights, TradeIdea } from '@/lib/cryptoAiTradePlans';
 import { formatTickerDisplay } from '@/lib/chart/priceUtils';
 import {
+  formatTargetsWithPercent,
   getHtfRelationshipLabel,
   getOverallSummary,
   getSection,
@@ -132,7 +133,7 @@ export async function downloadTradeImage(options: DownloadTradeImageOptions): Pr
   const rationale = trade.reasoning || trade.slRationale || '';
   const trigger = [trade.triggerZone, trade.triggerCondition].filter(Boolean).join(' — ');
   const signals = (trade.confluenceSignals || []).slice(0, 8);
-  const targets = (trade.targets || []).map(fmt).join('  /  ') || '—';
+  const targets = formatTargetsWithPercent(trade.entry, trade.targets, trade.direction, '  /  ');
 
   mctx.font = '15px system-ui, -apple-system, sans-serif';
   const rationaleLines = wrapText(mctx, rationale || '—', contentWidth);
@@ -613,7 +614,7 @@ export async function downloadTotalAnalysisImage(
       ? wrapText(mctx, trade.reasoning, contentWidth - 24).slice(0, 4)
       : [];
     const rr = trade.riskRewardRatio == null ? '—' : `${Number(trade.riskRewardRatio).toFixed(2)}R`;
-    const tps = (trade.targets || []).map(fmt).join(' / ') || '—';
+    const tps = formatTargetsWithPercent(trade.entry, trade.targets, trade.direction, '  |  ');
     const lines = [
       `Entry ${fmt(trade.entry)}${trade.entryZone ? `  (${trade.entryZone})` : ''}`,
       `Stop  ${fmt(trade.stopLoss)}${trade.slRationale ? `  — ${trade.slRationale}` : ''}`,
