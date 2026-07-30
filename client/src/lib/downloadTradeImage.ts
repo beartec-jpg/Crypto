@@ -81,8 +81,9 @@ function loadBearTecLogo(): Promise<HTMLImageElement | null> {
 }
 
 /**
- * Draws a large, faded BearTec logo centered behind card content (watermark).
- * Safe no-op if the image cannot load.
+ * Crisp BearTec watermark behind card content.
+ * Uses large text (not a heavily upscaled tiny logo — that looks pixelated).
+ * Optional small logo sits top-right at near-native size.
  */
 async function drawBearTecWatermark(
   ctx: CanvasRenderingContext2D,
@@ -90,37 +91,37 @@ async function drawBearTecWatermark(
   height: number,
   options?: { opacity?: number; maxWidthRatio?: number },
 ): Promise<void> {
-  const opacity = options?.opacity ?? 0.1;
-  const maxWidthRatio = options?.maxWidthRatio ?? 0.55;
+  const opacity = options?.opacity ?? 0.08;
   const logo = await loadBearTecLogo();
 
   ctx.save();
-  if (logo && logo.naturalWidth > 0) {
-    const maxW = width * maxWidthRatio;
-    const scale = maxW / logo.naturalWidth;
-    const drawW = logo.naturalWidth * scale;
-    const drawH = logo.naturalHeight * scale;
-    // Cap height so tall exports still show a centered mark without dominating
-    const maxH = height * 0.45;
-    const finalScale = drawH > maxH ? maxH / logo.naturalHeight : scale;
-    const w = logo.naturalWidth * finalScale;
-    const h = logo.naturalHeight * finalScale;
-    const x = (width - w) / 2;
-    const y = (height - h) / 2;
-    ctx.globalAlpha = opacity;
-    ctx.drawImage(logo, x, y, w, h);
-  } else {
-    // Fallback text watermark if logo asset fails
-    ctx.globalAlpha = Math.min(0.14, opacity + 0.04);
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = `bold ${Math.round(width * 0.08)}px system-ui, -apple-system, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.translate(width / 2, height / 2);
-    ctx.rotate(-Math.PI / 8);
-    ctx.fillText('BearTec', 0, 0);
-  }
+  // Diagonal text watermark — sharp at any size
+  ctx.translate(width / 2, height / 2);
+  ctx.rotate(-Math.PI / 10);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.globalAlpha = opacity;
+  ctx.fillStyle = '#e2e8f0';
+  ctx.font = `700 ${Math.round(width * 0.11)}px Inter, system-ui, -apple-system, sans-serif`;
+  ctx.fillText('BearTec', 0, -8);
+  ctx.globalAlpha = opacity * 0.9;
+  ctx.fillStyle = '#c4b5fd';
+  ctx.font = `600 ${Math.round(width * 0.028)}px Inter, system-ui, -apple-system, sans-serif`;
+  ctx.letterSpacing = '0.2em';
+  ctx.fillText('CRYPTO AI', 0, Math.round(width * 0.055));
   ctx.restore();
+
+  // Small logo badge top-right (native-ish size so it stays sharp)
+  if (logo && logo.naturalWidth > 0) {
+    ctx.save();
+    const targetW = 100;
+    const scale = targetW / logo.naturalWidth;
+    const w = logo.naturalWidth * scale;
+    const h = logo.naturalHeight * scale;
+    ctx.globalAlpha = 0.55;
+    ctx.drawImage(logo, width - w - 28, 36, w, h);
+    ctx.restore();
+  }
 }
 
 function fmt(value?: string | number | null): string {

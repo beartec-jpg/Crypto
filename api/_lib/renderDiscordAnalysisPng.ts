@@ -170,16 +170,21 @@ function buildSvg(input: DiscordRenderInput): { svg: string; width: number; heig
   );
   parts.push(`<rect x="28" y="28" width="8" height="${height - 56}" rx="4" fill="#a855f7"/>`);
 
-  // Watermark logo
+  // Crisp text watermark (logo file is only ~100px wide — scaling it looks pixelated)
+  parts.push(`
+    <g opacity="0.07" transform="rotate(-18 ${width / 2} ${height / 2})">
+      <text x="${width / 2}" y="${height / 2 - 10}" text-anchor="middle" dominant-baseline="middle"
+        fill="#e2e8f0" font-family="Inter, sans-serif" font-size="96" font-weight="700"
+        letter-spacing="4">BearTec</text>
+      <text x="${width / 2}" y="${height / 2 + 48}" text-anchor="middle" dominant-baseline="middle"
+        fill="#c4b5fd" font-family="Inter, sans-serif" font-size="28" font-weight="600"
+        letter-spacing="8">CRYPTO AI</text>
+    </g>
+  `);
+  // Small sharp logo mark top-right (native size, no heavy upscale)
   if (logo) {
-    const lw = 420;
-    const lh = 190;
     parts.push(
-      `<image href="${logo}" x="${(width - lw) / 2}" y="${(height - lh) / 2}" width="${lw}" height="${lh}" opacity="0.08" preserveAspectRatio="xMidYMid meet"/>`,
-    );
-  } else {
-    parts.push(
-      `<text x="${width / 2}" y="${height / 2}" text-anchor="middle" fill="#94a3b8" fill-opacity="0.12" font-family="Inter, sans-serif" font-size="72" font-weight="700">BearTec</text>`,
+      `<image href="${logo}" x="${width - 28 - 120}" y="44" width="100" height="46" opacity="0.55" preserveAspectRatio="xMidYMid meet"/>`,
     );
   }
 
