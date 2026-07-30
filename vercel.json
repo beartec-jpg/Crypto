@@ -14,6 +14,11 @@
       "maxDuration": 300,
       "includeFiles": "api/_lib/**"
     },
+    "api/cron/discord-btc-pre-london.ts": {
+      "memory": 1024,
+      "maxDuration": 300,
+      "includeFiles": ["api/_lib/**", "client/public/beartec-logo.png"]
+    },
     "api/**/*.ts": {
       "memory": 1024,
       "maxDuration": 30,
@@ -44,6 +49,10 @@
     {
       "path": "/api/cron/refresh-crypto-ai-general",
       "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/discord-btc-pre-london",
+      "schedule": "45 5 * * *"
     }
   ],
   "rewrites": [

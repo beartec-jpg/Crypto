@@ -586,6 +586,228 @@ export async function runGeneralPairRefresh(pool: any, apiKey: string, symbol: s
   };
 }
 
+/**
+ * System deep-dive (no user auth / credits) — used by Discord pre-London cron.
+ */
+export async function runSystemDeepDive(options: {
+  apiKey: string;
+  symbol: string;
+  higherTimeframe?: string;
+  lowerTimeframe?: string;
+  mode?: string;
+  tradeHorizon?: string;
+  minRiskReward?: number;
+  minConfluence?: number;
+}): Promise<{
+  multiTFInsights: any;
+  bestTrades: any[];
+  estimatedCost: number;
+  tokens: { input: number; output: number };
+  higherTimeframe: string;
+  lowerTimeframe: string;
+  tradeHorizon: string;
+  modeId: string;
+}> {
+  const {
+    DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
+    DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+    DEFAULT_CRYPTO_AI_TRADE_HORIZON,
+    normalizeCryptoAiPair,
+    buildCryptoAiHorizonPromptBlock,
+    getCryptoAiTradeHorizon,
+  } = await import('../_lib/cryptoAiConfig.js');
+  const { getAiTraderMode } = await import('../_lib/aiTraderModes.js');
+
+  const pair = normalizeCryptoAiPair(
+    options.higherTimeframe || DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
+    options.lowerTimeframe || DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+  );
+  const higherTimeframe = pair.higherTimeframe;
+  const lowerTimeframe = pair.lowerTimeframe;
+  const traderMode = getAiTraderMode(options.mode);
+  const tradeHorizonMeta = getCryptoAiTradeHorizon(options.tradeHorizon || DEFAULT_CRYPTO_AI_TRADE_HORIZON);
+  const tradeHorizon = tradeHorizonMeta.id;
+  const horizonPrompt = buildCryptoAiHorizonPromptBlock(tradeHorizon, higherTimeframe, lowerTimeframe);
+  const minRiskReward = Number(options.minRiskReward ?? AI_MIN_RISK_REWARD_RATIO);
+  const minConfluence = Number(options.minConfluence ?? 3);
+  const counterTrendMinConfluence = minConfluence + 1;
+
+  const requestedFrames = Array.from(new Set([lowerTimeframe, higherTimeframe]));
+  const barsByTimeframe = Object.fromEntries(
+    await Promise.all(requestedFrames.map(async (tf) => [tf, await fetchBarsForTF(options.symbol, tf)])),
+  ) as Record<string, any[]>;
+
+  const lowerData = computeIndicators(barsByTimeframe[lowerTimeframe]);
+  const higherData = computeIndicators(barsByTimeframe[higherTimeframe]);
+
+  const fmtTF = (label: string, d: ReturnType<typeof computeIndicators>) => `
+**${label} (${label === higherTimeframe ? 'Higher TF bias' : 'Lower TF execution'}):**
+- Price: $${d.currentPrice}, RSI: ${d.rsi}, MACD hist: ${d.macd.histogram}${d.macd.crossover !== 'none' ? ` (${d.macd.crossover})` : ''}
+- Stoch: %K ${d.stoch.k}, %D ${d.stoch.d}${d.stoch.crossover !== 'none' ? ` (${d.stoch.crossover})` : ''} | ADX: ${d.adx}
+- Volume Profile: POC $${d.poc} | VAH $${d.vah} | VAL $${d.val}
+- VWAP: $${d.vwap} | OBV: ${d.obv} | BOS: ${d.bos} | CHoCH: ${d.choch}
+- Bullish FVGs: ${d.bullFVGs} | Bearish FVGs: ${d.bearFVGs}
+- Bullish OBs: ${d.bullOBs} | Bearish OBs: ${d.bearOBs}
+- Swing Highs: ${d.swingHighs} | Swing Lows: ${d.swingLows}
+- EMAs: 20=$${d.ema20} 50=$${d.ema50} 200=$${d.ema200} | EMA confluence: ${d.emaConf}
+- Fib OTE zone (0.382-0.705): ${d.fibOteZone}${d.inFibOte ? ' ← price IN OTE' : ''}
+- Range: $${d.recentLow} - $${d.recentHigh}`;
+
+  let htfBiasScore = 0;
+  const higherRsi = parseFloat(higherData.rsi);
+  const lowerRsi = parseFloat(lowerData.rsi);
+  if (higherRsi > 55) htfBiasScore += 2;
+  else if (higherRsi < 45) htfBiasScore -= 2;
+  if (lowerRsi > 55) htfBiasScore += 1;
+  else if (lowerRsi < 45) htfBiasScore -= 1;
+  if (parseFloat(higherData.macd.histogram) > 0) htfBiasScore += 2;
+  else if (parseFloat(higherData.macd.histogram) < 0) htfBiasScore -= 2;
+  if (parseFloat(lowerData.macd.histogram) > 0) htfBiasScore += 1;
+  else if (parseFloat(lowerData.macd.histogram) < 0) htfBiasScore -= 1;
+  const dominantBias = htfBiasScore >= 2 ? 'BULLISH' : htfBiasScore <= -2 ? 'BEARISH' : 'NEUTRAL';
+
+  const deepPrompt = `Symbol: ${options.symbol} | Multi-timeframe trade search
+Dominant bias from ${higherTimeframe}: ${dominantBias}
+${horizonPrompt}
+${fmtTF(higherTimeframe, higherData)}
+${fmtTF(lowerTimeframe, lowerData)}
+
+**TRADE SEARCH RULES — MANDATORY**
+1. ${higherTimeframe} sets directional context and the dominant destination; it is NOT a hard veto.
+2. Favour with-trend setups and tag them as "with-trend". Counter-trend setups are allowed when local structure and confluence justify them; tag them as "counter-trend" and require a higher bar.
+3. Explicitly detect reversal/structure-shift triggers: a higher-low after a downtrend can trigger a LONG, and a lower-high after an uptrend can trigger a SHORT, even against the HTF bias.
+4. Map the NEXT high-probability setup(s), even if price has not reached the zone yet. Pending/conditional plans are valid and should be returned.
+5. For pending setups, include triggerZone and triggerCondition that describe what price must do before the setup activates.
+6. ENTRY: must be at a concrete structural/indicator level appropriate to the selected trader mode — never a blind entry at current price. Use ${lowerTimeframe} for timing/trigger even on swing/position horizons.
+7. STOP LOSS: behind the invalidation structure for the selected TRADE HORIZON (see above) — not automatically the nearest LTF wick. Below structural low for LONGs, above structural high for SHORTs. No arbitrary ATR padding.
+8. TARGETS: level-to-level at the horizon's scale. TP1 nearest valid opposing level for this horizon; TP2 next major level. On swing/position prefer ${higherTimeframe} levels.
+9. CONFLUENCE SCORING: Fib OTE zone overlap, EMA proximity, OB alignment, swing pivot alignment, BOS/CHoCH, liquidity sweep, and trendline alignment each count as a confluence signal. More confluences = higher grade.
+10. Only include trades with R/R ≥ ${minRiskReward} to TP1. With-trend setups need at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}; counter-trend setups need at least ${counterTrendMinConfluence}.
+11. Return the valid standalone setup(s) you actually find. Do NOT force sequenced or linked trades. You MAY mention a natural flow into another zone in overallSummary, but never withhold a good standalone setup for lack of a second leg.
+12. If no valid trade exists yet, return an empty bestTrades array and use overallSummary plus keyLevels to explain the key zones to watch next.
+13. Expected hold should match the horizon (${tradeHorizonMeta.expectedHold}).
+
+Respond with ONLY valid JSON:
+{
+  "multiTFInsights": {
+    "${higherTimeframe}": { "summary": "2 sentences on higher timeframe bias/trend", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["..."] },
+    "${lowerTimeframe}": { "summary": "2 sentences on lower timeframe momentum/structure", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["..."] },
+    "overallSummary": "2 sentences on the next high-probability setup(s) or the zones to watch next"
+  },
+  "bestTrades": [
+    {
+      "grade": "A+/A/B/C",
+      "primaryTF": "${lowerTimeframe}/${higherTimeframe}",
+      "direction": "LONG/SHORT",
+      "htfRelationship": "with-trend/counter-trend",
+      "triggerZone": "e.g. 1.0800-1.0850 demand FVG",
+      "triggerCondition": "e.g. price drops into the zone and reacts with local confirmation",
+      "entryZone": "FVG/OB/indicator trigger zone",
+      "entry": "exact entry price",
+      "stopLoss": "exact SL price",
+      "slRationale": "why that invalidation level matters",
+      "targets": ["TP1 price", "TP2 price"],
+      "tp1Rationale": "nearest opposing level",
+      "tp2Rationale": "next major target level",
+      "confluenceSignals": ["signal1", "signal2", "signal3"],
+      "riskRewardRatio": 2.1,
+      "reasoning": "why the setup is valid and what activates it"
+    }
+  ]
+}`;
+
+  const systemContent =
+    `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Stop-loss goes just behind the horizon-appropriate invalidation structure (not automatically the nearest LTF wick) — no arbitrary ATR padding. Respect the user's settings: minimum R/R ${minRiskReward}:1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
+
+  const openai = new OpenAI({
+    baseURL: 'https://api.x.ai/v1',
+    apiKey: options.apiKey,
+    timeout: 250000,
+  });
+
+  let completion: any;
+  try {
+    completion = await (openai.chat.completions.create as any)({
+      model: XAI_PRIMARY_MODEL,
+      messages: [
+        { role: 'system', content: systemContent },
+        { role: 'user', content: deepPrompt },
+      ],
+      thinking: { type: 'enabled', budget_tokens: XAI_THINKING_BUDGET },
+      temperature: 1,
+      max_tokens: 16000,
+    });
+  } catch (primaryModelError: any) {
+    console.warn(`⚠️ System deep-dive ${XAI_PRIMARY_MODEL} failed (${primaryModelError.message}), falling back to ${XAI_FALLBACK_MODEL}`);
+    completion = await openai.chat.completions.create({
+      model: XAI_FALLBACK_MODEL,
+      messages: [
+        { role: 'system', content: systemContent },
+        { role: 'user', content: deepPrompt },
+      ],
+      temperature: 0.3,
+      max_tokens: 8000,
+    });
+  }
+
+  const inputTokens = completion.usage?.prompt_tokens || 0;
+  const outputTokens = completion.usage?.completion_tokens || 0;
+  const estimatedCost = (inputTokens / 1_000_000 * 2) + (outputTokens / 1_000_000 * 10);
+
+  let multiTFInsights: any = null;
+  let bestTrades: any[] = [];
+  try {
+    let rawContent = extractTextContent(completion.choices[0]?.message);
+    rawContent = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
+    const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { multiTFInsights: null, bestTrades: [] };
+    multiTFInsights = parsed.multiTFInsights || null;
+    const rawTrades = Array.isArray(parsed.bestTrades) ? parsed.bestTrades : [];
+    bestTrades = rawTrades
+      .map((t: any) => {
+        const entryNum = parseFloat(String(t.entry).replace(/[^0-9.-]/g, '')) || 0;
+        const slNum = parseFloat(String(t.stopLoss).replace(/[^0-9.-]/g, '')) || 0;
+        const tp1Num = parseFloat(String(t.targets?.[0]).replace(/[^0-9.-]/g, '')) || 0;
+        const risk = Math.abs(entryNum - slNum);
+        const reward = Math.abs(tp1Num - entryNum);
+        const rr = risk > 0 && reward > 0 ? reward / risk : 0;
+        const derivedRelationship =
+          t.htfRelationship === 'counter-trend' || t.htfRelationship === 'with-trend'
+            ? t.htfRelationship
+            : ((dominantBias === 'BULLISH' && t.direction === 'LONG') || (dominantBias === 'BEARISH' && t.direction === 'SHORT')
+                ? 'with-trend'
+                : 'counter-trend');
+        const confluenceCount = Array.isArray(t.confluenceSignals)
+          ? t.confluenceSignals.length
+          : Number(t.confluenceCount ?? 0);
+        return {
+          ...t,
+          htfRelationship: derivedRelationship,
+          confluenceCount,
+          riskRewardRatio: parseFloat(rr.toFixed(2)),
+          _rr: rr,
+          _requiredConfluence: derivedRelationship === 'counter-trend' ? counterTrendMinConfluence : minConfluence,
+        };
+      })
+      .filter((t: any) => t._rr >= minRiskReward && t.confluenceCount >= t._requiredConfluence)
+      .map(({ _rr, _requiredConfluence, ...t }: any) => t)
+      .slice(0, 2);
+  } catch (parseError) {
+    console.error('System deep-dive parse failed:', parseError);
+  }
+
+  return {
+    multiTFInsights,
+    bestTrades,
+    estimatedCost,
+    tokens: { input: inputTokens, output: outputTokens },
+    higherTimeframe,
+    lowerTimeframe,
+    tradeHorizon,
+    modeId: traderMode.id,
+  };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
