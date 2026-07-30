@@ -134,8 +134,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const modeMeta = getAiTraderMode(deep.modeId);
     const horizonMeta = getCryptoAiTradeHorizon(deep.tradeHorizon);
     const deepInsights = deep.multiTFInsights;
-    const higher = sectionOf(deepInsights, deep.higherTimeframe) || sectionOf(generalInsights, deep.higherTimeframe);
-    const lower = sectionOf(deepInsights, deep.lowerTimeframe) || sectionOf(generalInsights, deep.lowerTimeframe);
     const crossSummary = overallOf(generalInsights) || overallOf(deepInsights) || 'See deep-dive notes.';
     const deepSummary = overallOf(deepInsights) || 'Deep-dive completed.';
     const watchLevels = collectLevels(deepInsights, [deep.lowerTimeframe, deep.higherTimeframe]);
