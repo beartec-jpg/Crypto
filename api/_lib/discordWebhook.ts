@@ -81,6 +81,7 @@ export function tradeEmbeds(
         { name: 'R:R', value: rr, inline: true },
         { name: 'Targets (% from entry)', value: tps, inline: false },
       ],
+      footer: { text: 'Not financial advice · Review the chart yourself' },
       timestamp: new Date().toISOString(),
     };
   });

@@ -24,7 +24,6 @@ import {
 } from '../_lib/cryptoAiConfig.js';
 import { getAiTraderMode } from '../_lib/aiTraderModes.js';
 import { postDiscordWebhook, tradeEmbeds } from '../_lib/discordWebhook.js';
-import { renderDiscordAnalysisPng } from '../_lib/renderDiscordAnalysisPng.js';
 import { runSystemDeepDive } from '../crypto/order-flow-alerts-multi-tf.js';
 
 export const config = {
