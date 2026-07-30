@@ -331,18 +331,38 @@ function detectSwingPivots(bars: any[], lookback = 5): { highs: number[]; lows: 
 }
 
 async function fetchBarsForTF(symbol: string, tf: string) {
-  const url = `https://api.binance.us/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=500`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Failed to fetch ${tf} data`);
-  const data = await response.json();
-  return data.map((k: any) => ({
-    time: k[0] / 1000,
-    open: parseFloat(k[1]),
-    high: parseFloat(k[2]),
-    low: parseFloat(k[3]),
-    close: parseFloat(k[4]),
-    volume: parseFloat(k[5]),
-  }));
+  // Prefer global / data-api endpoints (Vercel often blocked on binance.us alone)
+  const urls = [
+    `https://data-api.binance.vision/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=500`,
+    `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=500`,
+    `https://api.binance.us/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=500`,
+  ];
+  let lastError: Error | null = null;
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!response.ok) {
+        lastError = new Error(`Failed to fetch ${tf} data (${response.status}) from ${url}`);
+        continue;
+      }
+      const data = await response.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        lastError = new Error(`Empty klines for ${tf} from ${url}`);
+        continue;
+      }
+      return data.map((k: any) => ({
+        time: k[0] / 1000,
+        open: parseFloat(k[1]),
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close: parseFloat(k[4]),
+        volume: parseFloat(k[5]),
+      }));
+    } catch (err: any) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+    }
+  }
+  throw lastError || new Error(`Failed to fetch ${tf} data`);
 }
 
 function computeIndicators(bars: any[]) {
