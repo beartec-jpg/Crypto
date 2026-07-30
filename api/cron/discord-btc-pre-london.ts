@@ -27,7 +27,11 @@ import {
 } from '../_lib/cryptoAiConfig.js';
 import { getAiTraderMode } from '../_lib/aiTraderModes.js';
 import { postDiscordWebhook, tradeEmbeds, type DiscordEmbed } from '../_lib/discordWebhook.js';
-import { runSystemDeepDive } from '../crypto/order-flow-alerts-multi-tf.js';
+import {
+  normalizeBinanceSpotSymbol,
+  runGeneralPairRefresh,
+  runSystemDeepDive,
+} from '../crypto/order-flow-alerts-multi-tf.js';
 
 export const config = {
   maxDuration: 300,
@@ -160,12 +164,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Guard against swapped env values (e.g. DISCORD_BTC_SYMBOL=1d or 1D)
   const rawSymbol = (process.env.DISCORD_BTC_SYMBOL || 'BTCUSDT').trim().toUpperCase();
   const looksLikeTimeframe = /^\d+[MHDW]$/i.test(rawSymbol) || ['1D', '1H', '15M', '1W', '4H', '5M', '1M'].includes(rawSymbol);
-  const symbol = !rawSymbol || looksLikeTimeframe ? 'BTCUSDT' : rawSymbol;
+  // BTCUSD → BTCUSDT so Binance + session cache keys match the rest of the platform
+  const symbol = normalizeBinanceSpotSymbol(!rawSymbol || looksLikeTimeframe ? 'BTCUSDT' : rawSymbol);
   if (looksLikeTimeframe) {
     console.warn(
       `DISCORD_BTC_SYMBOL="${process.env.DISCORD_BTC_SYMBOL}" looks like a timeframe; using BTCUSDT. ` +
         'Set DISCORD_BTC_SYMBOL=BTCUSDT and put 1d/15m in DISCORD_AI_HIGHER_TF / DISCORD_AI_LOWER_TF.',
     );
+  }
+  if (rawSymbol && rawSymbol !== symbol) {
+    console.warn(`DISCORD_BTC_SYMBOL="${rawSymbol}" normalized to "${symbol}" for Binance/cache.`);
   }
   const higherTimeframe = (process.env.DISCORD_AI_HIGHER_TF || '1d').trim().toLowerCase();
   const lowerTimeframe = (process.env.DISCORD_AI_LOWER_TF || '15m').trim().toLowerCase();
@@ -180,9 +188,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Prefer cached general analysis + session snapshots (from Asia/London/NY cron)
     let generalInsights: any = null;
     let sessionSnapshots: any[] = [];
-    try {
-      const pool = getPool();
-      const pairInterval = encodeCryptoAiPairInterval(higherTimeframe as any, lowerTimeframe as any);
+    const pool = getPool();
+    const pairInterval = encodeCryptoAiPairInterval(higherTimeframe as any, lowerTimeframe as any);
+
+    const loadGeneralCache = async () => {
       const cached = await pool.query(
         `SELECT ai_narration, snapshots
          FROM crypto_scan_cache
@@ -198,8 +207,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         generalInsights = narration?.multiTFInsights || null;
       }
       sessionSnapshots = normaliseSnapshots(row?.snapshots);
+    };
+
+    try {
+      await loadGeneralCache();
     } catch (cacheErr: any) {
       console.warn('General cache lookup skipped:', cacheErr?.message);
+    }
+
+    // If session board / cross-TF empty, warm it once (same path as session cron)
+    if (!generalInsights || !sessionSnapshots.length) {
+      try {
+        console.log(`Warming general multi-TF cache for ${symbol} ${pairInterval}…`);
+        const generated = await runGeneralPairRefresh(pool, apiKey, symbol, higherTimeframe, lowerTimeframe);
+        generalInsights = generated.multiTFInsights || generalInsights;
+        sessionSnapshots = normaliseSnapshots(generated.snapshots);
+      } catch (warmErr: any) {
+        console.warn('General cache warm failed:', warmErr?.message);
+        try {
+          await loadGeneralCache();
+        } catch {
+          // ignore
+        }
+      }
     }
 
     const deep = await runSystemDeepDive({
@@ -211,6 +241,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       tradeHorizon,
       minRiskReward,
       minConfluence,
+      softGates: true,
     });
 
     const modeMeta = getAiTraderMode(deep.modeId);
@@ -236,8 +267,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       `Mode: **${modeMeta.label}** · Length: **${horizonMeta.label}** (~${horizonMeta.expectedHold})\n` +
       `Order: previous session → cross-TF → deep-dive → trades\n` +
       (setupCount
-        ? `${setupCount} trade setup${setupCount === 1 ? '' : 's'} below.`
-        : 'No setup cleared gates — watch zones below.') +
+        ? `${setupCount} trade setup${setupCount === 1 ? '' : 's'} below${deep.gatesRelaxed ? ' (soft-gated — review carefully)' : ''}.`
+        : 'No priced setup returned — watch zones below.') +
       `\n\n⚠️ **Not financial advice.** Educational / informational only. Always review the chart and structure yourself before acting — make your own judgement.`;
 
     const embeds: DiscordEmbed[] = [];
@@ -367,9 +398,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       mode: deep.modeId,
       tradeHorizon: deep.tradeHorizon,
       tradeCount: setupCount,
+      gatesRelaxed: deep.gatesRelaxed || false,
+      rawTradeCount: deep.rawTradeCount ?? 0,
       estimatedCost: deep.estimatedCost,
       tokens: deep.tokens,
       discordStatus: discord.status,
+      generalCache: Boolean(generalInsights),
+      sessionSnapshots: sessionSnapshots.length,
     });
   } catch (error: any) {
     console.error('Pre-London Discord desk failed:', error);

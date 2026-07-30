@@ -12,12 +12,59 @@ function extractTextContent(message: any): string {
   if (!message) return '';
   if (typeof message.content === 'string') return message.content;
   if (Array.isArray(message.content)) {
-    const textBlock = message.content.find((b: any) => b.type === 'text');
+    // Prefer final text answers; collect all text-like blocks as fallback
+    const parts: string[] = [];
+    for (const b of message.content) {
+      if (!b) continue;
+      if (typeof b === 'string') parts.push(b);
+      if (typeof b.text === 'string') parts.push(b.text);
+      if (typeof b.thinking === 'string') parts.push(b.thinking);
+      if (typeof b.content === 'string') parts.push(b.content);
+    }
+    const textBlock = message.content.find((b: any) => b?.type === 'text' && b?.text);
     if (textBlock?.text) return textBlock.text;
-    const reasoningBlock = message.content.find((b: any) => b.type === 'reasoning_content' || b.type === 'thinking');
-    return reasoningBlock?.thinking || reasoningBlock?.text || '';
+    return parts.join('\n');
   }
+  if (typeof message.reasoning_content === 'string') return message.reasoning_content;
   return '';
+}
+
+/** Prefer a JSON object that actually contains desk fields (not the whole API message). */
+function parseDeskJsonPayload(raw: string): { multiTFInsights?: any; bestTrades?: any[] } | null {
+  if (!raw) return null;
+  const cleaned = raw.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
+  // Try full match first
+  const attempts: string[] = [];
+  const full = cleaned.match(/\{[\s\S]*\}/);
+  if (full) attempts.push(full[0]);
+  // Prefer objects that mention bestTrades / multiTFInsights
+  const marker = cleaned.search(/"bestTrades"\s*:|"multiTFInsights"\s*:/);
+  if (marker >= 0) {
+    let start = cleaned.lastIndexOf('{', marker);
+    if (start >= 0) {
+      let depth = 0;
+      for (let i = start; i < cleaned.length; i++) {
+        if (cleaned[i] === '{') depth++;
+        else if (cleaned[i] === '}') {
+          depth--;
+          if (depth === 0) {
+            attempts.unshift(cleaned.slice(start, i + 1));
+            break;
+          }
+        }
+      }
+    }
+  }
+  for (const chunk of attempts) {
+    try {
+      const parsed = JSON.parse(chunk);
+      if (parsed && (parsed.bestTrades || parsed.multiTFInsights)) return parsed;
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch {
+      // try next
+    }
+  }
+  return null;
 }
 
 async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: string } | null> {
@@ -606,6 +653,19 @@ export async function runGeneralPairRefresh(pool: any, apiKey: string, symbol: s
   };
 }
 
+/** Map common desk aliases to Binance spot symbols (cache + klines). */
+export function normalizeBinanceSpotSymbol(raw: string): string {
+  const s = String(raw || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!s) return 'BTCUSDT';
+  if (s === 'BTC' || s === 'XBT' || s === 'BTCUSD' || s === 'XBTUSD') return 'BTCUSDT';
+  if (s === 'ETH' || s === 'ETHUSD') return 'ETHUSDT';
+  if (s === 'SOL' || s === 'SOLUSD') return 'SOLUSDT';
+  if (s.endsWith('USD') && !s.endsWith('USDT') && !s.endsWith('USDC')) {
+    return `${s.slice(0, -3)}USDT`;
+  }
+  return s;
+}
+
 /**
  * System deep-dive (no user auth / credits) — used by Discord pre-London cron.
  */
@@ -618,6 +678,8 @@ export async function runSystemDeepDive(options: {
   tradeHorizon?: string;
   minRiskReward?: number;
   minConfluence?: number;
+  /** When true (default for Discord), still return top priced ideas if strict gates empty. */
+  softGates?: boolean;
 }): Promise<{
   multiTFInsights: any;
   bestTrades: any[];
@@ -627,6 +689,8 @@ export async function runSystemDeepDive(options: {
   lowerTimeframe: string;
   tradeHorizon: string;
   modeId: string;
+  gatesRelaxed?: boolean;
+  rawTradeCount?: number;
 }> {
   const {
     DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
@@ -651,10 +715,12 @@ export async function runSystemDeepDive(options: {
   const minRiskReward = Number(options.minRiskReward ?? AI_MIN_RISK_REWARD_RATIO);
   const minConfluence = Number(options.minConfluence ?? 3);
   const counterTrendMinConfluence = minConfluence + 1;
+  const softGates = options.softGates !== false;
+  const symbol = normalizeBinanceSpotSymbol(options.symbol);
 
   const requestedFrames = Array.from(new Set([lowerTimeframe, higherTimeframe]));
   const barsByTimeframe = Object.fromEntries(
-    await Promise.all(requestedFrames.map(async (tf) => [tf, await fetchBarsForTF(options.symbol, tf)])),
+    await Promise.all(requestedFrames.map(async (tf) => [tf, await fetchBarsForTF(symbol, tf)])),
   ) as Record<string, any[]>;
 
   const lowerData = computeIndicators(barsByTimeframe[lowerTimeframe]);
@@ -686,7 +752,7 @@ export async function runSystemDeepDive(options: {
   else if (parseFloat(lowerData.macd.histogram) < 0) htfBiasScore -= 1;
   const dominantBias = htfBiasScore >= 2 ? 'BULLISH' : htfBiasScore <= -2 ? 'BEARISH' : 'NEUTRAL';
 
-  const deepPrompt = `Symbol: ${options.symbol} | Multi-timeframe trade search
+  const deepPrompt = `Symbol: ${symbol} | Multi-timeframe trade search
 Dominant bias from ${higherTimeframe}: ${dominantBias}
 ${horizonPrompt}
 ${fmtTF(higherTimeframe, higherData)}
@@ -754,7 +820,8 @@ Respond with ONLY valid JSON:
         { role: 'user', content: deepPrompt },
       ],
       thinking: { type: 'enabled', budget_tokens: XAI_THINKING_BUDGET },
-      temperature: 1,
+      // Lower temp than chat deep-dive — desk needs consistent JSON + setups
+      temperature: 0.4,
       max_tokens: 16000,
     });
   } catch (primaryModelError: any) {
@@ -776,18 +843,22 @@ Respond with ONLY valid JSON:
 
   let multiTFInsights: any = null;
   let bestTrades: any[] = [];
+  let gatesRelaxed = false;
+  let rawTradeCount = 0;
   try {
-    let rawContent = extractTextContent(completion.choices[0]?.message);
-    rawContent = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
-    const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { multiTFInsights: null, bestTrades: [] };
+    const message = completion.choices[0]?.message;
+    const rawContent = extractTextContent(message);
+    const parsed = parseDeskJsonPayload(rawContent) || { multiTFInsights: null, bestTrades: [] };
     multiTFInsights = parsed.multiTFInsights || null;
     const rawTrades = Array.isArray(parsed.bestTrades) ? parsed.bestTrades : [];
-    bestTrades = rawTrades
+    rawTradeCount = rawTrades.length;
+
+    const scored = rawTrades
       .map((t: any) => {
         const entryNum = parseFloat(String(t.entry).replace(/[^0-9.-]/g, '')) || 0;
         const slNum = parseFloat(String(t.stopLoss).replace(/[^0-9.-]/g, '')) || 0;
-        const tp1Num = parseFloat(String(t.targets?.[0]).replace(/[^0-9.-]/g, '')) || 0;
+        const targets = Array.isArray(t.targets) ? t.targets : [];
+        const tp1Num = parseFloat(String(targets[0]).replace(/[^0-9.-]/g, '')) || 0;
         const risk = Math.abs(entryNum - slNum);
         const reward = Math.abs(tp1Num - entryNum);
         const rr = risk > 0 && reward > 0 ? reward / risk : 0;
@@ -800,18 +871,70 @@ Respond with ONLY valid JSON:
         const confluenceCount = Array.isArray(t.confluenceSignals)
           ? t.confluenceSignals.length
           : Number(t.confluenceCount ?? 0);
+        const dir = String(t.direction || '').toUpperCase();
+        const pricesValid =
+          entryNum > 0 &&
+          slNum > 0 &&
+          tp1Num > 0 &&
+          (dir !== 'LONG' || (slNum < entryNum && tp1Num > entryNum)) &&
+          (dir !== 'SHORT' || (slNum > entryNum && tp1Num < entryNum));
         return {
           ...t,
+          direction: dir === 'SHORT' ? 'SHORT' : dir === 'LONG' ? 'LONG' : t.direction,
           htfRelationship: derivedRelationship,
           confluenceCount,
           riskRewardRatio: parseFloat(rr.toFixed(2)),
           _rr: rr,
           _requiredConfluence: derivedRelationship === 'counter-trend' ? counterTrendMinConfluence : minConfluence,
+          _pricesValid: pricesValid,
         };
       })
+      .filter((t: any) => t._pricesValid);
+
+    const gated = scored
       .filter((t: any) => t._rr >= minRiskReward && t.confluenceCount >= t._requiredConfluence)
-      .map(({ _rr, _requiredConfluence, ...t }: any) => t)
+      .sort((a: any, b: any) => b._rr - a._rr);
+
+    let chosen = gated;
+    if (!chosen.length && softGates && scored.length) {
+      gatesRelaxed = true;
+      chosen = [...scored].sort((a: any, b: any) => b._rr - a._rr).slice(0, 2);
+      chosen = chosen.map((t: any) => ({
+        ...t,
+        grade: t.grade || 'C',
+        reasoning: `${t.reasoning || 'Setup idea'} [Desk note: did not fully clear R:R/confluence gates — review carefully.]`,
+      }));
+      console.warn(
+        `System deep-dive: ${rawTradeCount} raw / ${scored.length} priced / 0 gated — soft-posting top ${chosen.length}`,
+      );
+    }
+
+    bestTrades = chosen
+      .map(({ _rr, _requiredConfluence, _pricesValid, ...t }: any) => t)
       .slice(0, 2);
+
+    // Ensure multiTFInsights has something readable when model returned trades only
+    if (!multiTFInsights || typeof multiTFInsights !== 'object') {
+      multiTFInsights = {
+        overallSummary: bestTrades.length
+          ? `Deep-dive found ${bestTrades.length} setup idea(s) for ${symbol}. Review structure before acting.`
+          : `Deep-dive completed for ${symbol}; no fully qualified setup. Watch nearby structural levels.`,
+        [higherTimeframe]: {
+          summary: `HTF bias score context: ${dominantBias}. Price near $${higherData.currentPrice}.`,
+          bias: dominantBias,
+          keyLevels: [],
+        },
+        [lowerTimeframe]: {
+          summary: `LTF execution frame. Price near $${lowerData.currentPrice}.`,
+          bias: dominantBias,
+          keyLevels: [],
+        },
+      };
+    } else if (!multiTFInsights.overallSummary) {
+      multiTFInsights.overallSummary = bestTrades.length
+        ? `Deep-dive returned ${bestTrades.length} setup idea(s).`
+        : 'Deep-dive completed with no gated setups.';
+    }
   } catch (parseError) {
     console.error('System deep-dive parse failed:', parseError);
   }
@@ -825,6 +948,8 @@ Respond with ONLY valid JSON:
     lowerTimeframe,
     tradeHorizon,
     modeId: traderMode.id,
+    gatesRelaxed,
+    rawTradeCount,
   };
 }
 
