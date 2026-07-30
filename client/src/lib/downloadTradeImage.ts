@@ -56,72 +56,29 @@ export type DownloadTotalAnalysisImageOptions = {
   modeLabel?: string;
 };
 
-/** Public logo served from client/public/beartec-logo.png */
-const BEARTEC_LOGO_URL = '/beartec-logo.png';
-
-let logoLoadPromise: Promise<HTMLImageElement | null> | null = null;
-
-function loadBearTecLogo(): Promise<HTMLImageElement | null> {
-  if (logoLoadPromise) return logoLoadPromise;
-  logoLoadPromise = new Promise((resolve) => {
-    if (typeof Image === 'undefined') {
-      resolve(null);
-      return;
-    }
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => {
-      logoLoadPromise = null;
-      resolve(null);
-    };
-    img.src = BEARTEC_LOGO_URL;
-  });
-  return logoLoadPromise;
-}
+/** Brand cyan used across the app (primary ~ hsl(195 83% 69%)) */
+const BEARTEC_CYAN = '#5ed0f3';
 
 /**
- * Crisp BearTec watermark behind card content.
- * Uses large text (not a heavily upscaled tiny logo — that looks pixelated).
- * Optional small logo sits top-right at near-native size.
+ * Simple diagonal "BearTec" text watermark in cyan — no logo image.
  */
-async function drawBearTecWatermark(
+function drawBearTecWatermark(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  options?: { opacity?: number; maxWidthRatio?: number },
-): Promise<void> {
-  const opacity = options?.opacity ?? 0.08;
-  const logo = await loadBearTecLogo();
-
+  options?: { opacity?: number },
+): void {
+  const opacity = options?.opacity ?? 0.12;
   ctx.save();
-  // Diagonal text watermark — sharp at any size
   ctx.translate(width / 2, height / 2);
   ctx.rotate(-Math.PI / 10);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.globalAlpha = opacity;
-  ctx.fillStyle = '#e2e8f0';
-  ctx.font = `700 ${Math.round(width * 0.11)}px Inter, system-ui, -apple-system, sans-serif`;
-  ctx.fillText('BearTec', 0, -8);
-  ctx.globalAlpha = opacity * 0.9;
-  ctx.fillStyle = '#c4b5fd';
-  ctx.font = `600 ${Math.round(width * 0.028)}px Inter, system-ui, -apple-system, sans-serif`;
-  ctx.letterSpacing = '0.2em';
-  ctx.fillText('CRYPTO AI', 0, Math.round(width * 0.055));
+  ctx.fillStyle = BEARTEC_CYAN;
+  ctx.font = `700 ${Math.round(width * 0.14)}px Inter, system-ui, -apple-system, sans-serif`;
+  ctx.fillText('BearTec', 0, 0);
   ctx.restore();
-
-  // Small logo badge top-right (native-ish size so it stays sharp)
-  if (logo && logo.naturalWidth > 0) {
-    ctx.save();
-    const targetW = 100;
-    const scale = targetW / logo.naturalWidth;
-    const w = logo.naturalWidth * scale;
-    const h = logo.naturalHeight * scale;
-    ctx.globalAlpha = 0.55;
-    ctx.drawImage(logo, width - w - 28, 36, w, h);
-    ctx.restore();
-  }
 }
 
 function fmt(value?: string | number | null): string {
@@ -225,8 +182,8 @@ export async function downloadTradeImage(options: DownloadTradeImageOptions): Pr
   roundRect(ctx, cardX, cardY, 8, cardH, 4);
   ctx.fill();
 
-  // BearTec logo watermark behind content
-  await drawBearTecWatermark(ctx, width, height);
+  // Cyan BearTec text watermark behind content
+  drawBearTecWatermark(ctx, width, height);
 
   let y = padding + 8;
 
@@ -461,7 +418,7 @@ export async function downloadAnalysisImage(options: DownloadAnalysisImageOption
   roundRect(ctx, cardX, cardY, 8, cardH, 4);
   ctx.fill();
 
-  await drawBearTecWatermark(ctx, width, height);
+  drawBearTecWatermark(ctx, width, height);
 
   let y = padding + 8;
 
@@ -735,7 +692,7 @@ export async function downloadTotalAnalysisImage(
   roundRect(ctx, cardX, cardY, 8, cardH, 4);
   ctx.fill();
 
-  await drawBearTecWatermark(ctx, width, height, { opacity: 0.09, maxWidthRatio: 0.5 });
+  drawBearTecWatermark(ctx, width, height, { opacity: 0.1 });
 
   let y = padding + 4;
 
