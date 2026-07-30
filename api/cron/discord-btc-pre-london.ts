@@ -22,15 +22,20 @@ import { getPool } from '../_lib/db.js';
 import {
   encodeCryptoAiPairInterval,
   getCryptoAiTradeHorizon,
+  getSessionDisplayName,
+  type CryptoAiSessionLabel,
 } from '../_lib/cryptoAiConfig.js';
 import { getAiTraderMode } from '../_lib/aiTraderModes.js';
-import { postDiscordWebhook, tradeEmbeds } from '../_lib/discordWebhook.js';
+import { postDiscordWebhook, tradeEmbeds, type DiscordEmbed } from '../_lib/discordWebhook.js';
 import { runSystemDeepDive } from '../crypto/order-flow-alerts-multi-tf.js';
 
 export const config = {
   maxDuration: 300,
   memory: 1024,
 };
+
+/** Session order for a trading day: Asia → London → New York */
+const SESSION_ORDER: CryptoAiSessionLabel[] = ['asia', 'london', 'new_york'];
 
 function sectionOf(insights: any, tf: string): { summary?: string; bias?: string; keyLevels?: string[] } | null {
   if (!insights || typeof insights !== 'object') return null;
@@ -53,6 +58,81 @@ function collectLevels(insights: any, frames: string[]): string[] {
     }
   }
   return levels.slice(0, 6);
+}
+
+function normaliseSnapshots(raw: unknown): any[] {
+  return Array.isArray(raw) ? raw.filter(Boolean) : [];
+}
+
+/** Before London open, previous completed session is Asia (then prior NY if useful). */
+function pickPreviousSessions(snapshots: any[]): any[] {
+  if (!snapshots.length) return [];
+  const bySession = new Map<string, any>();
+  for (const snap of snapshots) {
+    const key = String(snap?.session || '').toLowerCase();
+    if (!key) continue;
+    // snapshots are newest-first from rotateSnapshots
+    if (!bySession.has(key)) bySession.set(key, snap);
+  }
+  // Prefer Asia as the session that just finished before London
+  const preferred: CryptoAiSessionLabel[] = ['asia', 'new_york', 'london'];
+  const ordered: any[] = [];
+  for (const id of preferred) {
+    const snap = bySession.get(id);
+    if (snap) ordered.push(snap);
+  }
+  // Fall back to whatever we have (newest first), max 2
+  if (!ordered.length) return snapshots.slice(0, 2);
+  return ordered.slice(0, 2);
+}
+
+function formatSessionEmbed(
+  snap: any,
+  symbol: string,
+  higherTimeframe: string,
+  lowerTimeframe: string,
+): DiscordEmbed {
+  const sessionId = String(snap?.session || '').toLowerCase() as CryptoAiSessionLabel;
+  const label =
+    snap?.label
+    || (SESSION_ORDER.includes(sessionId) ? getSessionDisplayName(sessionId) : sessionId || 'Session');
+  const insights = snap?.multiTFInsights || null;
+  const overall = overallOf(insights) || 'No session summary stored.';
+  const higher = sectionOf(insights, higherTimeframe);
+  const lower = sectionOf(insights, lowerTimeframe);
+  const levels = collectLevels(insights, [lowerTimeframe, higherTimeframe]);
+  const when = snap?.generatedAt ? String(snap.generatedAt).replace('T', ' ').slice(0, 16) + ' UTC' : null;
+
+  const fields: DiscordEmbed['fields'] = [];
+  if (higher?.summary || higher?.bias) {
+    fields.push({
+      name: `${higherTimeframe.toUpperCase()} · ${higher?.bias || '—'}`,
+      value: (higher?.summary || '—').slice(0, 500),
+      inline: false,
+    });
+  }
+  if (lower?.summary || lower?.bias) {
+    fields.push({
+      name: `${lowerTimeframe.toUpperCase()} · ${lower?.bias || '—'}`,
+      value: (lower?.summary || '—').slice(0, 500),
+      inline: false,
+    });
+  }
+  if (levels.length) {
+    fields.push({
+      name: 'Key levels',
+      value: levels.map((l) => `• ${l}`).join('\n').slice(0, 800),
+      inline: false,
+    });
+  }
+
+  return {
+    title: `① Previous session · ${label}`,
+    description: overall.slice(0, 1500),
+    color: 0x38bdf8,
+    fields: fields.length ? fields : undefined,
+    footer: when ? { text: `Snapshot ${when}` } : { text: `${symbol} session board` },
+  };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -97,13 +177,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log(`📡 Pre-London Discord desk: ${symbol} ${higherTimeframe}/${lowerTimeframe} mode=${mode} horizon=${tradeHorizon}`);
 
   try {
-    // Prefer cached general analysis for cross-TF summary (from session cron)
+    // Prefer cached general analysis + session snapshots (from Asia/London/NY cron)
     let generalInsights: any = null;
+    let sessionSnapshots: any[] = [];
     try {
       const pool = getPool();
       const pairInterval = encodeCryptoAiPairInterval(higherTimeframe as any, lowerTimeframe as any);
       const cached = await pool.query(
-        `SELECT ai_narration
+        `SELECT ai_narration, snapshots
          FROM crypto_scan_cache
          WHERE symbol = $1 AND interval = $2 AND mode = 'general'
          LIMIT 1`,
@@ -116,6 +197,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           : row.ai_narration;
         generalInsights = narration?.multiTFInsights || null;
       }
+      sessionSnapshots = normaliseSnapshots(row?.snapshots);
     } catch (cacheErr: any) {
       console.warn('General cache lookup skipped:', cacheErr?.message);
     }
@@ -134,41 +216,131 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const modeMeta = getAiTraderMode(deep.modeId);
     const horizonMeta = getCryptoAiTradeHorizon(deep.tradeHorizon);
     const deepInsights = deep.multiTFInsights;
-    const crossSummary = overallOf(generalInsights) || overallOf(deepInsights) || 'See deep-dive notes.';
-    const deepSummary = overallOf(deepInsights) || 'Deep-dive completed.';
-    const watchLevels = collectLevels(deepInsights, [deep.lowerTimeframe, deep.higherTimeframe]);
+    const htf = deep.higherTimeframe;
+    const ltf = deep.lowerTimeframe;
 
+    // Cross-TF from general cache; fall back to deep multiTF sections
+    const crossSummary = overallOf(generalInsights) || overallOf(deepInsights) || 'No cross-timeframe summary available.';
+    const genHigher = sectionOf(generalInsights, htf) || sectionOf(deepInsights, htf);
+    const genLower = sectionOf(generalInsights, ltf) || sectionOf(deepInsights, ltf);
+    const deepSummary = overallOf(deepInsights) || 'Deep-dive completed.';
+    const deepHigher = sectionOf(deepInsights, htf);
+    const deepLower = sectionOf(deepInsights, ltf);
+    const watchLevels = collectLevels(deepInsights, [ltf, htf]);
+
+    const previousSessions = pickPreviousSessions(sessionSnapshots);
     const setupCount = deep.bestTrades.length;
+
     const content =
-      `**${symbol} · Pre-London open** (${deep.higherTimeframe}/${deep.lowerTimeframe})\n` +
+      `**${symbol} · Pre-London open** (${htf}/${ltf})\n` +
       `Mode: **${modeMeta.label}** · Length: **${horizonMeta.label}** (~${horizonMeta.expectedHold})\n` +
+      `Order: previous session → cross-TF → deep-dive → trades\n` +
       (setupCount
         ? `${setupCount} trade setup${setupCount === 1 ? '' : 's'} below.`
         : 'No setup cleared gates — watch zones below.') +
       `\n\n⚠️ **Not financial advice.** Educational / informational only. Always review the chart and structure yourself before acting — make your own judgement.`;
 
-    const embeds = [
-      {
-        title: `${symbol} cross-TF / deep summary`,
-        description: [crossSummary, deepSummary].filter(Boolean).join('\n\n').slice(0, 4000),
-        color: 0xa855f7,
-        fields: watchLevels.length
-          ? [{ name: 'Key zones', value: watchLevels.map((l) => `• ${l}`).join('\n').slice(0, 1000) }]
-          : undefined,
-        footer: { text: 'BearTec Crypto AI · Pre-London desk · Not financial advice' },
-        timestamp: new Date().toISOString(),
-      },
-      ...tradeEmbeds(symbol, deep.bestTrades),
-      {
-        title: 'Disclaimer',
+    const embeds: DiscordEmbed[] = [];
+
+    // ① Previous session(s)
+    if (previousSessions.length) {
+      for (const snap of previousSessions) {
+        embeds.push(formatSessionEmbed(snap, symbol, htf, ltf));
+      }
+    } else {
+      embeds.push({
+        title: '① Previous session',
         description:
-          'This is **not financial advice**. Crypto trading involves substantial risk of loss. ' +
-          'Setups are AI-generated ideas for education and discussion only. ' +
-          '**Always inspect the chart and structure yourself** before trading, and make your own independent decisions. ' +
-          'BearTec is not responsible for trading losses.',
+          'No session snapshot in cache yet. Session board refreshes at Asia / London / NY open times — details will appear after those crons run.',
+        color: 0x38bdf8,
+      });
+    }
+
+    // ② Cross-timeframe
+    {
+      const fields: DiscordEmbed['fields'] = [];
+      if (genHigher?.summary || genHigher?.bias) {
+        fields.push({
+          name: `${htf.toUpperCase()} · ${genHigher?.bias || '—'}`,
+          value: (genHigher?.summary || '—').slice(0, 600),
+          inline: false,
+        });
+      }
+      if (genLower?.summary || genLower?.bias) {
+        fields.push({
+          name: `${ltf.toUpperCase()} · ${genLower?.bias || '—'}`,
+          value: (genLower?.summary || '—').slice(0, 600),
+          inline: false,
+        });
+      }
+      embeds.push({
+        title: '② Cross-timeframe analysis',
+        description: crossSummary.slice(0, 2000),
+        color: 0xa78bfa,
+        fields: fields.length ? fields : undefined,
+        footer: { text: 'General multi-TF read · Not financial advice' },
+      });
+    }
+
+    // ③ Deep-dive
+    {
+      const fields: DiscordEmbed['fields'] = [];
+      if (deepHigher?.summary || deepHigher?.bias) {
+        fields.push({
+          name: `${htf.toUpperCase()} · ${deepHigher?.bias || '—'}`,
+          value: (deepHigher?.summary || '—').slice(0, 600),
+          inline: false,
+        });
+      }
+      if (deepLower?.summary || deepLower?.bias) {
+        fields.push({
+          name: `${ltf.toUpperCase()} · ${deepLower?.bias || '—'}`,
+          value: (deepLower?.summary || '—').slice(0, 600),
+          inline: false,
+        });
+      }
+      if (watchLevels.length) {
+        fields.push({
+          name: 'Key zones to watch',
+          value: watchLevels.map((l) => `• ${l}`).join('\n').slice(0, 1000),
+          inline: false,
+        });
+      }
+      embeds.push({
+        title: '③ Deep-dive',
+        description: deepSummary.slice(0, 2000),
+        color: 0xa855f7,
+        fields: fields.length ? fields : undefined,
+        footer: { text: `${modeMeta.label} · ${horizonMeta.label} · Not financial advice` },
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // ④ Trades
+    const tradeList = tradeEmbeds(symbol, deep.bestTrades).map((embed, i) => ({
+      ...embed,
+      title: `④ ${embed.title || `Trade setup ${i + 1}`}`,
+    }));
+    if (tradeList.length) {
+      embeds.push(...tradeList);
+    } else {
+      embeds.push({
+        title: '④ Trade setups',
+        description: 'No setup cleared confluence / R:R gates. Use the key zones above and wait for structure.',
         color: 0x64748b,
-      },
-    ];
+      });
+    }
+
+    // Disclaimer last
+    embeds.push({
+      title: 'Disclaimer',
+      description:
+        'This is **not financial advice**. Crypto trading involves substantial risk of loss. ' +
+        'Setups are AI-generated ideas for education and discussion only. ' +
+        '**Always inspect the chart and structure yourself** before trading, and make your own independent decisions. ' +
+        'BearTec is not responsible for trading losses.',
+      color: 0x64748b,
+    });
 
     const discord = await postDiscordWebhook({
       webhookUrl,
