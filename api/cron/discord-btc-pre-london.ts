@@ -250,45 +250,100 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const htf = deep.higherTimeframe;
     const ltf = deep.lowerTimeframe;
 
-    // Cross-TF from general cache; fall back to deep multiTF sections
-    const crossSummary = overallOf(generalInsights) || overallOf(deepInsights) || 'No cross-timeframe summary available.';
-    const genHigher = sectionOf(generalInsights, htf) || sectionOf(deepInsights, htf);
-    const genLower = sectionOf(generalInsights, ltf) || sectionOf(deepInsights, ltf);
-    const deepSummary = overallOf(deepInsights) || 'Deep-dive completed.';
+    // Build readable deep text even when overallSummary is missing (was showing "Deep-dive completed.")
     const deepHigher = sectionOf(deepInsights, htf);
     const deepLower = sectionOf(deepInsights, ltf);
     const watchLevels = collectLevels(deepInsights, [ltf, htf]);
+    const deepSummary =
+      overallOf(deepInsights)
+      || [deepHigher?.summary, deepLower?.summary].filter(Boolean).join('\n\n')
+      || (deep.bestTrades.length
+        ? `Deep-dive found ${deep.bestTrades.length} setup idea(s) for ${symbol}.`
+        : `Deep-dive finished for ${symbol}. No fully qualified setup — check structure on ${htf}/${ltf}.`);
 
-    const previousSessions = pickPreviousSessions(sessionSnapshots);
+    // Cross-TF: prefer general cache; only show embed if we have real content
+    const genHigher = sectionOf(generalInsights, htf);
+    const genLower = sectionOf(generalInsights, ltf);
+    const crossSummary = overallOf(generalInsights);
+    const hasCrossContent = Boolean(
+      crossSummary
+      || genHigher?.summary
+      || genLower?.summary
+      || genHigher?.bias
+      || genLower?.bias,
+    );
+
+    // Previous session: only if snapshot has real analysis (never post empty "no cache" stubs)
+    const previousSessions = pickPreviousSessions(sessionSnapshots).filter((snap) => {
+      const insights = snap?.multiTFInsights;
+      return Boolean(overallOf(insights) || collectLevels(insights, [ltf, htf]).length);
+    });
+
     const setupCount = deep.bestTrades.length;
 
     const content =
       `**${symbol} · Pre-London open** (${htf}/${ltf})\n` +
       `Mode: **${modeMeta.label}** · Length: **${horizonMeta.label}** (~${horizonMeta.expectedHold})\n` +
-      `Order: previous session → cross-TF → deep-dive → trades\n` +
       (setupCount
         ? `${setupCount} trade setup${setupCount === 1 ? '' : 's'} below${deep.gatesRelaxed ? ' (soft-gated — review carefully)' : ''}.`
-        : 'No priced setup returned — watch zones below.') +
+        : 'No priced setup this run — see deep-dive / zones below.') +
       `\n\n⚠️ **Not financial advice.** Educational / informational only. Always review the chart and structure yourself before acting — make your own judgement.`;
 
+    // Core analysis first (what worked before session section was added), then optional context, then trades
     const embeds: DiscordEmbed[] = [];
 
-    // ① Previous session(s)
-    if (previousSessions.length) {
-      for (const snap of previousSessions) {
-        embeds.push(formatSessionEmbed(snap, symbol, htf, ltf));
+    // ① Deep-dive — always the main analysis body
+    {
+      const fields: DiscordEmbed['fields'] = [];
+      if (deepHigher?.summary || deepHigher?.bias) {
+        fields.push({
+          name: `${htf.toUpperCase()} · ${deepHigher?.bias || '—'}`,
+          value: (deepHigher?.summary || '—').slice(0, 900),
+          inline: false,
+        });
       }
-    } else {
+      if (deepLower?.summary || deepLower?.bias) {
+        fields.push({
+          name: `${ltf.toUpperCase()} · ${deepLower?.bias || '—'}`,
+          value: (deepLower?.summary || '—').slice(0, 900),
+          inline: false,
+        });
+      }
+      if (watchLevels.length) {
+        fields.push({
+          name: 'Key zones to watch',
+          value: watchLevels.map((l) => `• ${l}`).join('\n').slice(0, 1000),
+          inline: false,
+        });
+      }
       embeds.push({
-        title: '① Previous session',
-        description:
-          'No session snapshot in cache yet. Session board refreshes at Asia / London / NY open times — details will appear after those crons run.',
-        color: 0x38bdf8,
+        title: `① Deep-dive · ${symbol}`,
+        description: deepSummary.slice(0, 3500),
+        color: 0xa855f7,
+        fields: fields.length ? fields : undefined,
+        footer: { text: `${modeMeta.label} · ${horizonMeta.label} · Not financial advice` },
+        timestamp: new Date().toISOString(),
       });
     }
 
-    // ② Cross-timeframe
-    {
+    // ② Trades
+    const tradeList = tradeEmbeds(symbol, deep.bestTrades).map((embed, i) => ({
+      ...embed,
+      title: `② ${embed.title || `Trade setup ${i + 1}`}`,
+    }));
+    if (tradeList.length) {
+      embeds.push(...tradeList);
+    } else {
+      embeds.push({
+        title: '② Trade setups',
+        description:
+          'No priced setup with valid entry / stop / TP this run. Use the deep-dive and key zones above; wait for structure.',
+        color: 0x64748b,
+      });
+    }
+
+    // ③ Cross-timeframe — only when general cache has real content (skip empty stubs)
+    if (hasCrossContent) {
       const fields: DiscordEmbed['fields'] = [];
       if (genHigher?.summary || genHigher?.bias) {
         fields.push({
@@ -305,60 +360,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
       embeds.push({
-        title: '② Cross-timeframe analysis',
-        description: crossSummary.slice(0, 2000),
+        title: '③ Cross-timeframe (session board)',
+        description: (crossSummary || 'Multi-TF context from general scan.').slice(0, 2000),
         color: 0xa78bfa,
         fields: fields.length ? fields : undefined,
-        footer: { text: 'General multi-TF read · Not financial advice' },
+        footer: { text: 'General multi-TF · Not financial advice' },
       });
     }
 
-    // ③ Deep-dive
-    {
-      const fields: DiscordEmbed['fields'] = [];
-      if (deepHigher?.summary || deepHigher?.bias) {
-        fields.push({
-          name: `${htf.toUpperCase()} · ${deepHigher?.bias || '—'}`,
-          value: (deepHigher?.summary || '—').slice(0, 600),
-          inline: false,
-        });
-      }
-      if (deepLower?.summary || deepLower?.bias) {
-        fields.push({
-          name: `${ltf.toUpperCase()} · ${deepLower?.bias || '—'}`,
-          value: (deepLower?.summary || '—').slice(0, 600),
-          inline: false,
-        });
-      }
-      if (watchLevels.length) {
-        fields.push({
-          name: 'Key zones to watch',
-          value: watchLevels.map((l) => `• ${l}`).join('\n').slice(0, 1000),
-          inline: false,
-        });
-      }
+    // ④ Previous session — only when we have a real snapshot
+    for (const snap of previousSessions) {
+      const emb = formatSessionEmbed(snap, symbol, htf, ltf);
       embeds.push({
-        title: '③ Deep-dive',
-        description: deepSummary.slice(0, 2000),
-        color: 0xa855f7,
-        fields: fields.length ? fields : undefined,
-        footer: { text: `${modeMeta.label} · ${horizonMeta.label} · Not financial advice` },
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    // ④ Trades
-    const tradeList = tradeEmbeds(symbol, deep.bestTrades).map((embed, i) => ({
-      ...embed,
-      title: `④ ${embed.title || `Trade setup ${i + 1}`}`,
-    }));
-    if (tradeList.length) {
-      embeds.push(...tradeList);
-    } else {
-      embeds.push({
-        title: '④ Trade setups',
-        description: 'No setup cleared confluence / R:R gates. Use the key zones above and wait for structure.',
-        color: 0x64748b,
+        ...emb,
+        title: (emb.title || 'Previous session').replace(/^①\s*/, '④ '),
       });
     }
 
