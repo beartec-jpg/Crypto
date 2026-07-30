@@ -60,10 +60,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const {
       CRYPTO_AI_HIGHER_TIMEFRAMES,
       CRYPTO_AI_LOWER_TIMEFRAMES,
+      CRYPTO_AI_TRADE_HORIZONS,
       DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
       DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+      DEFAULT_CRYPTO_AI_TRADE_HORIZON,
       normalizeCryptoAiPair,
       isValidCryptoAiPair,
+      isCryptoAiTradeHorizon,
+      getCryptoAiTradeHorizon,
     } = await import('../_lib/cryptoAiConfig.js');
     const getTickerSlotCap = (tier: string) => {
       switch (tier) {
@@ -97,7 +101,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 alerts_enabled, push_subscription, tier,
                 ticker_slots, strategy_groups, scan_tickers, min_risk_reward,
                  min_confluence, ai_model_pref, ai_trader_mode, ai_higher_timeframe,
-                 ai_lower_timeframe, elliott_scan_enabled
+                 ai_lower_timeframe, ai_trade_horizon, elliott_scan_enabled
          FROM crypto_subscriptions WHERE user_id = $1`,
         [cryptoUserId]
       );
@@ -122,6 +126,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           aiTraderMode: 'smc',
           aiHigherTimeframe: DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
           aiLowerTimeframe: DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+          aiTradeHorizon: DEFAULT_CRYPTO_AI_TRADE_HORIZON,
           elliottScanEnabled: false,
         });
       }
@@ -150,6 +155,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         aiTraderMode: row.ai_trader_mode || 'smc',
         aiHigherTimeframe: normalizedPair.higherTimeframe,
         aiLowerTimeframe: normalizedPair.lowerTimeframe,
+        aiTradeHorizon: getCryptoAiTradeHorizon(row.ai_trade_horizon).id,
         elliottScanEnabled: row.elliott_scan_enabled || false,
       });
     }
@@ -157,7 +163,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'POST') {
       const { selectedTickers, alertGrades, alertTimeframes, alertTypes, alertsEnabled, pushSubscription,
               strategyGroups, scanTickers, minRiskReward, minConfluence, aiModelPref,
-              aiTraderMode, aiHigherTimeframe, aiLowerTimeframe, elliottScanEnabled } = req.body || {};
+              aiTraderMode, aiHigherTimeframe, aiLowerTimeframe, aiTradeHorizon, elliottScanEnabled } = req.body || {};
 
       // Get current tier for validation
       const tierResult = await pool.query(
@@ -278,6 +284,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: `aiLowerTimeframe must be one of: ${CRYPTO_AI_LOWER_TIMEFRAMES.join(', ')}.` });
       }
 
+      if (aiTradeHorizon !== undefined && !isCryptoAiTradeHorizon(aiTradeHorizon)) {
+        await pool.end();
+        return res.status(400).json({ error: `aiTradeHorizon must be one of: ${CRYPTO_AI_TRADE_HORIZONS.join(', ')}.` });
+      }
+
       const currentPair = normalizeCryptoAiPair(
         tierResult.rows[0]?.ai_higher_timeframe,
         tierResult.rows[0]?.ai_lower_timeframe,
@@ -304,8 +315,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Insert new subscription
         await pool.query(
           `INSERT INTO crypto_subscriptions 
-           (id, user_id, selected_tickers, alert_grades, alert_timeframes, alert_types, alerts_enabled, push_subscription, tier, ticker_slots, scan_tickers, min_risk_reward, min_confluence, ai_trader_mode, ai_higher_timeframe, ai_lower_timeframe, created_at, updated_at)
-           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'free', $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())`,
+           (id, user_id, selected_tickers, alert_grades, alert_timeframes, alert_types, alerts_enabled, push_subscription, tier, ticker_slots, scan_tickers, min_risk_reward, min_confluence, ai_trader_mode, ai_higher_timeframe, ai_lower_timeframe, ai_trade_horizon, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, 'free', $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())`,
           [
             cryptoUserId,
             selectedTickers || [],
@@ -321,6 +332,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             aiTraderMode || 'smc',
             aiHigherTimeframe || DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
             aiLowerTimeframe || DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+            isCryptoAiTradeHorizon(aiTradeHorizon) ? aiTradeHorizon : DEFAULT_CRYPTO_AI_TRADE_HORIZON,
           ]
         );
       } else {
@@ -384,6 +396,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (aiLowerTimeframe !== undefined) {
           updates.push(`ai_lower_timeframe = $${paramIndex++}`);
           values.push(aiLowerTimeframe);
+        }
+        if (aiTradeHorizon !== undefined) {
+          updates.push(`ai_trade_horizon = $${paramIndex++}`);
+          values.push(aiTradeHorizon);
         }
         if (elliottScanEnabled !== undefined) {
           updates.push(`elliott_scan_enabled = $${paramIndex++}`);

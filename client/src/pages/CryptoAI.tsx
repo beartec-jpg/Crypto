@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { Link, useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
-import { AlertCircle, Brain, Loader2, Printer, Search, Sparkles } from 'lucide-react';
+import { AlertCircle, Brain, Download, Loader2, Printer, Search, Sparkles } from 'lucide-react';
 
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -42,15 +42,27 @@ import type { CryptoPreferences } from '@shared/schema';
 import {
   CRYPTO_AI_HIGHER_TIMEFRAMES,
   CRYPTO_AI_LOWER_TIMEFRAMES,
+  CRYPTO_AI_TRADE_HORIZONS,
+  CRYPTO_AI_TRADE_HORIZON_META,
   DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
   DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+  DEFAULT_CRYPTO_AI_TRADE_HORIZON,
+  getCryptoAiTradeHorizon,
+  isCryptoAiTradeHorizon,
   type CryptoAiHigherTimeframe,
   type CryptoAiLowerTimeframe,
   type CryptoAiSessionSnapshot,
+  type CryptoAiTradeHorizon,
 } from '@shared/cryptoAiConfig';
+import { downloadTradeImage } from '@/lib/downloadTradeImage';
 
 const HIGHER_TIMEFRAME_OPTIONS = CRYPTO_AI_HIGHER_TIMEFRAMES.map((value) => ({ label: value, value }));
 const LOWER_TIMEFRAME_OPTIONS = CRYPTO_AI_LOWER_TIMEFRAMES.map((value) => ({ label: value, value }));
+const TRADE_HORIZON_OPTIONS = CRYPTO_AI_TRADE_HORIZONS.map((value) => ({
+  value,
+  label: CRYPTO_AI_TRADE_HORIZON_META[value].label,
+  description: CRYPTO_AI_TRADE_HORIZON_META[value].description,
+}));
 type AiTimeframe = CryptoAiHigherTimeframe | CryptoAiLowerTimeframe;
 
 type AnalysisResponse = {
@@ -90,6 +102,7 @@ type AiPreferences = CryptoPreferences & {
   aiTraderMode?: string;
   aiHigherTimeframe?: AiTimeframe;
   aiLowerTimeframe?: AiTimeframe;
+  aiTradeHorizon?: CryptoAiTradeHorizon | string;
 };
 
 function getBiasVariant(bias?: string): 'default' | 'secondary' | 'destructive' | 'outline' {
@@ -115,6 +128,7 @@ export default function CryptoAI() {
   const [aiTraderMode, setAiTraderMode] = useState<AiTraderModeId>(DEFAULT_AI_TRADER_MODE);
   const [aiHigherTimeframe, setAiHigherTimeframe] = useState<CryptoAiHigherTimeframe>(DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME);
   const [aiLowerTimeframe, setAiLowerTimeframe] = useState<CryptoAiLowerTimeframe>(DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME);
+  const [aiTradeHorizon, setAiTradeHorizon] = useState<CryptoAiTradeHorizon>(DEFAULT_CRYPTO_AI_TRADE_HORIZON);
   const [savingPreferences, setSavingPreferences] = useState(false);
   const [minRiskReward, setMinRiskReward] = useState('1.5');
   const [minConfluence, setMinConfluence] = useState('3');
@@ -160,6 +174,10 @@ export default function CryptoAI() {
 
     if ((CRYPTO_AI_LOWER_TIMEFRAMES as readonly string[]).includes(preferences.aiLowerTimeframe || '')) {
       setAiLowerTimeframe(preferences.aiLowerTimeframe as CryptoAiLowerTimeframe);
+    }
+
+    if (isCryptoAiTradeHorizon(preferences.aiTradeHorizon)) {
+      setAiTradeHorizon(preferences.aiTradeHorizon);
     }
 
     setMinRiskReward(String(preferences.minRiskReward ?? 1.5));
@@ -217,6 +235,7 @@ export default function CryptoAI() {
         lowerTimeframe: aiLowerTimeframe,
         analysisType,
         mode: analysisType === 'deep' ? aiTraderMode : undefined,
+        tradeHorizon: analysisType === 'deep' ? aiTradeHorizon : undefined,
       },
       { timeout: analysisType === 'deep' ? 180000 : 90000 },
     );
@@ -305,7 +324,7 @@ export default function CryptoAI() {
 
   useEffect(() => {
     setDeepDiveStates({});
-  }, [timeframeKey, aiTraderMode]);
+  }, [timeframeKey, aiTraderMode, aiTradeHorizon]);
 
   const handleHigherTimeframeChange = async (nextHigherTimeframe: string) => {
     if (!(CRYPTO_AI_HIGHER_TIMEFRAMES as readonly string[]).includes(nextHigherTimeframe)) return;
@@ -348,6 +367,18 @@ export default function CryptoAI() {
       await persistPreferences({ aiTraderMode: nextMode });
     } catch {
       setAiTraderMode(previousMode);
+    }
+  };
+
+  const handleTradeHorizonChange = async (nextHorizon: string) => {
+    if (!isCryptoAiTradeHorizon(nextHorizon)) return;
+    const previous = aiTradeHorizon;
+    setAiTradeHorizon(nextHorizon);
+
+    try {
+      await persistPreferences({ aiTradeHorizon: nextHorizon });
+    } catch {
+      setAiTradeHorizon(previous);
     }
   };
 
@@ -427,7 +458,7 @@ export default function CryptoAI() {
               Activate watchlist tickers and tune thresholds.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-3">
+          <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div className="space-y-2">
               <div className="text-sm font-medium">Higher TF</div>
               <Select value={aiHigherTimeframe} onValueChange={handleHigherTimeframeChange}>
@@ -482,7 +513,31 @@ export default function CryptoAI() {
               </Select>
             </div>
 
-            <div className="space-y-3 md:col-span-3">
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Trade length</div>
+              <Select value={aiTradeHorizon} onValueChange={handleTradeHorizonChange}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select trade length">
+                    {getCryptoAiTradeHorizon(aiTradeHorizon).label}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {TRADE_HORIZON_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      <div className="flex flex-col gap-0.5 py-0.5">
+                        <span>{option.label}</span>
+                        <span className="text-xs text-muted-foreground">{option.description}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Hold window ~{getCryptoAiTradeHorizon(aiTradeHorizon).expectedHold}. Scales stop/target structure independently of the chart pair.
+              </p>
+            </div>
+
+            <div className="space-y-3 md:col-span-2 xl:col-span-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium">AI watchlist slots</div>
@@ -490,9 +545,14 @@ export default function CryptoAI() {
                     {trackedTickers.length} of {tickerSlotCap} slots used
                   </div>
                 </div>
-                <Badge variant="outline">
-                  Pair: {aiHigherTimeframe}/{aiLowerTimeframe}
-                </Badge>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="outline">
+                    Pair: {aiHigherTimeframe}/{aiLowerTimeframe}
+                  </Badge>
+                  <Badge variant="outline">
+                    Length: {getCryptoAiTradeHorizon(aiTradeHorizon).label}
+                  </Badge>
+                </div>
               </div>
 
               {watchlistOptions.length === 0 ? (
@@ -526,11 +586,12 @@ export default function CryptoAI() {
               )}
             </div>
 
-            <div className="md:col-span-3 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+            <div className="md:col-span-2 xl:col-span-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
               <Badge variant="outline">Available watchlist: {watchlistOptions.length}</Badge>
               <Badge variant="outline">Active AI tickers: {trackedTickers.length}</Badge>
               <Badge variant="outline">General analysis: {aiHigherTimeframe} / {aiLowerTimeframe}</Badge>
               <Badge variant="outline">Deep dive mode: {ENABLED_AI_TRADER_MODES.find((mode) => mode.id === aiTraderMode)?.label ?? 'SMC / ICT'}</Badge>
+              <Badge variant="outline">Trade length: {getCryptoAiTradeHorizon(aiTradeHorizon).label}</Badge>
               {savingPreferences && (
                 <span className="inline-flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -539,7 +600,7 @@ export default function CryptoAI() {
               )}
             </div>
 
-            <div className="space-y-3 md:col-span-3">
+            <div className="space-y-3 md:col-span-2 xl:col-span-4">
               <div>
                 <div className="text-sm font-medium">Deep-dive thresholds</div>
               </div>
@@ -760,7 +821,10 @@ export default function CryptoAI() {
                         <div>
                           <h3 className="font-semibold">Deep-dive trade search</h3>
                           <p className="text-sm text-muted-foreground">
-                            Uses {ENABLED_AI_TRADER_MODES.find((mode) => mode.id === aiTraderMode)?.label ?? 'SMC / ICT'} mode.
+                            Uses {ENABLED_AI_TRADER_MODES.find((mode) => mode.id === aiTraderMode)?.label ?? 'SMC / ICT'} mode
+                            {' · '}
+                            {getCryptoAiTradeHorizon(aiTradeHorizon).label} length
+                            {' '}(~{getCryptoAiTradeHorizon(aiTradeHorizon).expectedHold}).
                           </p>
                         </div>
                         <Button onClick={() => handleDeepDive(ticker)} disabled={deepDiveState.status === 'loading'}>
@@ -878,7 +942,33 @@ export default function CryptoAI() {
                                     </div>
                                   ) : null}
 
-                                  <div className="mt-3 flex justify-end">
+                                  <div className="mt-3 flex flex-wrap justify-end gap-2">
+                                   <Button
+                                     variant="outline"
+                                     size="sm"
+                                     onClick={async () => {
+                                       try {
+                                         await downloadTradeImage({
+                                           trade,
+                                           symbol: ticker,
+                                           higherTimeframe: aiHigherTimeframe,
+                                           lowerTimeframe: aiLowerTimeframe,
+                                           horizonLabel: getCryptoAiTradeHorizon(aiTradeHorizon).label,
+                                           modeLabel: ENABLED_AI_TRADER_MODES.find((mode) => mode.id === aiTraderMode)?.label,
+                                         });
+                                         toast({ title: 'Trade downloaded', description: 'PNG saved to your downloads.' });
+                                       } catch (error: any) {
+                                         toast({
+                                           title: 'Download failed',
+                                           description: error?.message || 'Could not create trade image.',
+                                           variant: 'destructive',
+                                         });
+                                       }
+                                     }}
+                                   >
+                                     <Download className="mr-2 h-4 w-4" />
+                                     Download image
+                                   </Button>
                                    <Button
                                      variant="outline"
                                      size="sm"

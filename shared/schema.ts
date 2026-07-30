@@ -3,8 +3,10 @@ import { pgTable, text, varchar, integer, decimal, timestamp, jsonb, boolean, do
 import { z } from "zod";
 import {
   CRYPTO_AI_TIMEFRAMES,
+  CRYPTO_AI_TRADE_HORIZONS,
   DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
   DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+  DEFAULT_CRYPTO_AI_TRADE_HORIZON,
 } from "./cryptoAiConfig";
 // Feedback Board - public rolling message board for suggestions/feedback
 export const feedbackBoard = pgTable("feedback_board", {
@@ -100,6 +102,7 @@ export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
   aiTraderMode: varchar("ai_trader_mode").notNull().default("smc"), // Selected AI trader mode for /cryptoai page: 'indicator' | 'smc' | ...
   aiHigherTimeframe: varchar("ai_higher_timeframe").notNull().default("1d"), // Preferred higher timeframe for /cryptoai analysis cards
   aiLowerTimeframe: varchar("ai_lower_timeframe").notNull().default("15m"), // Preferred lower timeframe for /cryptoai analysis cards
+  aiTradeHorizon: varchar("ai_trade_horizon").notNull().default("intraday"), // Hold-duration style: scalp | intraday | swing | position
   elliottScanEnabled: boolean("elliott_scan_enabled").notNull().default(false), // Opt-in to Elliott mode in scanner
   pushSubscription: jsonb("push_subscription"), // Store push subscription data
   stripeSubscriptionId: varchar("stripe_subscription_id"),
@@ -139,6 +142,7 @@ export const insertCryptoSubscriptionSchema = z.object({
   aiTraderMode: z.string().optional().default('smc'),
   aiHigherTimeframe: aiTimeframeSchema.optional().default(DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME),
   aiLowerTimeframe: aiTimeframeSchema.optional().default(DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME),
+  aiTradeHorizon: z.enum(CRYPTO_AI_TRADE_HORIZONS).optional().default(DEFAULT_CRYPTO_AI_TRADE_HORIZON),
   elliottScanEnabled: z.boolean().optional().default(false),
   pushSubscription: z.any().optional().nullable(),
   stripeSubscriptionId: z.string().optional().nullable(),
@@ -277,6 +281,7 @@ export const cryptoPreferencesSchema = z.object({
   aiTraderMode: z.string().default('smc'),
   aiHigherTimeframe: aiTimeframeSchema.default(DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME),
   aiLowerTimeframe: aiTimeframeSchema.default(DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME),
+  aiTradeHorizon: z.enum(CRYPTO_AI_TRADE_HORIZONS).default(DEFAULT_CRYPTO_AI_TRADE_HORIZON),
   tickerSlots: z.number().int().min(0).max(5).default(0),
   scanTickers: z.array(z.string()).max(5).default([]),
   minRiskReward: z.number().min(0).max(99.99).default(1.5),

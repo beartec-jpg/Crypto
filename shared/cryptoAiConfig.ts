@@ -9,6 +9,103 @@ export type CryptoAiTimeframe = (typeof CRYPTO_AI_TIMEFRAMES)[number];
 export const DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME: CryptoAiHigherTimeframe = '1d';
 export const DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME: CryptoAiLowerTimeframe = '15m';
 
+/**
+ * Trade horizon = how long the user intends to hold, independent of chart TF pair.
+ * Chart TF still picks the data window; horizon scales structure (SL/TP) so a 1d/1h
+ * pair can produce multi-day swings instead of tight LTF stops.
+ */
+export const CRYPTO_AI_TRADE_HORIZONS = ['scalp', 'intraday', 'swing', 'position'] as const;
+export type CryptoAiTradeHorizon = (typeof CRYPTO_AI_TRADE_HORIZONS)[number];
+export const DEFAULT_CRYPTO_AI_TRADE_HORIZON: CryptoAiTradeHorizon = 'intraday';
+
+export type CryptoAiTradeHorizonMeta = {
+  id: CryptoAiTradeHorizon;
+  label: string;
+  /** One-line UI description */
+  description: string;
+  /** Expected hold window injected into the model prompt */
+  expectedHold: string;
+  /**
+   * Which TF owns invalidation (SL) and major targets.
+   * entryTiming still uses the lower TF for triggers on all horizons.
+   */
+  structureSource: 'lower' | 'balanced' | 'higher';
+  /** Prompt block: stop / target / structure rules for this horizon */
+  structureRules: string;
+};
+
+export const CRYPTO_AI_TRADE_HORIZON_META: Record<CryptoAiTradeHorizon, CryptoAiTradeHorizonMeta> = {
+  scalp: {
+    id: 'scalp',
+    label: 'Scalp',
+    description: 'Minutes to a few hours — tight LTF structure.',
+    expectedHold: '15 minutes – 4 hours',
+    structureSource: 'lower',
+    structureRules:
+      'SCALP HORIZON: Stops and targets come from LOWER-timeframe structure only (nearest LTF swing, micro FVG/OB). ' +
+      'Keep risk tight; TP1 is the next local opposing level, not a multi-day swing. Do not stretch for weekly levels.',
+  },
+  intraday: {
+    id: 'intraday',
+    label: 'Intraday',
+    description: 'Same session to ~1 day — default day-trade sizing.',
+    expectedHold: '4 hours – 1 day',
+    structureSource: 'balanced',
+    structureRules:
+      'INTRADAY HORIZON: Entry timing from the lower TF; invalidation may use LTF structure behind the entry zone. ' +
+      'Targets can reach the next session/HTF level, but stops should still be structurally local (not multi-week).',
+  },
+  swing: {
+    id: 'swing',
+    label: 'Swing',
+    description: 'Days to a couple of weeks — wider HTF structure.',
+    expectedHold: '2 days – 2 weeks',
+    structureSource: 'higher',
+    structureRules:
+      'SWING HORIZON: Lower TF is ONLY for entry timing / trigger. Stop-loss MUST sit behind HIGHER-timeframe structure ' +
+      '(HTF swing pivot, HTF order block, or HTF FVG boundary) — never a tight 15m wick. Targets are HTF level-to-level ' +
+      '(prior day/week swing, HTF liquidity, value-area extremes). Wider stops are expected; keep R:R honest by using farther TPs.',
+  },
+  position: {
+    id: 'position',
+    label: 'Position',
+    description: 'Weeks to months — major structural levels only.',
+    expectedHold: '2 weeks – 3 months',
+    structureSource: 'higher',
+    structureRules:
+      'POSITION HORIZON: Ignore micro LTF noise for risk. SL behind major HTF structure only (weekly/daily swings, large OBs). ' +
+      'TP1/TP2 at major opposing HTF levels. Expected hold is multi-week; do not propose scalp-width stops even if LTF FVGs are nearby.',
+  },
+};
+
+export function isCryptoAiTradeHorizon(value: unknown): value is CryptoAiTradeHorizon {
+  return typeof value === 'string' && (CRYPTO_AI_TRADE_HORIZONS as readonly string[]).includes(value);
+}
+
+export function getCryptoAiTradeHorizon(id?: string | null): CryptoAiTradeHorizonMeta {
+  if (id && isCryptoAiTradeHorizon(id)) {
+    return CRYPTO_AI_TRADE_HORIZON_META[id];
+  }
+  return CRYPTO_AI_TRADE_HORIZON_META[DEFAULT_CRYPTO_AI_TRADE_HORIZON];
+}
+
+/** Deep-dive cache mode key: keeps horizon results from colliding with other styles. */
+export function encodeCryptoAiDeepDiveMode(traderModeId: string, horizon: CryptoAiTradeHorizon): string {
+  return `${traderModeId}:${horizon}`;
+}
+
+export function buildCryptoAiHorizonPromptBlock(
+  horizon: CryptoAiTradeHorizon,
+  higherTimeframe: string,
+  lowerTimeframe: string,
+): string {
+  const meta = getCryptoAiTradeHorizon(horizon);
+  return (
+    `TRADE HORIZON: ${meta.label.toUpperCase()} (expected hold ${meta.expectedHold}). ` +
+    `Chart pair is ${higherTimeframe}/${lowerTimeframe}. ${meta.structureRules}`
+  );
+}
+
 export const CRYPTO_AI_VALID_PAIRS = [
   ['1w', '1h'],
   ['1w', '15m'],

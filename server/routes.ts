@@ -22,11 +22,17 @@ import { userWatchlists } from "@shared/schema";
 import {
   CRYPTO_AI_HIGHER_TIMEFRAMES,
   CRYPTO_AI_LOWER_TIMEFRAMES,
+  CRYPTO_AI_TRADE_HORIZONS,
   DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
   DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+  DEFAULT_CRYPTO_AI_TRADE_HORIZON,
+  buildCryptoAiHorizonPromptBlock,
+  encodeCryptoAiDeepDiveMode,
   encodeCryptoAiPairInterval,
+  getCryptoAiTradeHorizon,
   isCryptoAiCacheFresh,
   isCryptoAiDeepDiveCacheFresh,
+  isCryptoAiTradeHorizon,
   normalizeCryptoAiPair,
   isValidCryptoAiPair,
 } from "@shared/cryptoAiConfig";
@@ -4090,6 +4096,7 @@ Be concise and direct.`;
         lowerTimeframe: requestedLowerTimeframe,
         analysisType = 'deep',
         mode: requestedMode,
+        tradeHorizon: requestedTradeHorizon,
       } = req.body;
       if (!symbol) {
         return res.status(400).json({ error: 'Symbol is required' });
@@ -4105,6 +4112,10 @@ Be concise and direct.`;
       const pairInterval = encodeCryptoAiPairInterval(higherTimeframe, lowerTimeframe);
       const minRiskReward = Number(subscription.minRiskReward ?? AI_MIN_RISK_REWARD_RATIO);
       const minConfluence = Number(subscription.minConfluence ?? 3);
+      const tradeHorizonMeta = getCryptoAiTradeHorizon(
+        requestedTradeHorizon ?? subscription.aiTradeHorizon ?? DEFAULT_CRYPTO_AI_TRADE_HORIZON,
+      );
+      const tradeHorizon = tradeHorizonMeta.id;
 
       let creditResult = { success: true, remaining: subscription.aiCredits ?? 0 };
       if (analysisType === 'deep') {
@@ -4121,8 +4132,9 @@ Be concise and direct.`;
       // Resolve the selected AI trader mode so multi-TF analysis uses the same lens.
       const { getAiTraderMode } = await import("@shared/aiTraderModes");
       const traderMode = getAiTraderMode(requestedMode);
+      const deepDiveCacheMode = encodeCryptoAiDeepDiveMode(traderMode.id, tradeHorizon);
 
-      console.log(`📊 Multi-TF Analysis for ${symbol}: ${higherTimeframe}/${lowerTimeframe} (${analysisType})`);
+      console.log(`📊 Multi-TF Analysis for ${symbol}: ${higherTimeframe}/${lowerTimeframe} (${analysisType}, horizon=${tradeHorizon})`);
 
       if (analysisType === 'deep') {
         const { pool } = await import('./db');
@@ -4134,7 +4146,7 @@ Be concise and direct.`;
              AND lower_timeframe = $3
              AND mode = $4
            LIMIT 1`,
-          [symbol, higherTimeframe, lowerTimeframe, traderMode.id],
+          [symbol, higherTimeframe, lowerTimeframe, deepDiveCacheMode],
         );
 
         const cachedRow = cachedResult.rows[0];
@@ -4372,27 +4384,30 @@ OUTPUT: Valid JSON only, no markdown.
 }`;
 
       const counterTrendMinConfluence = minConfluence + 1;
+      const horizonPrompt = buildCryptoAiHorizonPromptBlock(tradeHorizon, higherTimeframe, lowerTimeframe);
       const deepPrompt = `Symbol: ${symbol} | Multi-timeframe trade search
 Current Price: $${lowerData.currentPrice}
 HTF Dominant Bias (${higherTimeframe}): ${dominantBias}
+${horizonPrompt}
 ${fmtTF(higherTimeframe, higherData)}
 ${fmtTF(lowerTimeframe, lowerData)}
 
 TRADE PLANNING RULES:
 1. HTF bias is ${dominantBias}. Treat it as directional context and the dominant destination, NOT a hard veto.
-2. Favour with-trend setups and tag them as "with-trend". Counter-trend intraday setups are explicitly allowed when local structure and confluence justify them; tag them as "counter-trend" and require a higher confluence bar.
+2. Favour with-trend setups and tag them as "with-trend". Counter-trend setups are allowed when local structure and confluence justify them; tag them as "counter-trend" and require a higher confluence bar.
 3. Explicitly detect reversal/structure-shift triggers: a higher-low after a downtrend can trigger a LONG, and a lower-high after an uptrend can trigger a SHORT, even against the HTF bias.
 4. Map the NEXT high-probability setup(s), even if price has not reached the zone yet. Pending/conditional plans are valid and should be returned.
 5. Include triggerZone and triggerCondition for any setup that still needs price to reach a level before activation.
-6. ENTRY: Place entry at an FVG zone, Order Block, or key swing level — NOT at current price unless price is exactly at that level. Prefer waiting for a pullback into an FVG or OB confluence.
-7. STOP LOSS: Place SL just behind the invalidation structure — below the entry OB/FVG low for LONGs, above the entry OB/FVG high for SHORTs. No ATR padding.
-8. TARGET: Trade level-to-level. TP1 = previous swing pivot or nearest opposing FVG/OB. TP2 = next major structural level (swing high/low, VAH/VAL, or POC on HTF).
+6. ENTRY: Place entry at an FVG zone, Order Block, or key swing level — NOT at current price unless price is exactly at that level. Prefer waiting for a pullback into an FVG or OB confluence. Use ${lowerTimeframe} for timing/trigger even on swing/position horizons.
+7. STOP LOSS: Place SL just behind the invalidation structure for the selected TRADE HORIZON (see above) — not automatically the nearest LTF wick. Below the structural low for LONGs, above the structural high for SHORTs. No arbitrary ATR padding.
+8. TARGET: Trade level-to-level at the horizon's scale. TP1 = nearest valid opposing level for this horizon; TP2 = next major structural level. On swing/position, prefer ${higherTimeframe} levels.
 9. CONFLUENCE SCORING: Fib OTE zone (0.382-0.705) overlap, EMA proximity (20/50/200), OB alignment, swing pivot alignment, BOS/CHoCH, liquidity sweep, and trendline alignment each add a confluence signal. More confluences = higher grade.
 10. Minimum R/R: ${minRiskReward}:1 to TP1. With-trend setups need at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}; counter-trend setups need at least ${counterTrendMinConfluence}.
 11. LONG: SL strictly below entry, TP1/TP2 strictly above entry. SHORT: SL strictly above entry, TP1/TP2 strictly below entry.
 12. Return the valid standalone setup(s) you actually find. Do NOT force sequenced or linked trades. You MAY mention a natural flow into another zone in overallSummary, but never withhold a good standalone setup for lack of a second leg.
 13. No contradictory LONG and SHORT at the same entry. Maximum 2 trade ideas total.
 14. If no high-quality setup exists at a structural level, output 0 trades and use overallSummary/keyLevels to say which zones are worth watching next.
+15. Tag each trade's expected hold to match the horizon (${tradeHorizonMeta.expectedHold}) in reasoning when useful.
 
 OUTPUT: Valid JSON only, no markdown.
 {
@@ -4433,7 +4448,7 @@ OUTPUT: Valid JSON only, no markdown.
             role: "system",
             content: analysisType === 'general'
               ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Always respond with valid JSON only, no markdown.`
-              : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes (${higherTimeframe}, ${lowerTimeframe}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\nYour edge is cross-timeframe confluence: identify WHERE price is going (the target level), WHERE to enter (with a concrete justification appropriate to this mode — never a blind "enter at current price"), and WHERE your invalidation is (a structural stop behind the entry). Higher timeframe bias is context and destination, not a veto. Favour with-trend setups, but allow counter-trend intraday setups when local structure shifts and confluence are strong enough. Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Stop-loss goes just behind the invalidation structure — no ATR padding. Require minimum R/R ${minRiskReward}:1 to TP1, at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}, and one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB/FVG alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups and never force sequencing. You never output contradictory LONG+SHORT setups. If no quality setup exists for this mode, you say so and point to the watch zones. Always respond with valid JSON only, no markdown.`
+              : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes (${higherTimeframe}, ${lowerTimeframe}) with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nYour edge is cross-timeframe confluence: identify WHERE price is going (the target level), WHERE to enter (with a concrete justification appropriate to this mode — never a blind "enter at current price"), and WHERE your invalidation is (a structural stop scaled to the trade horizon, not automatically the nearest LTF wick). Higher timeframe bias is context and destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Stop-loss goes just behind the horizon-appropriate invalidation structure — no arbitrary ATR padding. Require minimum R/R ${minRiskReward}:1 to TP1, at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}, and one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB/FVG alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups and never force sequencing. You never output contradictory LONG+SHORT setups. If no quality setup exists for this mode, you say so and point to the watch zones. Always respond with valid JSON only, no markdown.`
           },
           { role: "user", content: analysisType === 'general' ? generalPrompt : deepPrompt }
         ],
@@ -4589,12 +4604,13 @@ OUTPUT: Valid JSON only, no markdown.
             [
               symbol,
               pairInterval,
-              traderMode.id,
+              deepDiveCacheMode,
               JSON.stringify({
                 multiTFInsights: parsedResult.multiTFInsights,
                 bestTrades: parsedResult.bestTrades || [],
                 estimatedCost,
                 tokens: { input: inputTokens, output: outputTokens },
+                tradeHorizon,
               }),
               higherTimeframe,
               lowerTimeframe,
@@ -6269,6 +6285,7 @@ Return ONLY valid JSON in this exact format:
         aiTraderMode: subscription?.aiTraderMode || 'smc',
         aiHigherTimeframe: normalizeCryptoAiPair(subscription?.aiHigherTimeframe, subscription?.aiLowerTimeframe).higherTimeframe,
         aiLowerTimeframe: normalizeCryptoAiPair(subscription?.aiHigherTimeframe, subscription?.aiLowerTimeframe).lowerTimeframe,
+        aiTradeHorizon: getCryptoAiTradeHorizon(subscription?.aiTradeHorizon).id,
         pushSubscription: subscription?.pushSubscription || null,
         tier: subscription?.tier || 'free',
       });
@@ -6285,7 +6302,7 @@ Return ONLY valid JSON in this exact format:
       const { 
         selectedTickers, alertGrades, alertTimeframes, alertTypes, alertsEnabled, pushSubscription,
         hlineAlertsEnabled, elliottAlertsEnabled, aiTradeAlertsEnabled, indicatorAlertsEnabled,
-        scanTickers, aiTraderMode, aiHigherTimeframe, aiLowerTimeframe,
+        scanTickers, aiTraderMode, aiHigherTimeframe, aiLowerTimeframe, aiTradeHorizon,
         minRiskReward, minConfluence
       } = req.body;
       const getTickerSlotCap = (userTier: string) => {
@@ -6449,6 +6466,12 @@ Return ONLY valid JSON in this exact format:
           return res.status(400).json({ error: `aiLowerTimeframe must be one of: ${CRYPTO_AI_LOWER_TIMEFRAMES.join(', ')}` });
         }
         updateData.aiLowerTimeframe = aiLowerTimeframe;
+      }
+      if (aiTradeHorizon !== undefined) {
+        if (!isCryptoAiTradeHorizon(aiTradeHorizon)) {
+          return res.status(400).json({ error: `aiTradeHorizon must be one of: ${CRYPTO_AI_TRADE_HORIZONS.join(', ')}` });
+        }
+        updateData.aiTradeHorizon = aiTradeHorizon;
       }
       if (updateData.aiHigherTimeframe !== undefined || updateData.aiLowerTimeframe !== undefined) {
         const currentPair = normalizeCryptoAiPair(subscription?.aiHigherTimeframe, subscription?.aiLowerTimeframe);
