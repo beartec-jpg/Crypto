@@ -1,12 +1,28 @@
-import type { TradeIdea } from '@/lib/cryptoAiTradePlans';
+import type { MultiTFInsights, TradeIdea } from '@/lib/cryptoAiTradePlans';
 import { formatTickerDisplay } from '@/lib/chart/priceUtils';
-import { getHtfRelationshipLabel, isPendingTradeIdea } from '@/lib/cryptoAiTradePlans';
+import {
+  getHtfRelationshipLabel,
+  getOverallSummary,
+  getSection,
+  isPendingTradeIdea,
+} from '@/lib/cryptoAiTradePlans';
 
 export type DownloadTradeImageOptions = {
   trade: TradeIdea;
   symbol: string;
   higherTimeframe: string;
   lowerTimeframe: string;
+  horizonLabel?: string;
+  modeLabel?: string;
+};
+
+export type DownloadAnalysisImageOptions = {
+  symbol: string;
+  higherTimeframe: string;
+  lowerTimeframe: string;
+  insights?: MultiTFInsights | null;
+  watchLevels?: string[];
+  tradeCount?: number;
   horizonLabel?: string;
   modeLabel?: string;
 };
@@ -234,6 +250,209 @@ export async function downloadTradeImage(options: DownloadTradeImageOptions): Pr
   const safeSymbol = displaySymbol.replace(/[^a-zA-Z0-9._-]+/g, '_');
   a.href = url;
   a.download = `${safeSymbol}_${direction}_${Date.now()}.png`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Renders a deep-dive analysis card PNG (summary + TF bias + watch zones).
+ * Works when no trade setups were found — still downloads the analysis.
+ */
+export async function downloadAnalysisImage(options: DownloadAnalysisImageOptions): Promise<void> {
+  const {
+    symbol,
+    higherTimeframe,
+    lowerTimeframe,
+    insights,
+    watchLevels = [],
+    tradeCount = 0,
+    horizonLabel,
+    modeLabel,
+  } = options;
+
+  const displaySymbol = formatTickerDisplay(symbol);
+  const accent = '#a855f7';
+  const bg = '#0b1220';
+  const card = '#121a2b';
+  const muted = '#94a3b8';
+  const text = '#e2e8f0';
+  const border = '#1e293b';
+
+  const width = 900;
+  const padding = 36;
+  const contentWidth = width - padding * 2;
+
+  const measureCanvas = document.createElement('canvas');
+  const mctx = measureCanvas.getContext('2d');
+  if (!mctx) throw new Error('Canvas not supported');
+  mctx.font = '15px system-ui, -apple-system, sans-serif';
+
+  const overall = getOverallSummary(insights) || 'No high-probability setup cleared the gates yet.';
+  const higher = getSection(insights, higherTimeframe);
+  const lower = getSection(insights, lowerTimeframe);
+  const levels = watchLevels.length
+    ? watchLevels
+    : [
+        ...(higher?.keyLevels ?? []),
+        ...(lower?.keyLevels ?? []),
+      ].filter(Boolean).slice(0, 8);
+
+  const overallLines = wrapText(mctx, overall, contentWidth);
+  const higherSummaryLines = higher?.summary
+    ? wrapText(mctx, higher.summary, contentWidth)
+    : [];
+  const lowerSummaryLines = lower?.summary
+    ? wrapText(mctx, lower.summary, contentWidth)
+    : [];
+  const levelLineSets = levels.map((level) => wrapText(mctx, `• ${level}`, contentWidth));
+  const noTradeNote = tradeCount === 0
+    ? wrapText(
+      mctx,
+      'No setup cleared confluence / R:R gates. Watch the zones below for the next trigger.',
+      contentWidth,
+    )
+    : wrapText(
+      mctx,
+      `${tradeCount} trade idea${tradeCount === 1 ? '' : 's'} found — download individual trades for entry/SL/TP cards.`,
+      contentWidth,
+    );
+
+  let height = padding;
+  height += 56; // title
+  height += 28; // badges
+  height += 18;
+  height += 22 + overallLines.length * 22 + 12; // overall
+  if (higherSummaryLines.length) height += 22 + higherSummaryLines.length * 22 + 10;
+  if (lowerSummaryLines.length) height += 22 + lowerSummaryLines.length * 22 + 10;
+  height += 22 + noTradeNote.length * 22 + 12;
+  if (levelLineSets.length) {
+    height += 22;
+    for (const lines of levelLineSets) height += lines.length * 22;
+    height += 8;
+  }
+  height += 40; // footer
+  height += padding;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width * 2;
+  canvas.height = height * 2;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas not supported');
+  ctx.scale(2, 2);
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, width, height);
+
+  const cardX = 16;
+  const cardY = 16;
+  const cardW = width - 32;
+  const cardH = height - 32;
+  ctx.fillStyle = card;
+  roundRect(ctx, cardX, cardY, cardW, cardH, 16);
+  ctx.fill();
+  ctx.strokeStyle = border;
+  ctx.lineWidth = 1;
+  roundRect(ctx, cardX, cardY, cardW, cardH, 16);
+  ctx.stroke();
+
+  ctx.fillStyle = accent;
+  roundRect(ctx, cardX, cardY, 8, cardH, 4);
+  ctx.fill();
+
+  let y = padding + 8;
+
+  ctx.fillStyle = text;
+  ctx.font = 'bold 28px system-ui, -apple-system, sans-serif';
+  ctx.fillText(`${displaySymbol}  ·  Analysis`, padding + 12, y + 28);
+  y += 56;
+
+  const badges = [
+    `${higherTimeframe}/${lowerTimeframe}`,
+    tradeCount === 0 ? 'No trade yet' : `${tradeCount} setup${tradeCount === 1 ? '' : 's'}`,
+  ];
+  if (horizonLabel) badges.push(horizonLabel);
+  if (modeLabel) badges.push(modeLabel);
+  if (higher?.bias) badges.push(`HTF ${higher.bias}`);
+  if (lower?.bias) badges.push(`LTF ${lower.bias}`);
+
+  let bx = padding + 12;
+  ctx.font = '12px system-ui, -apple-system, sans-serif';
+  for (const badge of badges) {
+    const tw = ctx.measureText(badge).width + 20;
+    if (bx + tw > width - padding) {
+      bx = padding + 12;
+      y += 32;
+    }
+    ctx.fillStyle = '#1e293b';
+    roundRect(ctx, bx, y, tw, 26, 8);
+    ctx.fill();
+    ctx.fillStyle = muted;
+    ctx.fillText(badge, bx + 10, y + 17);
+    bx += tw + 8;
+  }
+  y += 42;
+
+  const drawSection = (label: string, lines: string[]) => {
+    if (!lines.length) return;
+    ctx.fillStyle = muted;
+    ctx.font = '11px system-ui, -apple-system, sans-serif';
+    ctx.fillText(label, padding + 12, y);
+    y += 18;
+    ctx.fillStyle = text;
+    ctx.font = '15px system-ui, -apple-system, sans-serif';
+    for (const line of lines) {
+      ctx.fillText(line, padding + 12, y);
+      y += 22;
+    }
+    y += 10;
+  };
+
+  drawSection('OVERALL SUMMARY', overallLines);
+  if (higherSummaryLines.length) {
+    drawSection(
+      `${higherTimeframe.toUpperCase()}  ·  ${higher?.bias ?? '—'}`,
+      higherSummaryLines,
+    );
+  }
+  if (lowerSummaryLines.length) {
+    drawSection(
+      `${lowerTimeframe.toUpperCase()}  ·  ${lower?.bias ?? '—'}`,
+      lowerSummaryLines,
+    );
+  }
+  drawSection(tradeCount === 0 ? 'STATUS' : 'SETUPS', noTradeNote);
+
+  if (levelLineSets.length) {
+    ctx.fillStyle = muted;
+    ctx.font = '11px system-ui, -apple-system, sans-serif';
+    ctx.fillText('KEY ZONES TO WATCH', padding + 12, y);
+    y += 18;
+    ctx.fillStyle = text;
+    ctx.font = '15px system-ui, -apple-system, sans-serif';
+    for (const lines of levelLineSets) {
+      for (const line of lines) {
+        ctx.fillText(line, padding + 12, y);
+        y += 22;
+      }
+    }
+  }
+
+  y = height - padding - 8;
+  ctx.fillStyle = muted;
+  ctx.font = '12px system-ui, -apple-system, sans-serif';
+  const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+  ctx.fillText(`Crypto AI  ·  ${stamp}`, padding + 12, y);
+
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('Failed to encode analysis image');
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeSymbol = displaySymbol.replace(/[^a-zA-Z0-9._-]+/g, '_');
+  a.href = url;
+  a.download = `${safeSymbol}_analysis_${Date.now()}.png`;
   document.body.appendChild(a);
   a.click();
   a.remove();

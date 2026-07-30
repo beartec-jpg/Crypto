@@ -54,7 +54,7 @@ import {
   type CryptoAiSessionSnapshot,
   type CryptoAiTradeHorizon,
 } from '@shared/cryptoAiConfig';
-import { downloadTradeImage } from '@/lib/downloadTradeImage';
+import { downloadAnalysisImage, downloadTradeImage } from '@/lib/downloadTradeImage';
 
 const HIGHER_TIMEFRAME_OPTIONS = CRYPTO_AI_HIGHER_TIMEFRAMES.map((value) => ({ label: value, value }));
 const LOWER_TIMEFRAME_OPTIONS = CRYPTO_AI_LOWER_TIMEFRAMES.map((value) => ({ label: value, value }));
@@ -853,9 +853,44 @@ export default function CryptoAI() {
                       {deepDiveState.status === 'success' ? (
                         <div className="space-y-4">
                           <div className="rounded-lg border border-border/60 p-4">
-                            <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
-                              <Sparkles className="h-4 w-4 text-purple-400" />
-                              Deep-dive summary
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 text-sm font-semibold">
+                                <Sparkles className="h-4 w-4 text-purple-400" />
+                                Deep-dive summary
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={async () => {
+                                  try {
+                                    await downloadAnalysisImage({
+                                      symbol: ticker,
+                                      higherTimeframe: aiHigherTimeframe,
+                                      lowerTimeframe: aiLowerTimeframe,
+                                      insights: deepInsights,
+                                      watchLevels: deepDiveWatchLevels,
+                                      tradeCount: tradeIdeas.length,
+                                      horizonLabel: getCryptoAiTradeHorizon(aiTradeHorizon).label,
+                                      modeLabel: ENABLED_AI_TRADER_MODES.find((mode) => mode.id === aiTraderMode)?.label,
+                                    });
+                                    toast({
+                                      title: 'Analysis downloaded',
+                                      description: tradeIdeas.length === 0
+                                        ? 'Summary and watch zones saved as PNG.'
+                                        : 'Analysis summary saved as PNG.',
+                                    });
+                                  } catch (error: any) {
+                                    toast({
+                                      title: 'Download failed',
+                                      description: error?.message || 'Could not create analysis image.',
+                                      variant: 'destructive',
+                                    });
+                                  }
+                                }}
+                              >
+                                <Download className="mr-2 h-4 w-4" />
+                                Download analysis
+                              </Button>
                             </div>
                             <p className="text-sm text-muted-foreground">{getOverallSummary(deepInsights)}</p>
                           </div>
