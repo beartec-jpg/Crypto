@@ -1,5 +1,6 @@
 /**
- * Once-daily pre-London desk: deep-dive BTC, render total analysis PNG, post to Discord.
+ * Once-daily pre-London desk: deep-dive BTC and post text embeds to Discord.
+ * No image attachment — message + embeds only, with NFA disclaimer.
  *
  * Schedule: 05:45 UTC (15 minutes before London session board at 06:00 UTC).
  *
@@ -139,28 +140,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const deepSummary = overallOf(deepInsights) || 'Deep-dive completed.';
     const watchLevels = collectLevels(deepInsights, [deep.lowerTimeframe, deep.higherTimeframe]);
 
-    const png = await renderDiscordAnalysisPng({
-      symbol,
-      higherTimeframe: deep.higherTimeframe,
-      lowerTimeframe: deep.lowerTimeframe,
-      sessionLabel: 'Pre-London open desk',
-      modeLabel: modeMeta.label,
-      horizonLabel: horizonMeta.label,
-      crossSummary,
-      deepSummary,
-      higher,
-      lower,
-      watchLevels,
-      trades: deep.bestTrades,
-    });
-
     const setupCount = deep.bestTrades.length;
     const content =
       `**${symbol} · Pre-London open** (${deep.higherTimeframe}/${deep.lowerTimeframe})\n` +
       `Mode: **${modeMeta.label}** · Length: **${horizonMeta.label}** (~${horizonMeta.expectedHold})\n` +
       (setupCount
-        ? `${setupCount} trade setup${setupCount === 1 ? '' : 's'} attached.`
-        : 'No setup cleared gates — watch zones on the card.');
+        ? `${setupCount} trade setup${setupCount === 1 ? '' : 's'} below.`
+        : 'No setup cleared gates — watch zones below.') +
+      `\n\n⚠️ **Not financial advice.** Educational / informational only. Always review the chart and structure yourself before acting — make your own judgement.`;
 
     const embeds = [
       {
@@ -170,19 +157,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         fields: watchLevels.length
           ? [{ name: 'Key zones', value: watchLevels.map((l) => `• ${l}`).join('\n').slice(0, 1000) }]
           : undefined,
-        footer: { text: 'BearTec Crypto AI · Pre-London desk' },
+        footer: { text: 'BearTec Crypto AI · Pre-London desk · Not financial advice' },
         timestamp: new Date().toISOString(),
       },
       ...tradeEmbeds(symbol, deep.bestTrades),
+      {
+        title: 'Disclaimer',
+        description:
+          'This is **not financial advice**. Crypto trading involves substantial risk of loss. ' +
+          'Setups are AI-generated ideas for education and discussion only. ' +
+          '**Always inspect the chart and structure yourself** before trading, and make your own independent decisions. ' +
+          'BearTec is not responsible for trading losses.',
+        color: 0x64748b,
+      },
     ];
 
     const discord = await postDiscordWebhook({
       webhookUrl,
       content,
       embeds,
-      filename: `${symbol}_pre_london_${Date.now()}.png`,
-      fileBuffer: png,
-      fileContentType: 'image/png',
     });
 
     if (!discord.ok) {
@@ -206,7 +199,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       tradeCount: setupCount,
       estimatedCost: deep.estimatedCost,
       tokens: deep.tokens,
-      pngBytes: png.length,
       discordStatus: discord.status,
     });
   } catch (error: any) {
