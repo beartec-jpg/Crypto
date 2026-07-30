@@ -466,7 +466,7 @@ export default function CryptoAI() {
             <div className="space-y-2">
               <div className="text-sm font-medium">Higher TF</div>
               <Select value={aiHigherTimeframe} onValueChange={handleHigherTimeframeChange}>
-                <SelectTrigger>
+                <SelectTrigger className="bg-background text-foreground border-input">
                   <SelectValue placeholder="Select higher timeframe">
                     {HIGHER_TIMEFRAME_OPTIONS.find((option) => option.value === aiHigherTimeframe)?.label}
                   </SelectValue>

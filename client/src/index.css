@@ -125,15 +125,22 @@
 }
 
 @layer components {
-  /* Force white text in Select components */
+  /*
+   * Select triggers use role="combobox". Never force pure white — that
+   * washes out labels on light cards (AI desk preferences, etc.).
+   * Use theme foreground so light + dark both stay readable.
+   */
   [role="combobox"] {
-    color: white !important;
-    font-weight: 700 !important;
+    color: var(--foreground) !important;
+    font-weight: 600 !important;
   }
-  
+
   [role="combobox"] span {
-    color: white !important;
-    font-weight: 700 !important;
+    color: inherit !important;
+  }
+
+  [role="combobox"][data-placeholder] {
+    color: var(--muted-foreground) !important;
   }
 }
 
