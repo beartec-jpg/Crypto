@@ -54,7 +54,11 @@ import {
   type CryptoAiSessionSnapshot,
   type CryptoAiTradeHorizon,
 } from '@shared/cryptoAiConfig';
-import { downloadAnalysisImage, downloadTradeImage } from '@/lib/downloadTradeImage';
+import {
+  downloadAnalysisImage,
+  downloadTotalAnalysisImage,
+  downloadTradeImage,
+} from '@/lib/downloadTradeImage';
 
 const HIGHER_TIMEFRAME_OPTIONS = CRYPTO_AI_HIGHER_TIMEFRAMES.map((value) => ({ label: value, value }));
 const LOWER_TIMEFRAME_OPTIONS = CRYPTO_AI_LOWER_TIMEFRAMES.map((value) => ({ label: value, value }));
@@ -707,6 +711,9 @@ export default function CryptoAI() {
               const tradeIdeas = deepDiveState.status === 'success' ? (deepDiveState.data.bestTrades ?? []) : [];
               const deepDiveWatchLevels = collectWatchLevels(deepInsights, [aiLowerTimeframe, aiHigherTimeframe]);
 
+              const canPrintTotal =
+                generalState.status === 'success' || deepDiveState.status === 'success';
+
               return (
                 <Card key={`${ticker}-${timeframeKey}`} className="h-full border-border/60">
                   <CardHeader className="space-y-3">
@@ -717,6 +724,69 @@ export default function CryptoAI() {
                       <div className="flex flex-wrap justify-end gap-2">
                         <Badge variant="outline">HTF {aiHigherTimeframe}</Badge>
                         <Badge variant="outline">LTF {aiLowerTimeframe}</Badge>
+                        {canPrintTotal ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              try {
+                                const sessionRows = sessionSections.map(({ session, label, snapshot, metrics }) => {
+                                  const sessionInsights = snapshot?.multiTFInsights
+                                    ? (snapshot.multiTFInsights as MultiTFInsights)
+                                    : null;
+                                  const higherSection = getSection(sessionInsights, aiHigherTimeframe);
+                                  const lowerSection = getSection(sessionInsights, aiLowerTimeframe);
+                                  const summary =
+                                    higherSection?.summary
+                                    || lowerSection?.summary
+                                    || getOverallSummary(sessionInsights)
+                                    || 'Waiting for this session snapshot.';
+                                  const bias = higherSection?.bias || lowerSection?.bias;
+                                  return {
+                                    label,
+                                    isActive: metrics.isActive,
+                                    bias,
+                                    summary,
+                                    percentChange: metrics.percentChange,
+                                    range: metrics.range,
+                                    volumeRatio: metrics.volumeRatio,
+                                    closePosition: metrics.closePosition,
+                                    closePositionLabel: metrics.closePositionLabel,
+                                    divergenceBadge: metrics.divergenceBadge,
+                                    handoff: metrics.handoff,
+                                  };
+                                });
+
+                                await downloadTotalAnalysisImage({
+                                  symbol: ticker,
+                                  higherTimeframe: aiHigherTimeframe,
+                                  lowerTimeframe: aiLowerTimeframe,
+                                  sessions: sessionRows,
+                                  crossTimeframeSummary: getOverallSummary(generalInsights),
+                                  generalInsights,
+                                  deepInsights,
+                                  trades: tradeIdeas,
+                                  watchLevels: deepDiveWatchLevels,
+                                  horizonLabel: getCryptoAiTradeHorizon(aiTradeHorizon).label,
+                                  modeLabel: ENABLED_AI_TRADER_MODES.find((mode) => mode.id === aiTraderMode)?.label,
+                                });
+                                toast({
+                                  title: 'Total analysis downloaded',
+                                  description: 'Session stats, cross-TF, and setups saved as PNG.',
+                                });
+                              } catch (error: any) {
+                                toast({
+                                  title: 'Download failed',
+                                  description: error?.message || 'Could not create total analysis image.',
+                                  variant: 'destructive',
+                                });
+                              }
+                            }}
+                          >
+                            <Download className="mr-2 h-4 w-4" />
+                            Print total analysis
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
                   </CardHeader>
