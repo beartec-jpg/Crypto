@@ -17,7 +17,7 @@
     "api/cron/discord-btc-pre-london.ts": {
       "memory": 1024,
       "maxDuration": 300,
-      "includeFiles": ["api/_lib/**", "client/public/beartec-logo.png"]
+      "includeFiles": "api/_lib/**"
     },
     "api/**/*.ts": {
       "memory": 1024,

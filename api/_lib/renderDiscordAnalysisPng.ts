@@ -59,6 +59,8 @@ function fmt(v: unknown): string {
 
 function loadLogoRgba(): { width: number; height: number; data: Uint8Array } | null {
   const candidates = [
+    // Bundled next to serverless helpers (vercel includeFiles: api/_lib/**)
+    join(process.cwd(), 'api/_lib/assets/beartec-logo.png'),
     join(process.cwd(), 'client/public/beartec-logo.png'),
     join(process.cwd(), 'public/beartec-logo.png'),
     join(process.cwd(), 'dist/beartec-logo.png'),
