@@ -77,11 +77,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(503).json({ error: 'XAI_API_KEY is not set' });
   }
 
-  const symbol = (process.env.DISCORD_BTC_SYMBOL || 'BTCUSDT').toUpperCase();
-  const higherTimeframe = process.env.DISCORD_AI_HIGHER_TF || '1d';
-  const lowerTimeframe = process.env.DISCORD_AI_LOWER_TF || '15m';
-  const mode = process.env.DISCORD_AI_MODE || 'smc';
-  const tradeHorizon = process.env.DISCORD_AI_HORIZON || 'swing';
+  // Guard against swapped env values (e.g. DISCORD_BTC_SYMBOL=1d or 1D)
+  const rawSymbol = (process.env.DISCORD_BTC_SYMBOL || 'BTCUSDT').trim().toUpperCase();
+  const looksLikeTimeframe = /^\d+[MHDW]$/i.test(rawSymbol) || ['1D', '1H', '15M', '1W', '4H', '5M', '1M'].includes(rawSymbol);
+  const symbol = !rawSymbol || looksLikeTimeframe ? 'BTCUSDT' : rawSymbol;
+  if (looksLikeTimeframe) {
+    console.warn(
+      `DISCORD_BTC_SYMBOL="${process.env.DISCORD_BTC_SYMBOL}" looks like a timeframe; using BTCUSDT. ` +
+        'Set DISCORD_BTC_SYMBOL=BTCUSDT and put 1d/15m in DISCORD_AI_HIGHER_TF / DISCORD_AI_LOWER_TF.',
+    );
+  }
+  const higherTimeframe = (process.env.DISCORD_AI_HIGHER_TF || '1d').trim().toLowerCase();
+  const lowerTimeframe = (process.env.DISCORD_AI_LOWER_TF || '15m').trim().toLowerCase();
+  const mode = (process.env.DISCORD_AI_MODE || 'smc').trim().toLowerCase();
+  const tradeHorizon = (process.env.DISCORD_AI_HORIZON || 'swing').trim().toLowerCase();
   const minRiskReward = Number(process.env.DISCORD_MIN_RR ?? 1.5);
   const minConfluence = Number(process.env.DISCORD_MIN_CONFLUENCE ?? 3);
 
