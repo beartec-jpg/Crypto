@@ -56,6 +56,73 @@ export type DownloadTotalAnalysisImageOptions = {
   modeLabel?: string;
 };
 
+/** Public logo served from client/public/beartec-logo.png */
+const BEARTEC_LOGO_URL = '/beartec-logo.png';
+
+let logoLoadPromise: Promise<HTMLImageElement | null> | null = null;
+
+function loadBearTecLogo(): Promise<HTMLImageElement | null> {
+  if (logoLoadPromise) return logoLoadPromise;
+  logoLoadPromise = new Promise((resolve) => {
+    if (typeof Image === 'undefined') {
+      resolve(null);
+      return;
+    }
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => {
+      logoLoadPromise = null;
+      resolve(null);
+    };
+    img.src = BEARTEC_LOGO_URL;
+  });
+  return logoLoadPromise;
+}
+
+/**
+ * Draws a large, faded BearTec logo centered behind card content (watermark).
+ * Safe no-op if the image cannot load.
+ */
+async function drawBearTecWatermark(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  options?: { opacity?: number; maxWidthRatio?: number },
+): Promise<void> {
+  const opacity = options?.opacity ?? 0.1;
+  const maxWidthRatio = options?.maxWidthRatio ?? 0.55;
+  const logo = await loadBearTecLogo();
+
+  ctx.save();
+  if (logo && logo.naturalWidth > 0) {
+    const maxW = width * maxWidthRatio;
+    const scale = maxW / logo.naturalWidth;
+    const drawW = logo.naturalWidth * scale;
+    const drawH = logo.naturalHeight * scale;
+    // Cap height so tall exports still show a centered mark without dominating
+    const maxH = height * 0.45;
+    const finalScale = drawH > maxH ? maxH / logo.naturalHeight : scale;
+    const w = logo.naturalWidth * finalScale;
+    const h = logo.naturalHeight * finalScale;
+    const x = (width - w) / 2;
+    const y = (height - h) / 2;
+    ctx.globalAlpha = opacity;
+    ctx.drawImage(logo, x, y, w, h);
+  } else {
+    // Fallback text watermark if logo asset fails
+    ctx.globalAlpha = Math.min(0.14, opacity + 0.04);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = `bold ${Math.round(width * 0.08)}px system-ui, -apple-system, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.translate(width / 2, height / 2);
+    ctx.rotate(-Math.PI / 8);
+    ctx.fillText('BearTec', 0, 0);
+  }
+  ctx.restore();
+}
+
 function fmt(value?: string | number | null): string {
   if (value === undefined || value === null || value === '') return '—';
   return String(value);
@@ -156,6 +223,9 @@ export async function downloadTradeImage(options: DownloadTradeImageOptions): Pr
   ctx.fillStyle = accent;
   roundRect(ctx, cardX, cardY, 8, cardH, 4);
   ctx.fill();
+
+  // BearTec logo watermark behind content
+  await drawBearTecWatermark(ctx, width, height);
 
   let y = padding + 8;
 
@@ -269,7 +339,7 @@ export async function downloadTradeImage(options: DownloadTradeImageOptions): Pr
   ctx.fillStyle = muted;
   ctx.font = '12px system-ui, -apple-system, sans-serif';
   const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
-  ctx.fillText(`Crypto AI  ·  ${stamp}`, padding + 12, y);
+  ctx.fillText(`BearTec Crypto AI  ·  ${stamp}`, padding + 12, y);
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('Failed to encode trade image');
@@ -390,6 +460,8 @@ export async function downloadAnalysisImage(options: DownloadAnalysisImageOption
   roundRect(ctx, cardX, cardY, 8, cardH, 4);
   ctx.fill();
 
+  await drawBearTecWatermark(ctx, width, height);
+
   let y = padding + 8;
 
   ctx.fillStyle = text;
@@ -472,7 +544,7 @@ export async function downloadAnalysisImage(options: DownloadAnalysisImageOption
   ctx.fillStyle = muted;
   ctx.font = '12px system-ui, -apple-system, sans-serif';
   const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
-  ctx.fillText(`Crypto AI  ·  ${stamp}`, padding + 12, y);
+  ctx.fillText(`BearTec Crypto AI  ·  ${stamp}`, padding + 12, y);
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('Failed to encode analysis image');
@@ -661,6 +733,8 @@ export async function downloadTotalAnalysisImage(
   ctx.fillStyle = accent;
   roundRect(ctx, cardX, cardY, 8, cardH, 4);
   ctx.fill();
+
+  await drawBearTecWatermark(ctx, width, height, { opacity: 0.09, maxWidthRatio: 0.5 });
 
   let y = padding + 4;
 
@@ -936,7 +1010,7 @@ export async function downloadTotalAnalysisImage(
   ctx.fillStyle = muted;
   ctx.font = '12px system-ui, -apple-system, sans-serif';
   const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
-  ctx.fillText(`Crypto AI  ·  Total analysis  ·  ${stamp}`, padding + 10, height - padding + 4);
+  ctx.fillText(`BearTec Crypto AI  ·  Total analysis  ·  ${stamp}`, padding + 10, height - padding + 4);
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('Failed to encode total analysis image');
