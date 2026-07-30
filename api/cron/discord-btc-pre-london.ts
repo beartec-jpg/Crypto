@@ -140,7 +140,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const deepSummary = overallOf(deepInsights) || 'Deep-dive completed.';
     const watchLevels = collectLevels(deepInsights, [deep.lowerTimeframe, deep.higherTimeframe]);
 
-    const png = renderDiscordAnalysisPng({
+    const png = await renderDiscordAnalysisPng({
       symbol,
       higherTimeframe: deep.higherTimeframe,
       lowerTimeframe: deep.lowerTimeframe,
@@ -161,8 +161,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       `Mode: **${modeMeta.label}** · Length: **${horizonMeta.label}** (~${horizonMeta.expectedHold})\n` +
       (setupCount
         ? `${setupCount} trade setup${setupCount === 1 ? '' : 's'} attached.`
-        : 'No setup cleared gates — watch zones on the card.') +
-      `\n_Est. cost ~$${deep.estimatedCost.toFixed(4)}_`;
+        : 'No setup cleared gates — watch zones on the card.');
 
     const embeds = [
       {

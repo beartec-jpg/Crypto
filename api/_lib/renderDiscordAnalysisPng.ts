@@ -1,10 +1,11 @@
 /**
- * Server-side "total analysis" PNG for Discord (pre-London desk).
- * Pure-JS canvas — no native deps.
+ * High-quality server-side "total analysis" PNG for Discord.
+ * Renders a polished SVG with Inter fonts → PNG via @resvg/resvg-js.
+ * Falls back to the simple bitmap renderer only if resvg is unavailable.
  */
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
-import { decodePngRgba, SimpleCanvas, type Rgba } from './simplePng.js';
+import { SimpleCanvas, type Rgba } from './simplePng.js';
 
 export type DiscordTradeIdea = {
   direction?: string;
@@ -42,203 +43,373 @@ export type DiscordRenderInput = {
   trades?: DiscordTradeIdea[];
 };
 
-const BG: Rgba = [11, 18, 32, 255];
-const CARD: Rgba = [18, 26, 43, 255];
-const PANEL: Rgba = [15, 23, 42, 255];
-const MUTED: Rgba = [148, 163, 184, 255];
-const TEXT: Rgba = [226, 232, 240, 255];
-const ACCENT: Rgba = [168, 85, 247, 255];
-const GREEN: Rgba = [34, 197, 94, 255];
-const RED: Rgba = [239, 68, 68, 255];
-const BORDER: Rgba = [30, 41, 59, 255];
-
 function fmt(v: unknown): string {
-  if (v === undefined || v === null || v === '') return '-';
+  if (v === undefined || v === null || v === '') return '—';
   return String(v);
 }
 
-function loadLogoRgba(): { width: number; height: number; data: Uint8Array } | null {
-  const candidates = [
-    // Bundled next to serverless helpers (vercel includeFiles: api/_lib/**)
-    join(process.cwd(), 'api/_lib/assets/beartec-logo.png'),
-    join(process.cwd(), 'client/public/beartec-logo.png'),
-    join(process.cwd(), 'public/beartec-logo.png'),
-    join(process.cwd(), 'dist/beartec-logo.png'),
-    join(process.cwd(), 'beartec-logo.png'),
-  ];
-  for (const path of candidates) {
-    try {
-      if (!existsSync(path)) continue;
-      const decoded = decodePngRgba(readFileSync(path));
-      if (decoded) return decoded;
-    } catch {
-      // try next
+function escapeXml(s: string): string {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function wrapLines(text: string, maxChars: number, maxLines = 6): string[] {
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  if (!words.length) return ['—'];
+  const lines: string[] = [];
+  let current = '';
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxChars && current) {
+      lines.push(current);
+      current = word;
+      if (lines.length >= maxLines) break;
+    } else {
+      current = next;
     }
+  }
+  if (current && lines.length < maxLines) lines.push(current);
+  if (lines.length === maxLines && words.join(' ').length > lines.join(' ').length) {
+    const last = lines[maxLines - 1];
+    lines[maxLines - 1] = last.length > 3 ? `${last.slice(0, -3)}…` : `${last}…`;
+  }
+  return lines;
+}
+
+function assetPath(...parts: string[]): string | null {
+  const candidates = [
+    join(process.cwd(), 'api/_lib/assets', ...parts),
+    join(process.cwd(), 'assets', ...parts),
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
   }
   return null;
 }
 
-export function renderDiscordAnalysisPng(input: DiscordRenderInput): Buffer {
-  const width = 1000;
-  // Estimate height, then draw
+function logoDataUri(): string | null {
+  const path = assetPath('beartec-logo.png');
+  if (!path) return null;
+  try {
+    const buf = readFileSync(path);
+    return `data:image/png;base64,${buf.toString('base64')}`;
+  } catch {
+    return null;
+  }
+}
+
+function buildSvg(input: DiscordRenderInput): { svg: string; width: number; height: number } {
+  const width = 1200;
   const trades = (input.trades || []).slice(0, 2);
   const watch = (input.watchLevels || []).slice(0, 6);
-  let height = 80; // title
-  height += 40; // badges
-  height += 36 + 90; // cross
-  height += 36 + 80; // deep
-  if (watch.length) height += 28 + watch.length * 20;
+  const crossLines = wrapLines(input.crossSummary || 'No general summary cached yet.', 92, 5);
+  const deepLines = wrapLines(input.deepSummary || 'No deep-dive summary.', 92, 5);
+  const higherLines = wrapLines(input.higher?.summary || '—', 48, 4);
+  const lowerLines = wrapLines(input.lower?.summary || '—', 48, 4);
+
+  // Dynamic height
+  let height = 48; // top pad
+  height += 72; // title
+  height += 44; // badges
+  height += 36 + crossLines.length * 26 + 16; // cross
+  height += 28 + Math.max(higherLines.length, lowerLines.length) * 22 + 24; // htf/ltf
+  height += 36 + deepLines.length * 26 + 12; // deep
+  if (watch.length) height += 28 + watch.length * 24 + 8;
   height += 36; // trades title
-  height += trades.length === 0 ? 50 : trades.length * 130;
-  height += 50; // footer
-  height = Math.max(height, 720);
-
-  const c = new SimpleCanvas(width, height);
-  c.fill(BG);
-
-  // Card
-  c.fillRect(16, 16, width - 32, height - 32, CARD);
-  c.fillRect(16, 16, 8, height - 32, ACCENT);
-
-  // Watermark logo (behind content)
-  const logo = loadLogoRgba();
-  if (logo) {
-    const maxW = width * 0.5;
-    const scale = maxW / logo.width;
-    const dw = Math.floor(logo.width * scale);
-    const dh = Math.floor(logo.height * scale);
-    c.drawImageRgba(logo.data, logo.width, logo.height, (width - dw) / 2, (height - dh) / 2, dw, dh, 0.1);
+  if (!trades.length) {
+    height += 64;
   } else {
-    c.drawText('BearTec', width / 2 - 80, height / 2 - 20, [148, 163, 184, 28], 4);
+    for (const t of trades) {
+      const trigger = [t.triggerZone, t.triggerCondition].filter(Boolean).join(' — ');
+      const trigLines = trigger ? wrapLines(trigger, 95, 2) : [];
+      const reasonLines = t.reasoning ? wrapLines(t.reasoning, 95, 3) : [];
+      height += 28 + 22 + trigLines.length * 22 + 28 + reasonLines.length * 22 + 28;
+    }
   }
+  height += 56; // footer
+  height = Math.max(height, 900);
 
-  let y = 40;
-  const pad = 40;
-  const contentW = width - pad * 2;
-
-  // Title
-  c.drawText(`${input.symbol}  TOTAL ANALYSIS`, pad, y, TEXT, 3);
-  y += 36;
-  c.drawText(input.sessionLabel || 'Pre-London open', pad, y, MUTED, 2);
-  y += 28;
-
-  // Badges row
+  const logo = logoDataUri();
   const badges = [
     `${input.higherTimeframe}/${input.lowerTimeframe}`,
-    input.horizonLabel || 'Horizon',
-    input.modeLabel || 'Mode',
-    trades.length ? `${trades.length} setup(s)` : 'No setup',
-  ].filter(Boolean);
-  let bx = pad;
-  for (const badge of badges) {
-    const bw = badge.length * 12 + 16;
-    c.fillRect(bx, y, bw, 24, PANEL);
-    c.drawText(badge.toUpperCase(), bx + 8, y + 6, MUTED, 1);
-    bx += bw + 10;
+    input.horizonLabel,
+    input.modeLabel,
+    trades.length ? `${trades.length} setup${trades.length === 1 ? '' : 's'}` : 'No setup',
+  ].filter(Boolean) as string[];
+
+  let y = 56;
+  const left = 56;
+  const contentW = width - left * 2;
+
+  const parts: string[] = [];
+  parts.push(`<?xml version="1.0" encoding="UTF-8"?>`);
+  parts.push(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+  );
+  parts.push(`<defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1220"/>
+      <stop offset="55%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e1b4b"/>
+    </linearGradient>
+    <filter id="cardShadow" x="-5%" y="-5%" width="110%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>`);
+
+  // Background
+  parts.push(`<rect width="100%" height="100%" fill="url(#bg)"/>`);
+
+  // Main card
+  parts.push(
+    `<rect x="28" y="28" width="${width - 56}" height="${height - 56}" rx="24" fill="#121a2b" filter="url(#cardShadow)"/>`,
+  );
+  parts.push(`<rect x="28" y="28" width="8" height="${height - 56}" rx="4" fill="#a855f7"/>`);
+
+  // Watermark logo
+  if (logo) {
+    const lw = 420;
+    const lh = 190;
+    parts.push(
+      `<image href="${logo}" x="${(width - lw) / 2}" y="${(height - lh) / 2}" width="${lw}" height="${lh}" opacity="0.08" preserveAspectRatio="xMidYMid meet"/>`,
+    );
+  } else {
+    parts.push(
+      `<text x="${width / 2}" y="${height / 2}" text-anchor="middle" fill="#94a3b8" fill-opacity="0.12" font-family="Inter, sans-serif" font-size="72" font-weight="700">BearTec</text>`,
+    );
   }
+
+  // Title
+  parts.push(
+    `<text x="${left}" y="${y}" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="36" font-weight="700">${escapeXml(input.symbol)}  ·  Total analysis</text>`,
+  );
+  y += 36;
+  parts.push(
+    `<text x="${left}" y="${y}" fill="#94a3b8" font-family="Inter, sans-serif" font-size="18" font-weight="500">${escapeXml(input.sessionLabel || 'Pre-London open desk')}</text>`,
+  );
   y += 40;
 
-  // Cross-TF
-  c.drawText('CROSS-TIMEFRAME', pad, y, ACCENT, 2);
-  y += 22;
-  y = c.drawWrappedText(input.crossSummary || 'No general summary cached yet.', pad, y, contentW, TEXT, 2, 18);
-  y += 8;
-  if (input.higher?.summary || input.lower?.summary) {
-    const half = Math.floor((contentW - 16) / 2);
-    const leftY0 = y;
-    let ly = y;
-    c.drawText(
-      `${(input.higherTimeframe || 'HTF').toUpperCase()} ${input.higher?.bias || ''}`.trim(),
-      pad,
-      ly,
-      MUTED,
-      1,
+  // Badges
+  let bx = left;
+  for (const badge of badges) {
+    const label = badge.toUpperCase();
+    const bw = Math.max(72, label.length * 9.2 + 28);
+    parts.push(`<rect x="${bx}" y="${y - 18}" width="${bw}" height="32" rx="10" fill="#1e293b"/>`);
+    parts.push(
+      `<text x="${bx + 14}" y="${y + 4}" fill="#cbd5e1" font-family="Inter, sans-serif" font-size="13" font-weight="600">${escapeXml(label)}</text>`,
     );
-    ly += 16;
-    ly = c.drawWrappedText(input.higher?.summary || '-', pad, ly, half, TEXT, 1, 14);
-    let ry = leftY0;
-    c.drawText(
-      `${(input.lowerTimeframe || 'LTF').toUpperCase()} ${input.lower?.bias || ''}`.trim(),
-      pad + half + 16,
-      ry,
-      MUTED,
-      1,
-    );
-    ry += 16;
-    ry = c.drawWrappedText(input.lower?.summary || '-', pad + half + 16, ry, half, TEXT, 1, 14);
-    y = Math.max(ly, ry) + 12;
+    bx += bw + 10;
   }
+  y += 48;
+
+  const sectionTitle = (title: string) => {
+    parts.push(
+      `<text x="${left}" y="${y}" fill="#c084fc" font-family="Inter, sans-serif" font-size="14" font-weight="700" letter-spacing="1.5">${escapeXml(title.toUpperCase())}</text>`,
+    );
+    y += 28;
+  };
+
+  const bodyLines = (lines: string[], color = '#e2e8f0', size = 17) => {
+    for (const line of lines) {
+      parts.push(
+        `<text x="${left}" y="${y}" fill="${color}" font-family="Inter, sans-serif" font-size="${size}" font-weight="400">${escapeXml(line)}</text>`,
+      );
+      y += size + 9;
+    }
+  };
+
+  // Cross-timeframe
+  sectionTitle('Cross-timeframe analysis');
+  bodyLines(crossLines);
+  y += 12;
+
+  // HTF / LTF panels
+  const colW = (contentW - 16) / 2;
+  const panelTop = y;
+  const panelH = Math.max(higherLines.length, lowerLines.length) * 22 + 48;
+  parts.push(`<rect x="${left}" y="${panelTop}" width="${colW}" height="${panelH}" rx="14" fill="#0f172a"/>`);
+  parts.push(
+    `<rect x="${left + colW + 16}" y="${panelTop}" width="${colW}" height="${panelH}" rx="14" fill="#0f172a"/>`,
+  );
+  parts.push(
+    `<text x="${left + 16}" y="${panelTop + 28}" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13" font-weight="600">${escapeXml((input.higherTimeframe || 'HTF').toUpperCase())}  ·  ${escapeXml(input.higher?.bias || '—')}</text>`,
+  );
+  parts.push(
+    `<text x="${left + colW + 32}" y="${panelTop + 28}" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13" font-weight="600">${escapeXml((input.lowerTimeframe || 'LTF').toUpperCase())}  ·  ${escapeXml(input.lower?.bias || '—')}</text>`,
+  );
+  let ly = panelTop + 52;
+  for (const line of higherLines) {
+    parts.push(
+      `<text x="${left + 16}" y="${ly}" fill="#e2e8f0" font-family="Inter, sans-serif" font-size="14">${escapeXml(line)}</text>`,
+    );
+    ly += 22;
+  }
+  let ry = panelTop + 52;
+  for (const line of lowerLines) {
+    parts.push(
+      `<text x="${left + colW + 32}" y="${ry}" fill="#e2e8f0" font-family="Inter, sans-serif" font-size="14">${escapeXml(line)}</text>`,
+    );
+    ry += 22;
+  }
+  y = panelTop + panelH + 28;
 
   // Deep dive
-  c.drawText('DEEP-DIVE', pad, y, ACCENT, 2);
-  y += 22;
-  y = c.drawWrappedText(
-    input.deepSummary || 'No deep-dive summary.',
-    pad,
-    y,
-    contentW,
-    TEXT,
-    2,
-    18,
-  );
-  y += 10;
+  sectionTitle('Deep-dive');
+  bodyLines(deepLines);
+  y += 8;
 
   if (watch.length) {
-    c.drawText('KEY ZONES', pad, y, MUTED, 1);
-    y += 16;
+    parts.push(
+      `<text x="${left}" y="${y}" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13" font-weight="600">KEY ZONES</text>`,
+    );
+    y += 24;
     for (const level of watch) {
-      y = c.drawWrappedText(`* ${level}`, pad, y, contentW, TEXT, 1, 14);
+      parts.push(
+        `<text x="${left}" y="${y}" fill="#e2e8f0" font-family="Inter, sans-serif" font-size="15">•  ${escapeXml(level)}</text>`,
+      );
+      y += 24;
     }
     y += 8;
   }
 
   // Trades
-  c.drawText('TRADE SETUPS', pad, y, ACCENT, 2);
-  y += 22;
-
-  if (trades.length === 0) {
-    c.fillRect(pad, y, contentW, 40, PANEL);
-    c.drawText('No setup cleared confluence / R:R gates yet.', pad + 12, y + 14, MUTED, 2);
-    y += 52;
+  sectionTitle('Trade setups');
+  if (!trades.length) {
+    parts.push(`<rect x="${left}" y="${y}" width="${contentW}" height="52" rx="14" fill="#0f172a"/>`);
+    parts.push(
+      `<text x="${left + 20}" y="${y + 32}" fill="#94a3b8" font-family="Inter, sans-serif" font-size="16">No setup cleared confluence / R:R gates yet.</text>`,
+    );
+    y += 68;
   } else {
-    for (let i = 0; i < trades.length; i++) {
-      const t = trades[i];
+    trades.forEach((t, i) => {
       const dir = (t.direction || 'SETUP').toUpperCase();
-      const accent = dir === 'LONG' ? GREEN : dir === 'SHORT' ? RED : ACCENT;
-      const blockH = 118;
-      c.fillRect(pad, y, contentW, blockH, PANEL);
-      c.fillRect(pad, y, 6, blockH, accent);
+      const accent = dir === 'LONG' ? '#22c55e' : dir === 'SHORT' ? '#ef4444' : '#a855f7';
+      const trigger = [t.triggerZone, t.triggerCondition].filter(Boolean).join(' — ');
+      const trigLines = trigger ? wrapLines(trigger, 95, 2) : [];
+      const reasonLines = t.reasoning ? wrapLines(t.reasoning, 95, 3) : [];
+      const blockH = 28 + 24 + trigLines.length * 22 + 30 + reasonLines.length * 22 + 20;
 
-      let ty = y + 12;
-      c.drawText(
-        `${i + 1}. ${dir}  ${t.grade || ''}  ${t.htfRelationship || ''}`.trim(),
-        pad + 16,
-        ty,
-        TEXT,
-        2,
+      parts.push(`<rect x="${left}" y="${y}" width="${contentW}" height="${blockH}" rx="14" fill="#0f172a"/>`);
+      parts.push(`<rect x="${left}" y="${y}" width="6" height="${blockH}" rx="3" fill="${accent}"/>`);
+
+      let ty = y + 28;
+      const header = `${i + 1}. ${dir}   ${t.grade || ''}   ${t.htfRelationship || ''}`.trim();
+      parts.push(
+        `<text x="${left + 22}" y="${ty}" fill="#f8fafc" font-family="Inter, sans-serif" font-size="18" font-weight="700">${escapeXml(header)}</text>`,
       );
-      ty += 20;
-      const trigger = [t.triggerZone, t.triggerCondition].filter(Boolean).join(' - ');
-      if (trigger) {
-        ty = c.drawWrappedText(trigger, pad + 16, ty, contentW - 32, MUTED, 1, 14);
+      ty += 26;
+      for (const line of trigLines) {
+        parts.push(
+          `<text x="${left + 22}" y="${ty}" fill="#94a3b8" font-family="Inter, sans-serif" font-size="14">${escapeXml(line)}</text>`,
+        );
+        ty += 22;
       }
-      const tps = (t.targets || []).map(fmt).join(' / ') || '-';
-      const rr = t.riskRewardRatio == null ? '-' : `${Number(t.riskRewardRatio).toFixed(2)}R`;
-      c.drawText(`Entry ${fmt(t.entry)}   Stop ${fmt(t.stopLoss)}   TP ${tps}   R:R ${rr}`, pad + 16, ty, TEXT, 1);
-      ty += 16;
-      if (t.reasoning) {
-        c.drawWrappedText(t.reasoning, pad + 16, ty, contentW - 32, MUTED, 1, 14);
+      const tps = (t.targets || []).map(fmt).join('  /  ') || '—';
+      const rr = t.riskRewardRatio == null ? '—' : `${Number(t.riskRewardRatio).toFixed(2)}R`;
+      const prices = `Entry ${fmt(t.entry)}    Stop ${fmt(t.stopLoss)}    Targets ${tps}    R:R ${rr}`;
+      parts.push(
+        `<text x="${left + 22}" y="${ty}" fill="#e2e8f0" font-family="Inter, sans-serif" font-size="15" font-weight="600">${escapeXml(prices)}</text>`,
+      );
+      ty += 26;
+      for (const line of reasonLines) {
+        parts.push(
+          `<text x="${left + 22}" y="${ty}" fill="#94a3b8" font-family="Inter, sans-serif" font-size="14">${escapeXml(line)}</text>`,
+        );
+        ty += 22;
       }
-      y += blockH + 12;
-    }
+      y += blockH + 14;
+    });
   }
 
   // Footer
   const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
-  c.drawText(`BearTec Crypto AI  |  Pre-London desk  |  ${stamp}`, pad, height - 36, MUTED, 1);
+  parts.push(
+    `<text x="${left}" y="${height - 44}" fill="#64748b" font-family="Inter, sans-serif" font-size="13">BearTec Crypto AI  ·  Pre-London desk  ·  ${escapeXml(stamp)}</text>`,
+  );
 
-  // Border line at top of card for polish
-  c.fillRect(16, 16, width - 32, 2, BORDER);
+  parts.push(`</svg>`);
+  return { svg: parts.join('\n'), width, height };
+}
 
+async function renderWithResvg(input: DiscordRenderInput): Promise<Buffer> {
+  const { Resvg } = await import('@resvg/resvg-js');
+  const { svg, width } = buildSvg(input);
+
+  const fontFiles = [
+    assetPath('Inter-Regular.ttf'),
+    assetPath('Inter-SemiBold.ttf'),
+    assetPath('Inter-Regular.otf'),
+    assetPath('Inter-SemiBold.otf'),
+  ].filter((p): p is string => Boolean(p));
+
+  const resvg = new Resvg(svg, {
+    fitTo: { mode: 'width', value: width },
+    font: {
+      fontFiles,
+      loadSystemFonts: true,
+      defaultFontFamily: 'Inter',
+    },
+    background: 'rgba(11,18,32,1)',
+  });
+  const rendered = resvg.render();
+  return Buffer.from(rendered.asPng());
+}
+
+/** Low-quality fallback (bitmap font) — only if resvg fails to load. */
+function renderFallbackBitmap(input: DiscordRenderInput): Buffer {
+  const width = 1200;
+  const trades = (input.trades || []).slice(0, 2);
+  const watch = (input.watchLevels || []).slice(0, 6);
+  let height = 1000;
+  const c = new SimpleCanvas(width, height);
+  const BG: Rgba = [11, 18, 32, 255];
+  const TEXT: Rgba = [226, 232, 240, 255];
+  const MUTED: Rgba = [148, 163, 184, 255];
+  const ACCENT: Rgba = [168, 85, 247, 255];
+  c.fill(BG);
+  c.fillRect(24, 24, width - 48, height - 48, [18, 26, 43, 255]);
+  c.fillRect(24, 24, 8, height - 48, ACCENT);
+  let y = 56;
+  c.drawText(`${input.symbol}  TOTAL ANALYSIS`, 56, y, TEXT, 3);
+  y += 40;
+  c.drawText(input.sessionLabel || 'Pre-London open', 56, y, MUTED, 2);
+  y += 36;
+  y = c.drawWrappedText(input.crossSummary || '—', 56, y, width - 112, TEXT, 2, 20);
+  y += 16;
+  y = c.drawWrappedText(input.deepSummary || '—', 56, y, width - 112, TEXT, 2, 20);
+  for (const level of watch) {
+    y = c.drawWrappedText(`* ${level}`, 56, y, width - 112, MUTED, 2, 18);
+  }
+  for (const t of trades) {
+    y += 12;
+    y = c.drawWrappedText(
+      `${t.direction || 'SETUP'} Entry ${fmt(t.entry)} SL ${fmt(t.stopLoss)}`,
+      56,
+      y,
+      width - 112,
+      TEXT,
+      2,
+      20,
+    );
+  }
+  c.drawText('BearTec Crypto AI', 56, height - 48, MUTED, 2);
   return c.toPngBuffer();
+}
+
+export async function renderDiscordAnalysisPng(input: DiscordRenderInput): Promise<Buffer> {
+  try {
+    return await renderWithResvg(input);
+  } catch (err) {
+    console.error('High-quality PNG render failed, using fallback:', err);
+    return renderFallbackBitmap(input);
+  }
+}
+
+// Back-compat: some callers may still expect sync — not used by cron anymore
+export function renderDiscordAnalysisPngSync(input: DiscordRenderInput): Buffer {
+  return renderFallbackBitmap(input);
 }

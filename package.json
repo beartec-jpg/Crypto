@@ -74,6 +74,7 @@
     "@types/react-day-picker": "^5.2.1",
     "@types/web-push": "^3.6.4",
     "@types/ws": "^8.18.1",
+    "@resvg/resvg-js": "^2.6.2",
     "@vercel/node": "^5.5.13",
     "autoprefixer": "^10.4.22",
     "axios": "^1.6.0",
