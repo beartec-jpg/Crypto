@@ -68,6 +68,45 @@ function normaliseSnapshots(raw: unknown): any[] {
   return Array.isArray(raw) ? raw.filter(Boolean) : [];
 }
 
+function insightsHasContent(insights: any): boolean {
+  if (!insights || typeof insights !== 'object') return false;
+  if (overallOf(insights)) return true;
+  for (const [key, value] of Object.entries(insights)) {
+    if (key === 'overallSummary') continue;
+    if (value && typeof value === 'object') {
+      const s = value as { summary?: string; bias?: string; keyLevels?: string[] };
+      if (s.summary || s.bias || (Array.isArray(s.keyLevels) && s.keyLevels.length)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Cache is keyed by exact (symbol, interval, mode).
+ * App session board often uses BTCUSDT + 1d_15m while Discord env may be BTCUSD + 1d_1h —
+ * so we probe aliases and nearby pairs before giving up.
+ */
+function symbolLookupCandidates(primary: string): string[] {
+  const base = normalizeBinanceSpotSymbol(primary);
+  const set = new Set<string>([base, primary.toUpperCase()]);
+  if (base.endsWith('USDT')) {
+    set.add(base.replace(/USDT$/, 'USD'));
+    set.add(base.replace(/USDT$/, ''));
+  }
+  if (base === 'BTCUSDT') {
+    set.add('BTCUSD');
+    set.add('BTC');
+    set.add('XBTUSDT');
+  }
+  return Array.from(set).filter(Boolean);
+}
+
+function pairLookupCandidates(higher: string, lower: string): string[] {
+  const primary = encodeCryptoAiPairInterval(higher as any, lower as any);
+  const extras = ['1d_1h', '1d_15m', '1w_1h', '1w_15m'];
+  return Array.from(new Set([primary, ...extras]));
+}
+
 /** Before London open, previous completed session is Asia (then prior NY if useful). */
 function pickPreviousSessions(snapshots: any[]): any[] {
   if (!snapshots.length) return [];
@@ -83,10 +122,12 @@ function pickPreviousSessions(snapshots: any[]): any[] {
   const ordered: any[] = [];
   for (const id of preferred) {
     const snap = bySession.get(id);
-    if (snap) ordered.push(snap);
+    if (snap && insightsHasContent(snap.multiTFInsights)) ordered.push(snap);
   }
-  // Fall back to whatever we have (newest first), max 2
-  if (!ordered.length) return snapshots.slice(0, 2);
+  // Fall back to any snapshot with content (newest first), max 2
+  if (!ordered.length) {
+    return snapshots.filter((s) => insightsHasContent(s?.multiTFInsights)).slice(0, 2);
+  }
   return ordered.slice(0, 2);
 }
 
