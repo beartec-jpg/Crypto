@@ -435,6 +435,64 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       embeds,
     });
 
+    // Auto-register priced setups with the always-on trade tracker (spare server).
+    // Env: TRACKER_URL (e.g. http://5.78.142.246:3101), TRACKER_API_KEY
+    let tracker: { ok: boolean; registered?: number; error?: string } = { ok: false };
+    const trackerUrl = (process.env.TRACKER_URL || '').replace(/\/+$/, '');
+    if (trackerUrl && deep.bestTrades.length) {
+      try {
+        const payload = {
+          source: 'discord_desk',
+          userId: process.env.TRACKER_DESK_USER_ID || 'discord-desk',
+          trades: deep.bestTrades.map((t: any) => ({
+            symbol,
+            direction: String(t.direction || '').toUpperCase(),
+            grade: t.grade || 'B',
+            entry: t.entry,
+            stopLoss: t.stopLoss,
+            targets: t.targets,
+            confluenceSignals: t.confluenceSignals || [],
+            reasoning: t.reasoning || t.triggerZone || null,
+            riskRewardRatio: t.riskRewardRatio,
+            meta: {
+              mode: deep.modeId,
+              tradeHorizon: deep.tradeHorizon,
+              higherTimeframe: deep.higherTimeframe,
+              lowerTimeframe: deep.lowerTimeframe,
+              from: 'discord-btc-pre-london',
+            },
+          })),
+        };
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (process.env.TRACKER_API_KEY) {
+          headers['X-Tracker-Key'] = process.env.TRACKER_API_KEY;
+        }
+        const tr = await fetch(`${trackerUrl}/api/trades`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(15_000),
+        });
+        const bodyText = await tr.text();
+        if (!tr.ok) {
+          console.error('Trade tracker register failed:', tr.status, bodyText.slice(0, 300));
+          tracker = { ok: false, error: `${tr.status} ${bodyText.slice(0, 200)}` };
+        } else {
+          let parsed: any = {};
+          try {
+            parsed = JSON.parse(bodyText);
+          } catch {
+            /* ignore */
+          }
+          tracker = { ok: true, registered: parsed.count ?? deep.bestTrades.length };
+          console.log(`📍 Registered ${tracker.registered} setup(s) with trade tracker`);
+        }
+      } catch (trackErr: any) {
+        console.error('Trade tracker register error:', trackErr?.message || trackErr);
+        tracker = { ok: false, error: trackErr?.message || 'tracker unreachable' };
+      }
+    }
+
     if (!discord.ok) {
       console.error('Discord webhook failed:', discord.status, discord.body);
       return res.status(502).json({
@@ -443,6 +501,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         body: discord.body.slice(0, 500),
         analysisOk: true,
         tradeCount: setupCount,
+        tracker,
       });
     }
 
@@ -461,6 +520,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       discordStatus: discord.status,
       generalCache: Boolean(generalInsights),
       sessionSnapshots: sessionSnapshots.length,
+      tracker,
     });
   } catch (error: any) {
     console.error('Pre-London Discord desk failed:', error);

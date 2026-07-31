@@ -1,0 +1,27 @@
+{
+  "name": "beartec-trade-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Always-on AI trade tracker: partial TPs, BE stop, Discord alerts, weekly stats",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && mkdir -p dist/src && cp src/schema.sql dist/src/schema.sql",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "migrate": "tsx src/migrate.ts",
+    "e2e": "tsx test/e2e-sim.ts",
+    "weekly": "tsx src/weekly-once.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

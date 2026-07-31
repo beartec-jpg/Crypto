@@ -1,0 +1,17 @@
+[Unit]
+Description=BearTec AI Trade Tracker
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/trade-tracker.env
+WorkingDirectory=/opt/trade-tracker
+ExecStart=/usr/bin/node /opt/trade-tracker/dist/src/index.js
+Restart=always
+RestartSec=3
+User=root
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

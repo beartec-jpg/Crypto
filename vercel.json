@@ -56,6 +56,8 @@
     }
   ],
   "rewrites": [
+    { "source": "/api/tracker/(.*)", "destination": "http://5.78.142.246:3101/api/$1" },
+    { "source": "/api/tracker", "destination": "http://5.78.142.246:3101/health" },
     { "source": "/api/swap/v2/lock/side-a", "destination": "http://204.168.175.194:3099/api/swap/v2/lock/side-a" },
     { "source": "/api/swap/v2/lock/side-b", "destination": "http://204.168.175.194:3099/api/swap/v2/lock/side-b" },
     { "source": "/api/swap/v2/claim/side-b", "destination": "http://204.168.175.194:3099/api/swap/v2/claim/side-b" },
