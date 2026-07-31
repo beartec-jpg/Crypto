@@ -204,6 +204,27 @@ async function applyEvent(pool: pg.Pool, tradeId: string, ev: EngineEvent): Prom
   );
 }
 
+function fmtPx(n: number): string {
+  if (!Number.isFinite(n)) return '—';
+  if (Math.abs(n) >= 1000) return n.toFixed(2);
+  if (Math.abs(n) >= 1) return n.toFixed(4);
+  return n.toFixed(6);
+}
+
+function fmtR(n: number): string {
+  const sign = n > 0 ? '+' : '';
+  return `${sign}${n.toFixed(2)}R`;
+}
+
+/** Planned R if full size hit this target (informational on entry only). */
+function plannedR(trade: EngineTrade, target: number): string {
+  const risk = Math.abs(trade.entry - trade.originalStop);
+  if (risk <= 0) return '—';
+  const move =
+    trade.direction === 'LONG' ? target - trade.entry : trade.entry - target;
+  return fmtR(move / risk);
+}
+
 export async function notifyEvent(
   webhookUrl: string | undefined,
   trade: EngineTrade,
@@ -216,25 +237,80 @@ export async function notifyEvent(
   // skip pure stop_to_be if we already sent tp1 (avoid spam) — still send tp1 which mentions BE
   if (ev.type === 'stop_to_be') return;
 
+  const titleType =
+    ev.type === 'entry_hit'
+      ? 'OPENED'
+      : ev.type === 'tp1_hit'
+        ? 'TP1 HIT'
+        : ev.type === 'tp2_hit'
+          ? 'TP2 HIT'
+          : ev.type === 'sl_hit'
+            ? 'STOP HIT'
+            : ev.type === 'be_hit'
+              ? 'BREAK-EVEN EXIT'
+              : ev.type.replace(/_/g, ' ').toUpperCase();
+
   const embed: DiscordEmbed = {
-    title: `${trade.symbol} · ${ev.type.replace(/_/g, ' ').toUpperCase()} · ${trade.direction} (${trade.grade})`,
+    title: `${trade.symbol} · ${titleType} · ${trade.direction} (${trade.grade})`,
     description: ev.message,
     color: colorForEvent(ev.type),
-    fields: [
-      { name: 'Price', value: String(ev.price), inline: true },
-      { name: 'Size', value: `${(ev.sizeFraction * 100).toFixed(0)}%`, inline: true },
-      { name: 'ΔR / Total R', value: `${ev.rDelta.toFixed(2)} / ${ev.realizedRAfter.toFixed(2)}`, inline: true },
-    ],
+    fields: [],
     footer: { text: 'AI trade tracker · Not financial advice' },
     timestamp: new Date().toISOString(),
   };
 
-  if (ev.closed) {
-    embed.fields!.push({
-      name: 'Outcome',
-      value: `${ev.outcome || '—'} · ${ev.realizedRAfter.toFixed(2)}R`,
-      inline: true,
-    });
+  // Entry: levels only — no R (nothing realized yet)
+  if (ev.type === 'entry_hit') {
+    const tp1 = trade.targets[0];
+    const tp2 = trade.targets[1];
+    embed.fields = [
+      { name: 'Entry', value: fmtPx(trade.entry), inline: true },
+      { name: 'Stop loss', value: fmtPx(trade.originalStop), inline: true },
+      { name: 'Fill', value: fmtPx(ev.price), inline: true },
+      {
+        name: 'TP1 (close 50%)',
+        value:
+          tp1 != null
+            ? `${fmtPx(tp1)} · plan ${plannedR(trade, tp1)} on full size`
+            : '—',
+        inline: true,
+      },
+      {
+        name: 'TP2 (runner 50%)',
+        value:
+          tp2 != null
+            ? `${fmtPx(tp2)} · plan ${plannedR(trade, tp2)} on full size`
+            : '—',
+        inline: true,
+      },
+      {
+        name: 'Model',
+        value: '50% @ TP1 → stop to BE · rest @ TP2 · R reported only on exits',
+        inline: false,
+      },
+    ];
+  } else {
+    // After the fact: size closed + realized R only
+    embed.fields = [
+      { name: 'Fill', value: fmtPx(ev.price), inline: true },
+      { name: 'Closed size', value: `${(ev.sizeFraction * 100).toFixed(0)}%`, inline: true },
+      { name: 'This fill', value: fmtR(ev.rDelta), inline: true },
+      { name: 'Trade total', value: fmtR(ev.realizedRAfter), inline: true },
+    ];
+    if (ev.type === 'tp1_hit') {
+      embed.fields.push({
+        name: 'Next',
+        value: `Stop → BE @ ${fmtPx(trade.entry)} · runner 50% open`,
+        inline: false,
+      });
+    }
+    if (ev.closed) {
+      embed.fields.push({
+        name: 'Outcome',
+        value: `${(ev.outcome || '—').toUpperCase()} · ${fmtR(ev.realizedRAfter)}`,
+        inline: true,
+      });
+    }
   }
 
   const res = await postDiscordWebhook({ webhookUrl, embeds: [embed] });
