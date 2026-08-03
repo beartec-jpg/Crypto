@@ -114,6 +114,11 @@ export function createServer(pool: pg.Pool) {
             targets: Array.isArray(t.targets)
               ? t.targets.map(Number)
               : [Number(t.tp1), Number(t.tp2)].filter((n) => Number.isFinite(n)),
+            entryConfirmType: t.entryConfirmType ?? t.entry_confirm_type ?? 'reclaim',
+            entryConfirmLevel:
+              t.entryConfirmLevel ?? t.entry_confirm_level ?? t.entry ?? null,
+            entryConfirmRationale:
+              t.entryConfirmRationale ?? t.entry_confirm_rationale ?? null,
             stopLiftTrigger:
               t.stopLiftTrigger ?? t.stop_lift_trigger ?? t.breakEvenTrigger ?? null,
             stopLiftTo: t.stopLiftTo ?? t.stop_lift_to ?? t.breakEvenPrice ?? null,

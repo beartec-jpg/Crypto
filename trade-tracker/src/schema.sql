@@ -23,10 +23,12 @@ CREATE TABLE IF NOT EXISTS tracker_trades (
   remaining_size NUMERIC(8, 4) NOT NULL DEFAULT 1.0,
   tp1_closed_size NUMERIC(8, 4) NOT NULL DEFAULT 0,
   stop_to_be BOOLEAN NOT NULL DEFAULT FALSE,
-  status TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN (
-      'pending', 'entry_hit', 'tp1_hit', 'tp_hit', 'sl_hit', 'be_hit', 'cancelled'
-    )),
+  -- Entry confirmation: touch | reclaim (default reclaim — hit zone then reclaim confirm level)
+  entry_confirm_type TEXT NOT NULL DEFAULT 'reclaim',
+  entry_confirm_level NUMERIC(24, 8),
+  entry_confirm_rationale TEXT,
+  entry_armed_at TIMESTAMPTZ,
+  status TEXT NOT NULL DEFAULT 'pending',
   outcome TEXT CHECK (outcome IS NULL OR outcome IN ('win', 'loss', 'scratch')),
   realized_r NUMERIC(16, 6) NOT NULL DEFAULT 0,
   confluence_signals TEXT[] NOT NULL DEFAULT '{}',
@@ -51,10 +53,22 @@ ALTER TABLE tracker_trades ADD COLUMN IF NOT EXISTS stop_lift_to NUMERIC(24, 8);
 ALTER TABLE tracker_trades ADD COLUMN IF NOT EXISTS stop_lift_rationale TEXT;
 ALTER TABLE tracker_trades ADD COLUMN IF NOT EXISTS stop_lifted BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE tracker_trades ADD COLUMN IF NOT EXISTS stop_lift_at TIMESTAMPTZ;
+ALTER TABLE tracker_trades ADD COLUMN IF NOT EXISTS entry_confirm_type TEXT NOT NULL DEFAULT 'reclaim';
+ALTER TABLE tracker_trades ADD COLUMN IF NOT EXISTS entry_confirm_level NUMERIC(24, 8);
+ALTER TABLE tracker_trades ADD COLUMN IF NOT EXISTS entry_confirm_rationale TEXT;
+ALTER TABLE tracker_trades ADD COLUMN IF NOT EXISTS entry_armed_at TIMESTAMPTZ;
 
+-- Drop legacy status CHECK if present (allows entry_armed / entry_invalid)
+DO $$
+BEGIN
+  ALTER TABLE tracker_trades DROP CONSTRAINT IF EXISTS tracker_trades_status_check;
+EXCEPTION WHEN undefined_object THEN NULL;
+END $$;
+
+DROP INDEX IF EXISTS idx_tracker_trades_active;
 CREATE INDEX IF NOT EXISTS idx_tracker_trades_active
   ON tracker_trades (status)
-  WHERE status IN ('pending', 'entry_hit', 'tp1_hit');
+  WHERE status IN ('pending', 'entry_armed', 'entry_hit', 'tp1_hit');
 
 CREATE INDEX IF NOT EXISTS idx_tracker_trades_closed
   ON tracker_trades (closed_at DESC)

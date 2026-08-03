@@ -17,6 +17,11 @@ export interface CreateTradeInput {
   entry: number;
   stopLoss: number;
   targets: number[];
+  /** touch = open on tag; reclaim = arm on tag, open only after reclaim confirm level. */
+  entryConfirmType?: 'touch' | 'reclaim' | string | null;
+  /** LONG: reclaim ≥ this; SHORT: reclaim ≤ this. Defaults to entry. */
+  entryConfirmLevel?: number | null;
+  entryConfirmRationale?: string | null;
   /** Price that must tag before TP1 to lift stop (LONG above entry, SHORT below). */
   stopLiftTrigger?: number | null;
   /** New stop after lift (entry = BE, or small profit). */
@@ -42,6 +47,9 @@ export async function createTrade(pool: pg.Pool, input: CreateTradeInput) {
   const targets = (input.targets || []).map(Number).filter((n) => Number.isFinite(n));
   let stopLiftTrigger = parseOptionalPrice(input.stopLiftTrigger);
   let stopLiftTo = parseOptionalPrice(input.stopLiftTo);
+  const rawConfirm = String(input.entryConfirmType || 'reclaim').toLowerCase();
+  const entryConfirmType = rawConfirm === 'touch' ? 'touch' : 'reclaim';
+  let entryConfirmLevel = parseOptionalPrice(input.entryConfirmLevel) ?? entry;
 
   if (!symbol || !['LONG', 'SHORT'].includes(direction)) {
     throw new Error('Invalid symbol/direction');
@@ -56,24 +64,25 @@ export async function createTrade(pool: pg.Pool, input: CreateTradeInput) {
     throw new Error('SHORT requires stop > entry > tp1');
   }
 
+  // Confirm level: for reclaim, LONG should be >= entry, SHORT <= entry (soft-fix)
+  if (entryConfirmType === 'reclaim') {
+    if (direction === 'LONG' && entryConfirmLevel < entry) entryConfirmLevel = entry;
+    if (direction === 'SHORT' && entryConfirmLevel > entry) entryConfirmLevel = entry;
+  }
+
   // Validate / soft-fix stop lift plan when provided
   if (stopLiftTrigger != null || stopLiftTo != null) {
     if (stopLiftTrigger == null || stopLiftTo == null) {
-      // incomplete pair — drop both rather than fail registration
       stopLiftTrigger = null;
       stopLiftTo = null;
     } else if (direction === 'LONG') {
-      // trigger between entry and TP1; lift_to at/above original stop and not past TP1
       if (!(stopLiftTrigger > entry && stopLiftTrigger < targets[0])) {
         stopLiftTrigger = null;
         stopLiftTo = null;
       } else if (!(stopLiftTo >= stop && stopLiftTo < stopLiftTrigger)) {
-        // default lift-to to entry (BE) if AI gave a bad level
         stopLiftTo = entry;
       }
     } else {
-      // SHORT: trigger below entry toward TP1; lift_to at/below original stop (above) wait
-      // SHORT original stop is ABOVE entry. lift_to should be <= original_stop and usually <= entry (BE or profit)
       if (!(stopLiftTrigger < entry && stopLiftTrigger > targets[0])) {
         stopLiftTrigger = null;
         stopLiftTo = null;
@@ -87,7 +96,7 @@ export async function createTrade(pool: pg.Pool, input: CreateTradeInput) {
   const existing = await pool.query(
     `SELECT * FROM tracker_trades
      WHERE user_id = $1 AND symbol = $2 AND direction = $3
-       AND entry = $4 AND status IN ('pending','entry_hit','tp1_hit')
+       AND entry = $4 AND status IN ('pending','entry_armed','entry_hit','tp1_hit')
      LIMIT 1`,
     [input.userId || 'discord-desk', symbol, direction, entry],
   );
@@ -101,9 +110,10 @@ export async function createTrade(pool: pg.Pool, input: CreateTradeInput) {
     `INSERT INTO tracker_trades (
        user_id, source, symbol, direction, grade,
        entry, original_stop, current_stop, targets,
+       entry_confirm_type, entry_confirm_level, entry_confirm_rationale,
        stop_lift_trigger, stop_lift_to, stop_lift_rationale,
        confluence_signals, reasoning, risk_reward_ratio, meta, status
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'pending')
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'pending')
      RETURNING *`,
     [
       input.userId || 'discord-desk',
@@ -115,6 +125,9 @@ export async function createTrade(pool: pg.Pool, input: CreateTradeInput) {
       stop,
       stop,
       targets,
+      entryConfirmType,
+      entryConfirmLevel,
+      input.entryConfirmRationale || null,
       stopLiftTrigger,
       stopLiftTo,
       input.stopLiftRationale || null,
@@ -135,7 +148,7 @@ export async function listTrades(
   if (opts.activeOnly) {
     const r = await pool.query(
       `SELECT * FROM tracker_trades
-       WHERE status IN ('pending','entry_hit','tp1_hit')
+       WHERE status IN ('pending','entry_armed','entry_hit','tp1_hit')
        ORDER BY created_at DESC LIMIT $1`,
       [limit],
     );
@@ -224,6 +237,9 @@ async function applyEvent(pool: pg.Pool, tradeId: string, ev: EngineEvent): Prom
   ];
   let i = 10;
 
+  if (ev.type === 'entry_armed') {
+    sets.push(`entry_armed_at = NOW()`);
+  }
   if (ev.type === 'entry_hit') {
     sets.push(`entry_hit_at = NOW()`);
   }
@@ -243,8 +259,11 @@ async function applyEvent(pool: pg.Pool, tradeId: string, ev: EngineEvent): Prom
   }
   if (ev.closed) {
     sets.push(`closed_at = NOW()`);
-    sets.push(`outcome = $${i++}`);
-    params.push(ev.outcome);
+    // entry_invalid has null outcome; only set outcome column when provided
+    if (ev.outcome != null || ev.type !== 'entry_invalid') {
+      sets.push(`outcome = $${i++}`);
+      params.push(ev.outcome);
+    }
   }
 
   await pool.query(
@@ -287,19 +306,23 @@ export async function notifyEvent(
   if (ev.type === 'stop_to_be') return;
 
   const titleType =
-    ev.type === 'entry_hit'
-      ? 'OPENED'
-      : ev.type === 'stop_lift'
-        ? 'MOVE STOP ⚠️'
-        : ev.type === 'tp1_hit'
-          ? 'TP1 HIT'
-          : ev.type === 'tp2_hit'
-            ? 'TP2 HIT'
-            : ev.type === 'sl_hit'
-              ? 'STOP HIT'
-              : ev.type === 'be_hit'
-                ? 'STOP EXIT'
-                : ev.type.replace(/_/g, ' ').toUpperCase();
+    ev.type === 'entry_armed'
+      ? 'ZONE TAGGED'
+      : ev.type === 'entry_hit'
+        ? 'OPENED (CONFIRMED)'
+        : ev.type === 'entry_invalid'
+          ? 'ENTRY INVALID'
+          : ev.type === 'stop_lift'
+            ? 'MOVE STOP ⚠️'
+            : ev.type === 'tp1_hit'
+              ? 'TP1 HIT'
+              : ev.type === 'tp2_hit'
+                ? 'TP2 HIT'
+                : ev.type === 'sl_hit'
+                  ? 'STOP HIT'
+                  : ev.type === 'be_hit'
+                    ? 'STOP EXIT'
+                    : ev.type.replace(/_/g, ' ').toUpperCase();
 
   const embed: DiscordEmbed = {
     title: `${trade.symbol} · ${titleType} · ${trade.direction} (${trade.grade})`,
@@ -310,14 +333,55 @@ export async function notifyEvent(
     timestamp: new Date().toISOString(),
   };
 
-  // Entry: levels only — no R (nothing realized yet)
-  if (ev.type === 'entry_hit') {
+  if (ev.type === 'entry_armed') {
+    const conf =
+      trade.entryConfirmLevel != null ? trade.entryConfirmLevel : trade.entry;
+    embed.fields = [
+      { name: 'Entry zone', value: fmtPx(trade.entry), inline: true },
+      { name: 'Tagged @', value: fmtPx(ev.price), inline: true },
+      {
+        name: 'Confirm (open only if)',
+        value:
+          trade.direction === 'LONG'
+            ? `Trade back **above ${fmtPx(conf)}**`
+            : `Trade back **below ${fmtPx(conf)}**`,
+        inline: false,
+      },
+      {
+        name: 'Invalid if',
+        value: `Hits SL ${fmtPx(trade.originalStop)} before reclaim → no trade counted`,
+        inline: false,
+      },
+      {
+        name: 'Rule',
+        value: trade.entryConfirmRationale || `${trade.entryConfirmType} confirmation`,
+        inline: false,
+      },
+    ];
+  } else if (ev.type === 'entry_invalid') {
+    embed.fields = [
+      { name: 'What happened', value: 'Zone tagged then price blew through without reclaim', inline: false },
+      { name: 'Result', value: '**No position** · 0R · not a win/loss trade', inline: false },
+    ];
+  } else if (ev.type === 'entry_hit') {
+    // Confirmed open: levels only — no R
     const tp1 = trade.targets[0];
     const tp2 = trade.targets[1];
+    const conf =
+      trade.entryConfirmLevel != null ? trade.entryConfirmLevel : trade.entry;
     embed.fields = [
       { name: 'Entry', value: fmtPx(trade.entry), inline: true },
       { name: 'Stop loss', value: fmtPx(trade.originalStop), inline: true },
-      { name: 'Fill', value: fmtPx(ev.price), inline: true },
+      { name: 'Confirmed @', value: fmtPx(ev.price), inline: true },
+      {
+        name: 'Entry rule',
+        value:
+          trade.entryConfirmType === 'touch'
+            ? 'Touch entry'
+            : `Reclaim ${fmtPx(conf)} after zone touch` +
+              (trade.entryConfirmRationale ? ` · ${trade.entryConfirmRationale}` : ''),
+        inline: false,
+      },
       {
         name: 'TP1 (close 50%)',
         value:
@@ -341,12 +405,6 @@ export async function notifyEvent(
             ? `When price tags **${fmtPx(trade.stopLiftTrigger)}** → move SL to **${fmtPx(trade.stopLiftTo)}**` +
               (trade.stopLiftTo === trade.entry ? ' (BE)' : '')
             : 'Not set — stop stays at original until TP1',
-        inline: false,
-      },
-      {
-        name: 'Model',
-        value:
-          '1) Stop lift on trigger · 2) 50% @ TP1 · 3) rest @ TP2 · R only on exits',
         inline: false,
       },
     ];

@@ -1,20 +1,26 @@
 /**
- * Partial-TP trade engine with pre-TP1 stop lift
+ * Partial-TP trade engine with entry confirmation + pre-TP1 stop lift
  *
- * Position model:
- *  - 100% size after entry
- *  - Optional stop_lift: when price tags stopLiftTrigger (before TP1),
- *    move stop to stopLiftTo (BE or small lock-in) — does NOT close size
- *  - TP1: close 50%; stop at least to entry (or keep better lift)
- *  - TP2: close remaining 50%
- *  - SL / lifted stop: close remaining at current stop
+ * Entry model:
+ *  - touch: open as soon as price tags entry (legacy)
+ *  - reclaim (default for AI): arm on first touch of entry, only OPEN after
+ *    price reclaims entryConfirmLevel (e.g. LONG: hit zone then trade back above).
+ *    If original SL tags while armed → entry_invalid (not a real trade / 0R).
+ *
+ * After open:
+ *  - Optional stop_lift before TP1
+ *  - TP1: 50% close; TP2: runner
  */
 
 export type Direction = 'LONG' | 'SHORT';
 
+export type EntryConfirmType = 'touch' | 'reclaim';
+
 export type TradeStatus =
   | 'pending'
+  | 'entry_armed'
   | 'entry_hit'
+  | 'entry_invalid'
   | 'tp1_hit'
   | 'tp_hit'
   | 'sl_hit'
@@ -24,7 +30,9 @@ export type TradeStatus =
 export type Outcome = 'win' | 'loss' | 'scratch' | null;
 
 export type EngineEventType =
+  | 'entry_armed'
   | 'entry_hit'
+  | 'entry_invalid'
   | 'stop_lift'
   | 'tp1_hit'
   | 'stop_to_be'
@@ -42,9 +50,11 @@ export interface EngineTrade {
   originalStop: number;
   currentStop: number;
   targets: number[];
-  /** Price that must tag before TP1 to lift stop (LONG: above entry; SHORT: below). */
+  entryConfirmType: EntryConfirmType;
+  /** After zone touch, price must reclaim this level to open (LONG ≥, SHORT ≤). */
+  entryConfirmLevel: number | null;
+  entryConfirmRationale: string | null;
   stopLiftTrigger: number | null;
-  /** New stop after lift (entry = BE, or small profit). */
   stopLiftTo: number | null;
   stopLifted: boolean;
   remainingSize: number;
@@ -80,7 +90,6 @@ export function riskPerUnit(entry: number, originalStop: number): number {
   return Math.abs(entry - originalStop);
 }
 
-/** R multiple for a fill of `size` (fraction of original) at exitPrice. */
 export function rForFill(
   direction: Direction,
   entry: number,
@@ -109,103 +118,213 @@ function hitStop(direction: Direction, price: number, stop: number): boolean {
 function hitTarget(direction: Direction, price: number, target: number): boolean {
   return direction === 'LONG' ? price >= target : price <= target;
 }
-
-/** Favorable progress for stop-lift trigger (in trade direction). */
 function hitStopLiftTrigger(direction: Direction, price: number, trigger: number): boolean {
   return direction === 'LONG' ? price >= trigger : price <= trigger;
 }
-
-/** Whether candidate stop is better protection than current (LONG higher, SHORT lower). */
+function hitEntryConfirm(direction: Direction, price: number, level: number): boolean {
+  // Reclaim: LONG trades back above confirm; SHORT trades back below
+  return direction === 'LONG' ? price >= level : price <= level;
+}
 function isBetterStop(direction: Direction, candidate: number, current: number): boolean {
   return direction === 'LONG' ? candidate > current : candidate < current;
 }
-
 function nearEntry(stop: number, entry: number): boolean {
   const riskRef = Math.max(Math.abs(entry) * 1e-6, 1e-8);
   return Math.abs(stop - entry) <= riskRef * 100 || Math.abs(stop - entry) / Math.abs(entry || 1) < 0.0005;
 }
-
 function outcomeFromR(realizedR: number): Outcome {
   if (realizedR > 0.05) return 'win';
   if (realizedR < -0.05) return 'loss';
   return 'scratch';
 }
 
-/**
- * Evaluate one price tick. Returns 0..n events (usually 0 or 1; entry tick only entry).
- * Prefer processing one transition per tick for clarity.
- */
+function baseEvent(
+  partial: Omit<
+    EngineEvent,
+    | 'newCurrentStop'
+    | 'newRemainingSize'
+    | 'newTp1ClosedSize'
+    | 'newStopToBe'
+    | 'newStopLifted'
+  > &
+    Partial<
+      Pick<
+        EngineEvent,
+        | 'newCurrentStop'
+        | 'newRemainingSize'
+        | 'newTp1ClosedSize'
+        | 'newStopToBe'
+        | 'newStopLifted'
+      >
+    >,
+  state: EngineTrade,
+): EngineEvent {
+  return {
+    newCurrentStop: state.currentStop,
+    newRemainingSize: state.remainingSize,
+    newTp1ClosedSize: state.tp1ClosedSize,
+    newStopToBe: state.stopToBe,
+    newStopLifted: state.stopLifted,
+    ...partial,
+  } as EngineEvent;
+}
+
 export function evaluateTick(trade: EngineTrade, price: number): EngineEvent[] {
-  if (['tp_hit', 'sl_hit', 'be_hit', 'cancelled'].includes(trade.status)) {
+  if (
+    ['tp_hit', 'sl_hit', 'be_hit', 'cancelled', 'entry_invalid'].includes(trade.status)
+  ) {
     return [];
   }
 
-  const events: EngineEvent[] = [];
   const dir = trade.direction;
-  let state: EngineTrade = { ...trade, targets: [...trade.targets] };
+  const state: EngineTrade = { ...trade, targets: [...trade.targets] };
+  const confirmType = state.entryConfirmType || 'reclaim';
+  const confirmLevel =
+    state.entryConfirmLevel != null && Number.isFinite(state.entryConfirmLevel)
+      ? state.entryConfirmLevel
+      : state.entry;
 
-  // --- pending → entry ---
+  // --- pending: wait for first touch of entry zone ---
   if (state.status === 'pending') {
     if (!hitEntry(dir, price, state.entry)) return [];
-    const msg = `🎯 Entry hit ${state.symbol} ${dir} @ ${fmt(price)} (level ${fmt(state.entry)})`;
-    events.push({
-      type: 'entry_hit',
-      price,
-      sizeFraction: 1,
-      rDelta: 0,
-      realizedRAfter: state.realizedR,
-      message: msg,
-      newStatus: 'entry_hit',
-      newCurrentStop: state.currentStop,
-      newRemainingSize: 1,
-      newTp1ClosedSize: 0,
-      newStopToBe: false,
-      newStopLifted: false,
-      outcome: null,
-      closed: false,
-    });
-    return events;
+
+    // Legacy / explicit touch: open immediately
+    if (confirmType === 'touch') {
+      return [
+        baseEvent(
+          {
+            type: 'entry_hit',
+            price,
+            sizeFraction: 1,
+            rDelta: 0,
+            realizedRAfter: 0,
+            message: `🎯 Entry OPEN ${state.symbol} ${dir} @ ${fmt(price)} (touch mode · level ${fmt(state.entry)})`,
+            newStatus: 'entry_hit',
+            newRemainingSize: 1,
+            newStopToBe: false,
+            newStopLifted: false,
+            outcome: null,
+            closed: false,
+          },
+          state,
+        ),
+      ];
+    }
+
+    // Reclaim: arm only — do not open yet
+    const msg =
+      `📍 Zone tagged ${state.symbol} ${dir} @ ${fmt(price)} · waiting confirm: ` +
+      (dir === 'LONG'
+        ? `trade back above ${fmt(confirmLevel)}`
+        : `trade back below ${fmt(confirmLevel)}`) +
+      (state.entryConfirmRationale ? ` (${state.entryConfirmRationale})` : '');
+    return [
+      baseEvent(
+        {
+          type: 'entry_armed',
+          price,
+          sizeFraction: 0,
+          rDelta: 0,
+          realizedRAfter: 0,
+          message: msg,
+          newStatus: 'entry_armed',
+          newRemainingSize: 1,
+          newStopToBe: false,
+          newStopLifted: false,
+          outcome: null,
+          closed: false,
+        },
+        state,
+      ),
+    ];
+  }
+
+  // --- entry_armed: need reclaim, or invalidate if SL tags first ---
+  if (state.status === 'entry_armed') {
+    // Straight-through: hit original stop before reclaim → not a real trade
+    if (hitStop(dir, price, state.originalStop)) {
+      return [
+        baseEvent(
+          {
+            type: 'entry_invalid',
+            price,
+            sizeFraction: 0,
+            rDelta: 0,
+            realizedRAfter: 0,
+            message:
+              `🚫 Entry INVALID ${state.symbol} ${dir}: price tagged zone then went through to SL ` +
+              `${fmt(state.originalStop)} without reclaim of ${fmt(confirmLevel)} · no position counted`,
+            newStatus: 'entry_invalid',
+            newRemainingSize: 0,
+            outcome: null,
+            closed: true,
+          },
+          state,
+        ),
+      ];
+    }
+
+    if (hitEntryConfirm(dir, price, confirmLevel)) {
+      return [
+        baseEvent(
+          {
+            type: 'entry_hit',
+            price,
+            sizeFraction: 1,
+            rDelta: 0,
+            realizedRAfter: 0,
+            message:
+              `🎯 Entry CONFIRMED ${state.symbol} ${dir} @ ${fmt(price)} · ` +
+              `reclaimed ${fmt(confirmLevel)} after zone touch · NOW OPEN`,
+            newStatus: 'entry_hit',
+            newRemainingSize: 1,
+            newStopToBe: false,
+            newStopLifted: false,
+            outcome: null,
+            closed: false,
+          },
+          state,
+        ),
+      ];
+    }
+    return [];
   }
 
   // --- open (entry_hit or tp1_hit) ---
   if (state.status === 'entry_hit' || state.status === 'tp1_hit') {
-    // Stop first (priority over TP / lift on same tick)
     if (hitStop(dir, price, state.currentStop)) {
       const size = state.remainingSize;
       const exitPrice = state.currentStop;
       const rDelta = rForFill(dir, state.entry, state.originalStop, exitPrice, size);
       const realized = state.realizedR + rDelta;
-      // BE / scratch if stop is at entry; profit lock if stop past entry; hard SL if original risk side
       const finalStatus: TradeStatus =
         realized > 0.05 || nearEntry(exitPrice, state.entry) || Math.abs(realized) < 0.05
           ? 'be_hit'
           : 'sl_hit';
-
       const msg =
         finalStatus === 'be_hit'
           ? `⚖️ Stop exit ${state.symbol}: remaining ${pct(size)} closed @ ${fmt(exitPrice)} · trade R ${fmtR(realized)}`
           : `🛑 Stop loss: ${state.symbol} ${dir} · closed ${pct(size)} @ ${fmt(exitPrice)} · ${fmtR(rDelta)}R this leg · total ${fmtR(realized)}R`;
 
-      events.push({
-        type: finalStatus === 'be_hit' ? 'be_hit' : 'sl_hit',
-        price: exitPrice,
-        sizeFraction: size,
-        rDelta,
-        realizedRAfter: realized,
-        message: msg,
-        newStatus: finalStatus,
-        newCurrentStop: state.currentStop,
-        newRemainingSize: 0,
-        newTp1ClosedSize: state.tp1ClosedSize,
-        newStopToBe: state.stopToBe,
-        newStopLifted: state.stopLifted,
-        outcome: outcomeFromR(realized),
-        closed: true,
-      });
-      return events;
+      return [
+        baseEvent(
+          {
+            type: finalStatus === 'be_hit' ? 'be_hit' : 'sl_hit',
+            price: exitPrice,
+            sizeFraction: size,
+            rDelta,
+            realizedRAfter: realized,
+            message: msg,
+            newStatus: finalStatus,
+            newRemainingSize: 0,
+            outcome: outcomeFromR(realized),
+            closed: true,
+          },
+          state,
+        ),
+      ];
     }
 
-    // Pre-TP1 stop lift (no size closed)
     if (
       state.status === 'entry_hit' &&
       !state.stopLifted &&
@@ -216,7 +335,6 @@ export function evaluateTick(trade: EngineTrade, price: number): EngineEvent[] {
       hitStopLiftTrigger(dir, price, state.stopLiftTrigger)
     ) {
       const liftTo = state.stopLiftTo;
-      // Only lift if it improves protection
       if (isBetterStop(dir, liftTo, state.currentStop)) {
         const atBe = nearEntry(liftTo, state.entry);
         const lockR = rForFill(dir, state.entry, state.originalStop, liftTo, 1);
@@ -225,36 +343,35 @@ export function evaluateTick(trade: EngineTrade, price: number): EngineEvent[] {
           `move SL to ${fmt(liftTo)}` +
           (atBe ? ' (break-even)' : ` (lock ~${fmtR(lockR)} if stopped)`) +
           ` · MOVE YOUR STOP NOW`;
-
-        events.push({
-          type: 'stop_lift',
-          price,
-          sizeFraction: 0,
-          rDelta: 0,
-          realizedRAfter: state.realizedR,
-          message: msg,
-          newStatus: 'entry_hit',
-          newCurrentStop: liftTo,
-          newRemainingSize: state.remainingSize,
-          newTp1ClosedSize: state.tp1ClosedSize,
-          newStopToBe: atBe,
-          newStopLifted: true,
-          outcome: null,
-          closed: false,
-        });
-        return events;
+        return [
+          baseEvent(
+            {
+              type: 'stop_lift',
+              price,
+              sizeFraction: 0,
+              rDelta: 0,
+              realizedRAfter: state.realizedR,
+              message: msg,
+              newStatus: 'entry_hit',
+              newCurrentStop: liftTo,
+              newStopToBe: atBe,
+              newStopLifted: true,
+              outcome: null,
+              closed: false,
+            },
+            state,
+          ),
+        ];
       }
     }
 
     const tp1 = state.targets[0];
     const tp2 = state.targets[1];
 
-    // TP1 (only if not yet taken)
     if (state.status === 'entry_hit' && tp1 != null && hitTarget(dir, price, tp1)) {
       const size = TP1_SIZE;
       const rDelta = rForFill(dir, state.entry, state.originalStop, tp1, size);
       const realized = state.realizedR + rDelta;
-      // At TP1: stop at least to entry; keep better (already lifted profit stop)
       const beStop = state.entry;
       const afterTp1Stop = isBetterStop(dir, state.currentStop, beStop)
         ? state.currentStop
@@ -263,28 +380,30 @@ export function evaluateTick(trade: EngineTrade, price: number): EngineEvent[] {
       const msg =
         `✅ TP1 hit ${state.symbol} @ ${fmt(tp1)} · closed ${pct(size)} (${fmtR(rDelta)}R) · ` +
         `stop → ${fmt(afterTp1Stop)}${atBe ? ' (BE)' : ''} · runner ${pct(RUNNER_SIZE)} open · total ${fmtR(realized)}R`;
-
-      events.push({
-        type: 'tp1_hit',
-        price: tp1,
-        sizeFraction: size,
-        rDelta,
-        realizedRAfter: realized,
-        message: msg,
-        newStatus: 'tp1_hit',
-        newCurrentStop: afterTp1Stop,
-        newRemainingSize: RUNNER_SIZE,
-        newTp1ClosedSize: size,
-        newStopToBe: atBe,
-        newStopLifted: state.stopLifted || true,
-        outcome: null,
-        closed: false,
-        tpHitLevel: 1,
-      });
-      return events;
+      return [
+        baseEvent(
+          {
+            type: 'tp1_hit',
+            price: tp1,
+            sizeFraction: size,
+            rDelta,
+            realizedRAfter: realized,
+            message: msg,
+            newStatus: 'tp1_hit',
+            newCurrentStop: afterTp1Stop,
+            newRemainingSize: RUNNER_SIZE,
+            newTp1ClosedSize: size,
+            newStopToBe: atBe,
+            newStopLifted: state.stopLifted || true,
+            outcome: null,
+            closed: false,
+            tpHitLevel: 1,
+          },
+          state,
+        ),
+      ];
     }
 
-    // TP2 / further targets on runner
     if (state.status === 'tp1_hit' && tp2 != null && hitTarget(dir, price, tp2)) {
       const size = state.remainingSize;
       const rDelta = rForFill(dir, state.entry, state.originalStop, tp2, size);
@@ -292,29 +411,28 @@ export function evaluateTick(trade: EngineTrade, price: number): EngineEvent[] {
       const msg =
         `🏆 TP2 hit ${state.symbol} @ ${fmt(tp2)} · closed remaining ${pct(size)} (${fmtR(rDelta)}R) · ` +
         `FULL WIN total ${fmtR(realized)}R`;
-
-      events.push({
-        type: 'tp2_hit',
-        price: tp2,
-        sizeFraction: size,
-        rDelta,
-        realizedRAfter: realized,
-        message: msg,
-        newStatus: 'tp_hit',
-        newCurrentStop: state.currentStop,
-        newRemainingSize: 0,
-        newTp1ClosedSize: state.tp1ClosedSize,
-        newStopToBe: state.stopToBe,
-        newStopLifted: state.stopLifted,
-        outcome: outcomeFromR(realized),
-        closed: true,
-        tpHitLevel: 2,
-      });
-      return events;
+      return [
+        baseEvent(
+          {
+            type: 'tp2_hit',
+            price: tp2,
+            sizeFraction: size,
+            rDelta,
+            realizedRAfter: realized,
+            message: msg,
+            newStatus: 'tp_hit',
+            newRemainingSize: 0,
+            outcome: outcomeFromR(realized),
+            closed: true,
+            tpHitLevel: 2,
+          },
+          state,
+        ),
+      ];
     }
   }
 
-  return events;
+  return [];
 }
 
 function fmt(n: number): string {
@@ -323,12 +441,10 @@ function fmt(n: number): string {
   if (Math.abs(n) >= 1) return n.toFixed(4);
   return n.toFixed(6);
 }
-
 function fmtR(n: number): string {
   const sign = n > 0 ? '+' : '';
   return `${sign}${n.toFixed(2)}`;
 }
-
 function pct(size: number): string {
   return `${(size * 100).toFixed(0)}%`;
 }
@@ -339,6 +455,8 @@ export function rowToEngine(row: Record<string, unknown>): EngineTrade {
     : [];
   const liftTrig = row.stop_lift_trigger ?? row.stopLiftTrigger;
   const liftTo = row.stop_lift_to ?? row.stopLiftTo;
+  const confType = String(row.entry_confirm_type ?? row.entryConfirmType ?? 'reclaim').toLowerCase();
+  const confLevel = row.entry_confirm_level ?? row.entryConfirmLevel;
   return {
     id: String(row.id),
     symbol: String(row.symbol),
@@ -348,6 +466,15 @@ export function rowToEngine(row: Record<string, unknown>): EngineTrade {
     originalStop: parseFloat(String(row.original_stop ?? row.originalStop)),
     currentStop: parseFloat(String(row.current_stop ?? row.currentStop)),
     targets,
+    entryConfirmType: confType === 'touch' ? 'touch' : 'reclaim',
+    entryConfirmLevel:
+      confLevel != null && confLevel !== '' ? parseFloat(String(confLevel)) : null,
+    entryConfirmRationale:
+      row.entry_confirm_rationale != null
+        ? String(row.entry_confirm_rationale)
+        : row.entryConfirmRationale != null
+          ? String(row.entryConfirmRationale)
+          : null,
     stopLiftTrigger:
       liftTrig != null && liftTrig !== '' ? parseFloat(String(liftTrig)) : null,
     stopLiftTo: liftTo != null && liftTo !== '' ? parseFloat(String(liftTo)) : null,

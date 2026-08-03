@@ -765,17 +765,21 @@ ${fmtTF(lowerTimeframe, lowerData)}
 4. Map the NEXT high-probability setup(s), even if price has not reached the zone yet. Pending/conditional plans are valid and should be returned.
 5. For pending setups, include triggerZone and triggerCondition that describe what price must do before the setup activates.
 6. ENTRY: must be at a concrete structural/indicator level appropriate to the selected trader mode — never a blind entry at current price. Use ${lowerTimeframe} for timing/trigger even on swing/position horizons.
-7. STOP LOSS: behind the invalidation structure for the selected TRADE HORIZON (see above) — not automatically the nearest LTF wick. Below structural low for LONGs, above structural high for SHORTs. No arbitrary ATR padding.
-8. TARGETS: level-to-level at the horizon's scale. TP1 nearest valid opposing level for this horizon; TP2 next major level. On swing/position prefer ${higherTimeframe} levels. Min R/R is measured to TP1 (not TP2).
-9. STOP LIFT (MANDATORY on every trade): BEFORE TP1, pick a structural "proof" level that shows the trade is working — then move the stop. Fields: stopLiftTrigger + stopLiftTo + stopLiftRationale.
-   - stopLiftTrigger: price that must be tagged AFTER entry and BEFORE TP1 (LONG: above entry, e.g. reclaim of a local high; SHORT: below entry, e.g. break of local low). Must sit between entry and TP1.
-   - stopLiftTo: where to move the stop when trigger tags — usually entry (break-even) or a small lock-in past entry in trade direction. Must improve the original stop.
-   - Purpose: avoid giving back a good reaction off entry that reaches local structure then reverses to the original wide SL. Do NOT wait until TP1 to protect.
-10. CONFLUENCE SCORING: Fib OTE zone overlap, EMA proximity, OB alignment, swing pivot alignment, BOS/CHoCH, liquidity sweep, and trendline alignment each count as a confluence signal. More confluences = higher grade.
-11. Only include trades with R/R ≥ ${minRiskReward} to TP1. With-trend setups need at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}; counter-trend setups need at least ${counterTrendMinConfluence}.
-12. Return the valid standalone setup(s) you actually find. Do NOT force sequenced or linked trades. You MAY mention a natural flow into another zone in overallSummary, but never withhold a good standalone setup for lack of a second leg.
-13. If no valid trade exists yet, return an empty bestTrades array and use overallSummary plus keyLevels to explain the key zones to watch next.
-14. Expected hold should match the horizon (${tradeHorizonMeta.expectedHold}).
+7. ENTRY CONFIRMATION (MANDATORY): do NOT open on a raw spike through the level. Define how price must confirm.
+   - entryConfirmType: usually "reclaim" (preferred). Use "touch" only for rare market-order style plans.
+   - entryConfirmLevel: after the entry zone is tagged, price must reclaim this level before the trade is OPEN (LONG: trade back above this price; SHORT: trade back below). Often equal to entry, or slightly past entry (e.g. close above wick high of the zone / break of the micro-swing that formed the entry).
+   - entryConfirmRationale: technique-specific rule in plain language (e.g. "tag FVG then close back above zone high", "sweep liquidity then reclaim prior low").
+   - If price tags entry and then hits stop without reclaim → setup is INVALID (no trade), not a stop-loss loss.
+8. STOP LOSS: behind the invalidation structure for the selected TRADE HORIZON (see above) — not automatically the nearest LTF wick. Below structural low for LONGs, above structural high for SHORTs. No arbitrary ATR padding.
+9. TARGETS: level-to-level at the horizon's scale. TP1 nearest valid opposing level for this horizon; TP2 next major level. On swing/position prefer ${higherTimeframe} levels. Min R/R is measured to TP1 (not TP2).
+10. STOP LIFT (MANDATORY on every trade): AFTER confirmed open and BEFORE TP1, pick a structural proof level — then move the stop. Fields: stopLiftTrigger + stopLiftTo + stopLiftRationale.
+   - stopLiftTrigger: between confirmed entry and TP1 (LONG above entry; SHORT below entry).
+   - stopLiftTo: usually entry (BE) or small lock-in. Must improve original stop.
+11. CONFLUENCE SCORING: Fib OTE zone overlap, EMA proximity, OB alignment, swing pivot alignment, BOS/CHoCH, liquidity sweep, and trendline alignment each count as a confluence signal. More confluences = higher grade.
+12. Only include trades with R/R ≥ ${minRiskReward} to TP1. With-trend setups need at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}; counter-trend setups need at least ${counterTrendMinConfluence}.
+13. Return the valid standalone setup(s) you actually find. Do NOT force sequenced or linked trades. You MAY mention a natural flow into another zone in overallSummary, but never withhold a good standalone setup for lack of a second leg.
+14. If no valid trade exists yet, return an empty bestTrades array and use overallSummary plus keyLevels to explain the key zones to watch next.
+15. Expected hold should match the horizon (${tradeHorizonMeta.expectedHold}).
 
 Respond with ONLY valid JSON:
 {
@@ -794,6 +798,9 @@ Respond with ONLY valid JSON:
       "triggerCondition": "e.g. price drops into the zone and reacts with local confirmation",
       "entryZone": "FVG/OB/indicator trigger zone",
       "entry": "exact entry price",
+      "entryConfirmType": "reclaim",
+      "entryConfirmLevel": "exact reclaim price (often = entry or zone high/low)",
+      "entryConfirmRationale": "e.g. tag demand then close/trade back above zone high",
       "stopLoss": "exact SL price",
       "slRationale": "why that invalidation level matters",
       "stopLiftTrigger": "exact price between entry and TP1 that proves the trade (e.g. local high reclaim)",
@@ -810,7 +817,7 @@ Respond with ONLY valid JSON:
 }`;
 
   const systemContent =
-    `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Stop-loss goes just behind the horizon-appropriate invalidation structure (not automatically the nearest LTF wick) — no arbitrary ATR padding. Always include stopLiftTrigger + stopLiftTo so risk can be reduced after price proves the setup (local high/low) BEFORE TP1 — not only at TP1. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
+    `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Stop-loss goes just behind the horizon-appropriate invalidation structure (not automatically the nearest LTF wick) — no arbitrary ATR padding. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
 
   const openai = new OpenAI({
     baseURL: 'https://api.x.ai/v1',
@@ -1259,17 +1266,21 @@ ${fmtTF(lowerTimeframe, lowerData)}
 4. Map the NEXT high-probability setup(s), even if price has not reached the zone yet. Pending/conditional plans are valid and should be returned.
 5. For pending setups, include triggerZone and triggerCondition that describe what price must do before the setup activates.
 6. ENTRY: must be at a concrete structural/indicator level appropriate to the selected trader mode — never a blind entry at current price. Use ${lowerTimeframe} for timing/trigger even on swing/position horizons.
-7. STOP LOSS: behind the invalidation structure for the selected TRADE HORIZON (see above) — not automatically the nearest LTF wick. Below structural low for LONGs, above structural high for SHORTs. No arbitrary ATR padding.
-8. TARGETS: level-to-level at the horizon's scale. TP1 nearest valid opposing level for this horizon; TP2 next major level. On swing/position prefer ${higherTimeframe} levels. Min R/R is measured to TP1 (not TP2).
-9. STOP LIFT (MANDATORY on every trade): BEFORE TP1, pick a structural "proof" level that shows the trade is working — then move the stop. Fields: stopLiftTrigger + stopLiftTo + stopLiftRationale.
-   - stopLiftTrigger: price that must be tagged AFTER entry and BEFORE TP1 (LONG: above entry, e.g. reclaim of a local high; SHORT: below entry, e.g. break of local low). Must sit between entry and TP1.
-   - stopLiftTo: where to move the stop when trigger tags — usually entry (break-even) or a small lock-in past entry in trade direction. Must improve the original stop.
-   - Purpose: avoid giving back a good reaction off entry that reaches local structure then reverses to the original wide SL. Do NOT wait until TP1 to protect.
-10. CONFLUENCE SCORING: Fib OTE zone overlap, EMA proximity, OB alignment, swing pivot alignment, BOS/CHoCH, liquidity sweep, and trendline alignment each count as a confluence signal. More confluences = higher grade.
-11. Only include trades with R/R ≥ ${minRiskReward} to TP1. With-trend setups need at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}; counter-trend setups need at least ${counterTrendMinConfluence}.
-12. Return the valid standalone setup(s) you actually find. Do NOT force sequenced or linked trades. You MAY mention a natural flow into another zone in overallSummary, but never withhold a good standalone setup for lack of a second leg.
-13. If no valid trade exists yet, return an empty bestTrades array and use overallSummary plus keyLevels to explain the key zones to watch next.
-14. Expected hold should match the horizon (${tradeHorizonMeta.expectedHold}).
+7. ENTRY CONFIRMATION (MANDATORY): do NOT open on a raw spike through the level. Define how price must confirm.
+   - entryConfirmType: usually "reclaim" (preferred). Use "touch" only for rare market-order style plans.
+   - entryConfirmLevel: after the entry zone is tagged, price must reclaim this level before the trade is OPEN (LONG: trade back above this price; SHORT: trade back below). Often equal to entry, or slightly past entry (e.g. close above wick high of the zone / break of the micro-swing that formed the entry).
+   - entryConfirmRationale: technique-specific rule in plain language (e.g. "tag FVG then close back above zone high", "sweep liquidity then reclaim prior low").
+   - If price tags entry and then hits stop without reclaim → setup is INVALID (no trade), not a stop-loss loss.
+8. STOP LOSS: behind the invalidation structure for the selected TRADE HORIZON (see above) — not automatically the nearest LTF wick. Below structural low for LONGs, above structural high for SHORTs. No arbitrary ATR padding.
+9. TARGETS: level-to-level at the horizon's scale. TP1 nearest valid opposing level for this horizon; TP2 next major level. On swing/position prefer ${higherTimeframe} levels. Min R/R is measured to TP1 (not TP2).
+10. STOP LIFT (MANDATORY on every trade): AFTER confirmed open and BEFORE TP1, pick a structural proof level — then move the stop. Fields: stopLiftTrigger + stopLiftTo + stopLiftRationale.
+   - stopLiftTrigger: between confirmed entry and TP1 (LONG above entry; SHORT below entry).
+   - stopLiftTo: usually entry (BE) or small lock-in. Must improve original stop.
+11. CONFLUENCE SCORING: Fib OTE zone overlap, EMA proximity, OB alignment, swing pivot alignment, BOS/CHoCH, liquidity sweep, and trendline alignment each count as a confluence signal. More confluences = higher grade.
+12. Only include trades with R/R ≥ ${minRiskReward} to TP1. With-trend setups need at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}; counter-trend setups need at least ${counterTrendMinConfluence}.
+13. Return the valid standalone setup(s) you actually find. Do NOT force sequenced or linked trades. You MAY mention a natural flow into another zone in overallSummary, but never withhold a good standalone setup for lack of a second leg.
+14. If no valid trade exists yet, return an empty bestTrades array and use overallSummary plus keyLevels to explain the key zones to watch next.
+15. Expected hold should match the horizon (${tradeHorizonMeta.expectedHold}).
 
 Respond with ONLY valid JSON:
 {
@@ -1288,6 +1299,9 @@ Respond with ONLY valid JSON:
       "triggerCondition": "e.g. price drops into the zone and reacts with local confirmation",
       "entryZone": "FVG/OB/indicator trigger zone",
       "entry": "exact entry price",
+      "entryConfirmType": "reclaim",
+      "entryConfirmLevel": "exact reclaim price (often = entry or zone high/low)",
+      "entryConfirmRationale": "e.g. tag demand then close/trade back above zone high",
       "stopLoss": "exact SL price",
       "slRationale": "why that invalidation level matters",
       "stopLiftTrigger": "exact price between entry and TP1 that proves the trade (e.g. local high reclaim)",
@@ -1315,7 +1329,7 @@ Respond with ONLY valid JSON:
     let completion: any;
     const systemContent = analysisType === 'general'
       ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Always respond with valid JSON only.`
-      : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Stop-loss goes just behind the horizon-appropriate invalidation structure (not automatically the nearest LTF wick) — no arbitrary ATR padding. Always include stopLiftTrigger + stopLiftTo so risk can be reduced after price proves the setup (local high/low) BEFORE TP1 — not only at TP1. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
+      : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Stop-loss goes just behind the horizon-appropriate invalidation structure (not automatically the nearest LTF wick) — no arbitrary ATR padding. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
     try {
       completion = await (openai.chat.completions.create as any)({
         model: XAI_PRIMARY_MODEL,

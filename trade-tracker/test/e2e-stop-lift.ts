@@ -24,6 +24,7 @@ async function main() {
     entry: 100,
     stopLoss: 90,
     targets: [120, 130],
+    entryConfirmType: 'touch', // isolate stop-lift path
     stopLiftTrigger: 110,
     stopLiftTo: 100,
     stopLiftRationale: 'reclaim local high then BE',
@@ -64,6 +65,7 @@ async function main() {
     entry: 100,
     stopLoss: 90,
     targets: [120, 130],
+    entryConfirmType: 'touch',
     stopLiftTrigger: 110,
     stopLiftTo: 102, // small lock-in
   });

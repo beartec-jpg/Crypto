@@ -20,6 +20,11 @@ export type TradeIdea = {
   triggerCondition?: string;
   htfRelationship?: HtfRelationship;
   entry?: string | number;
+  /** reclaim (preferred) or touch */
+  entryConfirmType?: string;
+  /** After zone tag, reclaim this level before OPEN */
+  entryConfirmLevel?: string | number;
+  entryConfirmRationale?: string;
   stopLoss?: string | number;
   /** Price between entry and TP1 that proves trade — then lift stop. */
   stopLiftTrigger?: string | number;

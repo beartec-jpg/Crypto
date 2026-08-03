@@ -64,6 +64,9 @@ export function tradeEmbeds(
     riskRewardRatio?: number;
     reasoning?: string;
     triggerZone?: string;
+    entryConfirmType?: string;
+    entryConfirmLevel?: string | number;
+    entryConfirmRationale?: string;
     stopLiftTrigger?: string | number;
     stopLiftTo?: string | number;
     stopLiftRationale?: string;
@@ -74,6 +77,13 @@ export function tradeEmbeds(
     const color = dir === 'LONG' ? 0x22c55e : dir === 'SHORT' ? 0xef4444 : 0xa855f7;
     const tps = formatTargetsWithPercent(t.entry, t.targets, t.direction, '\n') || '—';
     const rr = t.riskRewardRatio == null ? '—' : `${Number(t.riskRewardRatio).toFixed(2)}R`;
+    const confType = String(t.entryConfirmType || 'reclaim').toLowerCase();
+    const confLvl = t.entryConfirmLevel ?? t.entry ?? '—';
+    const confirm =
+      confType === 'touch'
+        ? 'Touch entry (open on tag)'
+        : `Reclaim ${confLvl} after zone tag` +
+          (t.entryConfirmRationale ? `\n${String(t.entryConfirmRationale).slice(0, 180)}` : '');
     const lift =
       t.stopLiftTrigger != null && t.stopLiftTo != null
         ? `Tag ${t.stopLiftTrigger} → move SL to ${t.stopLiftTo}` +
@@ -87,6 +97,7 @@ export function tradeEmbeds(
         { name: 'Entry', value: String(t.entry ?? '—'), inline: true },
         { name: 'Stop', value: String(t.stopLoss ?? '—'), inline: true },
         { name: 'R:R (to TP1)', value: rr, inline: true },
+        { name: 'Entry confirm', value: confirm.slice(0, 400), inline: false },
         { name: 'Targets (% from entry)', value: tps, inline: false },
         { name: 'Stop lift (before TP1)', value: lift.slice(0, 500), inline: false },
       ],

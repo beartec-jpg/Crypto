@@ -28,8 +28,12 @@ export async function postDiscordWebhook(options: {
 
 export function colorForEvent(type: string): number {
   switch (type) {
+    case 'entry_armed':
+      return 0x94a3b8; // waiting confirm
     case 'entry_hit':
       return 0x38bdf8;
+    case 'entry_invalid':
+      return 0x64748b;
     case 'stop_lift':
       return 0xf59e0b; // amber — action required
     case 'tp1_hit':
