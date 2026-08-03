@@ -17,10 +17,21 @@ export interface CreateTradeInput {
   entry: number;
   stopLoss: number;
   targets: number[];
+  /** Price that must tag before TP1 to lift stop (LONG above entry, SHORT below). */
+  stopLiftTrigger?: number | null;
+  /** New stop after lift (entry = BE, or small profit). */
+  stopLiftTo?: number | null;
+  stopLiftRationale?: string | null;
   confluenceSignals?: string[];
   reasoning?: string | null;
   riskRewardRatio?: number | null;
   meta?: Record<string, unknown>;
+}
+
+function parseOptionalPrice(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 export async function createTrade(pool: pg.Pool, input: CreateTradeInput) {
@@ -29,6 +40,8 @@ export async function createTrade(pool: pg.Pool, input: CreateTradeInput) {
   const entry = Number(input.entry);
   const stop = Number(input.stopLoss);
   const targets = (input.targets || []).map(Number).filter((n) => Number.isFinite(n));
+  let stopLiftTrigger = parseOptionalPrice(input.stopLiftTrigger);
+  let stopLiftTo = parseOptionalPrice(input.stopLiftTo);
 
   if (!symbol || !['LONG', 'SHORT'].includes(direction)) {
     throw new Error('Invalid symbol/direction');
@@ -41,6 +54,33 @@ export async function createTrade(pool: pg.Pool, input: CreateTradeInput) {
   }
   if (direction === 'SHORT' && !(stop > entry && targets[0] < entry)) {
     throw new Error('SHORT requires stop > entry > tp1');
+  }
+
+  // Validate / soft-fix stop lift plan when provided
+  if (stopLiftTrigger != null || stopLiftTo != null) {
+    if (stopLiftTrigger == null || stopLiftTo == null) {
+      // incomplete pair — drop both rather than fail registration
+      stopLiftTrigger = null;
+      stopLiftTo = null;
+    } else if (direction === 'LONG') {
+      // trigger between entry and TP1; lift_to at/above original stop and not past TP1
+      if (!(stopLiftTrigger > entry && stopLiftTrigger < targets[0])) {
+        stopLiftTrigger = null;
+        stopLiftTo = null;
+      } else if (!(stopLiftTo >= stop && stopLiftTo < stopLiftTrigger)) {
+        // default lift-to to entry (BE) if AI gave a bad level
+        stopLiftTo = entry;
+      }
+    } else {
+      // SHORT: trigger below entry toward TP1; lift_to at/below original stop (above) wait
+      // SHORT original stop is ABOVE entry. lift_to should be <= original_stop and usually <= entry (BE or profit)
+      if (!(stopLiftTrigger < entry && stopLiftTrigger > targets[0])) {
+        stopLiftTrigger = null;
+        stopLiftTo = null;
+      } else if (!(stopLiftTo <= stop && stopLiftTo > stopLiftTrigger)) {
+        stopLiftTo = entry;
+      }
+    }
   }
 
   // Dedupe active identical setup
@@ -61,8 +101,9 @@ export async function createTrade(pool: pg.Pool, input: CreateTradeInput) {
     `INSERT INTO tracker_trades (
        user_id, source, symbol, direction, grade,
        entry, original_stop, current_stop, targets,
+       stop_lift_trigger, stop_lift_to, stop_lift_rationale,
        confluence_signals, reasoning, risk_reward_ratio, meta, status
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending')
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'pending')
      RETURNING *`,
     [
       input.userId || 'discord-desk',
@@ -74,6 +115,9 @@ export async function createTrade(pool: pg.Pool, input: CreateTradeInput) {
       stop,
       stop,
       targets,
+      stopLiftTrigger,
+      stopLiftTo,
+      input.stopLiftRationale || null,
       input.confluenceSignals || [],
       input.reasoning || null,
       rr,
@@ -161,9 +205,10 @@ async function applyEvent(pool: pg.Pool, tradeId: string, ev: EngineEvent): Prom
     'remaining_size = $4',
     'tp1_closed_size = $5',
     'stop_to_be = $6',
-    'realized_r = $7',
+    'stop_lifted = $7',
+    'realized_r = $8',
     'updated_at = NOW()',
-    'last_price = $8',
+    'last_price = $9',
     'last_checked_at = NOW()',
   ];
   const params: unknown[] = [
@@ -173,13 +218,17 @@ async function applyEvent(pool: pg.Pool, tradeId: string, ev: EngineEvent): Prom
     ev.newRemainingSize,
     ev.newTp1ClosedSize,
     ev.newStopToBe,
+    ev.newStopLifted,
     ev.realizedRAfter,
     ev.price,
   ];
-  let i = 9;
+  let i = 10;
 
   if (ev.type === 'entry_hit') {
     sets.push(`entry_hit_at = NOW()`);
+  }
+  if (ev.type === 'stop_lift') {
+    sets.push(`stop_lift_at = NOW()`);
   }
   if (ev.type === 'tp1_hit') {
     sets.push(`tp1_hit_at = NOW()`);
@@ -240,15 +289,17 @@ export async function notifyEvent(
   const titleType =
     ev.type === 'entry_hit'
       ? 'OPENED'
-      : ev.type === 'tp1_hit'
-        ? 'TP1 HIT'
-        : ev.type === 'tp2_hit'
-          ? 'TP2 HIT'
-          : ev.type === 'sl_hit'
-            ? 'STOP HIT'
-            : ev.type === 'be_hit'
-              ? 'BREAK-EVEN EXIT'
-              : ev.type.replace(/_/g, ' ').toUpperCase();
+      : ev.type === 'stop_lift'
+        ? 'MOVE STOP ⚠️'
+        : ev.type === 'tp1_hit'
+          ? 'TP1 HIT'
+          : ev.type === 'tp2_hit'
+            ? 'TP2 HIT'
+            : ev.type === 'sl_hit'
+              ? 'STOP HIT'
+              : ev.type === 'be_hit'
+                ? 'STOP EXIT'
+                : ev.type.replace(/_/g, ' ').toUpperCase();
 
   const embed: DiscordEmbed = {
     title: `${trade.symbol} · ${titleType} · ${trade.direction} (${trade.grade})`,
@@ -284,8 +335,34 @@ export async function notifyEvent(
         inline: true,
       },
       {
+        name: 'Stop lift (before TP1)',
+        value:
+          trade.stopLiftTrigger != null && trade.stopLiftTo != null
+            ? `When price tags **${fmtPx(trade.stopLiftTrigger)}** → move SL to **${fmtPx(trade.stopLiftTo)}**` +
+              (trade.stopLiftTo === trade.entry ? ' (BE)' : '')
+            : 'Not set — stop stays at original until TP1',
+        inline: false,
+      },
+      {
         name: 'Model',
-        value: '50% @ TP1 → stop to BE · rest @ TP2 · R reported only on exits',
+        value:
+          '1) Stop lift on trigger · 2) 50% @ TP1 · 3) rest @ TP2 · R only on exits',
+        inline: false,
+      },
+    ];
+  } else if (ev.type === 'stop_lift') {
+    // Management alert — no realized R (size still open)
+    embed.fields = [
+      { name: 'Trigger tagged', value: fmtPx(ev.price), inline: true },
+      { name: 'New stop', value: fmtPx(ev.newCurrentStop), inline: true },
+      {
+        name: 'Action',
+        value: `**MOVE YOUR STOP** to ${fmtPx(ev.newCurrentStop)} now (position still 100% open)`,
+        inline: false,
+      },
+      {
+        name: 'Still watching',
+        value: `TP1 ${trade.targets[0] != null ? fmtPx(trade.targets[0]) : '—'} · TP2 ${trade.targets[1] != null ? fmtPx(trade.targets[1]) : '—'}`,
         inline: false,
       },
     ];
@@ -300,7 +377,7 @@ export async function notifyEvent(
     if (ev.type === 'tp1_hit') {
       embed.fields.push({
         name: 'Next',
-        value: `Stop → BE @ ${fmtPx(trade.entry)} · runner 50% open`,
+        value: `Stop @ ${fmtPx(ev.newCurrentStop)} · runner 50% open`,
         inline: false,
       });
     }
@@ -347,6 +424,7 @@ export async function processTradeAtPrice(
       remainingSize: ev.newRemainingSize,
       tp1ClosedSize: ev.newTp1ClosedSize,
       stopToBe: ev.newStopToBe,
+      stopLifted: ev.newStopLifted,
       realizedR: ev.realizedRAfter,
       outcome: ev.outcome,
     };

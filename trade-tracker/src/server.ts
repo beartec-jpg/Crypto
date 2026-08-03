@@ -114,6 +114,11 @@ export function createServer(pool: pg.Pool) {
             targets: Array.isArray(t.targets)
               ? t.targets.map(Number)
               : [Number(t.tp1), Number(t.tp2)].filter((n) => Number.isFinite(n)),
+            stopLiftTrigger:
+              t.stopLiftTrigger ?? t.stop_lift_trigger ?? t.breakEvenTrigger ?? null,
+            stopLiftTo: t.stopLiftTo ?? t.stop_lift_to ?? t.breakEvenPrice ?? null,
+            stopLiftRationale:
+              t.stopLiftRationale ?? t.stop_lift_rationale ?? t.slLiftRationale ?? null,
             confluenceSignals: t.confluenceSignals || t.confluence_signals,
             reasoning: t.reasoning,
             riskRewardRatio: t.riskRewardRatio ?? t.risk_reward_ratio,

@@ -13,6 +13,12 @@ CREATE TABLE IF NOT EXISTS tracker_trades (
   original_stop NUMERIC(24, 8) NOT NULL,
   current_stop NUMERIC(24, 8) NOT NULL,
   targets NUMERIC(24, 8)[] NOT NULL,
+  -- Pre-TP1 management: when price tags trigger, move stop to stop_lift_to (BE or lock profit)
+  stop_lift_trigger NUMERIC(24, 8),
+  stop_lift_to NUMERIC(24, 8),
+  stop_lift_rationale TEXT,
+  stop_lifted BOOLEAN NOT NULL DEFAULT FALSE,
+  stop_lift_at TIMESTAMPTZ,
   -- Position model: start 1.0; TP1 closes 0.5; runner 0.5
   remaining_size NUMERIC(8, 4) NOT NULL DEFAULT 1.0,
   tp1_closed_size NUMERIC(8, 4) NOT NULL DEFAULT 0,
@@ -38,6 +44,13 @@ CREATE TABLE IF NOT EXISTS tracker_trades (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Idempotent upgrades for existing DBs
+ALTER TABLE tracker_trades ADD COLUMN IF NOT EXISTS stop_lift_trigger NUMERIC(24, 8);
+ALTER TABLE tracker_trades ADD COLUMN IF NOT EXISTS stop_lift_to NUMERIC(24, 8);
+ALTER TABLE tracker_trades ADD COLUMN IF NOT EXISTS stop_lift_rationale TEXT;
+ALTER TABLE tracker_trades ADD COLUMN IF NOT EXISTS stop_lifted BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE tracker_trades ADD COLUMN IF NOT EXISTS stop_lift_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_tracker_trades_active
   ON tracker_trades (status)

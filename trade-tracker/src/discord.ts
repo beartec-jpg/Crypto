@@ -30,6 +30,8 @@ export function colorForEvent(type: string): number {
   switch (type) {
     case 'entry_hit':
       return 0x38bdf8;
+    case 'stop_lift':
+      return 0xf59e0b; // amber — action required
     case 'tp1_hit':
     case 'tp2_hit':
       return 0x22c55e;
@@ -38,7 +40,7 @@ export function colorForEvent(type: string): number {
     case 'sl_hit':
       return 0xef4444;
     case 'be_hit':
-      return 0xf59e0b;
+      return 0xfbbf24;
     case 'closed':
       return 0x94a3b8;
     default:

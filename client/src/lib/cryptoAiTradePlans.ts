@@ -21,6 +21,11 @@ export type TradeIdea = {
   htfRelationship?: HtfRelationship;
   entry?: string | number;
   stopLoss?: string | number;
+  /** Price between entry and TP1 that proves trade — then lift stop. */
+  stopLiftTrigger?: string | number;
+  /** New stop after lift (usually entry/BE or small lock-in). */
+  stopLiftTo?: string | number;
+  stopLiftRationale?: string;
   targets?: Array<string | number>;
   riskRewardRatio?: number;
   confluenceSignals?: string[];

@@ -451,6 +451,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             entry: t.entry,
             stopLoss: t.stopLoss,
             targets: t.targets,
+            stopLiftTrigger: t.stopLiftTrigger ?? t.stop_lift_trigger ?? null,
+            stopLiftTo: t.stopLiftTo ?? t.stop_lift_to ?? null,
+            stopLiftRationale: t.stopLiftRationale ?? t.stop_lift_rationale ?? null,
             confluenceSignals: t.confluenceSignals || [],
             reasoning: t.reasoning || t.triggerZone || null,
             riskRewardRatio: t.riskRewardRatio,
@@ -460,6 +463,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               higherTimeframe: deep.higherTimeframe,
               lowerTimeframe: deep.lowerTimeframe,
               from: 'discord-btc-pre-london',
+              stopLiftRationale: t.stopLiftRationale || null,
             },
           })),
         };

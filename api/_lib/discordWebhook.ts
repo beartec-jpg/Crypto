@@ -64,6 +64,9 @@ export function tradeEmbeds(
     riskRewardRatio?: number;
     reasoning?: string;
     triggerZone?: string;
+    stopLiftTrigger?: string | number;
+    stopLiftTo?: string | number;
+    stopLiftRationale?: string;
   }>,
 ): DiscordEmbed[] {
   return trades.slice(0, 2).map((t, i) => {
@@ -71,6 +74,11 @@ export function tradeEmbeds(
     const color = dir === 'LONG' ? 0x22c55e : dir === 'SHORT' ? 0xef4444 : 0xa855f7;
     const tps = formatTargetsWithPercent(t.entry, t.targets, t.direction, '\n') || '—';
     const rr = t.riskRewardRatio == null ? '—' : `${Number(t.riskRewardRatio).toFixed(2)}R`;
+    const lift =
+      t.stopLiftTrigger != null && t.stopLiftTo != null
+        ? `Tag ${t.stopLiftTrigger} → move SL to ${t.stopLiftTo}` +
+          (t.stopLiftRationale ? `\n${String(t.stopLiftRationale).slice(0, 200)}` : '')
+        : '—';
     return {
       title: `${symbol} · Setup ${i + 1} · ${dir}${t.grade ? ` (${t.grade})` : ''}`,
       color,
@@ -78,8 +86,9 @@ export function tradeEmbeds(
       fields: [
         { name: 'Entry', value: String(t.entry ?? '—'), inline: true },
         { name: 'Stop', value: String(t.stopLoss ?? '—'), inline: true },
-        { name: 'R:R', value: rr, inline: true },
+        { name: 'R:R (to TP1)', value: rr, inline: true },
         { name: 'Targets (% from entry)', value: tps, inline: false },
+        { name: 'Stop lift (before TP1)', value: lift.slice(0, 500), inline: false },
       ],
       footer: { text: 'Not financial advice · Review the chart yourself' },
       timestamp: new Date().toISOString(),
