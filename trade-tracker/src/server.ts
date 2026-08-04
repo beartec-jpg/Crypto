@@ -11,6 +11,7 @@ import {
   buildWeeklyReport,
 } from './store.js';
 import { fetchPrices, setPriceOverride, clearPriceOverrides } from './prices.js';
+import { resolveWebhookForSymbol } from './discord.js';
 
 function json(res: http.ServerResponse, status: number, body: unknown) {
   const payload = JSON.stringify(body);
@@ -44,7 +45,8 @@ function authorize(req: http.IncomingMessage): boolean {
 }
 
 export function createServer(pool: pg.Pool) {
-  const webhookUrl = () => process.env.DISCORD_WEBHOOK_URL || undefined;
+  const webhookUrl = (symbol?: string) =>
+    resolveWebhookForSymbol(symbol) || process.env.DISCORD_WEBHOOK_URL || undefined;
 
   return http.createServer(async (req, res) => {
     try {
@@ -151,10 +153,11 @@ export function createServer(pool: pg.Pool) {
           reason: body.reason || 'desk_review_cancel',
         });
         // Optional Discord notice for each cancel
-        const hook = webhookUrl();
-        if (hook && result.cancelled.length) {
+        if (result.cancelled.length) {
           const { postDiscordWebhook } = await import('./discord.js');
           for (const t of result.cancelled.slice(0, 5)) {
+            const hook = webhookUrl(String(t.symbol));
+            if (!hook) continue;
             await postDiscordWebhook({
               webhookUrl: hook,
               embeds: [
@@ -197,6 +200,7 @@ export function createServer(pool: pg.Pool) {
         const symbols = active.map((r) => String(r.symbol));
         const fetched = await fetchPrices(symbols);
         const map = new Map(fetched.map((p) => [p.symbol, p.price]));
+        // Per-trade webhooks resolved inside notifyEvent by symbol
         const result = await processAllActive(pool, map, webhookUrl());
         if (body.clearOverrides) clearPriceOverrides();
         return json(res, 200, result);
@@ -225,7 +229,12 @@ export function createServer(pool: pg.Pool) {
         if (!r.rows[0]) return json(res, 404, { error: 'not found' });
         const price = Number(body.price);
         if (!Number.isFinite(price)) return json(res, 400, { error: 'price required' });
-        const events = await processTradeAtPrice(pool, r.rows[0], price, webhookUrl());
+        const events = await processTradeAtPrice(
+          pool,
+          r.rows[0],
+          price,
+          webhookUrl(String(r.rows[0].symbol)),
+        );
         const updated = await pool.query(`SELECT * FROM tracker_trades WHERE id = $1`, [id]);
         return json(res, 200, { events, trade: updated.rows[0] });
       }

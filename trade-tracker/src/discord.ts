@@ -7,6 +7,25 @@ export type DiscordEmbed = {
   timestamp?: string;
 };
 
+/**
+ * Resolve Discord webhook for a symbol.
+ * Prefer DISCORD_WEBHOOK_URL_BTC / _XRP (or _BTCUSDT / _XRPUSDT), else shared DISCORD_WEBHOOK_URL.
+ */
+export function resolveWebhookForSymbol(symbol?: string | null): string | undefined {
+  const raw = String(symbol || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const base = raw.replace(/USDT$/i, '').replace(/USD$/i, '') || '';
+  const candidates = [
+    raw ? process.env[`DISCORD_WEBHOOK_URL_${raw}`] : undefined,
+    base ? process.env[`DISCORD_WEBHOOK_URL_${base}`] : undefined,
+    base ? process.env[`DISCORD_${base}_WEBHOOK_URL`] : undefined,
+    process.env.DISCORD_WEBHOOK_URL,
+  ];
+  for (const c of candidates) {
+    if (c && String(c).trim()) return String(c).trim();
+  }
+  return undefined;
+}
+
 export async function postDiscordWebhook(options: {
   webhookUrl: string;
   content?: string;

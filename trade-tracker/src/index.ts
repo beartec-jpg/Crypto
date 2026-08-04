@@ -2,6 +2,7 @@ import { getPool, migrate, closePool } from './db.js';
 import { createServer } from './server.js';
 import { listTrades, processAllActive, postWeeklyReport } from './store.js';
 import { fetchPrices } from './prices.js';
+import { resolveWebhookForSymbol } from './discord.js';
 
 const PORT = Number(process.env.PORT || 3101);
 const POLL_MS = Number(process.env.POLL_INTERVAL_MS || 15_000);
@@ -9,7 +10,9 @@ const WEEKLY_DOW = Number(process.env.WEEKLY_DOW ?? 0); // 0 = Sunday
 const WEEKLY_HOUR_UTC = Number(process.env.WEEKLY_HOUR_UTC ?? 18);
 
 async function pollOnce(pool: ReturnType<typeof getPool>) {
-  const webhook = process.env.DISCORD_WEBHOOK_URL || undefined;
+  // Fallback URL; per-trade channel resolved inside notifyEvent by symbol
+  const webhook =
+    resolveWebhookForSymbol('BTCUSDT') || process.env.DISCORD_WEBHOOK_URL || undefined;
   const active = await listTrades(pool, { activeOnly: true, limit: 500 });
   if (!active.length) {
     return { checked: 0, events: 0 };

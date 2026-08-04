@@ -238,11 +238,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const defaultWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
-  if (!defaultWebhookUrl) {
+  // Prefer dedicated BTC/XRP webhooks; shared DISCORD_WEBHOOK_URL is optional fallback only
+  const defaultWebhookUrl =
+    process.env.DISCORD_WEBHOOK_URL ||
+    process.env.DISCORD_WEBHOOK_URL_BTC ||
+    process.env.DISCORD_WEBHOOK_URL_XRP ||
+    '';
+  if (!defaultWebhookUrl && !process.env.DISCORD_WEBHOOK_URL_BTC && !process.env.DISCORD_WEBHOOK_URL_XRP) {
     return res.status(503).json({
-      error: 'DISCORD_WEBHOOK_URL is not set',
-      hint: 'Create a channel Incoming Webhook in Discord and set DISCORD_WEBHOOK_URL in Vercel env.',
+      error: 'No Discord webhook configured',
+      hint:
+        'Set DISCORD_WEBHOOK_URL_BTC and DISCORD_WEBHOOK_URL_XRP (or legacy DISCORD_WEBHOOK_URL) in Vercel env.',
     });
   }
 
@@ -266,8 +272,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const results: any[] = [];
 
   for (const symbol of symbols) {
-    const webhookUrl = resolveWebhookForSymbol(symbol, defaultWebhookUrl);
-    console.log(`📡 Desk run ${symbol} → webhook ${webhookUrl === defaultWebhookUrl ? 'shared' : 'symbol-specific'}`);
+    const webhookUrl = resolveWebhookForSymbol(symbol, defaultWebhookUrl || '');
+    if (!webhookUrl) {
+      console.error(`No webhook for ${symbol} — set DISCORD_WEBHOOK_URL_${symbol.replace(/USDT$/i, '')}`);
+      results.push({
+        success: false,
+        symbol,
+        error: `No Discord webhook for ${symbol}`,
+      });
+      continue;
+    }
+    console.log(
+      `📡 Desk run ${symbol} → webhook ${webhookUrl === defaultWebhookUrl ? 'fallback/shared' : 'dedicated channel'}`,
+    );
 
   try {
     // Prefer cached general analysis + session snapshots (from Asia/London/NY cron)

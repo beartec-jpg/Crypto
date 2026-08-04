@@ -5,7 +5,12 @@ import {
   type EngineEvent,
   type EngineTrade,
 } from './engine.js';
-import { colorForEvent, postDiscordWebhook, type DiscordEmbed } from './discord.js';
+import {
+  colorForEvent,
+  postDiscordWebhook,
+  resolveWebhookForSymbol,
+  type DiscordEmbed,
+} from './discord.js';
 import { computePerformance, formatStatsEmbedFields, type ClosedTradePoint } from './stats.js';
 
 export interface CreateTradeInput {
@@ -343,7 +348,9 @@ export async function notifyEvent(
   trade: EngineTrade,
   ev: EngineEvent,
 ): Promise<void> {
-  if (!webhookUrl) {
+  // Prefer per-symbol webhook (BTC/XRP channels); fall back to shared URL
+  const hook = resolveWebhookForSymbol(trade.symbol) || webhookUrl;
+  if (!hook) {
     console.log(`[discord:skip] ${ev.message}`);
     return;
   }
@@ -493,7 +500,7 @@ export async function notifyEvent(
     }
   }
 
-  const res = await postDiscordWebhook({ webhookUrl, embeds: [embed] });
+  const res = await postDiscordWebhook({ webhookUrl: hook, embeds: [embed] });
   if (!res.ok) {
     console.error('[discord] failed', res.status, res.body.slice(0, 200));
   }
