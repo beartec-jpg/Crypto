@@ -3,6 +3,7 @@ import type pg from 'pg';
 import {
   createTrade,
   listTrades,
+  cancelTrades,
   getPerformance,
   processAllActive,
   processTradeAtPrice,
@@ -69,6 +70,7 @@ export function createServer(pool: pg.Pool) {
         const activeOnly = url.searchParams.get('active') === '1';
         const rows = await listTrades(pool, {
           activeOnly,
+          symbol: url.searchParams.get('symbol') || undefined,
           limit: Number(url.searchParams.get('limit') || 100),
           status: url.searchParams.get('status') || undefined,
         });
@@ -132,6 +134,54 @@ export function createServer(pool: pg.Pool) {
           created.push(row);
         }
         return json(res, 201, { created, count: created.length });
+      }
+
+      // Cancel open ideas (desk re-validation keep|cancel)
+      if (req.method === 'POST' && (path === '/api/trades/cancel' || path === '/trades/cancel')) {
+        const raw = await readBody(req);
+        const body = raw ? JSON.parse(raw) : {};
+        const ids = Array.isArray(body.ids)
+          ? body.ids
+          : body.id
+            ? [body.id]
+            : [];
+        if (!ids.length) return json(res, 400, { error: 'ids required' });
+        const result = await cancelTrades(pool, {
+          ids: ids.map(String),
+          reason: body.reason || 'desk_review_cancel',
+        });
+        // Optional Discord notice for each cancel
+        const hook = webhookUrl();
+        if (hook && result.cancelled.length) {
+          const { postDiscordWebhook } = await import('./discord.js');
+          for (const t of result.cancelled.slice(0, 5)) {
+            await postDiscordWebhook({
+              webhookUrl: hook,
+              embeds: [
+                {
+                  title: `${t.symbol} · CANCELLED · ${t.direction}`,
+                  description:
+                    (body.reason || 'Desk review cancelled this setup') +
+                    (t.reasoning ? `\n\n_Was:_ ${String(t.reasoning).slice(0, 200)}` : ''),
+                  color: 0x64748b,
+                  fields: [
+                    { name: 'Entry', value: String(t.entry), inline: true },
+                    { name: 'Was status', value: String(body.previousStatus || 'active'), inline: true },
+                    { name: 'Id', value: String(t.id).slice(0, 8), inline: true },
+                  ],
+                  footer: { text: 'AI trade tracker · setup removed from book' },
+                  timestamp: new Date().toISOString(),
+                },
+              ],
+            });
+          }
+        }
+        return json(res, 200, {
+          ok: true,
+          cancelled: result.cancelled.length,
+          skipped: result.skipped,
+          trades: result.cancelled,
+        });
       }
 
       if (req.method === 'POST' && (path === '/api/tick' || path === '/tick')) {

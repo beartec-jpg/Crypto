@@ -140,12 +140,57 @@ export async function createTrade(pool: pg.Pool, input: CreateTradeInput) {
   return result.rows[0];
 }
 
+const ACTIVE_STATUSES = ['pending', 'entry_armed', 'entry_hit', 'tp1_hit'] as const;
+
+export async function cancelTrades(
+  pool: pg.Pool,
+  opts: { ids: string[]; reason?: string | null },
+): Promise<{ cancelled: any[]; skipped: string[] }> {
+  const ids = (opts.ids || []).map(String).filter(Boolean);
+  const cancelled: any[] = [];
+  const skipped: string[] = [];
+  for (const id of ids) {
+    const r = await pool.query(
+      `UPDATE tracker_trades
+       SET status = 'cancelled',
+           closed_at = COALESCE(closed_at, NOW()),
+           remaining_size = 0,
+           updated_at = NOW(),
+           meta = COALESCE(meta, '{}'::jsonb) || $2::jsonb
+       WHERE id = $1::uuid
+         AND status = ANY($3::text[])
+       RETURNING *`,
+      [
+        id,
+        JSON.stringify({
+          cancelReason: opts.reason || 'desk_review',
+          cancelledAt: new Date().toISOString(),
+        }),
+        [...ACTIVE_STATUSES],
+      ],
+    );
+    if (r.rows[0]) cancelled.push(r.rows[0]);
+    else skipped.push(id);
+  }
+  return { cancelled, skipped };
+}
+
 export async function listTrades(
   pool: pg.Pool,
-  opts: { status?: string; limit?: number; activeOnly?: boolean } = {},
+  opts: { status?: string; limit?: number; activeOnly?: boolean; symbol?: string } = {},
 ) {
   const limit = Math.min(opts.limit || 100, 500);
   if (opts.activeOnly) {
+    if (opts.symbol) {
+      const r = await pool.query(
+        `SELECT * FROM tracker_trades
+         WHERE status IN ('pending','entry_armed','entry_hit','tp1_hit')
+           AND symbol = $1
+         ORDER BY created_at DESC LIMIT $2`,
+        [opts.symbol.toUpperCase(), limit],
+      );
+      return r.rows;
+    }
     const r = await pool.query(
       `SELECT * FROM tracker_trades
        WHERE status IN ('pending','entry_armed','entry_hit','tp1_hit')

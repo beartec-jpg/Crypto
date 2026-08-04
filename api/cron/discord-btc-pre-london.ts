@@ -273,6 +273,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    // Snapshot open book from tracker so the model can keep|cancel prior ideas
+    const trackerUrl = (process.env.TRACKER_URL || '').replace(/\/+$/, '');
+    const trackerHeaders: Record<string, string> = {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    };
+    if (process.env.TRACKER_API_KEY) {
+      trackerHeaders['X-Tracker-Key'] = process.env.TRACKER_API_KEY;
+    }
+
+    let openTrades: any[] = [];
+    if (trackerUrl) {
+      try {
+        const bookRes = await fetch(
+          `${trackerUrl}/api/trades?active=1&symbol=${encodeURIComponent(symbol)}&limit=50`,
+          { headers: trackerHeaders, signal: AbortSignal.timeout(10_000) },
+        );
+        if (bookRes.ok) {
+          const bookJson: any = await bookRes.json();
+          openTrades = Array.isArray(bookJson.trades) ? bookJson.trades : [];
+          console.log(`📒 Open book for ${symbol}: ${openTrades.length} active setup(s)`);
+        } else {
+          console.warn('Open book fetch failed:', bookRes.status, await bookRes.text());
+        }
+      } catch (bookErr: any) {
+        console.warn('Open book fetch error:', bookErr?.message || bookErr);
+      }
+    }
+
     const deep = await runSystemDeepDive({
       apiKey,
       symbol,
@@ -283,7 +312,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       minRiskReward,
       minConfluence,
       softGates: true,
+      openTrades,
     });
+
+    // Apply cancel reviews before registering new setups
+    let trackerReview: {
+      cancelled: number;
+      kept: number;
+      reviews: any[];
+      error?: string;
+    } = { cancelled: 0, kept: 0, reviews: deep.openTradeReviews || [] };
+
+    if (trackerUrl && Array.isArray(deep.openTradeReviews) && deep.openTradeReviews.length) {
+      const toCancel = deep.openTradeReviews.filter((r: any) => r.action === 'cancel');
+      trackerReview.kept = deep.openTradeReviews.filter((r: any) => r.action === 'keep').length;
+      if (toCancel.length) {
+        try {
+          const cancelRes = await fetch(`${trackerUrl}/api/trades/cancel`, {
+            method: 'POST',
+            headers: trackerHeaders,
+            body: JSON.stringify({
+              ids: toCancel.map((r: any) => r.id),
+              reason: toCancel
+                .map((r: any) => `${String(r.id).slice(0, 8)}: ${r.reason || 'desk cancel'}`)
+                .join(' | ')
+                .slice(0, 500),
+            }),
+            signal: AbortSignal.timeout(15_000),
+          });
+          const cancelText = await cancelRes.text();
+          if (!cancelRes.ok) {
+            console.error('Cancel open trades failed:', cancelRes.status, cancelText.slice(0, 300));
+            trackerReview.error = `${cancelRes.status} ${cancelText.slice(0, 200)}`;
+          } else {
+            let parsed: any = {};
+            try {
+              parsed = JSON.parse(cancelText);
+            } catch {
+              /* ignore */
+            }
+            trackerReview.cancelled = parsed.cancelled ?? toCancel.length;
+            console.log(`🗑️ Cancelled ${trackerReview.cancelled} stale setup(s) from open book`);
+          }
+        } catch (cancelErr: any) {
+          console.error('Cancel open trades error:', cancelErr?.message || cancelErr);
+          trackerReview.error = cancelErr?.message || 'cancel failed';
+        }
+      }
+    }
 
     const modeMeta = getAiTraderMode(deep.modeId);
     const horizonMeta = getCryptoAiTradeHorizon(deep.tradeHorizon);
@@ -409,12 +485,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // ④ Previous session — only when we have a real snapshot
+    // Open-book keep|cancel review (after new setups, before session extras)
+    if (openTrades.length && Array.isArray(deep.openTradeReviews) && deep.openTradeReviews.length) {
+      const keepLines = deep.openTradeReviews
+        .filter((r: any) => r.action === 'keep')
+        .map((r: any) => {
+          const t = openTrades.find((x) => String(x.id) === String(r.id));
+          return `• KEEP ${t ? `${t.direction} @ ${t.entry}` : r.id.slice(0, 8)} — ${r.reason || 'still valid'}`;
+        });
+      const cancelLines = deep.openTradeReviews
+        .filter((r: any) => r.action === 'cancel')
+        .map((r: any) => {
+          const t = openTrades.find((x) => String(x.id) === String(r.id));
+          return `• CANCEL ${t ? `${t.direction} @ ${t.entry}` : r.id.slice(0, 8)} — ${r.reason || 'stale'}`;
+        });
+      embeds.push({
+        title: '④ Open-book review (prior ideas)',
+        description: [
+          cancelLines.length ? cancelLines.join('\n') : '• No cancels',
+          keepLines.length ? keepLines.join('\n') : '• Nothing kept (empty book or all cancelled)',
+        ]
+          .join('\n')
+          .slice(0, 3500),
+        color: 0xf59e0b,
+        footer: {
+          text: `Cancelled ${trackerReview.cancelled} · Kept ${trackerReview.kept}`,
+        },
+      });
+    }
+
+    // Previous session
     for (const snap of previousSessions) {
       const emb = formatSessionEmbed(snap, symbol, htf, ltf);
       embeds.push({
         ...emb,
-        title: (emb.title || 'Previous session').replace(/^①\s*/, '④ '),
+        title: (emb.title || 'Previous session').replace(/^①\s*/, '⑤ '),
       });
     }
 
@@ -437,8 +542,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Auto-register priced setups with the always-on trade tracker (spare server).
     // Env: TRACKER_URL (e.g. http://5.78.142.246:3101), TRACKER_API_KEY
-    let tracker: { ok: boolean; registered?: number; error?: string } = { ok: false };
-    const trackerUrl = (process.env.TRACKER_URL || '').replace(/\/+$/, '');
+    let tracker: {
+      ok: boolean;
+      registered?: number;
+      cancelled?: number;
+      kept?: number;
+      error?: string;
+    } = {
+      ok: false,
+      cancelled: trackerReview.cancelled,
+      kept: trackerReview.kept,
+    };
     if (trackerUrl && deep.bestTrades.length) {
       try {
         const payload = {
@@ -470,20 +584,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             },
           })),
         };
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (process.env.TRACKER_API_KEY) {
-          headers['X-Tracker-Key'] = process.env.TRACKER_API_KEY;
-        }
         const tr = await fetch(`${trackerUrl}/api/trades`, {
           method: 'POST',
-          headers,
+          headers: trackerHeaders,
           body: JSON.stringify(payload),
           signal: AbortSignal.timeout(15_000),
         });
         const bodyText = await tr.text();
         if (!tr.ok) {
           console.error('Trade tracker register failed:', tr.status, bodyText.slice(0, 300));
-          tracker = { ok: false, error: `${tr.status} ${bodyText.slice(0, 200)}` };
+          tracker = {
+            ...tracker,
+            ok: false,
+            error: `${tr.status} ${bodyText.slice(0, 200)}`,
+          };
         } else {
           let parsed: any = {};
           try {
@@ -491,13 +605,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           } catch {
             /* ignore */
           }
-          tracker = { ok: true, registered: parsed.count ?? deep.bestTrades.length };
+          tracker = {
+            ...tracker,
+            ok: true,
+            registered: parsed.count ?? deep.bestTrades.length,
+          };
           console.log(`📍 Registered ${tracker.registered} setup(s) with trade tracker`);
         }
       } catch (trackErr: any) {
         console.error('Trade tracker register error:', trackErr?.message || trackErr);
-        tracker = { ok: false, error: trackErr?.message || 'tracker unreachable' };
+        tracker = {
+          ...tracker,
+          ok: false,
+          error: trackErr?.message || 'tracker unreachable',
+        };
       }
+    } else if (trackerUrl) {
+      tracker = { ...tracker, ok: true, registered: 0 };
+    }
+
+    if (trackerReview.error && !tracker.error) {
+      tracker.error = trackerReview.error;
     }
 
     if (!discord.ok) {
@@ -527,6 +655,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       discordStatus: discord.status,
       generalCache: Boolean(generalInsights),
       sessionSnapshots: sessionSnapshots.length,
+      openBook: openTrades.length,
+      openTradeReviews: deep.openTradeReviews || [],
+      trackerReview,
       tracker,
     });
   } catch (error: any) {

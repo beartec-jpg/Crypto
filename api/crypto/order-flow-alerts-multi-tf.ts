@@ -30,15 +30,19 @@ function extractTextContent(message: any): string {
 }
 
 /** Prefer a JSON object that actually contains desk fields (not the whole API message). */
-function parseDeskJsonPayload(raw: string): { multiTFInsights?: any; bestTrades?: any[] } | null {
+function parseDeskJsonPayload(
+  raw: string,
+): { multiTFInsights?: any; bestTrades?: any[]; openTradeReviews?: any[] } | null {
   if (!raw) return null;
   const cleaned = raw.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
   // Try full match first
   const attempts: string[] = [];
   const full = cleaned.match(/\{[\s\S]*\}/);
   if (full) attempts.push(full[0]);
-  // Prefer objects that mention bestTrades / multiTFInsights
-  const marker = cleaned.search(/"bestTrades"\s*:|"multiTFInsights"\s*:/);
+  // Prefer objects that mention desk fields
+  const marker = cleaned.search(
+    /"bestTrades"\s*:|"multiTFInsights"\s*:|"openTradeReviews"\s*:/,
+  );
   if (marker >= 0) {
     let start = cleaned.lastIndexOf('{', marker);
     if (start >= 0) {
@@ -58,13 +62,42 @@ function parseDeskJsonPayload(raw: string): { multiTFInsights?: any; bestTrades?
   for (const chunk of attempts) {
     try {
       const parsed = JSON.parse(chunk);
-      if (parsed && (parsed.bestTrades || parsed.multiTFInsights)) return parsed;
+      if (
+        parsed &&
+        (parsed.bestTrades || parsed.multiTFInsights || parsed.openTradeReviews)
+      ) {
+        return parsed;
+      }
       if (parsed && typeof parsed === 'object') return parsed;
     } catch {
       // try next
     }
   }
   return null;
+}
+
+/** Compact open-book snapshot for the desk model. */
+export function formatOpenTradesForDeskPrompt(openTrades: any[]): string {
+  if (!openTrades?.length) {
+    return 'No open/pending tracked setups currently on the book.';
+  }
+  return openTrades
+    .map((t, i) => {
+      const targets = Array.isArray(t.targets) ? t.targets.join(', ') : String(t.targets || '');
+      const conf =
+        t.entry_confirm_level ?? t.entryConfirmLevel ?? t.entry;
+      const liftTrig = t.stop_lift_trigger ?? t.stopLiftTrigger;
+      const liftTo = t.stop_lift_to ?? t.stopLiftTo;
+      const reasoning = String(t.reasoning || '').slice(0, 220);
+      return (
+        `${i + 1}. id=${t.id} ${t.direction} ${t.symbol} status=${t.status} grade=${t.grade || '?'}\n` +
+        `   entry=${t.entry} SL=${t.original_stop ?? t.current_stop} TPs=[${targets}]\n` +
+        `   entryConfirm=${t.entry_confirm_type || 'reclaim'}@${conf}` +
+        (liftTrig != null ? ` stopLift: tag ${liftTrig}→${liftTo}` : '') +
+        `\n   thesis: ${reasoning || '(none)'}`
+      );
+    })
+    .join('\n');
 }
 
 async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: string } | null> {
@@ -680,9 +713,15 @@ export async function runSystemDeepDive(options: {
   minConfluence?: number;
   /** When true (default for Discord), still return top priced ideas if strict gates empty. */
   softGates?: boolean;
+  /**
+   * Active tracker book (pending / armed / open / partial) for re-validation.
+   * AI must return openTradeReviews keep|cancel for each id.
+   */
+  openTrades?: any[];
 }): Promise<{
   multiTFInsights: any;
   bestTrades: any[];
+  openTradeReviews: any[];
   estimatedCost: number;
   tokens: { input: number; output: number };
   higherTimeframe: string;
@@ -717,6 +756,8 @@ export async function runSystemDeepDive(options: {
   const counterTrendMinConfluence = minConfluence + 1;
   const softGates = options.softGates !== false;
   const symbol = normalizeBinanceSpotSymbol(options.symbol);
+  const openTrades = Array.isArray(options.openTrades) ? options.openTrades : [];
+  const openBookBlock = formatOpenTradesForDeskPrompt(openTrades);
 
   const requestedFrames = Array.from(new Set([lowerTimeframe, higherTimeframe]));
   const barsByTimeframe = Object.fromEntries(
@@ -758,6 +799,16 @@ ${horizonPrompt}
 ${fmtTF(higherTimeframe, higherData)}
 ${fmtTF(lowerTimeframe, lowerData)}
 
+**OPEN BOOK (from trade tracker — your previous desk ideas still live)**
+${openBookBlock}
+
+**OPEN BOOK REVIEW — MANDATORY**
+For EVERY setup listed above with an id, decide keep or cancel against CURRENT structure/price.
+- keep: zone still valid; do NOT invent a duplicate of the same idea.
+- cancel: structure filled, broken, or no longer high-probability — remove from the book.
+- Prefer cancel over keep if the thesis is stale or HTF context flipped against it.
+- You MUST return one openTradeReviews entry per open-book id (empty array only if open book is empty).
+
 **TRADE SEARCH RULES — MANDATORY**
 1. ${higherTimeframe} sets directional context and the dominant destination; it is NOT a hard veto.
 2. Favour with-trend setups and tag them as "with-trend". Counter-trend setups are allowed when local structure and confluence justify them; tag them as "counter-trend" and require a higher bar.
@@ -780,9 +831,13 @@ ${fmtTF(lowerTimeframe, lowerData)}
 13. Return the valid standalone setup(s) you actually find. Do NOT force sequenced or linked trades. You MAY mention a natural flow into another zone in overallSummary, but never withhold a good standalone setup for lack of a second leg.
 14. If no valid trade exists yet, return an empty bestTrades array and use overallSummary plus keyLevels to explain the key zones to watch next.
 15. Expected hold should match the horizon (${tradeHorizonMeta.expectedHold}).
+16. Do not re-issue a bestTrade that duplicates an open-book setup you marked keep (same direction + similar entry).
 
 Respond with ONLY valid JSON:
 {
+  "openTradeReviews": [
+    { "id": "uuid-from-open-book", "action": "keep|cancel", "reason": "1 sentence why still valid or why cancel" }
+  ],
   "multiTFInsights": {
     "${higherTimeframe}": { "summary": "2 sentences on higher timeframe bias/trend", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["..."] },
     "${lowerTimeframe}": { "summary": "2 sentences on lower timeframe momentum/structure", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["..."] },
@@ -817,7 +872,7 @@ Respond with ONLY valid JSON:
 }`;
 
   const systemContent =
-    `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Stop-loss goes just behind the horizon-appropriate invalidation structure (not automatically the nearest LTF wick) — no arbitrary ATR padding. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
+    `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Stop-loss goes just behind the horizon-appropriate invalidation structure (not automatically the nearest LTF wick) — no arbitrary ATR padding. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. When an OPEN BOOK is provided, re-validate every id with openTradeReviews (keep|cancel) before proposing new bestTrades; cancel stale/broken zones. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
 
   const openai = new OpenAI({
     baseURL: 'https://api.x.ai/v1',
@@ -857,13 +912,37 @@ Respond with ONLY valid JSON:
 
   let multiTFInsights: any = null;
   let bestTrades: any[] = [];
+  let openTradeReviews: any[] = [];
   let gatesRelaxed = false;
   let rawTradeCount = 0;
   try {
     const message = completion.choices[0]?.message;
     const rawContent = extractTextContent(message);
-    const parsed = parseDeskJsonPayload(rawContent) || { multiTFInsights: null, bestTrades: [] };
+    const parsed = parseDeskJsonPayload(rawContent) || {
+      multiTFInsights: null,
+      bestTrades: [],
+      openTradeReviews: [],
+    };
     multiTFInsights = parsed.multiTFInsights || null;
+    const rawReviews = Array.isArray(parsed.openTradeReviews) ? parsed.openTradeReviews : [];
+    // Normalize reviews; if model omitted them, default KEEP for unknown ids (safer than mass-cancel)
+    const openIds = new Set(openTrades.map((t) => String(t.id)));
+    openTradeReviews = rawReviews
+      .map((r: any) => ({
+        id: String(r.id || ''),
+        action: String(r.action || '').toLowerCase() === 'cancel' ? 'cancel' : 'keep',
+        reason: String(r.reason || '').slice(0, 400),
+      }))
+      .filter((r: any) => r.id && openIds.has(r.id));
+    for (const t of openTrades) {
+      if (!openTradeReviews.some((r) => r.id === String(t.id))) {
+        openTradeReviews.push({
+          id: String(t.id),
+          action: 'keep',
+          reason: 'Model omitted review — default keep',
+        });
+      }
+    }
     const rawTrades = Array.isArray(parsed.bestTrades) ? parsed.bestTrades : [];
     rawTradeCount = rawTrades.length;
 
@@ -951,11 +1030,18 @@ Respond with ONLY valid JSON:
     }
   } catch (parseError) {
     console.error('System deep-dive parse failed:', parseError);
+    // On parse failure, keep all open trades (do not mass-cancel)
+    openTradeReviews = openTrades.map((t) => ({
+      id: String(t.id),
+      action: 'keep',
+      reason: 'Parse failure — default keep',
+    }));
   }
 
   return {
     multiTFInsights,
     bestTrades,
+    openTradeReviews,
     estimatedCost,
     tokens: { input: inputTokens, output: outputTokens },
     higherTimeframe,
