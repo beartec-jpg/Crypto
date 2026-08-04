@@ -180,23 +180,34 @@ function formatSessionEmbed(
 }
 
 
-/** Resolve desk symbols (multi-asset). */
-function resolveDeskSymbols(): string[] {
-  const multi = (process.env.DISCORD_DESK_SYMBOLS || '').trim();
+function normaliseSymbolToken(s: string): string {
+  const up = s.trim().toUpperCase();
+  if (!up) return '';
+  const looksLikeTf =
+    /^\d+[MHDW]$/i.test(up) ||
+    ['1D', '1H', '15M', '1W', '4H', '5M', '1M'].includes(up);
+  return normalizeBinanceSpotSymbol(looksLikeTf ? 'BTCUSDT' : up);
+}
+
+/**
+ * Resolve desk symbols.
+ * Prefer force (query/env single-symbol cron), else DISCORD_DESK_SYMBOLS, else legacy.
+ * Split crons pass force="BTCUSDT" / "XRPUSDT" so runs never share a request.
+ */
+function resolveDeskSymbols(force?: string | string[] | null): string[] {
+  const forceRaw = Array.isArray(force)
+    ? force.join(',')
+    : force != null
+      ? String(force)
+      : '';
+  const multi = (forceRaw || process.env.DISCORD_DESK_SYMBOLS || '').trim();
   if (multi) {
     return Array.from(
       new Set(
         multi
           .split(/[,\s]+/)
-          .map((s) => s.trim())
-          .filter(Boolean)
-          .map((s) => {
-            const up = s.toUpperCase();
-            const looksLikeTf =
-              /^\d+[MHDW]$/i.test(up) ||
-              ['1D', '1H', '15M', '1W', '4H', '5M', '1M'].includes(up);
-            return normalizeBinanceSpotSymbol(looksLikeTf ? 'BTCUSDT' : up);
-          }),
+          .map((s) => normaliseSymbolToken(s))
+          .filter(Boolean),
       ),
     );
   }
@@ -208,10 +219,6 @@ function resolveDeskSymbols(): string[] {
   const symbol = normalizeBinanceSpotSymbol(
     !rawSymbol || looksLikeTimeframe ? 'BTCUSDT' : rawSymbol,
   );
-  // Default expansion: BTC + XRP when using legacy single-BTC default
-  if (!process.env.DISCORD_BTC_SYMBOL || symbol === 'BTCUSDT') {
-    return ['BTCUSDT', 'XRPUSDT'];
-  }
   return [symbol];
 }
 
@@ -264,7 +271,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const minRiskReward = Number(process.env.DISCORD_MIN_RR ?? 1.5);
   const minConfluence = Number(process.env.DISCORD_MIN_CONFLUENCE ?? 3);
 
-  const symbols = resolveDeskSymbols();
+  // Single-symbol crons set ?symbol=BTCUSDT / XRPUSDT so each request is isolated
+  const forceQ = req.query?.symbol ?? req.query?.symbols ?? null;
+  const force =
+    typeof forceQ === 'string'
+      ? forceQ
+      : Array.isArray(forceQ)
+        ? forceQ.join(',')
+        : process.env.DISCORD_DESK_FORCE_SYMBOL || null;
+  const symbols = resolveDeskSymbols(force);
   console.log(
     `📡 Pre-London Discord desk symbols=${symbols.join(',')} ${higherTimeframe}/${lowerTimeframe} mode=${mode} horizon=${tradeHorizon}`,
   );

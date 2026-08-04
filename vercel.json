@@ -19,6 +19,16 @@
       "maxDuration": 300,
       "includeFiles": "api/_lib/**"
     },
+    "api/cron/discord-desk-btc.ts": {
+      "memory": 1024,
+      "maxDuration": 300,
+      "includeFiles": "api/_lib/**"
+    },
+    "api/cron/discord-desk-xrp.ts": {
+      "memory": 1024,
+      "maxDuration": 300,
+      "includeFiles": "api/_lib/**"
+    },
     "api/**/*.ts": {
       "memory": 1024,
       "maxDuration": 30,
@@ -51,8 +61,12 @@
       "schedule": "0 13 * * *"
     },
     {
-      "path": "/api/cron/discord-btc-pre-london",
+      "path": "/api/cron/discord-desk-btc",
       "schedule": "45 5 * * *"
+    },
+    {
+      "path": "/api/cron/discord-desk-xrp",
+      "schedule": "50 5 * * *"
     }
   ],
   "rewrites": [
