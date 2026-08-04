@@ -1,20 +1,19 @@
 /**
- * Once-daily pre-London desk: deep-dive BTC and post text embeds to Discord.
+ * Once-daily pre-London desk: deep-dive per symbol and post text embeds to Discord.
+ * Default symbols: BTCUSDT + XRPUSDT (same tracker / open-book / entry-confirm loop).
  * No image attachment — message + embeds only, with NFA disclaimer.
  *
  * Schedule: 05:45 UTC (15 minutes before London session board at 06:00 UTC).
  *
  * Env:
- *   DISCORD_WEBHOOK_URL   — required Incoming Webhook URL
- *   CRON_SECRET           — optional Bearer auth (same as other crons)
- *   XAI_API_KEY           — required for Grok deep-dive
- *   DISCORD_BTC_SYMBOL    — default BTCUSDT
- *   DISCORD_AI_HIGHER_TF  — default 1d
- *   DISCORD_AI_LOWER_TF   — default 15m
- *   DISCORD_AI_MODE       — default smc
- *   DISCORD_AI_HORIZON    — default swing
- *   DISCORD_MIN_RR        — default 1.5
- *   DISCORD_MIN_CONFLUENCE— default 3
+ *   DISCORD_WEBHOOK_URL      — default Incoming Webhook (all symbols unless overridden)
+ *   DISCORD_WEBHOOK_URL_XRP  — optional XRP-only webhook (or DISCORD_WEBHOOK_URL_XRPUSDT)
+ *   DISCORD_WEBHOOK_URL_BTC  — optional BTC-only webhook
+ *   DISCORD_DESK_SYMBOLS     — comma list, default "BTCUSDT,XRPUSDT"
+ *   DISCORD_BTC_SYMBOL       — legacy single-symbol override if DESK_SYMBOLS unset
+ *   CRON_SECRET / XAI_API_KEY
+ *   DISCORD_AI_HIGHER_TF / LOWER_TF / MODE / HORIZON / MIN_RR / MIN_CONFLUENCE
+ *   TRACKER_URL / TRACKER_API_KEY
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
@@ -180,6 +179,56 @@ function formatSessionEmbed(
   };
 }
 
+
+/** Resolve desk symbols (multi-asset). */
+function resolveDeskSymbols(): string[] {
+  const multi = (process.env.DISCORD_DESK_SYMBOLS || '').trim();
+  if (multi) {
+    return Array.from(
+      new Set(
+        multi
+          .split(/[,\s]+/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((s) => {
+            const up = s.toUpperCase();
+            const looksLikeTf =
+              /^\d+[MHDW]$/i.test(up) ||
+              ['1D', '1H', '15M', '1W', '4H', '5M', '1M'].includes(up);
+            return normalizeBinanceSpotSymbol(looksLikeTf ? 'BTCUSDT' : up);
+          }),
+      ),
+    );
+  }
+  // Legacy single-symbol env
+  const rawSymbol = (process.env.DISCORD_BTC_SYMBOL || 'BTCUSDT').trim().toUpperCase();
+  const looksLikeTimeframe =
+    /^\d+[MHDW]$/i.test(rawSymbol) ||
+    ['1D', '1H', '15M', '1W', '4H', '5M', '1M'].includes(rawSymbol);
+  const symbol = normalizeBinanceSpotSymbol(
+    !rawSymbol || looksLikeTimeframe ? 'BTCUSDT' : rawSymbol,
+  );
+  // Default expansion: BTC + XRP when using legacy single-BTC default
+  if (!process.env.DISCORD_BTC_SYMBOL || symbol === 'BTCUSDT') {
+    return ['BTCUSDT', 'XRPUSDT'];
+  }
+  return [symbol];
+}
+
+/** Per-symbol webhook override, else shared DISCORD_WEBHOOK_URL. */
+function resolveWebhookForSymbol(symbol: string, fallback: string): string {
+  const base = symbol.replace(/USDT$/i, '').toUpperCase(); // BTC, XRP
+  const candidates = [
+    process.env[`DISCORD_WEBHOOK_URL_${symbol}`],
+    process.env[`DISCORD_WEBHOOK_URL_${base}`],
+    process.env[`DISCORD_${base}_WEBHOOK_URL`],
+  ];
+  for (const c of candidates) {
+    if (c && String(c).trim()) return String(c).trim();
+  }
+  return fallback;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const authHeader = req.headers.authorization;
   const expectedCronAuth = process.env.CRON_SECRET
@@ -189,8 +238,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
-  if (!webhookUrl) {
+  const defaultWebhookUrl = process.env.DISCORD_WEBHOOK_URL;
+  if (!defaultWebhookUrl) {
     return res.status(503).json({
       error: 'DISCORD_WEBHOOK_URL is not set',
       hint: 'Create a channel Incoming Webhook in Discord and set DISCORD_WEBHOOK_URL in Vercel env.',
@@ -202,20 +251,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(503).json({ error: 'XAI_API_KEY is not set' });
   }
 
-  // Guard against swapped env values (e.g. DISCORD_BTC_SYMBOL=1d or 1D)
-  const rawSymbol = (process.env.DISCORD_BTC_SYMBOL || 'BTCUSDT').trim().toUpperCase();
-  const looksLikeTimeframe = /^\d+[MHDW]$/i.test(rawSymbol) || ['1D', '1H', '15M', '1W', '4H', '5M', '1M'].includes(rawSymbol);
-  // BTCUSD → BTCUSDT so Binance + session cache keys match the rest of the platform
-  const symbol = normalizeBinanceSpotSymbol(!rawSymbol || looksLikeTimeframe ? 'BTCUSDT' : rawSymbol);
-  if (looksLikeTimeframe) {
-    console.warn(
-      `DISCORD_BTC_SYMBOL="${process.env.DISCORD_BTC_SYMBOL}" looks like a timeframe; using BTCUSDT. ` +
-        'Set DISCORD_BTC_SYMBOL=BTCUSDT and put 1d/15m in DISCORD_AI_HIGHER_TF / DISCORD_AI_LOWER_TF.',
-    );
-  }
-  if (rawSymbol && rawSymbol !== symbol) {
-    console.warn(`DISCORD_BTC_SYMBOL="${rawSymbol}" normalized to "${symbol}" for Binance/cache.`);
-  }
   const higherTimeframe = (process.env.DISCORD_AI_HIGHER_TF || '1d').trim().toLowerCase();
   const lowerTimeframe = (process.env.DISCORD_AI_LOWER_TF || '15m').trim().toLowerCase();
   const mode = (process.env.DISCORD_AI_MODE || 'smc').trim().toLowerCase();
@@ -223,7 +258,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const minRiskReward = Number(process.env.DISCORD_MIN_RR ?? 1.5);
   const minConfluence = Number(process.env.DISCORD_MIN_CONFLUENCE ?? 3);
 
-  console.log(`📡 Pre-London Discord desk: ${symbol} ${higherTimeframe}/${lowerTimeframe} mode=${mode} horizon=${tradeHorizon}`);
+  const symbols = resolveDeskSymbols();
+  console.log(
+    `📡 Pre-London Discord desk symbols=${symbols.join(',')} ${higherTimeframe}/${lowerTimeframe} mode=${mode} horizon=${tradeHorizon}`,
+  );
+
+  const results: any[] = [];
+
+  for (const symbol of symbols) {
+    const webhookUrl = resolveWebhookForSymbol(symbol, defaultWebhookUrl);
+    console.log(`📡 Desk run ${symbol} → webhook ${webhookUrl === defaultWebhookUrl ? 'shared' : 'symbol-specific'}`);
 
   try {
     // Prefer cached general analysis + session snapshots (from Asia/London/NY cron)
@@ -629,8 +673,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (!discord.ok) {
-      console.error('Discord webhook failed:', discord.status, discord.body);
-      return res.status(502).json({
+      console.error(`${symbol} Discord webhook failed:`, discord.status, discord.body);
+      results.push({
+        success: false,
+        symbol,
         error: 'Discord webhook failed',
         status: discord.status,
         body: discord.body.slice(0, 500),
@@ -638,9 +684,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         tradeCount: setupCount,
         tracker,
       });
+      continue;
     }
 
-    return res.json({
+    results.push({
       success: true,
       symbol,
       higherTimeframe: deep.higherTimeframe,
@@ -661,7 +708,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       tracker,
     });
   } catch (error: any) {
-    console.error('Pre-London Discord desk failed:', error);
+    console.error(`Pre-London Discord desk failed for ${symbol}:`, error);
     // Best-effort failure notice to Discord
     try {
       if (webhookUrl) {
@@ -673,6 +720,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch {
       // ignore
     }
-    return res.status(500).json({ error: error?.message || 'Pre-London desk failed' });
+    results.push({
+      success: false,
+      symbol,
+      error: error?.message || 'Pre-London desk failed',
+    });
   }
+  } // end symbol loop
+
+  const allOk = results.length > 0 && results.every((r) => r.success);
+  const anyOk = results.some((r) => r.success);
+  return res.status(allOk ? 200 : anyOk ? 207 : 500).json({
+    success: allOk,
+    symbols,
+    results,
+  });
 }
