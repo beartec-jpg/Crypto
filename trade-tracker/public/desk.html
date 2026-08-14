@@ -1,0 +1,1811 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BearTec Scalp Desk</title>
+  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #070b14;
+      --panel: #0d1320;
+      --card: #121a2b;
+      --line: #1c2740;
+      --txt: #e8eef9;
+      --muted: #8b9bb8;
+      --ok: #3dd68c;
+      --warn: #f5c542;
+      --bad: #f07178;
+      --acc: #4da3ff;
+      --long: #3dd68c;
+      --short: #f07178;
+      --hdr: 52px;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+      background: var(--bg); color: var(--txt);
+      display: grid; grid-template-rows: var(--hdr) 1fr;
+    }
+    header {
+      display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+      padding: 0 1rem; border-bottom: 1px solid var(--line); background: #0a101c;
+    }
+    .brand { display: flex; align-items: center; gap: .65rem; min-width: 0; }
+    .logo {
+      width: 28px; height: 28px; border-radius: 8px;
+      background: linear-gradient(135deg, #1d4ed8, #0ea5e9);
+      display: grid; place-items: center; font-weight: 800; font-size: .75rem;
+    }
+    h1 { margin: 0; font-size: .95rem; font-weight: 650; letter-spacing: .01em; }
+    .sub { font-size: .72rem; color: var(--muted); }
+    .badge {
+      font-size: .68rem; font-weight: 650; letter-spacing: .03em;
+      padding: .2rem .5rem; border-radius: 999px; background: #172033; color: var(--muted);
+      border: 1px solid var(--line);
+    }
+    .badge.on { color: var(--ok); background: #0c2a1d; border-color: #14532d; }
+    .badge.live { color: #fecaca; background: #3f1212; border-color: #7f1d1d; }
+    .badge.warn { color: #fde68a; background: #3b2a0a; border-color: #854d0e; }
+    .row { display: flex; gap: .45rem; flex-wrap: wrap; align-items: center; }
+    button, .btn {
+      background: #1a2740; color: var(--txt); border: 1px solid var(--line);
+      border-radius: 8px; padding: .38rem .7rem; font-size: .78rem; font-weight: 600;
+      cursor: pointer;
+    }
+    button.primary { background: linear-gradient(180deg, #1d6fd8, #1558b0); border-color: #2563eb; }
+    button:disabled { opacity: .5; cursor: wait; }
+    button.active, .tab.active {
+      background: #16325c; border-color: #3b82f6; color: #dbeafe;
+    }
+    input {
+      background: #0a101c; border: 1px solid var(--line); color: var(--txt);
+      border-radius: 8px; padding: .38rem .55rem; font-size: .78rem;
+    }
+    .layout {
+      display: grid; grid-template-columns: 1fr 360px; min-height: 0; height: 100%;
+    }
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 1fr; grid-template-rows: minmax(360px, 50vh) 1fr; }
+    }
+    .main { display: grid; grid-template-rows: auto auto 1fr auto auto; min-height: 0; border-right: 1px solid var(--line); }
+    .stats {
+      display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .5rem;
+      padding: .65rem .85rem; border-bottom: 1px solid var(--line); background: var(--panel);
+    }
+    @media (max-width: 900px) { .stats { grid-template-columns: repeat(3, 1fr); } }
+    .stat {
+      background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: .55rem .65rem;
+    }
+    .stat .k { font-size: .65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .stat .v { font-size: 1.05rem; font-weight: 700; margin-top: .1rem; font-variant-numeric: tabular-nums; }
+    .stat .s { font-size: .68rem; color: var(--muted); margin-top: .1rem; }
+    .pos { color: var(--ok); } .neg { color: var(--bad); }
+    .chart-bar {
+      display: flex; gap: .5rem; align-items: center; justify-content: space-between;
+      padding: .45rem .85rem; border-bottom: 1px solid var(--line); background: #0a101c;
+    }
+    .tabs { display: flex; gap: .3rem; flex-wrap: wrap; }
+    .tab {
+      background: transparent; border: 1px solid transparent; color: var(--muted);
+      border-radius: 7px; padding: .32rem .55rem; font-size: .78rem; font-weight: 650; cursor: pointer;
+    }
+    .tab:hover { color: var(--txt); background: #121a2b; }
+    #chartWrap { position: relative; min-height: 0; background: #080d18; }
+    #chart { position: relative; width: 100%; height: 100%; min-height: 320px; }
+    .legend {
+      position: absolute; top: 10px; left: 12px; z-index: 30;
+      font-size: .75rem; color: var(--muted); pointer-events: none;
+      background: rgba(8,13,24,.65); padding: .35rem .55rem; border-radius: 6px;
+    }
+    .tools-strip {
+      border-top: 1px solid var(--line); background: var(--panel);
+      display: grid; grid-template-rows: auto 1fr; min-height: 160px; max-height: 240px;
+    }
+    .tools-head {
+      display: flex; gap: .4rem; flex-wrap: wrap; align-items: center;
+      padding: .45rem .75rem; border-bottom: 1px solid var(--line);
+    }
+    .tools-head .label { font-size: .68rem; color: var(--muted); text-transform: uppercase; margin-right: .3rem; }
+    #toolOut {
+      margin: 0; padding: .6rem .85rem; overflow: auto; font-size: .72rem;
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #b8c7e0; white-space: pre-wrap; word-break: break-word;
+    }
+    .side {
+      display: grid; grid-template-rows: auto 1fr auto; min-height: 0; background: var(--panel);
+    }
+    .side-head {
+      padding: .65rem .85rem; border-bottom: 1px solid var(--line);
+      font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 650;
+    }
+    .side-scroll { overflow: auto; padding: .65rem .75rem; min-height: 0; }
+    .trade {
+      border: 1px solid var(--line); border-radius: 10px; padding: .7rem .75rem;
+      background: var(--card); margin-bottom: .55rem;
+    }
+    .trade.selected { border-color: #3b82f6; box-shadow: 0 0 0 1px rgba(59,130,246,.25); }
+    .trade h3 { margin: 0; font-size: .88rem; }
+    .dir-LONG { color: var(--long); } .dir-SHORT { color: var(--short); }
+    .meta {
+      display: grid; grid-template-columns: 1fr 1fr; gap: .25rem .5rem;
+      font-size: .75rem; margin: .45rem 0; color: var(--muted);
+    }
+    .meta strong { color: var(--txt); font-weight: 600; display: block; }
+    .reason { font-size: .78rem; color: #c5d0e6; line-height: 1.4; }
+    .chips { display: flex; flex-wrap: wrap; gap: .25rem; margin-top: .4rem; }
+    .chip { font-size: .65rem; background: #1a2438; color: #b6c4de; padding: .12rem .4rem; border-radius: 999px; }
+    .muted { color: var(--muted); font-size: .8rem; }
+    .analysis-stack {
+      border-top: 1px solid var(--line); background: #0a101c;
+      display: grid; grid-template-rows: 1fr 1fr; max-height: 280px; min-height: 0;
+    }
+    .analysis-box {
+      padding: .55rem .75rem; overflow: auto; min-height: 0;
+      font-size: .76rem; color: #c5d0e6; border-bottom: 1px solid var(--line);
+    }
+    .analysis-box:last-child { border-bottom: none; }
+    .analysis-box.active-bot {
+      box-shadow: inset 3px 0 0 #3b82f6;
+      background: #0c1424;
+    }
+    .analysis-box .t {
+      color: var(--muted); font-size: .65rem; text-transform: uppercase;
+      letter-spacing: .04em; margin-bottom: .3rem; font-weight: 650;
+      display: flex; justify-content: space-between; gap: .4rem; align-items: center;
+    }
+    .analysis-box .t .chip {
+      font-size: .62rem; text-transform: none; letter-spacing: 0;
+      padding: .1rem .35rem; border-radius: 999px; background: #1a2438; color: #b6c4de;
+    }
+    .analysis-box .t .chip.on { color: #93c5fd; border: 1px solid #2563eb; background: #0f2744; }
+    .analysis-box .body { line-height: 1.4; }
+    .analysis-box .meta-line { font-size: .68rem; color: var(--muted); margin-bottom: .25rem; }
+    .tool-call {
+      border: 1px solid var(--line); border-radius: 10px; padding: .55rem .65rem;
+      background: var(--card); margin-bottom: .45rem; cursor: pointer;
+    }
+    .tool-call:hover, .tool-call.active { border-color: #3b82f6; }
+    .tool-call .name { font-weight: 700; font-size: .82rem; }
+    .tool-call .meta-line { font-size: .7rem; color: var(--muted); margin-top: .15rem; }
+    .tool-actions { display: flex; gap: .35rem; margin-top: .4rem; flex-wrap: wrap; }
+    .tool-actions button { font-size: .7rem; padding: .25rem .45rem; }
+    .tool-preview {
+      margin-top: .4rem; font-size: .7rem; color: #a8b8d4;
+      font-family: ui-monospace, Menlo, monospace; max-height: 140px; overflow: auto;
+      white-space: pre-wrap; display: none;
+    }
+    .tool-call.open .tool-preview { display: block; }
+    .active-strip {
+      border-top: 1px solid var(--line); background: #0a101c;
+      max-height: 220px; overflow: auto; padding: .55rem .75rem;
+    }
+    .active-strip .head {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: .68rem; color: var(--muted); text-transform: uppercase;
+      letter-spacing: .05em; font-weight: 650; margin-bottom: .45rem;
+    }
+    .active-card {
+      display: grid; grid-template-columns: 1.1fr 1.4fr 1.2fr;
+      gap: .5rem .75rem; align-items: center;
+      border: 1px solid var(--line); border-radius: 10px;
+      background: var(--card); padding: .55rem .7rem; margin-bottom: .4rem;
+    }
+    @media (max-width: 900px) {
+      .active-card { grid-template-columns: 1fr; }
+    }
+    .active-card .title { font-size: .88rem; font-weight: 700; }
+    .active-card .levels {
+      display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: .25rem .4rem;
+      font-size: .72rem; color: var(--muted);
+    }
+    .active-card .levels strong { display: block; color: var(--txt); font-weight: 650; font-variant-numeric: tabular-nums; }
+    .active-card .metrics {
+      display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: .25rem .4rem;
+      font-size: .72rem; color: var(--muted); text-align: right;
+    }
+    .active-card .metrics strong { display: block; font-size: .95rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+    .bar {
+      height: 6px; border-radius: 99px; background: #1e293b; overflow: hidden; margin-top: .25rem;
+    }
+    .bar > i { display: block; height: 100%; border-radius: 99px; }
+    .bar.up > i { background: linear-gradient(90deg, #14532d, #3dd68c); }
+    .bar.down > i { background: linear-gradient(90deg, #7f1d1d, #f07178); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo">BT</div>
+      <div>
+        <h1>Scalp Desk</h1>
+        <div class="sub">Standalone LTF · tool-driven Grok · Blofin</div>
+      </div>
+      <div class="row" style="margin-left:.5rem">
+        <span id="deskBadge" class="badge">…</span>
+        <span id="blofinBadge" class="badge">…</span>
+        <span id="runBadge" class="badge">…</span>
+      </div>
+    </div>
+    <div class="row">
+      <input id="apiKey" type="password" placeholder="API key (Run)" style="width:9.5rem" />
+      <button id="runBtn" class="primary">Run analysis</button>
+      <button id="refreshBtn">Refresh</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <section class="main">
+      <div class="stats" id="stats"></div>
+
+      <div class="chart-bar">
+        <div class="tabs" id="botTabs"></div>
+        <div class="row">
+          <button class="tab tf-btn active" data-tf="ltf" id="btnLtf">LTF</button>
+          <button class="tab tf-btn" data-tf="htf" id="btnHtf">HTF</button>
+          <span id="priceTag" class="badge">—</span>
+        </div>
+      </div>
+
+      <div id="chartWrap">
+        <div id="chart"></div>
+        <div class="legend" id="legend">—</div>
+      </div>
+
+      <div class="active-strip">
+        <div class="head">
+          <span>Trade tracker · <span id="activeSymLabel">—</span>
+            <span class="badge" style="margin-left:.35rem" title="Filled positions">in trade: <span id="cntInTrade">0</span></span>
+            <span class="badge" title="Waiting for entry/confirm">watching: <span id="cntWatch">0</span></span>
+          </span>
+          <span id="activePxLabel" class="badge">—</span>
+        </div>
+        <div id="activeTrades">
+          <p class="muted" style="margin:0">No scalp trades for this ticker.</p>
+        </div>
+      </div>
+
+      <div class="tools-strip">
+        <div class="tools-head">
+          <span class="label">Live probe</span>
+          <div class="row" id="toolBtns"></div>
+          <span class="muted" id="toolMeta"></span>
+        </div>
+        <pre id="toolOut">Probe tools Grok can call, or open the Tools tab to see what Grok actually used for this ticker.</pre>
+      </div>
+    </section>
+
+    <aside class="side">
+      <div class="side-head row" style="gap:.35rem">
+        <button type="button" class="tab side-tab active" data-panel="setups">Setups</button>
+        <button type="button" class="tab side-tab" data-panel="tools">Tools used</button>
+      </div>
+      <div class="side-scroll" id="panelSetups"></div>
+      <div class="side-scroll" id="panelTools" style="display:none"></div>
+      <div class="analysis-stack" id="analysisStack">
+        <div class="analysis-box" id="analysisBox4h" data-bot="xrp_struct">
+          <div class="t">XRP 4h bot <span class="chip">4h / 15m</span></div>
+          <div class="body muted">—</div>
+        </div>
+        <div class="analysis-box" id="analysisBox1h" data-bot="xrp_scalp">
+          <div class="t">XRP 1h bot <span class="chip">1h / 5m</span></div>
+          <div class="body muted">—</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const keyStore = 'trackerApiKey';
+    $('apiKey').value = localStorage.getItem(keyStore) || '';
+    $('apiKey').addEventListener('change', () => localStorage.setItem(keyStore, $('apiKey').value.trim()));
+
+    let state = {
+      /** Multi-bot desk: tabs are bots, not tickers */
+      bots: [
+        { id: 'xrp_struct', source: 'xrp_struct', symbols: ['XRPUSDT'], htf: '4h', ltf: '15m', label: '4h/15m' },
+        { id: 'xrp_scalp', source: 'xrp_scalp', symbols: ['XRPUSDT'], htf: '1h', ltf: '5m', label: '1h/5m' },
+      ],
+      botId: 'xrp_struct',
+      symbols: ['XRPUSDT'],
+      symbol: 'XRPUSDT',
+      ltf: '15m',
+      htf: '4h',
+      useHtf: false,
+      dash: null,
+      tools: [],
+      chart: null,
+      series: null,
+      lines: [],
+      toolLines: [], // chart lines from tool results (SMC/VP)
+      candles: [], // chart series (includes ghost future bars)
+      realBarCount: 0, // bars that are real market data (before ghost pad)
+      candleGen: 0,
+      chartKey: '', // botId|symbol|tf currently loaded
+      userPanning: false,
+      sidePanel: 'setups',
+      plottedToolIndex: null, // which tool-call index is on the chart
+      boxWidthBars: 12, // visual trade duration in candles
+      boxGapBars: 2,
+      futurePadBars: 36, // whitespace bars so future has times + box anchors
+      lastPrice: null,
+      setupLevels: [], // prices to force into autoscale for RR boxes
+      rrPrimitive: null, // LWC series primitive — draws boxes in pane coords
+    };
+
+    function currentBot() {
+      return (
+        (state.bots || []).find((b) => b.id === state.botId) ||
+        state.bots[0] || {
+          id: 'xrp_struct',
+          source: 'xrp_struct',
+          symbols: [state.symbol],
+          htf: state.htf,
+          ltf: state.ltf,
+          label: `${state.htf}/${state.ltf}`,
+        }
+      );
+    }
+    function botSource() {
+      const b = currentBot();
+      return b.source || b.id || 'scalp_desk';
+    }
+    function applyBot(bot) {
+      if (!bot) return;
+      state.botId = bot.id;
+      state.ltf = bot.ltf || state.ltf;
+      state.htf = bot.htf || state.htf;
+      if (Array.isArray(bot.symbols) && bot.symbols.length) {
+        state.symbol = bot.symbols[0];
+      }
+      updateTfButtonLabels();
+    }
+    function updateTfButtonLabels() {
+      const ltf = $('btnLtf');
+      const htf = $('btnHtf');
+      if (ltf) ltf.textContent = `LTF ${state.ltf || ''}`.trim();
+      if (htf) htf.textContent = `HTF ${state.htf || ''}`.trim();
+    }
+    function botTabLabel(bot) {
+      const sym = (bot.symbols && bot.symbols[0] ? bot.symbols[0] : 'XRP')
+        .replace(/USDT$/i, '')
+        .replace(/USD$/i, '');
+      // Prefer HTF in the tab name: "XRP 4h" / "XRP 1h"
+      const h = String(bot.htf || '').toLowerCase();
+      if (h) return `${sym} ${h}`;
+      return bot.label || bot.id || sym;
+    }
+
+    function headers(mut) {
+      const h = { Accept: 'application/json' };
+      const k = $('apiKey').value.trim();
+      if (mut && k) h['X-Tracker-Key'] = k;
+      return h;
+    }
+    function fmt(n, d = 4) {
+      if (n == null || n === '') return '—';
+      const x = Number(n);
+      if (!Number.isFinite(x)) return String(n);
+      return Math.abs(x) >= 1000 ? x.toFixed(2) : x.toFixed(d);
+    }
+    function fmtR(n) {
+      if (n == null || !Number.isFinite(Number(n))) return '—';
+      const x = Number(n);
+      return (x > 0 ? '+' : '') + x.toFixed(2) + 'R';
+    }
+    function pct(n) {
+      if (n == null || !Number.isFinite(Number(n))) return '—';
+      return (Number(n) * 100).toFixed(1) + '%';
+    }
+    function ago(iso) {
+      if (!iso) return 'never';
+      const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+      if (m < 1) return 'just now';
+      if (m < 60) return m + 'm ago';
+      return Math.floor(m / 60) + 'h ago';
+    }
+    function esc(s) {
+      return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+    function tfNow() { return state.useHtf ? state.htf : state.ltf; }
+
+    /**
+     * RR boxes drawn INSIDE the LWC series pane (correct X/Y, above candles).
+     * External SVG overlays mis-align on the Y axis (label shows, box hidden
+     * until you drag the price scale) — this primitive avoids that entirely.
+     */
+    function createRrBoxPrimitive() {
+      /** @type {any[]} */
+      let boxes = [];
+      /** @type {any} */
+      let chart = null;
+      /** @type {any} */
+      let series = null;
+      /** @type {null | (() => void)} */
+      let requestUpdate = null;
+
+      const renderer = {
+        draw(target) {
+          if (!chart || !series || !boxes.length) return;
+          // Media space = CSS pixels, same units as priceToCoordinate / logicalToCoordinate
+          target.useMediaCoordinateSpace((scope) => {
+            const ctx = scope.context;
+            ctx.save();
+            for (let i = 0; i < boxes.length; i++) {
+              const b = boxes[i];
+              const x1 = chart.timeScale().logicalToCoordinate(b.from);
+              const x2 = chart.timeScale().logicalToCoordinate(b.to);
+              const yEntry = series.priceToCoordinate(b.entry);
+              const ySl = series.priceToCoordinate(b.sl);
+              const yTp1 = b.tp1 != null && Number.isFinite(b.tp1) ? series.priceToCoordinate(b.tp1) : null;
+              const yTp2 = b.tp2 != null && Number.isFinite(b.tp2) ? series.priceToCoordinate(b.tp2) : null;
+              if (x1 == null || x2 == null || yEntry == null || ySl == null) continue;
+
+              const left = Math.min(x1, x2);
+              const right = Math.max(x1, x2);
+              const w = Math.max(8, right - left);
+
+              const roundRect = (x, y, rw, rh) => {
+                const r = 3;
+                const rr = Math.min(r, rw / 2, rh / 2);
+                ctx.beginPath();
+                if (typeof ctx.roundRect === 'function') {
+                  ctx.roundRect(x, y, rw, rh, rr);
+                } else {
+                  ctx.rect(x, y, rw, rh);
+                }
+              };
+
+              const fillBand = (yA, yB, fill, stroke) => {
+                if (yA == null || yB == null || !Number.isFinite(yA) || !Number.isFinite(yB)) return;
+                const top = Math.min(yA, yB);
+                const h = Math.max(2, Math.abs(yB - yA));
+                ctx.fillStyle = fill;
+                ctx.strokeStyle = stroke;
+                ctx.lineWidth = 1.25;
+                roundRect(left, top, w, h);
+                ctx.fill();
+                ctx.stroke();
+              };
+
+              // Two green reward boxes: entry→TP1 and entry→TP2 (TP2 drawn first, lighter)
+              if (yTp2 != null) {
+                fillBand(yEntry, yTp2, b.rewardFill2, b.tp2Color || b.edge);
+              }
+              if (yTp1 != null) {
+                fillBand(yEntry, yTp1, b.rewardFill1, b.tp1Color || b.edge);
+              }
+
+              // Risk (entry → SL)
+              fillBand(yEntry, ySl, b.riskFill, b.edge);
+
+              // Level lines
+              const hLine = (y, color, lw) => {
+                if (y == null || !Number.isFinite(y)) return;
+                ctx.strokeStyle = color;
+                ctx.lineWidth = lw;
+                ctx.beginPath();
+                ctx.moveTo(left, y);
+                ctx.lineTo(left + w, y);
+                ctx.stroke();
+              };
+              hLine(yEntry, b.edge, 2.25);
+              hLine(ySl, b.slColor, 1.5);
+              hLine(yTp1, b.tp1Color || b.tpColor, 1.5);
+              hLine(yTp2, b.tp2Color || b.tpColor, 1.5);
+
+              // Small TP labels on the right edge of each green band
+              const tag = (y, text, color) => {
+                if (y == null || !Number.isFinite(y)) return;
+                ctx.font = '700 10px "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif';
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = 'rgba(8,13,24,0.9)';
+                ctx.fillStyle = color;
+                const tx = left + w - 28;
+                ctx.strokeText(text, tx, y - 3);
+                ctx.fillText(text, tx, y - 3);
+              };
+              tag(yTp1, 'TP1', b.tp1Color || '#86efac');
+              tag(yTp2, 'TP2', b.tp2Color || '#4ade80');
+
+              // Label above the full structure
+              const ys = [yEntry, ySl];
+              if (yTp1 != null) ys.push(yTp1);
+              if (yTp2 != null) ys.push(yTp2);
+              const ly = Math.min(...ys) - 6;
+              ctx.font = '700 11px "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif';
+              ctx.lineWidth = 3;
+              ctx.strokeStyle = 'rgba(8,13,24,0.9)';
+              ctx.fillStyle = b.edge;
+              ctx.strokeText(b.label, left + 4, ly);
+              ctx.fillText(b.label, left + 4, ly);
+
+              // Sequence connector to next box
+              if (i < boxes.length - 1) {
+                const n = boxes[i + 1];
+                const nx = chart.timeScale().logicalToCoordinate(n.from);
+                const ny = series.priceToCoordinate(n.entry);
+                if (nx != null && ny != null) {
+                  const xA = left + w;
+                  const yA = yEntry;
+                  const xB = nx;
+                  const yB = ny;
+                  const mid = (xA + xB) / 2;
+                  ctx.strokeStyle = '#94a3b8';
+                  ctx.lineWidth = 1.5;
+                  ctx.setLineDash([4, 3]);
+                  ctx.beginPath();
+                  ctx.moveTo(xA, yA);
+                  ctx.bezierCurveTo(mid, yA, mid, yB, xB, yB);
+                  ctx.stroke();
+                  ctx.setLineDash([]);
+                }
+              }
+            }
+            ctx.restore();
+          });
+        },
+      };
+
+      const paneView = {
+        zOrder: () => 'top',
+        renderer: () => renderer,
+      };
+
+      return {
+        attached(param) {
+          chart = param.chart;
+          series = param.series;
+          requestUpdate = param.requestUpdate;
+        },
+        detached() {
+          chart = null;
+          series = null;
+          requestUpdate = null;
+        },
+        paneViews: () => [paneView],
+        updateAllViews() {},
+        /**
+         * @param {any[]} next
+         */
+        setBoxes(next) {
+          boxes = Array.isArray(next) ? next : [];
+          if (requestUpdate) requestUpdate();
+        },
+        autoscaleInfo() {
+          if (!boxes.length) return null;
+          let min = Infinity;
+          let max = -Infinity;
+          for (const b of boxes) {
+            for (const p of [b.entry, b.sl, b.tp1, b.tp2]) {
+              if (p != null && Number.isFinite(p)) {
+                min = Math.min(min, p);
+                max = Math.max(max, p);
+              }
+            }
+          }
+          if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+          const pad = (max - min) * 0.12 || Math.abs(max) * 0.002 || 0.001;
+          return { priceRange: { minValue: min - pad, maxValue: max + pad } };
+        },
+      };
+    }
+
+    function initChart() {
+      const el = $('chart');
+      state.chart = LightweightCharts.createChart(el, {
+        layout: {
+          background: { type: 'solid', color: '#080d18' },
+          textColor: '#8b9bb8',
+          fontSize: 11,
+        },
+        grid: {
+          vertLines: { color: '#121a2b' },
+          horzLines: { color: '#121a2b' },
+        },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        rightPriceScale: { borderColor: '#1c2740', autoScale: true },
+        timeScale: {
+          borderColor: '#1c2740',
+          timeVisible: true,
+          secondsVisible: false,
+          rightOffset: 18, // room for sequenced future trade boxes
+        },
+        handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
+        handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true },
+      });
+      state.series = state.chart.addCandlestickSeries({
+        upColor: '#3dd68c', downColor: '#f07178',
+        borderUpColor: '#3dd68c', borderDownColor: '#f07178',
+        wickUpColor: '#3dd68c', wickDownColor: '#f07178',
+        priceFormat: { type: 'price', precision: 4, minMove: 0.0001 },
+        // Expand scale so entry/SL/TP always have pixel coords (not null)
+        autoscaleInfoProvider: (original) => {
+          const base = original();
+          const levels = (state.setupLevels || []).filter((n) => Number.isFinite(n) && n > 0);
+          if (!levels.length) return base;
+          let min = Math.min(...levels);
+          let max = Math.max(...levels);
+          if (base && base.priceRange) {
+            min = Math.min(min, base.priceRange.minValue);
+            max = Math.max(max, base.priceRange.maxValue);
+          }
+          const pad = (max - min) * 0.12 || Math.abs(max) * 0.002 || 0.001;
+          return {
+            priceRange: { minValue: min - pad, maxValue: max + pad },
+          };
+        },
+      });
+
+      // Native pane drawing — always on top of candles, correct Y on every frame
+      state.rrPrimitive = createRrBoxPrimitive();
+      try {
+        state.series.attachPrimitive(state.rrPrimitive);
+      } catch (e) {
+        console.error('[desk] attachPrimitive failed', e);
+      }
+
+      // Mark user panning (viewport handled by primitive redraw on LWC paint)
+      const markPan = () => { state.userPanning = true; };
+      state.chart.timeScale().subscribeVisibleLogicalRangeChange(markPan);
+      state.chart.timeScale().subscribeVisibleTimeRangeChange(markPan);
+      const ro = new ResizeObserver(() => {
+        if (!state.chart) return;
+        state.chart.applyOptions({ width: el.clientWidth, height: el.clientHeight });
+      });
+      ro.observe(el);
+      state.chart.applyOptions({ width: el.clientWidth, height: el.clientHeight || 360 });
+    }
+
+    function clearLines() {
+      for (const l of state.lines) {
+        try { state.series.removePriceLine(l); } catch {}
+      }
+      state.lines = [];
+    }
+    function clearToolLines() {
+      for (const l of state.toolLines) {
+        try { state.series.removePriceLine(l); } catch {}
+      }
+      state.toolLines = [];
+      state.plottedToolIndex = null;
+    }
+
+    function addLine(price, color, title, intoTool = false) {
+      if (!Number.isFinite(Number(price)) || Number(price) <= 0) return;
+      const line = state.series.createPriceLine({
+        price: Number(price),
+        color,
+        lineWidth: intoTool ? 2 : 1,
+        lineStyle: intoTool
+          ? LightweightCharts.LineStyle.Solid
+          : LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title,
+      });
+      (intoTool ? state.toolLines : state.lines).push(line);
+    }
+
+    function normSym(s) {
+      return String(s || '').toUpperCase().replace(/[-_/]/g, '');
+    }
+    function parseTargets(t) {
+      let tps = t.targets;
+      if (typeof tps === 'string') {
+        try { tps = JSON.parse(tps); } catch { tps = String(tps).replace(/[{}]/g, '').split(','); }
+      }
+      if (!Array.isArray(tps)) tps = [];
+      return tps.map(Number).filter((n) => Number.isFinite(n) && n > 0);
+    }
+
+    /**
+     * Classify setup vs live mark:
+     * - invalid: pending/analysis idea already violated (through SL) or nonsense
+     * - waiting: needs pullback/rally to zone
+     * - in_zone: price near entry
+     * - open: tracker entry_hit/tp1_hit
+     */
+    function classifySetup(t, px) {
+      const dir = String(t.direction || '').toUpperCase();
+      const long = dir !== 'SHORT';
+      const entry = Number(t.entry);
+      const sl = Number(t.stopLoss ?? t.stop_loss ?? t.current_stop ?? t.original_stop);
+      const tps = parseTargets(t);
+      const tp1 = tps[0];
+      const st = String(t.status || 'analysis');
+      if (st === 'entry_hit' || st === 'tp1_hit') {
+        return { tag: 'OPEN', cls: 'on', note: 'In trade' };
+      }
+      if (!Number.isFinite(px) || !Number.isFinite(entry) || !Number.isFinite(sl)) {
+        return { tag: 'IDEA', cls: '', note: 'Analysis idea' };
+      }
+      // Already through stop → dead as a pending plan
+      if (long && px < sl) {
+        return { tag: 'INVALID', cls: 'live', note: 'Price already through SL — do not take' };
+      }
+      if (!long && px > sl) {
+        return { tag: 'INVALID', cls: 'live', note: 'Price already through SL — do not take' };
+      }
+      // Short: price ripped above entry into risk pocket (between entry and SL)
+      if (!long && px > entry && px <= sl) {
+        return {
+          tag: 'STRESSED',
+          cls: 'warn',
+          note: 'Price already above entry toward SL — fade only if reclaim still valid',
+        };
+      }
+      // Long: price already dumped through entry toward SL
+      if (long && px < entry && px >= sl) {
+        return {
+          tag: 'STRESSED',
+          cls: 'warn',
+          note: 'Price already below entry toward SL — only on reclaim rules',
+        };
+      }
+      // Waiting for pullback into long / rally into short
+      if (long && px > entry * 1.001) {
+        return {
+          tag: 'WAIT PULLBACK',
+          cls: 'warn',
+          note: `Needs dip to ~${fmt(entry)} (now ${fmt(px)}) — not a market buy`,
+        };
+      }
+      if (!long && px < entry * 0.999) {
+        return {
+          tag: 'WAIT RALLY',
+          cls: 'warn',
+          note: `Needs bounce to ~${fmt(entry)} (now ${fmt(px)}) — not a market short`,
+        };
+      }
+      const near = Math.abs(px - entry) / entry < 0.0015;
+      if (near) {
+        return { tag: 'IN ZONE', cls: 'on', note: 'At entry zone — wait reclaim confirm' };
+      }
+      return { tag: 'ARMED', cls: '', note: st === 'entry_armed' ? 'Zone tagged, need confirm' : 'Pending' };
+    }
+
+    /** True if idea is already dead vs mark (SL/TPs printed) — hide from live UI. */
+    function isDeadIdea(t, px) {
+      if (px == null || !Number.isFinite(Number(px))) return false;
+      const p = Number(px);
+      const dir = String(t.direction || '').toUpperCase();
+      const long = dir !== 'SHORT';
+      const sl = Number(
+        t.stopLoss ?? t.stop_loss ?? t.current_stop ?? t.original_stop ?? t.currentStop ?? t.originalStop,
+      );
+      const tps = parseTargets(t);
+      // Through SL
+      if (Number.isFinite(sl) && sl > 0) {
+        if (long && p <= sl) return true;
+        if (!long && p >= sl) return true;
+      }
+      // Targets already printed before a fill (missed move)
+      if (tps.length) {
+        if (long && p >= Math.min(...tps)) return true;
+        if (!long && p <= Math.max(...tps)) return true;
+      }
+      const v = classifySetup(t, p);
+      if (v.tag === 'INVALID') return true;
+      // Analysis ghosts only: don't keep "STRESSED" cards after the auction moved
+      // through entry toward SL — those feel like open trades but aren't in the book.
+      if (t._fromAnalysis && v.tag === 'STRESSED') return true;
+      return false;
+    }
+
+    function setupsForSymbol(sym) {
+      const dash = state.dash;
+      if (!dash) return [];
+      const want = normSym(sym);
+      const src = botSource();
+      const px = state.lastPrice;
+      // Only this bot's LIVE book (xrp_struct vs xrp_scalp)
+      const book = (dash.openBook || []).filter((t) => {
+        if (normSym(t.symbol) !== want) return false;
+        const tSrc = String(t.source || 'scalp_desk');
+        if (tSrc === src) return true;
+        if (src === 'xrp_struct' && tSrc === 'scalp_desk') return true;
+        return false;
+      });
+      // Analysis ideas only if still actionable — never re-show stopped/invalid longs as STRESSED
+      const fromAnalysis = [];
+      const run = analysisForBot(sym);
+      if (run && normSym(run.symbol) === want) {
+        const trades = Array.isArray(run.best_trades) ? run.best_trades : [];
+        for (const t of trades) {
+          const idea = {
+            ...t,
+            symbol: sym,
+            status: 'analysis',
+            source: src,
+            _fromAnalysis: true,
+          };
+          if (isDeadIdea(idea, px)) continue;
+          fromAnalysis.push(idea);
+        }
+      }
+      const bookKeys = new Set(
+        book.map((t) => `${String(t.direction).toUpperCase()}:${Number(t.entry).toFixed(4)}`),
+      );
+      let extra = fromAnalysis.filter(
+        (t) => !bookKeys.has(`${String(t.direction).toUpperCase()}:${Number(t.entry).toFixed(4)}`),
+      );
+      const merged = [...book, ...extra];
+      const kept = [];
+      for (const t of merged) {
+        // Live book already open/pending — still show even if stressed (real pending)
+        // Analysis-only dead ideas already filtered
+        if (t._fromAnalysis && isDeadIdea(t, px)) continue;
+        const entry = Number(t.entry);
+        const dir = String(t.direction || '').toUpperCase();
+        const tol = Math.abs(entry) * 0.0015;
+        const dup = kept.some((k) => {
+          if (String(k.direction || '').toUpperCase() !== dir) return false;
+          return Math.abs(Number(k.entry) - entry) <= tol;
+        });
+        if (!dup) kept.push(t);
+      }
+      return kept;
+    }
+
+    /** Order AI sequence: counter-trend first (pullback), then with-trend / main. */
+    function orderSetupsSequence(setups) {
+      const score = (t) => {
+        const rel = String(t.htfRelationship || t.htf_relationship || '').toLowerCase();
+        if (rel.includes('counter')) return 0;
+        if (rel.includes('with')) return 2;
+        // pending first, then armed, then open
+        const st = String(t.status || '');
+        if (st === 'pending' || st === 'analysis' || st === 'idea') return 1;
+        return 3;
+      };
+      return [...setups].sort((a, b) => score(a) - score(b));
+    }
+
+    function barIntervalSec(candles) {
+      if (!candles || candles.length < 2) return 900;
+      return Math.max(60, Number(candles[candles.length - 1].time) - Number(candles[candles.length - 2].time));
+    }
+
+    /**
+     * Append whitespace bars so the right side has real timestamps (axis labels)
+     * without painting flat ghost candles over the future strip.
+     * LWC accepts { time } only as WhitespaceData.
+     */
+    function padFutureCandles(data, n) {
+      if (!data.length) return data;
+      const step =
+        data.length >= 2
+          ? Math.max(60, Number(data[data.length - 1].time) - Number(data[data.length - 2].time))
+          : 900;
+      const last = data[data.length - 1];
+      const out = data.slice();
+      for (let i = 1; i <= n; i++) {
+        out.push({ time: /** @type {any} */ (Number(last.time) + step * i) });
+      }
+      return out;
+    }
+
+    /**
+     * Build RR box models for the series primitive (price/logical only —
+     * pixel conversion happens inside the pane renderer every paint).
+     */
+    function drawTradeBoxes(sym) {
+      if (!state.series) return;
+      clearLines(); // no full-width horizontals for trades
+
+      const candles = state.candles || [];
+      const realN = state.realBarCount || candles.length;
+      const setups = orderSetupsSequence(setupsForSymbol(sym));
+
+      const levelBag = [];
+      for (const t of setups) {
+        const entry = Number(t.entry);
+        const sl = Number(
+          t.stopLoss ?? t.stop_loss ?? t.current_stop ?? t.original_stop ?? t.currentStop ?? t.originalStop,
+        );
+        const tps = parseTargets(t);
+        if (Number.isFinite(entry)) levelBag.push(entry);
+        if (Number.isFinite(sl)) levelBag.push(sl);
+        for (const p of tps) if (Number.isFinite(p)) levelBag.push(p);
+      }
+      state.setupLevels = levelBag;
+
+      if (!state.rrPrimitive) return;
+      if (candles.length < 2 || !setups.length) {
+        state.rrPrimitive.setBoxes([]);
+        return;
+      }
+
+      const width = state.boxWidthBars;
+      const gap = state.boxGapBars;
+      const baseIdx = Math.max(0, realN - 1);
+      const boxModels = [];
+
+      setups.forEach((t, i) => {
+        const dir = String(t.direction || '').toUpperCase();
+        const long = dir !== 'SHORT';
+        const entry = Number(t.entry);
+        const sl = Number(
+          t.stopLoss ?? t.stop_loss ?? t.current_stop ?? t.original_stop ?? t.currentStop ?? t.originalStop,
+        );
+        const tps = parseTargets(t);
+        const tp1 = tps[0] != null && Number.isFinite(tps[0]) ? tps[0] : null;
+        const tp2 = tps[1] != null && Number.isFinite(tps[1]) ? tps[1] : null;
+        if (!Number.isFinite(entry) || !Number.isFinite(sl)) return;
+
+        const validity = classifySetup(t, state.lastPrice);
+        const dead = validity.tag === 'INVALID';
+        const st = String(t.status || 'analysis');
+        const isLive = st === 'entry_hit' || st === 'tp1_hit';
+
+        let from = baseIdx + i * (width + gap);
+        let to = from + width;
+        if (from > candles.length - 2) {
+          from = Math.max(0, candles.length - 1 - width - i * (width + gap));
+          to = from + width;
+        }
+        // Allow end index into whitespace pad (logical coords still work past last bar)
+        to = Math.max(from + 4, to);
+
+        const rel = String(t.htfRelationship || t.htf_relationship || '').toLowerCase();
+        const label =
+          (dead ? 'DEAD ' : isLive ? 'LIVE ' : 'PEND ') +
+          (rel.includes('counter') ? 'CT ' : rel.includes('with') ? 'WT ' : '') +
+          (long ? 'LONG' : 'SHORT') +
+          ' · ' +
+          (t.grade || '');
+
+        boxModels.push({
+          from,
+          to,
+          entry,
+          sl,
+          tp1,
+          tp2,
+          riskFill: dead ? 'rgba(100, 116, 139, 0.35)' : 'rgba(240, 113, 120, 0.42)',
+          // TP1 = brighter/more opaque green; TP2 = taller lighter green behind it
+          rewardFill1: dead ? 'rgba(100, 116, 139, 0.32)' : 'rgba(61, 214, 140, 0.48)',
+          rewardFill2: dead ? 'rgba(100, 116, 139, 0.20)' : 'rgba(34, 197, 94, 0.28)',
+          edge: dead ? '#64748b' : long ? '#3dd68c' : '#f07178',
+          slColor: dead ? '#64748b' : '#fbbf24',
+          tp1Color: dead ? '#64748b' : '#86efac',
+          tp2Color: dead ? '#64748b' : '#4ade80',
+          tpColor: dead ? '#64748b' : '#a78bfa',
+          label,
+        });
+      });
+
+      state.rrPrimitive.setBoxes(boxModels);
+      // Nudge autoscale so entry/SL/TP sit on-screen
+      try {
+        state.series.priceScale().applyOptions({ autoScale: true });
+      } catch {}
+
+      if (!boxModels.length && setups.length) {
+        $('legend').textContent =
+          `${normSym(sym)} · ${setups.length} setup(s) — missing entry/SL for boxes`;
+      }
+    }
+
+    function drawSetups(sym) {
+      if (!state.series) return;
+      const setups = setupsForSymbol(sym);
+      // RR boxes + price lines for book/analysis setups (incl. pending)
+      drawTradeBoxes(sym);
+      const nTools = (toolTraceForSymbol(sym) || []).length;
+      const seq = orderSetupsSequence(setups)
+        .map((t, i) => {
+          const st = String(t.status || '');
+          const rel = String(t.htfRelationship || t.htf_relationship || '').toLowerCase();
+          const tag = rel.includes('counter') ? 'CT' : rel.includes('with') ? 'WT' : `#${i + 1}`;
+          return `${tag} ${t.direction || ''}(${st || 'idea'})`;
+        })
+        .join(' → ');
+      if (!setups.length) {
+        $('legend').textContent = `${normSym(sym)} · ${tfNow()} · no book/analysis setups for this ticker — switch tab or Run analysis`;
+      } else {
+        $('legend').textContent = `${normSym(sym)} · ${tfNow()} · ${setups.length} setup(s)${seq ? ' · ' + seq : ''} · ${nTools} tools`;
+      }
+      renderSetupsSide(setups);
+      renderToolsPanel(sym);
+      renderActiveTrades(sym, state.lastPrice);
+    }
+
+    function bookForBot(sym) {
+      const want = normSym(sym);
+      const src = botSource();
+      return (state.dash?.openBook || []).filter((t) => {
+        if (normSym(t.symbol) !== want) return false;
+        const tSrc = String(t.source || 'scalp_desk');
+        if (tSrc === src) return true;
+        if (src === 'xrp_struct' && tSrc === 'scalp_desk') return true;
+        return false;
+      });
+    }
+
+    /** In-trade positions for selected bot + ticker (entry_hit / tp1_hit). */
+    function activeTradesForSymbol(sym) {
+      return bookForBot(sym).filter((t) => {
+        const st = String(t.status || '');
+        return st === 'entry_hit' || st === 'tp1_hit';
+      });
+    }
+
+    function renderActiveTrades(sym, priceOverride) {
+      const el = $('activeTrades');
+      if (!el) return;
+      const want = normSym(sym);
+      const bot = currentBot();
+      $('activeSymLabel').textContent = botTabLabel(bot) || want || '—';
+      const px =
+        priceOverride != null && Number.isFinite(Number(priceOverride))
+          ? Number(priceOverride)
+          : state.lastPrice;
+      if (px != null) $('activePxLabel').textContent = 'Mark ' + fmt(px);
+
+      const live = activeTradesForSymbol(sym);
+      const armed = bookForBot(sym).filter((t) =>
+        ['pending', 'entry_armed'].includes(String(t.status)),
+      );
+
+      const cntIn = $('cntInTrade');
+      const cntW = $('cntWatch');
+      if (cntIn) cntIn.textContent = String(live.length);
+      if (cntW) cntW.textContent = String(armed.length);
+
+      if (!live.length && !armed.length) {
+        el.innerHTML = '<p class="muted" style="margin:0">No scalp trades for this ticker (nothing in trade or watching).</p>';
+        return;
+      }
+
+      const cards = [];
+
+      if (live.length) {
+        cards.push('<div class="muted" style="font-size:.68rem;text-transform:uppercase;margin:.15rem 0 .35rem">In trade (filled)</div>');
+      }
+      for (const t of live) {
+        const dir = String(t.direction || '').toUpperCase();
+        const long = dir !== 'SHORT';
+        const entry = Number(t.entry);
+        const sl = Number(t.current_stop ?? t.original_stop);
+        const origSl = Number(t.original_stop ?? t.current_stop);
+        const tps = parseTargets(t);
+        const tp1 = tps[0];
+        const tp2 = tps[1];
+        const risk = Math.abs(entry - origSl) || 0;
+        const move = long ? (px ?? entry) - entry : entry - (px ?? entry);
+        const unrealR = risk > 0 ? move / risk : 0;
+        const toTp1 =
+          tp1 != null && Number.isFinite(tp1)
+            ? long
+              ? ((tp1 - (px ?? entry)) / (Math.abs(tp1 - entry) || 1)) * 100
+              : (((px ?? entry) - tp1) / (Math.abs(entry - tp1) || 1)) * 100
+            : null;
+        // progress entry→tp1: 0 at entry, 100 at tp1
+        let prog = 0;
+        if (tp1 != null && risk > 0) {
+          const reward = Math.abs(tp1 - entry) || 1;
+          prog = Math.max(0, Math.min(100, (move / reward) * 100));
+        }
+        const pctFromEntry =
+          entry > 0 && px != null ? ((long ? px - entry : entry - px) / entry) * 100 : 0;
+        const rem = t.remaining_size != null ? Number(t.remaining_size) : 1;
+        const be = t.stop_to_be || t.stopToBe;
+        const status = String(t.status);
+        const rCls = unrealR > 0.02 ? 'pos' : unrealR < -0.02 ? 'neg' : '';
+
+        cards.push(`<div class="active-card">
+          <div>
+            <div class="title"><span class="dir-${dir}">${dir}</span> · ${esc(status)}${be ? ' · BE' : ''}</div>
+            <div class="muted" style="font-size:.72rem;margin-top:.15rem">size ${(rem * 100).toFixed(0)}% left · grade ${esc(t.grade || '—')}</div>
+            <div class="bar ${unrealR >= 0 ? 'up' : 'down'}" title="Progress toward TP1"><i style="width:${prog.toFixed(1)}%"></i></div>
+          </div>
+          <div class="levels">
+            <div>Entry<strong>${fmt(entry)}</strong></div>
+            <div>SL / stop<strong>${fmt(sl)}</strong></div>
+            <div>TP1<strong>${tp1 != null ? fmt(tp1) : '—'}</strong></div>
+            <div>TP2<strong>${tp2 != null ? fmt(tp2) : '—'}</strong></div>
+          </div>
+          <div class="metrics">
+            <div>uPnL R<strong class="${rCls}">${fmtR(unrealR)}</strong></div>
+            <div>vs entry<strong class="${pctFromEntry >= 0 ? 'pos' : 'neg'}">${pctFromEntry >= 0 ? '+' : ''}${pctFromEntry.toFixed(2)}%</strong></div>
+            <div>to TP1<strong>${toTp1 == null ? '—' : (toTp1 <= 0 ? 'at/past' : toTp1.toFixed(0) + '% left')}</strong></div>
+          </div>
+        </div>`);
+      }
+
+      if (armed.length) {
+        cards.push('<div class="muted" style="font-size:.68rem;text-transform:uppercase;margin:.45rem 0 .35rem">Watching (not filled yet)</div>');
+      }
+      for (const t of armed) {
+        const dir = String(t.direction || '').toUpperCase();
+        const long = dir !== 'SHORT';
+        const entry = Number(t.entry);
+        const sl = Number(t.original_stop ?? t.current_stop);
+        const tps = parseTargets(t);
+        const risk = Math.abs(entry - sl) || 0;
+        const dist = px != null && entry > 0
+          ? ((long ? entry - px : px - entry) / entry) * 100
+          : null;
+        // positive dist = price still needs to move toward entry zone
+        const v = classifySetup(t, px);
+        cards.push(`<div class="active-card" style="opacity:.92">
+          <div>
+            <div class="title"><span class="dir-${dir}">${dir}</span> · ${esc(t.status)} · <span class="badge ${v.cls}">${esc(v.tag)}</span></div>
+            <div class="muted" style="font-size:.72rem;margin-top:.15rem">${esc(v.note)}</div>
+            <div class="muted" style="font-size:.72rem;margin-top:.15rem">confirm ${esc(String(t.entry_confirm_type || t.entryConfirmType || 'reclaim'))} @ ${fmt(t.entry_confirm_level ?? t.entryConfirmLevel ?? entry)}</div>
+          </div>
+          <div class="levels">
+            <div>Entry<strong>${fmt(entry)}</strong></div>
+            <div>SL<strong>${fmt(sl)}</strong></div>
+            <div>TP1<strong>${tps[0] != null ? fmt(tps[0]) : '—'}</strong></div>
+            <div>TP2<strong>${tps[1] != null ? fmt(tps[1]) : '—'}</strong></div>
+          </div>
+          <div class="metrics">
+            <div>to zone<strong>${dist == null ? '—' : (Math.abs(dist) < 0.05 ? 'at zone' : dist.toFixed(2) + '%')}</strong></div>
+            <div>plan R<strong>${tps[0] != null && risk > 0 ? fmtR(Math.abs(tps[0] - entry) / risk) : '—'}</strong></div>
+            <div>grade<strong>${esc(t.grade || '—')}</strong></div>
+          </div>
+        </div>`);
+      }
+
+      el.innerHTML = cards.join('');
+    }
+
+    function analysisForSymbol(sym) {
+      return analysisForBot(sym);
+    }
+
+    /** Prefer analysis tagged for the selected bot (insights._deskBot / tokens). */
+    function analysisForBot(sym) {
+      const dash = state.dash;
+      if (!dash) return null;
+      const want = normSym(sym);
+      const botId = state.botId;
+      const byBot = dash.analysisByBot || {};
+      if (byBot[botId] && normSym(byBot[botId].symbol) === want) return byBot[botId];
+
+      const map = dash.analysisBySymbol || {};
+      const candidates = [];
+      const hit = map[want] || map[String(sym).toUpperCase()];
+      if (hit) candidates.push(hit);
+      for (const run of [dash.lastAnalysis, dash.previousAnalysis]) {
+        if (run && normSym(run.symbol) === want) candidates.push(run);
+      }
+      // Prefer run whose insights/tokens mark this bot
+      const tagged = candidates.find((r) => {
+        const id =
+          r?.insights?._deskBot ||
+          r?.insights?.deskBot ||
+          r?.tokens?.botId ||
+          r?.meta?.desk?.botId;
+        return id === botId;
+      });
+      if (tagged) return tagged;
+      // If only one bot's analysis exists for symbol, still show it
+      return candidates[0] || null;
+    }
+
+    function toolTraceForSymbol(sym) {
+      const run = analysisForBot(sym);
+      if (run && Array.isArray(run.tool_trace) && run.tool_trace.length) return run.tool_trace;
+      const book = bookForBot(sym);
+      for (const t of book) {
+        const meta = t.meta && (typeof t.meta === 'object' ? t.meta : null);
+        const trace = meta?.desk?.toolTrace || meta?.desk?.tool_trace;
+        if (Array.isArray(trace) && trace.length) return trace;
+      }
+      return [];
+    }
+
+    function plotToolResult(name, result) {
+      if (!result || typeof result !== 'object') return 0;
+      clearToolLines();
+      let n = 0;
+      const add = (p, c, t) => {
+        if (Number.isFinite(Number(p)) && Number(p) > 0) {
+          addLine(p, c, t, true);
+          n++;
+        }
+      };
+      if (name === 'getSmcStructures' || result.bullishFVGs || result.bearishFVGs) {
+        for (const z of result.bullishFVGs || []) {
+          add(z.low, '#22c55e', 'bull FVG lo');
+          add(z.high, '#22c55e', 'bull FVG hi');
+        }
+        for (const z of result.bearishFVGs || []) {
+          add(z.low, '#ef4444', 'bear FVG lo');
+          add(z.high, '#ef4444', 'bear FVG hi');
+        }
+        for (const z of result.bullishOBs || []) {
+          add(z.low, '#86efac', 'bull OB');
+          add(z.high, '#86efac', 'bull OB');
+        }
+        for (const z of result.bearishOBs || []) {
+          add(z.low, '#fca5a5', 'bear OB');
+          add(z.high, '#fca5a5', 'bear OB');
+        }
+        for (const h of result.swingHighs || []) add(h, '#94a3b8', 'swing H');
+        for (const l of result.swingLows || []) add(l, '#94a3b8', 'swing L');
+      }
+      if (name === 'getVolumeProfile' || result.poc != null) {
+        add(result.poc, '#f59e0b', 'POC');
+        add(result.vah, '#fbbf24', 'VAH');
+        add(result.val, '#fbbf24', 'VAL');
+      }
+      if (name === 'getIndicators' || result.ema20 != null) {
+        add(result.ema20, '#38bdf8', 'EMA20');
+        add(result.ema50, '#818cf8', 'EMA50');
+        add(result.ema200, '#c084fc', 'EMA200');
+      }
+      if (name === 'getPriceContext' && result.range20) {
+        add(result.range20.high, '#64748b', 'rng hi');
+        add(result.range20.low, '#64748b', 'rng lo');
+      }
+      $('legend').textContent = `${normSym(state.symbol)} · plotted ${n} level(s) from ${name}`;
+      return n;
+    }
+
+    function renderToolsPanel(sym) {
+      const el = $('panelTools');
+      if (!el) return;
+      const run = analysisForSymbol(sym);
+      const trace = toolTraceForSymbol(sym);
+      if (!trace.length) {
+        el.innerHTML = `<p class="muted">No tool trace for ${esc(normSym(sym))} yet.
+          After the next analysis, each Grok tool call (with data) appears here.
+          You can still use <strong>Live probe</strong> below the chart.</p>`;
+        return;
+      }
+      const when = run?.started_at ? ago(run.started_at) : '';
+      const model = run?.model || '';
+      el.innerHTML = `<p class="muted" style="margin:0 0 .55rem">What Grok called for <strong>${esc(normSym(sym))}</strong>
+        ${model ? '· ' + esc(model) : ''} ${when ? '· ' + when : ''} · ${trace.length} call(s)</p>` +
+        trace.map((t, i) => {
+          const args = t.args && Object.keys(t.args).length
+            ? Object.entries(t.args).map(([k, v]) => `${k}=${v}`).join(' ')
+            : '—';
+          const hasResult = t.result != null;
+          const chartable = /Smc|Volume|Indicators|PriceContext/i.test(t.name || '');
+          const onChart = state.plottedToolIndex === i;
+          return `<div class="tool-call ${onChart ? 'active' : ''}" data-i="${i}">
+            <div class="name">${esc(t.name || 'tool')} ${t.ok === false ? '❌' : '✓'}</div>
+            <div class="meta-line">${esc(args)} · ${t.ms != null ? t.ms + 'ms' : ''}${hasResult ? '' : ' · click View data to load live'}</div>
+            <div class="tool-actions">
+              <button type="button" data-act="toggle">View data</button>
+              ${chartable ? `<button type="button" data-act="plot">${onChart ? 'Remove from chart' : 'Show on chart'}</button>` : ''}
+              <button type="button" data-act="live">Re-fetch live</button>
+            </div>
+            <pre class="tool-preview">${hasResult ? esc(JSON.stringify(t.result, null, 2)) : 'Loading…'}</pre>
+          </div>`;
+        }).join('');
+
+      async function fetchToolLive(t, card) {
+        const tf = (t.args && t.args.tf) || tfNow();
+        const r = await fetch(
+          `/api/desk/tool?name=${encodeURIComponent(t.name)}&symbol=${encodeURIComponent(state.symbol)}&tf=${encodeURIComponent(tf)}`,
+        );
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || r.status);
+        t.result = j.data; // cache on this session's trace object
+        const pre = card.querySelector('.tool-preview');
+        if (pre) pre.textContent = JSON.stringify(j.data, null, 2);
+        const meta = card.querySelector('.meta-line');
+        if (meta) meta.textContent = `${Object.entries(t.args || {}).map(([k,v]) => k+'='+v).join(' ') || '—'} · live ${j.ms}ms`;
+        $('toolMeta').textContent = `live ${t.name} · ${j.ms}ms`;
+        $('toolOut').textContent = JSON.stringify(j.data, null, 2);
+        return j.data;
+      }
+
+      function setPlotButton(card, on) {
+        const btn = card.querySelector('[data-act="plot"]');
+        if (!btn) return;
+        btn.textContent = on ? 'Remove from chart' : 'Show on chart';
+        card.classList.toggle('active', on);
+      }
+
+      el.querySelectorAll('.tool-call').forEach((card) => {
+        const i = Number(card.dataset.i);
+        const t = trace[i];
+        card.querySelector('[data-act="toggle"]')?.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          card.classList.add('open');
+          const pre = card.querySelector('.tool-preview');
+          if (t.result != null) {
+            if (pre) pre.textContent = JSON.stringify(t.result, null, 2);
+            return;
+          }
+          if (pre) pre.textContent = 'Fetching live payload…';
+          try {
+            await fetchToolLive(t, card);
+          } catch (err) {
+            if (pre) pre.textContent = 'Failed: ' + (err.message || err);
+          }
+        });
+        card.querySelector('[data-act="plot"]')?.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          try {
+            // Already plotted this tool → remove
+            if (state.plottedToolIndex === i) {
+              clearToolLines();
+              state.plottedToolIndex = null;
+              el.querySelectorAll('.tool-call').forEach((c) => setPlotButton(c, false));
+              $('legend').textContent = `${normSym(state.symbol)} · ${tfNow()} · tool levels cleared`;
+              return;
+            }
+            let data = t.result;
+            if (data == null) {
+              const pre = card.querySelector('.tool-preview');
+              if (pre) pre.textContent = 'Fetching for chart…';
+              data = await fetchToolLive(t, card);
+              card.classList.add('open');
+            }
+            plotToolResult(t.name, data);
+            state.plottedToolIndex = i;
+            el.querySelectorAll('.tool-call').forEach((c) => {
+              setPlotButton(c, Number(c.dataset.i) === i);
+            });
+          } catch (err) {
+            alert(err.message || err);
+          }
+        });
+        card.querySelector('[data-act="live"]')?.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          try {
+            const data = await fetchToolLive(t, card);
+            card.classList.add('open');
+            // If this tool is currently on chart, refresh its levels
+            if (state.plottedToolIndex === i && /Smc|Volume|Indicators|PriceContext/i.test(t.name || '')) {
+              plotToolResult(t.name, data);
+              setPlotButton(card, true);
+            }
+          } catch (err) {
+            alert(err.message || err);
+          }
+        });
+      });
+    }
+
+    function renderSetupsSide(setups) {
+      const el = $('panelSetups');
+      if (!el) return;
+      if (!setups.length) {
+        el.innerHTML = '<p class="muted">No scalp setups for this ticker yet.</p>';
+        return;
+      }
+      const px = state.lastPrice;
+      el.innerHTML = setups.map((t, i) => {
+        const dir = String(t.direction || '').toUpperCase();
+        const tps = parseTargets(t);
+        const signals = Array.isArray(t.confluenceSignals)
+          ? t.confluenceSignals
+          : Array.isArray(t.confluence_signals)
+            ? t.confluence_signals
+            : [];
+        const status = t.status || (t._fromAnalysis ? 'analysis' : '—');
+        const conf = t.entryConfirmLevel ?? t.entry_confirm_level;
+        const v = classifySetup(t, px);
+        const rel = String(t.htfRelationship || t.htf_relationship || '').toLowerCase();
+        const seq =
+          rel.includes('counter') ? 'CT (pullback)' : rel.includes('with') ? 'WT (main)' : '';
+        return `<div class="trade" data-i="${i}" style="${v.tag === 'INVALID' ? 'opacity:.55' : ''}">
+          <div class="row" style="justify-content:space-between;gap:.35rem">
+            <h3><span class="dir-${dir}">${dir}</span> · ${esc(t.grade || '—')} · <span class="muted">${esc(status)}</span></h3>
+            <span class="badge ${v.cls}">${esc(v.tag)}</span>
+          </div>
+          ${seq ? `<div class="muted" style="font-size:.72rem;margin:.2rem 0">${esc(seq)}</div>` : ''}
+          <div class="muted" style="font-size:.72rem;margin-bottom:.35rem">${esc(v.note)}</div>
+          <div class="meta">
+            <div>Entry<strong>${fmt(t.entry)}</strong></div>
+            <div>SL<strong>${fmt(t.stopLoss ?? t.current_stop ?? t.original_stop)}</strong></div>
+            <div>Confirm<strong>${fmt(conf || t.entry)}</strong></div>
+            <div>TPs<strong>${tps.map(fmt).join(' / ') || '—'}</strong></div>
+          </div>
+          <div class="reason">${esc(t.reasoning || t.entryConfirmRationale || t.entry_confirm_rationale || '')}</div>
+          ${signals.length ? `<div class="chips">${signals.map((s) => `<span class="chip">${esc(s)}</span>`).join('')}</div>` : ''}
+        </div>`;
+      }).join('');
+    }
+
+    async function loadCandles(opts = {}) {
+      const fit = opts.fit !== false; // default fit only on symbol/tf change
+      const sym = state.symbol;
+      const tf = tfNow();
+      const key = `${state.botId}|${normSym(sym)}|${tf}`;
+      const gen = ++state.candleGen;
+
+      $('legend').textContent = `Loading ${normSym(sym)} ${tf}…`;
+      const r = await fetch(
+        `/api/desk/candles?symbol=${encodeURIComponent(sym)}&tf=${encodeURIComponent(tf)}&limit=200`,
+      );
+      const j = await r.json();
+      if (gen !== state.candleGen) return; // stale response after ticker change
+      if (!r.ok) throw new Error(j.error || 'candles failed');
+
+      const data = (j.candles || []).map((c) => ({
+        time: Number(c.time),
+        open: Number(c.open),
+        high: Number(c.high),
+        low: Number(c.low),
+        close: Number(c.close),
+      })).filter((c) => Number.isFinite(c.time) && Number.isFinite(c.close));
+
+      if (!data.length) throw new Error('no candles returned');
+
+      // Price format by asset scale (BTC vs XRP)
+      const sample = data[data.length - 1].close;
+      const precision = sample >= 1000 ? 2 : sample >= 1 ? 4 : 6;
+      const minMove = sample >= 1000 ? 0.01 : sample >= 1 ? 0.0001 : 0.000001;
+      state.series.applyOptions({
+        priceFormat: { type: 'price', precision, minMove },
+      });
+
+      clearLines();
+      clearToolLines();
+
+      // Real market bars + whitespace future pad (times on axis, empty right strip)
+      state.realBarCount = data.length;
+      const padded = padFutureCandles(data, state.futurePadBars);
+      state.candles = padded;
+      // Seed levels from current dash so first paint autoscale includes setups
+      try {
+        const seed = setupsForSymbol(sym);
+        state.setupLevels = seed.flatMap((t) => {
+          const out = [Number(t.entry)];
+          const sl = Number(
+            t.stopLoss ?? t.stop_loss ?? t.current_stop ?? t.original_stop ?? t.currentStop ?? t.originalStop,
+          );
+          if (Number.isFinite(sl)) out.push(sl);
+          for (const p of parseTargets(t)) out.push(p);
+          return out.filter((n) => Number.isFinite(n) && n > 0);
+        });
+      } catch {
+        state.setupLevels = [];
+      }
+      state.series.setData(padded);
+
+      // Force rescaling when switching BTC ↔ XRP
+      try {
+        state.series.priceScale().applyOptions({ autoScale: true });
+      } catch {}
+
+      // Small right pad beyond whitespace so last box edge isn’t flush
+      state.chart.timeScale().applyOptions({ rightOffset: 6, timeVisible: true, secondsVisible: false });
+
+      if (fit || state.chartKey !== key) {
+        const n = padded.length;
+        const real = state.realBarCount;
+        // Show last ~50 real bars + the full future whitespace strip
+        state.chart.timeScale().setVisibleLogicalRange({
+          from: Math.max(0, real - 50),
+          to: n + 2,
+        });
+        state.userPanning = false;
+      }
+      state.chartKey = key;
+
+      const last = data[data.length - 1];
+      state.lastPrice = last.close;
+      $('priceTag').textContent = `${normSym(sym)} ${fmt(last.close)} · ${tf}`;
+      // Two frames: wait for layout + scale before measuring / attaching boxes
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          drawSetups(sym);
+          renderActiveTrades(sym, last.close);
+        });
+      });
+    }
+
+    function renderBotTabs() {
+      const el = $('botTabs');
+      if (!el) return;
+      const bots = state.bots?.length
+        ? state.bots
+        : [{ id: state.botId, symbols: [state.symbol], htf: state.htf, ltf: state.ltf, label: `${state.htf}/${state.ltf}` }];
+      el.innerHTML = bots
+        .map(
+          (b) =>
+            `<button type="button" class="tab ${b.id === state.botId ? 'active' : ''}" data-bot="${esc(b.id)}" title="${esc(b.label || b.id)}">${esc(botTabLabel(b))}</button>`,
+        )
+        .join('');
+      el.querySelectorAll('.tab').forEach((btn) => {
+        btn.onclick = async (ev) => {
+          ev.preventDefault();
+          const id = btn.dataset.bot;
+          if (id === state.botId && state.chartKey.startsWith(id)) return;
+          const bot = bots.find((b) => b.id === id);
+          if (!bot) return;
+          applyBot(bot);
+          state.useHtf = false;
+          state.userPanning = false;
+          document.querySelectorAll('.tf-btn').forEach((b) => {
+            b.classList.toggle('active', b.dataset.tf === 'ltf' || b.dataset.tf === '');
+          });
+          renderBotTabs();
+          try {
+            await loadCandles({ fit: true });
+            drawSetups(state.symbol);
+            renderActiveTrades(state.symbol, state.lastPrice);
+          } catch (e) {
+            $('legend').textContent = e.message;
+          }
+        };
+      });
+      updateTfButtonLabels();
+    }
+    // back-compat alias
+    function renderSymbolTabs() {
+      renderBotTabs();
+    }
+
+    function renderStats(d) {
+      const bot = d.bot || {};
+      const tr = d.trading || {};
+      const net = tr.netR;
+      $('deskBadge').textContent = bot.deskEnabled ? 'DESK ON' : 'DESK OFF';
+      $('deskBadge').className = 'badge' + (bot.deskEnabled ? ' on' : '');
+      $('blofinBadge').textContent = bot.blofinLive ? 'LIVE' : (bot.blofinConfigured ? 'DRY' : 'NO BLOFIN');
+      $('blofinBadge').className = 'badge' + (bot.blofinLive ? ' live' : '');
+      $('runBadge').textContent = bot.analysing ? 'ANALYSING' : ('Cycle ' + ago(bot.lastCycleAt));
+      $('runBadge').className = 'badge' + (bot.analysing ? ' warn' : '');
+
+      // byStatus: pending/entry_armed = watching; entry_hit/tp1_hit = actually in trade
+      const bs = tr.byStatus || {};
+      const inTrade = (bs.entry_hit || 0) + (bs.tp1_hit || 0);
+      const watching = (bs.pending || 0) + (bs.entry_armed || 0);
+      const bookTotal = tr.activeSetups ?? inTrade + watching;
+      $('stats').innerHTML = [
+        ['In trade', inTrade, 'filled · open position'],
+        ['Watching', watching, 'pending / armed'],
+        ['Book', bookTotal, 'scalp only'],
+        ['Closed', tr.closedTrades ?? 0, `${tr.wins||0}W / ${tr.losses||0}L`],
+        ['Win rate', pct(tr.winRate), 'net ' + fmtR(net)],
+        ['Bots', (bot.bots || state.bots || []).length || 1, botTabLabel(currentBot()) + ' · ' + (currentBot().label || '')],
+      ].map(([k,v,s,cls]) => `<div class="stat"><div class="k">${k}</div><div class="v ${cls||''}">${v}</div><div class="s">${s||''}</div></div>`).join('');
+
+      renderAnalysisBoxes(d);
+    }
+
+    function analysisRunForBotId(botId, d) {
+      const dash = d || state.dash;
+      if (!dash) return null;
+      const byBot = dash.analysisByBot || {};
+      if (byBot[botId]) return byBot[botId];
+      // scan recent last/prev for tagged bot
+      for (const run of [dash.lastAnalysis, dash.previousAnalysis]) {
+        if (!run) continue;
+        const id =
+          run?.insights?._deskBot ||
+          run?.insights?.deskBot ||
+          run?.tokens?.botId;
+        if (id === botId) return run;
+      }
+      return null;
+    }
+
+    function fillAnalysisCard(el, bot, run) {
+      if (!el) return;
+      const title = el.querySelector('.t');
+      const body = el.querySelector('.body');
+      if (!title || !body) return;
+      const selected = bot.id === state.botId;
+      el.classList.toggle('active-bot', selected);
+      const label = botTabLabel(bot);
+      title.innerHTML = `${esc(label)} bot <span class="chip ${selected ? 'on' : ''}">${esc(bot.label || `${bot.htf}/${bot.ltf}`)}${selected ? ' · viewing' : ''}</span>`;
+
+      if (!run) {
+        body.className = 'body muted';
+        body.textContent = 'No analysis yet for this bot.';
+        return;
+      }
+      const trades = Array.isArray(run.best_trades) ? run.best_trades.length : 0;
+      const overall = (run.insights && run.insights.overallSummary) || '';
+      const nTools = Array.isArray(run.tool_trace) ? run.tool_trace.length : 0;
+      const err = run.error;
+      body.className = 'body';
+      body.innerHTML =
+        `<div class="meta-line">${esc(run.model || '—')} · ${ago(run.started_at)} · ${trades} setup(s) · ${nTools} tools</div>` +
+        `<div>${esc(overall || err || 'OK')}</div>`;
+    }
+
+    function renderAnalysisBoxes(d) {
+      const dash = d || state.dash;
+      const bots = state.bots?.length
+        ? state.bots
+        : [
+            { id: 'xrp_struct', htf: '4h', ltf: '15m', label: '4h/15m', symbols: ['XRPUSDT'] },
+            { id: 'xrp_scalp', htf: '1h', ltf: '5m', label: '1h/5m', symbols: ['XRPUSDT'] },
+          ];
+      // Map by htf preference: 4h → top card, 1h → bottom
+      const bot4h =
+        bots.find((b) => String(b.htf).toLowerCase() === '4h' || b.id === 'xrp_struct') || bots[0];
+      const bot1h =
+        bots.find((b) => String(b.htf).toLowerCase() === '1h' || b.id === 'xrp_scalp') ||
+        bots[1] ||
+        bots[0];
+
+      fillAnalysisCard($('analysisBox4h'), bot4h, analysisRunForBotId(bot4h.id, dash));
+      fillAnalysisCard($('analysisBox1h'), bot1h, analysisRunForBotId(bot1h.id, dash));
+
+      // Click a card to switch chart bot
+      ['analysisBox4h', 'analysisBox1h'].forEach((id) => {
+        const el = $(id);
+        if (!el || el._bound) return;
+        el._bound = true;
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', async () => {
+          const bid = el.dataset.bot;
+          const bot = (state.bots || []).find((b) => b.id === bid);
+          if (!bot || bot.id === state.botId) return;
+          applyBot(bot);
+          state.useHtf = false;
+          state.userPanning = false;
+          document.querySelectorAll('.tf-btn').forEach((b) => {
+            b.classList.toggle('active', b.dataset.tf === 'ltf' || b.dataset.tf === '');
+          });
+          renderBotTabs();
+          renderAnalysisBoxes(state.dash);
+          try {
+            await loadCandles({ fit: true });
+            drawSetups(state.symbol);
+            renderActiveTrades(state.symbol, state.lastPrice);
+          } catch (e) {
+            $('legend').textContent = e.message;
+          }
+        });
+      });
+      // keep data-bot in sync if bots reorder
+      const el4 = $('analysisBox4h');
+      const el1 = $('analysisBox1h');
+      if (el4) el4.dataset.bot = bot4h.id;
+      if (el1) el1.dataset.bot = bot1h.id;
+    }
+
+    async function loadToolsList() {
+      const r = await fetch('/api/desk/tools');
+      const j = await r.json();
+      state.tools = j.tools || [];
+      // Prefer multi-bot config from dashboard later; tools list may still send default ltf/htf
+      if (j.ltf && !state.bots?.length) state.ltf = j.ltf;
+      if (j.htf && !state.bots?.length) state.htf = j.htf;
+      if (Array.isArray(j.symbols) && j.symbols.length) {
+        state.symbols = j.symbols;
+        if (!state.symbols.includes(state.symbol)) state.symbol = state.symbols[0];
+      }
+      $('toolBtns').innerHTML = state.tools.map(t =>
+        `<button data-tool="${t.name}" title="${esc(t.description)}">${t.name.replace(/^get/,'')}</button>`
+      ).join('');
+      $('toolBtns').querySelectorAll('button').forEach(btn => {
+        btn.onclick = () => runTool(btn.dataset.tool);
+      });
+      document.querySelectorAll('.tf-btn').forEach((btn) => {
+        btn.onclick = async () => {
+          state.useHtf = btn.dataset.tf === 'htf';
+          state.userPanning = false;
+          document.querySelectorAll('.tf-btn').forEach((b) => b.classList.toggle('active', b === btn));
+          try {
+            await loadCandles({ fit: true });
+          } catch (e) {
+            $('legend').textContent = e.message;
+          }
+        };
+      });
+      updateTfButtonLabels();
+    }
+
+    async function runTool(name) {
+      $('toolMeta').textContent = 'loading…';
+      const tf = tfNow();
+      const url = `/api/desk/tool?name=${encodeURIComponent(name)}&symbol=${encodeURIComponent(state.symbol)}&tf=${encodeURIComponent(tf)}`;
+      try {
+        const r = await fetch(url);
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || r.status);
+        $('toolMeta').textContent = `${name} · ${j.symbol} · ${j.tf || tf} · ${j.ms}ms`;
+        $('toolOut').textContent = JSON.stringify(j.data, null, 2);
+      } catch (e) {
+        $('toolMeta').textContent = 'error';
+        $('toolOut').textContent = String(e.message || e);
+      }
+    }
+
+    /** Stats + setups only — does NOT reload candles (keeps pan/zoom). */
+    async function softRefresh() {
+      try {
+        const r = await fetch('/api/desk/dashboard', { headers: headers(false) });
+        if (!r.ok) throw new Error('dashboard ' + r.status);
+        const d = await r.json();
+        state.dash = d;
+        // Multi-bot list from API
+        if (Array.isArray(d.bot?.bots) && d.bot.bots.length) {
+          state.bots = d.bot.bots;
+          if (!state.bots.some((b) => b.id === state.botId)) {
+            applyBot(state.bots[0]);
+          } else {
+            // refresh ltf/htf from server bot config without changing selection
+            const b = state.bots.find((x) => x.id === state.botId);
+            if (b) {
+              state.ltf = b.ltf || state.ltf;
+              state.htf = b.htf || state.htf;
+              if (b.symbols?.[0]) state.symbol = b.symbols[0];
+            }
+          }
+        } else if (d.bot?.symbols?.length) {
+          state.symbols = d.bot.symbols;
+          if (!state.symbols.includes(state.symbol)) state.symbol = state.symbols[0];
+          if (d.bot?.ltf) state.ltf = d.bot.ltf;
+          if (d.bot?.htf) state.htf = d.bot.htf;
+        }
+        updateTfButtonLabels();
+        renderStats(d);
+        renderBotTabs();
+        // Redraw levels only — never fitContent here
+        drawSetups(state.symbol);
+        renderActiveTrades(state.symbol, state.lastPrice);
+      } catch (e) {
+        const stack = $('analysisStack');
+        if (stack) {
+          stack.querySelectorAll('.body').forEach((b) => {
+            b.className = 'body muted';
+            b.textContent = 'Error: ' + e.message;
+          });
+        }
+      }
+    }
+
+    /** Full reload including candles (symbol/tf change or manual refresh). */
+    async function hardRefresh() {
+      await softRefresh();
+      try {
+        await loadCandles({ fit: true });
+      } catch (e) {
+        $('legend').textContent = e.message;
+      }
+    }
+
+    $('refreshBtn').onclick = () => hardRefresh();
+    $('runBtn').onclick = async () => {
+      $('runBtn').disabled = true;
+      $('runBadge').textContent = 'ANALYSING';
+      $('runBadge').className = 'badge warn';
+      try {
+        const r = await fetch('/api/desk/run', {
+          method: 'POST',
+          headers: { ...headers(true), 'Content-Type': 'application/json' },
+          body: '{}',
+        });
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(body.error || r.status);
+        await softRefresh();
+        drawSetups(state.symbol);
+      } catch (e) {
+        alert('Run failed: ' + e.message);
+      } finally {
+        $('runBtn').disabled = false;
+      }
+    };
+
+    // Side tabs: Setups | Tools used
+    document.querySelectorAll('.side-tab').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.sidePanel = btn.dataset.panel;
+        document.querySelectorAll('.side-tab').forEach((b) => b.classList.toggle('active', b === btn));
+        $('panelSetups').style.display = state.sidePanel === 'setups' ? '' : 'none';
+        $('panelTools').style.display = state.sidePanel === 'tools' ? '' : 'none';
+        if (state.sidePanel === 'tools') renderToolsPanel(state.symbol);
+      });
+    });
+
+    initChart();
+    loadToolsList()
+      .then(() => hardRefresh())
+      .catch((e) => { $('toolOut').textContent = e.message; });
+
+    // Poll stats/setups every 12s — do not reset chart viewport
+    setInterval(softRefresh, 12000);
+  </script>
+</body>
+</html>

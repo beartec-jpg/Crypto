@@ -20,7 +20,10 @@ async function pollOnce(pool: ReturnType<typeof getPool>) {
   const symbols = active.map((r) => String(r.symbol));
   const prices = await fetchPrices(symbols);
   const map = new Map(prices.map((p) => [p.symbol, p.price]));
-  return processAllActive(pool, map, webhook);
+  const extremes = new Map(
+    prices.map((p) => [p.symbol, { high: p.high, low: p.low }] as const),
+  );
+  return processAllActive(pool, map, webhook, extremes);
 }
 
 function msUntilNextWeekly(): number {
@@ -81,13 +84,32 @@ async function main() {
     console.warn('[blofin] config load failed', err);
   }
 
+  // Standalone LTF scalp desk(s) — multi-bot via DESK_BOTS
+  try {
+    const { loadDeskBots } = await import('./desk/analyst.js');
+    const { startDeskScheduler } = await import('./desk/scheduler.js');
+    const bots = loadDeskBots();
+    console.log(
+      `[desk] enabled=${bots[0]?.enabled ?? false} bots=${bots.length} hasXaiKey=${Boolean(bots[0]?.apiKey)} → ${bots
+        .map((b) => `${b.id}:${b.symbols.join('+')}:${b.htf}/${b.ltf}@${b.intervalMs}ms`)
+        .join(' | ')}`,
+    );
+    startDeskScheduler(pool);
+  } catch (err: unknown) {
+    console.warn('[desk] failed to start scheduler', err);
+  }
+
   console.log(`[tracker] poll every ${POLL_MS}ms; weekly DOW=${WEEKLY_DOW} hourUTC=${WEEKLY_HOUR_UTC}`);
   console.log(`[tracker] next weekly in ~${Math.round(msUntilNextWeekly() / 3600000)}h`);
+  console.log(`[tracker] dashboard http://0.0.0.0:${PORT}/`);
 
+  let pollN = 0;
   const tick = async () => {
     try {
       const r = await pollOnce(pool);
-      if (r.events > 0) {
+      pollN += 1;
+      // Always log events; heartbeat every ~2 min so silent misses are visible
+      if (r.events > 0 || pollN % Math.max(1, Math.round(120_000 / POLL_MS)) === 0) {
         console.log(`[poll] checked=${r.checked} events=${r.events}`);
       }
       await maybeWeekly(pool);
@@ -102,6 +124,12 @@ async function main() {
   const shutdown = async (sig: string) => {
     console.log(`[tracker] ${sig} shutting down`);
     clearInterval(interval);
+    try {
+      const { stopDeskScheduler } = await import('./desk/scheduler.js');
+      stopDeskScheduler();
+    } catch {
+      /* ignore */
+    }
     server.close();
     await closePool();
     process.exit(0);

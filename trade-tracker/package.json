@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Always-on AI trade tracker: partial TPs, BE stop, Discord alerts, weekly stats",
   "scripts": {
-    "build": "tsc -p tsconfig.json && mkdir -p dist/src && cp src/schema.sql dist/src/schema.sql",
+    "build": "tsc -p tsconfig.json && mkdir -p dist/src dist/public && cp src/schema.sql dist/src/schema.sql && cp public/desk.html dist/public/desk.html",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "migrate": "tsx src/migrate.ts",
@@ -16,6 +16,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "openai": "^4.104.0",
     "pg": "^8.13.1"
   },
   "devDependencies": {

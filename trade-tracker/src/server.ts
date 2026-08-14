@@ -1,4 +1,7 @@
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type pg from 'pg';
 import {
   createTrade,
@@ -22,6 +25,13 @@ import {
   finalizeSize,
 } from './blofin.js';
 import { describeSizingExample } from './execution.js';
+import { deskTradeSources, loadDeskBots, loadDeskConfig } from './desk/analyst.js';
+import { forceDeskRun, getDeskSchedulerStatus } from './desk/scheduler.js';
+import { fetchBars } from './desk/marketStructure.js';
+import {
+  createDeskToolExecutor,
+  buildDeskToolDefinitions,
+} from './desk/tools.js';
 
 function json(res: http.ServerResponse, status: number, body: unknown) {
   const payload = JSON.stringify(body);
@@ -70,11 +80,20 @@ export function createServer(pool: pg.Pool) {
       if (path === '/health' || path === '/api/health') {
         const active = await listTrades(pool, { activeOnly: true, limit: 500 });
         const bcfg = loadBlofinConfig();
+        const dcfg = loadDeskConfig();
         return json(res, 200, {
           ok: true,
           service: 'trade-tracker',
           activeTrades: active.length,
           time: new Date().toISOString(),
+          desk: getDeskSchedulerStatus(),
+          deskConfig: {
+            enabled: dcfg.enabled,
+            symbols: dcfg.symbols,
+            ltf: dcfg.ltf,
+            htf: dcfg.htf,
+            hasXaiKey: Boolean(dcfg.apiKey),
+          },
           blofin: {
             configured: bcfg.configured,
             live: bcfg.live,
@@ -84,6 +103,230 @@ export function createServer(pool: pg.Pool) {
             symbolMap: bcfg.symbolMap,
           },
         });
+      }
+
+      // Standalone desk dashboard (open-port UI)
+      if (req.method === 'GET' && (path === '/' || path === '/desk' || path === '/index.html')) {
+        return serveDashboard(res);
+      }
+
+      if (req.method === 'GET' && (path === '/api/desk/status' || path === '/desk/status')) {
+        const bcfg = loadBlofinConfig();
+        return json(res, 200, {
+          scheduler: getDeskSchedulerStatus(),
+          blofin: { live: bcfg.live, configured: bcfg.configured, marginFraction: bcfg.marginFraction },
+          time: new Date().toISOString(),
+        });
+      }
+
+      // Scalp desk bots only — never mix Discord / sim / manual into this dashboard
+      const SCALP_SOURCES = deskTradeSources();
+
+      // OHLCV for dashboard chart
+      if (req.method === 'GET' && (path === '/api/desk/candles' || path === '/desk/candles')) {
+        const dcfg = loadDeskConfig();
+        const symbol = (url.searchParams.get('symbol') || dcfg.symbols[0] || 'BTCUSDT').toUpperCase();
+        const tf = (url.searchParams.get('tf') || dcfg.ltf || '15m').toLowerCase();
+        const limit = Math.min(500, Math.max(50, Number(url.searchParams.get('limit') || 200)));
+        try {
+          const bars = await fetchBars(symbol, tf, limit);
+          const candles = bars.map((b) => ({
+            time: b.time as number,
+            open: b.open,
+            high: b.high,
+            low: b.low,
+            close: b.close,
+            volume: b.volume,
+          }));
+          return json(res, 200, { symbol, tf, candles });
+        } catch (e: any) {
+          return json(res, 502, { error: e?.message || 'candles failed' });
+        }
+      }
+
+      // Manual tool probe (same tools Grok can call)
+      if (req.method === 'GET' && (path === '/api/desk/tools' || path === '/desk/tools')) {
+        const dcfg = loadDeskConfig();
+        const defs = buildDeskToolDefinitions(dcfg.ltf, dcfg.htf);
+        return json(res, 200, {
+          tools: defs.map((d: any) => ({
+            name: d.function.name,
+            description: d.function.description,
+            parameters: d.function.parameters,
+          })),
+          ltf: dcfg.ltf,
+          htf: dcfg.htf,
+          symbols: dcfg.symbols,
+        });
+      }
+
+      if (req.method === 'GET' && (path === '/api/desk/tool' || path === '/desk/tool')) {
+        const dcfg = loadDeskConfig();
+        const name = String(url.searchParams.get('name') || '');
+        const symbol = (url.searchParams.get('symbol') || dcfg.symbols[0] || 'BTCUSDT').toUpperCase();
+        const tf = (url.searchParams.get('tf') || dcfg.ltf || '15m').toLowerCase();
+        const n = Number(url.searchParams.get('n') || 20);
+        if (!name) return json(res, 400, { error: 'name required' });
+        try {
+          const allowedTf = new Set([dcfg.ltf, dcfg.htf, tf]);
+          const barsByTf: Record<string, Awaited<ReturnType<typeof fetchBars>>> = {};
+          for (const t of [dcfg.ltf, dcfg.htf]) {
+            if (!barsByTf[t]) barsByTf[t] = await fetchBars(symbol, t, 300);
+          }
+          if (tf && !barsByTf[tf] && allowedTf.has(tf)) {
+            barsByTf[tf] = await fetchBars(symbol, tf, 300);
+          }
+          const openBook = await listTrades(pool, {
+            activeOnly: true,
+            symbol,
+            sources: SCALP_SOURCES,
+            limit: 50,
+          });
+          const exec = createDeskToolExecutor({
+            symbol,
+            ltf: dcfg.ltf,
+            htf: dcfg.htf,
+            barsByTf,
+            openBook,
+          });
+          const t0 = Date.now();
+          const data = await exec(name, { tf, n });
+          return json(res, 200, { name, symbol, tf, ms: Date.now() - t0, data });
+        } catch (e: any) {
+          return json(res, 502, { error: e?.message || 'tool failed', name, symbol, tf });
+        }
+      }
+
+      if (req.method === 'GET' && (path === '/api/desk/book' || path === '/desk/book')) {
+        const rows = await listTrades(pool, {
+          activeOnly: true,
+          limit: 200,
+          sources: SCALP_SOURCES,
+        });
+        return json(res, 200, { trades: rows, count: rows.length, sources: SCALP_SOURCES });
+      }
+
+      // Dashboard bundle: bot stats + trading stats + last/previous analysis (no raw dumps)
+      if (req.method === 'GET' && (path === '/api/desk/dashboard' || path === '/desk/dashboard')) {
+        const bots = loadDeskBots();
+        const dcfg = bots[0] || loadDeskConfig();
+        const allSymbols = [
+          ...new Set(bots.flatMap((b) => b.symbols)),
+        ];
+        const bcfg = loadBlofinConfig();
+        const sched = getDeskSchedulerStatus();
+        const active = await listTrades(pool, {
+          activeOnly: true,
+          limit: 200,
+          sources: SCALP_SOURCES,
+        });
+        const perf = await getPerformance(pool, undefined, { sources: SCALP_SOURCES });
+        const byStatus: Record<string, number> = {};
+        for (const t of active) {
+          const s = String((t as any).status || 'unknown');
+          byStatus[s] = (byStatus[s] || 0) + 1;
+        }
+        // latest run overall
+        const latestQ = await pool.query(
+          `SELECT id, symbol, started_at, finished_at, model, tool_trace, best_trades, open_reviews, tokens, insights, error
+           FROM desk_analysis_runs
+           ORDER BY started_at DESC
+           LIMIT 1`,
+        );
+        const latest = latestQ.rows[0] || null;
+        // previous = second-most-recent overall (or per same symbol if exists)
+        let previous = null;
+        if (latest) {
+          const prevQ = await pool.query(
+            `SELECT id, symbol, started_at, finished_at, model, tool_trace, best_trades, tokens, insights, error
+             FROM desk_analysis_runs
+             WHERE id <> $1
+             ORDER BY started_at DESC
+             LIMIT 1`,
+            [latest.id],
+          );
+          previous = prevQ.rows[0] || null;
+        }
+        // Latest analysis per symbol + per desk bot (dual XRP bots share symbol)
+        const recentRunsQ = await pool.query(
+          `SELECT id, symbol, started_at, finished_at, model, tool_trace, best_trades, open_reviews, tokens, insights, error
+           FROM desk_analysis_runs
+           ORDER BY started_at DESC
+           LIMIT 40`,
+        );
+        const analysisBySymbol: Record<string, unknown> = {};
+        const analysisByBot: Record<string, unknown> = {};
+        for (const row of recentRunsQ.rows) {
+          const sym = String(row.symbol).toUpperCase();
+          if (!analysisBySymbol[sym]) analysisBySymbol[sym] = row;
+          const insights =
+            row.insights && typeof row.insights === 'object' ? (row.insights as any) : {};
+          const tokens = row.tokens && typeof row.tokens === 'object' ? (row.tokens as any) : {};
+          const botId = String(insights._deskBot || insights.deskBot || tokens.botId || '');
+          if (botId && !analysisByBot[botId]) analysisByBot[botId] = row;
+        }
+        // Keep more history with multi-bot (4 per symbol)
+        await pool.query(`
+          DELETE FROM desk_analysis_runs a
+          WHERE a.ctid IN (
+            SELECT ctid FROM (
+              SELECT ctid, row_number() OVER (PARTITION BY symbol ORDER BY started_at DESC) AS rn
+              FROM desk_analysis_runs
+            ) x WHERE rn > 4
+          )`);
+
+        return json(res, 200, {
+          time: new Date().toISOString(),
+          bot: {
+            deskEnabled: dcfg.enabled,
+            symbols: allSymbols.length ? allSymbols : dcfg.symbols,
+            ltf: dcfg.ltf,
+            htf: dcfg.htf,
+            mode: dcfg.mode,
+            intervalMs: dcfg.intervalMs,
+            hasXaiKey: Boolean(dcfg.apiKey),
+            analysing: sched.running,
+            lastCycleAt: sched.lastCycleAt,
+            bots: sched.bots,
+            blofinLive: bcfg.live,
+            blofinConfigured: bcfg.configured,
+            marginFraction: bcfg.marginFraction,
+            leverage: bcfg.maxLeverage,
+          },
+          trading: {
+            scope: 'scalp_desk_bots',
+            sources: SCALP_SOURCES,
+            activeSetups: active.length,
+            byStatus,
+            closedTrades: perf.totalTrades,
+            wins: perf.wins,
+            losses: perf.losses,
+            scratches: perf.scratches,
+            winRate: perf.winRate,
+            netR: perf.netR,
+            avgR: perf.avgR,
+            expectancyR: perf.expectancyR,
+            profitFactor: perf.profitFactor,
+            maxDrawdownR: perf.maxDrawdownR,
+            bestTradeR: perf.bestTradeR,
+            worstTradeR: perf.worstTradeR,
+          },
+          openBook: active,
+          lastAnalysis: latest,
+          previousAnalysis: previous,
+          analysisBySymbol,
+          analysisByBot,
+        });
+      }
+
+      if (req.method === 'GET' && (path === '/api/desk/runs' || path === '/desk/runs')) {
+        const r = await pool.query(
+          `SELECT id, symbol, started_at, finished_at, model, tool_trace, best_trades, open_reviews, tokens, insights, error, created_at
+           FROM desk_analysis_runs
+           ORDER BY started_at DESC
+           LIMIT 4`,
+        );
+        return json(res, 200, { runs: r.rows });
       }
 
       // Blofin connectivity + sizing probe (auth required when key set)
@@ -162,6 +405,11 @@ export function createServer(pool: pg.Pool) {
       // Mutating endpoints require API key when configured
       if (!authorize(req)) {
         return json(res, 401, { error: 'Unauthorized' });
+      }
+
+      if (req.method === 'POST' && (path === '/api/desk/run' || path === '/desk/run')) {
+        const result = await forceDeskRun(pool);
+        return json(res, result.ok ? 200 : 409, result);
       }
 
       if (req.method === 'POST' && (path === '/api/trades' || path === '/trades')) {
@@ -312,4 +560,37 @@ export function createServer(pool: pg.Pool) {
       return json(res, 500, { error: err?.message || 'server error' });
     }
   });
+}
+
+function serveDashboard(res: http.ServerResponse): void {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  // dist/src/server.js → public at package root public/desk.html
+  const candidates = [
+    path.join(__dirname, '../../public/desk.html'),
+    path.join(__dirname, '../public/desk.html'),
+    path.join(process.cwd(), 'public/desk.html'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      const html = fs.readFileSync(p, 'utf8');
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        Pragma: 'no-cache',
+      });
+      res.end(html);
+      return;
+    }
+  }
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(`<!doctype html><html><body style="font-family:sans-serif;background:#0b1220;color:#e2e8f0;padding:2rem">
+    <h1>Scalp desk</h1>
+    <p>public/desk.html missing — API still works.</p>
+    <ul>
+      <li><a href="/api/health" style="color:#7dd3fc">/api/health</a></li>
+      <li><a href="/api/desk/status" style="color:#7dd3fc">/api/desk/status</a></li>
+      <li><a href="/api/desk/book" style="color:#7dd3fc">/api/desk/book</a></li>
+      <li><a href="/api/desk/runs" style="color:#7dd3fc">/api/desk/runs</a></li>
+    </ul>
+  </body></html>`);
 }

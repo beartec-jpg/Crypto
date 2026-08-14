@@ -120,42 +120,38 @@ export function OscillatorsPanel({
     setInternalOscillators(nextOscillators);
   };
 
-  // Divergence detection
+  // Divergence vs price — only oscillators traders actually use for this
   const getOscillatorDivergence = (indicator: string): { strength: number; type: string } => {
     if (candles.length < 50) return { strength: 0, type: 'none' };
-    
-    const priceData = candles.map(c => c.close);
-    
-    switch (indicator) {
-      case 'rsi': {
-        const rsiValues = calculatedData.rsi.map(d => d.value);
-        if (rsiValues.length === 0) return { strength: 0, type: 'none' };
-        const strength = detectDivergence(priceData.slice(-rsiValues.length), rsiValues);
-        return {
-          strength: Math.max(-3, Math.min(3, strength)),
-          type: strength > 0 ? 'bullish' : strength < 0 ? 'bearish' : 'none'
-        };
-      }
-      case 'macd': {
-        const histValues = calculatedData.macd.hist.map((dataPoint) => dataPoint.value);
-        if (histValues.length === 0) return { strength: 0, type: 'none' };
-        const strength = detectDivergence(priceData.slice(-histValues.length), histValues);
-        return {
-          strength: Math.max(-3, Math.min(3, strength)),
-          type: strength > 0 ? 'bullish' : strength < 0 ? 'bearish' : 'none'
-        };
-      }
-      case 'obv': {
-        const obvValues = calculatedData.obv.map(d => d.value);
-        if (obvValues.length === 0) return { strength: 0, type: 'none' };
-        const strength = detectDivergence(priceData.slice(-obvValues.length), obvValues);
-        return {
-          strength: Math.max(-3, Math.min(3, strength)),
-          type: strength > 0 ? 'bullish' : strength < 0 ? 'bearish' : 'none'
-        };
-      }
+
+    const priceData = candles.map((c) => c.close);
+    const none = { strength: 0, type: 'none' };
+    const wrap = (values: number[]) => {
+      if (!values.length) return none;
+      const strength = Math.max(-3, Math.min(3, detectDivergence(priceData.slice(-values.length), values)));
+      return {
+        strength,
+        type: strength > 0 ? 'bullish' : strength < 0 ? 'bearish' : 'none',
+      };
+    };
+
+    switch (String(indicator).toLowerCase().replace(/[^a-z]/g, '')) {
+      case 'rsi':
+        return wrap(calculatedData.rsi.map((d) => d.value));
+      case 'macd':
+        return wrap(calculatedData.macd.hist.map((d) => d.value));
+      case 'obv':
+        return wrap(calculatedData.obv.map((d) => d.value));
+      case 'stochrsi':
+        return wrap(calculatedData.stochRSI.map((d) => d.k));
+      case 'mfi':
+        return wrap(calculatedData.mfi.map((d) => d.value));
+      case 'williamsr':
+        return wrap(calculatedData.williamsR.map((d) => d.value));
+      case 'cci':
+        return wrap(calculatedData.cci.map((d) => d.value));
       default:
-        return { strength: 0, type: 'none' };
+        return none;
     }
   };
 
@@ -237,6 +233,7 @@ export function OscillatorsPanel({
     return (
       <div className="mt-2 pt-2 border-t border-slate-600">
         <div className="flex items-center gap-2">
+          <span className="text-[10px] uppercase tracking-wide text-slate-500 w-7 shrink-0">Div</span>
           <span className="text-sm">🐻‍❄️</span>
           <div className="flex-1 h-2 bg-slate-700 rounded-full relative overflow-hidden">
             <div className="absolute inset-0 flex items-center justify-center">
@@ -377,6 +374,7 @@ export function OscillatorsPanel({
                 period={14}
                 candles={candles}
               />
+              <DivergenceMeter indicator="stochRSI" />
             </div>
           )}
 
@@ -400,6 +398,7 @@ export function OscillatorsPanel({
                 </button>
               </div>
               <MFIPanel data={calculatedData.mfi} period={14} candles={candles} />
+              <DivergenceMeter indicator="mfi" />
             </div>
           )}
 
@@ -423,6 +422,7 @@ export function OscillatorsPanel({
                 </button>
               </div>
               <WilliamsRPanel data={calculatedData.williamsR} period={14} candles={candles} />
+              <DivergenceMeter indicator="williamsR" />
             </div>
           )}
 
@@ -446,6 +446,7 @@ export function OscillatorsPanel({
                 </button>
               </div>
               <CCIPanel data={calculatedData.cci} period={20} candles={candles} />
+              <DivergenceMeter indicator="cci" />
             </div>
           )}
 
@@ -473,6 +474,45 @@ export function OscillatorsPanel({
                 period={14}
                 candles={candles}
               />
+              <div className="mt-2 pt-2 border-t border-slate-600">
+                {(() => {
+                  const lastADX = calculatedData.adx[calculatedData.adx.length - 1];
+                  if (!lastADX) return null;
+                  const isBullish = lastADX.plusDI > lastADX.minusDI;
+                  let strengthValue = 0;
+                  if (lastADX.adx >= 40) strengthValue = 3;
+                  else if (lastADX.adx >= 25) strengthValue = 2;
+                  else if (lastADX.adx >= 15) strengthValue = 1;
+                  const signed = isBullish ? strengthValue : -strengthValue;
+                  return (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase tracking-wide text-slate-500 w-7 shrink-0">Str</span>
+                      <span className="text-sm">🐻‍❄️</span>
+                      <div className="flex-1 h-2 bg-slate-700 rounded-full relative overflow-hidden">
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="w-px h-full bg-slate-500" />
+                        </div>
+                        <div
+                          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border border-white shadow"
+                          style={{
+                            left: `calc(50% + ${(signed / 3) * 45}% - 6px)`,
+                            background:
+                              signed === 0
+                                ? '#3b82f6'
+                                : signed > 0
+                                  ? '#22c55e'
+                                  : '#ef4444',
+                          }}
+                        />
+                      </div>
+                      <span className="text-sm">🐂</span>
+                    </div>
+                  );
+                })()}
+                <p className="text-[10px] text-slate-500 mt-1">
+                  ADX measures trend strength, not price/oscillator divergence — no Div bar.
+                </p>
+              </div>
             </div>
           )}
         </div>

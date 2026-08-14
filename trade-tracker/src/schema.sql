@@ -100,3 +100,24 @@ CREATE TABLE IF NOT EXISTS tracker_weekly_reports (
   discord_ok BOOLEAN,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Standalone LTF scalp desk analysis runs (app keeps latest + 1 previous per symbol)
+CREATE TABLE IF NOT EXISTS desk_analysis_runs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  symbol TEXT NOT NULL,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  finished_at TIMESTAMPTZ,
+  model TEXT,
+  tool_trace JSONB NOT NULL DEFAULT '[]'::jsonb,
+  best_trades JSONB NOT NULL DEFAULT '[]'::jsonb,
+  open_reviews JSONB NOT NULL DEFAULT '[]'::jsonb,
+  tokens JSONB NOT NULL DEFAULT '{}'::jsonb,
+  insights JSONB,
+  error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE desk_analysis_runs ADD COLUMN IF NOT EXISTS insights JSONB;
+
+CREATE INDEX IF NOT EXISTS idx_desk_analysis_runs_symbol
+  ON desk_analysis_runs (symbol, started_at DESC);

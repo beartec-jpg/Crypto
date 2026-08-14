@@ -183,38 +183,46 @@ export async function cancelTrades(
 
 export async function listTrades(
   pool: pg.Pool,
-  opts: { status?: string; limit?: number; activeOnly?: boolean; symbol?: string } = {},
+  opts: {
+    status?: string;
+    limit?: number;
+    activeOnly?: boolean;
+    symbol?: string;
+    /** Filter by tracker source, e.g. scalp_desk | discord_desk */
+    source?: string;
+    sources?: string[];
+  } = {},
 ) {
   const limit = Math.min(opts.limit || 100, 500);
+  const sources =
+    opts.sources?.filter(Boolean) ||
+    (opts.source ? [opts.source] : null);
+
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  const add = (sql: string, val: unknown) => {
+    params.push(val);
+    clauses.push(sql.replace('?', `$${params.length}`));
+  };
+
   if (opts.activeOnly) {
-    if (opts.symbol) {
-      const r = await pool.query(
-        `SELECT * FROM tracker_trades
-         WHERE status IN ('pending','entry_armed','entry_hit','tp1_hit')
-           AND symbol = $1
-         ORDER BY created_at DESC LIMIT $2`,
-        [opts.symbol.toUpperCase(), limit],
-      );
-      return r.rows;
-    }
-    const r = await pool.query(
-      `SELECT * FROM tracker_trades
-       WHERE status IN ('pending','entry_armed','entry_hit','tp1_hit')
-       ORDER BY created_at DESC LIMIT $1`,
-      [limit],
-    );
-    return r.rows;
+    clauses.push(`status IN ('pending','entry_armed','entry_hit','tp1_hit')`);
+  } else if (opts.status) {
+    add('status = ?', opts.status);
   }
-  if (opts.status) {
-    const r = await pool.query(
-      `SELECT * FROM tracker_trades WHERE status = $1 ORDER BY created_at DESC LIMIT $2`,
-      [opts.status, limit],
-    );
-    return r.rows;
+  if (opts.symbol) {
+    add('symbol = ?', opts.symbol.toUpperCase());
   }
+  if (sources?.length) {
+    params.push(sources);
+    clauses.push(`source = ANY($${params.length}::text[])`);
+  }
+
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  params.push(limit);
   const r = await pool.query(
-    `SELECT * FROM tracker_trades ORDER BY created_at DESC LIMIT $1`,
-    [limit],
+    `SELECT * FROM tracker_trades ${where} ORDER BY created_at DESC LIMIT $${params.length}`,
+    params,
   );
   return r.rows;
 }
@@ -222,14 +230,22 @@ export async function listTrades(
 export async function getClosedPoints(
   pool: pg.Pool,
   since?: Date,
+  opts?: { source?: string; sources?: string[] },
 ): Promise<ClosedTradePoint[]> {
   const params: unknown[] = [];
-  let sql = `SELECT realized_r, closed_at, outcome, symbol, grade, direction
+  let sql = `SELECT realized_r, closed_at, outcome, symbol, grade, direction, source
              FROM tracker_trades
              WHERE closed_at IS NOT NULL AND status IN ('tp_hit','sl_hit','be_hit')`;
   if (since) {
     params.push(since.toISOString());
-    sql += ` AND closed_at >= $1`;
+    sql += ` AND closed_at >= $${params.length}`;
+  }
+  const sources =
+    opts?.sources?.filter(Boolean) ||
+    (opts?.source ? [opts.source] : null);
+  if (sources?.length) {
+    params.push(sources);
+    sql += ` AND source = ANY($${params.length}::text[])`;
   }
   sql += ' ORDER BY closed_at ASC';
   const r = await pool.query(sql, params);
@@ -243,8 +259,12 @@ export async function getClosedPoints(
   }));
 }
 
-export async function getPerformance(pool: pg.Pool, since?: Date) {
-  const points = await getClosedPoints(pool, since);
+export async function getPerformance(
+  pool: pg.Pool,
+  since?: Date,
+  opts?: { source?: string; sources?: string[] },
+) {
+  const points = await getClosedPoints(pool, since, opts);
   return computePerformance(points);
 }
 
@@ -344,11 +364,66 @@ function plannedR(trade: EngineTrade, target: number): string {
   return fmtR(move / risk);
 }
 
+/**
+ * HTF Discord channels (BTC/XRP webhooks) are for discord_desk / HTF only.
+ * Scalp desk trades must stay off those channels unless explicitly allowed.
+ *
+ * Env:
+ * - DISCORD_SILENT_SOURCES — comma list always muted (default includes scalp_desk)
+ * - DISCORD_NOTIFY_SOURCES — if set, ONLY these sources post (allow-list)
+ * - DISCORD_SCALP_NOTIFY=1 — allow scalp_desk through (override default mute)
+ */
+function shouldNotifyDiscord(source: string | undefined): boolean {
+  const src = String(source || 'discord_desk').toLowerCase().trim();
+  const allowRaw = process.env.DISCORD_NOTIFY_SOURCES;
+  if (allowRaw != null && allowRaw.trim() !== '') {
+    const allow = new Set(
+      allowRaw
+        .split(/[,\s]+/)
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean),
+    );
+    return allow.has(src);
+  }
+  const silent = new Set([
+    'scalp_desk',
+    'xrp-ltf-desk',
+    'ltf-desk',
+    'ltf_desk',
+    'scalp',
+    'xrp_struct',
+    'xrp_scalp',
+  ]);
+  for (const s of String(process.env.DISCORD_SILENT_SOURCES || '').split(/[,\s]+/)) {
+    if (s.trim()) silent.add(s.trim().toLowerCase());
+  }
+  // Any multi-bot id starting with xrp_ or scalp_ stays off HTF Discord unless forced
+  if (src.startsWith('xrp_') || src.startsWith('scalp')) silent.add(src);
+  if (process.env.DISCORD_SCALP_NOTIFY === '1') {
+    silent.delete('scalp_desk');
+    silent.delete('xrp-ltf-desk');
+    silent.delete('ltf-desk');
+    silent.delete('ltf_desk');
+    silent.delete('scalp');
+    silent.delete('xrp_struct');
+    silent.delete('xrp_scalp');
+  }
+  return !silent.has(src);
+}
+
 export async function notifyEvent(
   webhookUrl: string | undefined,
   trade: EngineTrade,
   ev: EngineEvent,
 ): Promise<void> {
+  // Scalp / LTF desk must not spam HTF BTC & XRP Discord channels
+  if (!shouldNotifyDiscord(trade.source)) {
+    console.log(
+      `[discord:silent] source=${trade.source || '?'} ${trade.symbol} ${ev.type}`,
+    );
+    return;
+  }
+
   // Prefer per-symbol webhook (BTC/XRP channels); fall back to shared URL
   const hook = resolveWebhookForSymbol(trade.symbol) || webhookUrl;
   if (!hook) {
@@ -377,12 +452,16 @@ export async function notifyEvent(
                     ? 'STOP EXIT'
                     : ev.type.replace(/_/g, ' ').toUpperCase();
 
+  const srcLabel =
+    String(trade.source || 'discord_desk') === 'scalp_desk'
+      ? 'scalp desk'
+      : 'HTF desk';
   const embed: DiscordEmbed = {
     title: `${trade.symbol} · ${titleType} · ${trade.direction} (${trade.grade})`,
     description: ev.message,
     color: colorForEvent(ev.type),
     fields: [],
-    footer: { text: 'AI trade tracker · Not financial advice' },
+    footer: { text: `AI trade tracker · ${srcLabel} · Not financial advice` },
     timestamp: new Date().toISOString(),
   };
 
@@ -512,9 +591,10 @@ export async function processTradeAtPrice(
   row: Record<string, unknown>,
   price: number,
   webhookUrl?: string,
+  extremes?: { high?: number; low?: number },
 ): Promise<EngineEvent[]> {
   const engine = rowToEngine(row);
-  const events = evaluateTick(engine, price);
+  const events = evaluateTick(engine, price, extremes);
   if (!events.length) {
     await pool.query(
       `UPDATE tracker_trades SET last_price = $2, last_checked_at = NOW(), updated_at = NOW() WHERE id = $1`,
@@ -561,13 +641,16 @@ export async function processAllActive(
   pool: pg.Pool,
   prices: Map<string, number>,
   webhookUrl?: string,
+  extremes?: Map<string, { high?: number; low?: number }>,
 ): Promise<{ checked: number; events: number }> {
   const active = await listTrades(pool, { activeOnly: true, limit: 500 });
   let events = 0;
   for (const row of active) {
-    const price = prices.get(String(row.symbol).toUpperCase());
+    const sym = String(row.symbol).toUpperCase();
+    const price = prices.get(sym);
     if (price == null) continue;
-    const evs = await processTradeAtPrice(pool, row, price, webhookUrl);
+    const ex = extremes?.get(sym);
+    const evs = await processTradeAtPrice(pool, row, price, webhookUrl, ex);
     events += evs.length;
   }
   return { checked: active.length, events };

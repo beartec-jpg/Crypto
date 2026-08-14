@@ -52,7 +52,13 @@ interface OscillatorContainerProps {
   onOscillatorChartCreated: (name: string, chart: IChartApi) => void;
   getMainChartVisibleRange: () => any;
   isPaidTier: boolean;
-  getIndicatorReport?: (indicator: string) => { color: string; text: string } | null;
+  getIndicatorReport?: (indicator: string) => {
+    color: string;
+    text: string;
+    headline?: string;
+    meaning?: string;
+    lookFor?: string;
+  } | null;
   getOscillatorDivergence: (indicator: string) => { strength: number; type: string };
 }
 
@@ -83,6 +89,7 @@ export function OscillatorContainer({
     return (
       <div className="mt-2 pt-2 border-t border-slate-600">
         <div className="flex items-center gap-2">
+          <span className="text-[10px] uppercase tracking-wide text-slate-500 w-7 shrink-0">Div</span>
           <span className="text-sm">🐻‍❄️</span>
           <div className="flex-1 h-2 bg-slate-700 rounded-full relative overflow-hidden">
             <div className="absolute inset-0 flex items-center justify-center">
@@ -143,6 +150,7 @@ export function OscillatorContainer({
     return (
       <div className="mt-2 pt-2 border-t border-slate-600">
         <div className="flex items-center gap-2">
+          <span className="text-[10px] uppercase tracking-wide text-slate-500 w-7 shrink-0">Str</span>
           <span className="text-sm">🐻‍❄️</span>
           <div className="flex-1 h-2 bg-slate-700 rounded-full relative overflow-hidden">
             <div className="absolute inset-0 flex items-center justify-center">
@@ -171,11 +179,34 @@ export function OscillatorContainer({
     );
   };
 
+  const IndicatorReadout = ({ name }: { name: string }) => {
+    const report = getIndicatorReport ? getIndicatorReport(name) : null;
+    if (!report || (!report.meaning && !report.text && !report.headline)) return null;
+    return (
+      <div className="mt-2 pt-2 border-t border-slate-700/80 space-y-1.5">
+        {report.headline && (
+          <div className={`text-[11px] font-semibold uppercase tracking-wide ${report.color}`}>
+            {report.headline}
+          </div>
+        )}
+        <p className="text-[11px] leading-relaxed text-slate-300">
+          {report.meaning || report.text}
+        </p>
+        {report.lookFor && (
+          <p className="text-[11px] leading-relaxed text-slate-400">
+            <span className="text-slate-500 font-medium">What pros watch: </span>
+            {report.lookFor}
+          </p>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
       {indicators.rsi.show && (() => {
         try {
-          const report = isPaidTier && getIndicatorReport ? getIndicatorReport('RSI') : null;
+          const report = getIndicatorReport ? getIndicatorReport('RSI') : null;
           const rsiData = calculateRSI(candles, indicators.rsi.period);
           
           // Safety check: ensure RSI data was calculated
@@ -197,7 +228,7 @@ export function OscillatorContainer({
               <CardHeader className="pb-1">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-white text-sm">RSI ({indicators.rsi.period})</CardTitle>
-                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.headline || 'Live'}</span>}
                 </div>
               </CardHeader>
               <CardContent>
@@ -210,6 +241,7 @@ export function OscillatorContainer({
                   mainChartVisibleRange={getMainChartVisibleRange()}
                 />
                 <DivergenceMeter indicator="RSI" />
+                <IndicatorReadout name="RSI" />
               </CardContent>
             </Card>
           );
@@ -230,7 +262,7 @@ export function OscillatorContainer({
       
       {indicators.stochRSI.show && (() => {
         try {
-          const report = isPaidTier && getIndicatorReport ? getIndicatorReport('StochRSI') : null;
+          const report = getIndicatorReport ? getIndicatorReport('StochRSI') : null;
           const stochData = calculateStochasticRSI(candles, indicators.stochRSI.period);
           
           if (!stochData || stochData.length === 0) {
@@ -251,7 +283,7 @@ export function OscillatorContainer({
               <CardHeader className="pb-1">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-white text-sm">Stochastic RSI ({indicators.stochRSI.period})</CardTitle>
-                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.headline || report.text.slice(0, 28)}</span>}
                 </div>
               </CardHeader>
               <CardContent>
@@ -264,6 +296,7 @@ export function OscillatorContainer({
                   mainChartVisibleRange={getMainChartVisibleRange()}
                 />
                 <DivergenceMeter indicator="StochRSI" />
+                <IndicatorReadout name="StochRSI" />
               </CardContent>
             </Card>
           );
@@ -284,7 +317,7 @@ export function OscillatorContainer({
       
       {indicators.macd.show && (() => {
         try {
-          const report = isPaidTier && getIndicatorReport ? getIndicatorReport('MACD') : null;
+          const report = getIndicatorReport ? getIndicatorReport('MACD') : null;
           const { macd, signal, hist } = calculateMACD(candles, indicators.macd.fast, indicators.macd.slow, indicators.macd.signal);
           
           if (!macd || macd.length === 0 || !signal || !hist) {
@@ -305,7 +338,7 @@ export function OscillatorContainer({
               <CardHeader className="pb-1">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-white text-sm">MACD ({indicators.macd.fast}, {indicators.macd.slow}, {indicators.macd.signal})</CardTitle>
-                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.headline || report.text.slice(0, 28)}</span>}
                 </div>
               </CardHeader>
               <CardContent>
@@ -321,6 +354,7 @@ export function OscillatorContainer({
                   mainChartVisibleRange={getMainChartVisibleRange()}
                 />
                 <DivergenceMeter indicator="MACD" />
+                <IndicatorReadout name="MACD" />
               </CardContent>
             </Card>
           );
@@ -341,7 +375,7 @@ export function OscillatorContainer({
       
       {indicators.obv.show && (() => {
         try {
-          const report = isPaidTier && getIndicatorReport ? getIndicatorReport('OBV') : null;
+          const report = getIndicatorReport ? getIndicatorReport('OBV') : null;
           const obvData = calculateOBV(candles);
           
           if (!obvData || obvData.length === 0) {
@@ -362,7 +396,7 @@ export function OscillatorContainer({
               <CardHeader className="pb-1">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-white text-sm">On-Balance Volume</CardTitle>
-                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.headline || report.text.slice(0, 28)}</span>}
                 </div>
               </CardHeader>
               <CardContent>
@@ -373,6 +407,7 @@ export function OscillatorContainer({
                   mainChartVisibleRange={getMainChartVisibleRange()}
                 />
                 <DivergenceMeter indicator="OBV" />
+                <IndicatorReadout name="OBV" />
               </CardContent>
             </Card>
           );
@@ -393,7 +428,7 @@ export function OscillatorContainer({
       
       {indicators.williamsR.show && (() => {
         try {
-          const report = isPaidTier && getIndicatorReport ? getIndicatorReport('WilliamsR') : null;
+          const report = getIndicatorReport ? getIndicatorReport('WilliamsR') : null;
           const williamsRData = calculateWilliamsR(candles, indicators.williamsR.period);
           
           if (!williamsRData || williamsRData.length === 0) {
@@ -414,7 +449,7 @@ export function OscillatorContainer({
               <CardHeader className="pb-1">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-white text-sm">Williams %R ({indicators.williamsR.period})</CardTitle>
-                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.headline || report.text.slice(0, 28)}</span>}
                 </div>
               </CardHeader>
               <CardContent>
@@ -427,6 +462,7 @@ export function OscillatorContainer({
                   mainChartVisibleRange={getMainChartVisibleRange()}
                 />
                 <DivergenceMeter indicator="WilliamsR" />
+                <IndicatorReadout name="WilliamsR" />
               </CardContent>
             </Card>
           );
@@ -447,7 +483,7 @@ export function OscillatorContainer({
       
       {indicators.mfi.show && (() => {
         try {
-          const report = isPaidTier && getIndicatorReport ? getIndicatorReport('MFI') : null;
+          const report = getIndicatorReport ? getIndicatorReport('MFI') : null;
           const mfiData = calculateMFI(candles, indicators.mfi.period);
           
           if (!mfiData || mfiData.length === 0) {
@@ -468,7 +504,7 @@ export function OscillatorContainer({
               <CardHeader className="pb-1">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-white text-sm">Money Flow Index ({indicators.mfi.period})</CardTitle>
-                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.headline || report.text.slice(0, 28)}</span>}
                 </div>
               </CardHeader>
               <CardContent>
@@ -481,6 +517,7 @@ export function OscillatorContainer({
                   mainChartVisibleRange={getMainChartVisibleRange()}
                 />
                 <DivergenceMeter indicator="MFI" />
+                <IndicatorReadout name="MFI" />
               </CardContent>
             </Card>
           );
@@ -501,7 +538,7 @@ export function OscillatorContainer({
       
       {indicators.cci.show && (() => {
         try {
-          const report = isPaidTier && getIndicatorReport ? getIndicatorReport('CCI') : null;
+          const report = getIndicatorReport ? getIndicatorReport('CCI') : null;
           const cciData = calculateCCI(candles, indicators.cci.period);
           
           if (!cciData || cciData.length === 0) {
@@ -522,7 +559,7 @@ export function OscillatorContainer({
               <CardHeader className="pb-1">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-white text-sm">CCI ({indicators.cci.period})</CardTitle>
-                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.headline || report.text.slice(0, 28)}</span>}
                 </div>
               </CardHeader>
               <CardContent>
@@ -535,6 +572,7 @@ export function OscillatorContainer({
                   mainChartVisibleRange={getMainChartVisibleRange()}
                 />
                 <DivergenceMeter indicator="CCI" />
+                <IndicatorReadout name="CCI" />
               </CardContent>
             </Card>
           );
@@ -555,7 +593,7 @@ export function OscillatorContainer({
       
       {indicators.adx.show && (() => {
         try {
-          const report = isPaidTier && getIndicatorReport ? getIndicatorReport('ADX') : null;
+          const report = getIndicatorReport ? getIndicatorReport('ADX') : null;
           const adxData = calculateADX(candles, indicators.adx.period);
           
           if (!adxData || adxData.length === 0) {
@@ -576,7 +614,7 @@ export function OscillatorContainer({
               <CardHeader className="pb-1">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-white text-sm">ADX ({indicators.adx.period})</CardTitle>
-                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.text}</span>}
+                  {report && <span className={`text-xs font-medium ${report.color}`}>{report.headline || report.text.slice(0, 28)}</span>}
                 </div>
               </CardHeader>
               <CardContent>
@@ -589,6 +627,7 @@ export function OscillatorContainer({
                   mainChartVisibleRange={getMainChartVisibleRange()}
                 />
                 <TrendStrengthMeter />
+                <IndicatorReadout name="ADX" />
               </CardContent>
             </Card>
           );

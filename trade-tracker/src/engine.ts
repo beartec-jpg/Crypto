@@ -46,6 +46,8 @@ export interface EngineTrade {
   symbol: string;
   direction: Direction;
   grade: string;
+  /** Tracker origin: discord_desk (HTF Discord) vs scalp_desk (LTF standalone). */
+  source?: string;
   entry: number;
   originalStop: number;
   currentStop: number;
@@ -169,7 +171,17 @@ function baseEvent(
   } as EngineEvent;
 }
 
-export function evaluateTick(trade: EngineTrade, price: number): EngineEvent[] {
+/** Optional bar extremes so a sweep+reclaim inside one candle is not missed between polls. */
+export interface TickExtremes {
+  high?: number;
+  low?: number;
+}
+
+export function evaluateTick(
+  trade: EngineTrade,
+  price: number,
+  extremes?: TickExtremes,
+): EngineEvent[] {
   if (
     ['tp_hit', 'sl_hit', 'be_hit', 'cancelled', 'entry_invalid'].includes(trade.status)
   ) {
@@ -184,11 +196,83 @@ export function evaluateTick(trade: EngineTrade, price: number): EngineEvent[] {
       ? state.entryConfirmLevel
       : state.entry;
 
+  const hi =
+    extremes?.high != null && Number.isFinite(extremes.high)
+      ? Math.max(extremes.high, price)
+      : price;
+  const lo =
+    extremes?.low != null && Number.isFinite(extremes.low)
+      ? Math.min(extremes.low, price)
+      : price;
+
+  // Use wick extremes for zone/stop tests (last price alone misses 15s spikes)
+  const taggedEntry =
+    dir === 'LONG' ? lo <= state.entry : hi >= state.entry;
+  const taggedStop =
+    dir === 'LONG' ? lo <= state.originalStop : hi >= state.originalStop;
+  const taggedConfirm =
+    dir === 'LONG' ? hi >= confirmLevel : lo <= confirmLevel;
+
   // --- pending: wait for first touch of entry zone ---
   if (state.status === 'pending') {
-    if (!hitEntry(dir, price, state.entry)) return [];
+    // Dead idea: stop already traded through WITHOUT a fill (don't sit forever)
+    // LONG: price wicked through SL below; SHORT: price ripped through SL above
+    const stopAlreadyBroken =
+      dir === 'LONG' ? lo <= state.originalStop : hi >= state.originalStop;
+    if (stopAlreadyBroken) {
+      return [
+        baseEvent(
+          {
+            type: 'entry_invalid',
+            price,
+            sizeFraction: 0,
+            rDelta: 0,
+            realizedRAfter: 0,
+            message:
+              `🚫 Entry INVALID ${state.symbol} ${dir}: still pending but price already through SL ` +
+              `${fmt(state.originalStop)} (lo ${fmt(lo)} / hi ${fmt(hi)}) · idea dead · no position`,
+            newStatus: 'entry_invalid',
+            newRemainingSize: 0,
+            outcome: null,
+            closed: true,
+          },
+          state,
+        ),
+      ];
+    }
 
-    // Legacy / explicit touch: open immediately
+    // Dead idea: targets already printed before we ever entered (missed move)
+    const tps = state.targets.filter((t) => Number.isFinite(t) && t > 0);
+    if (tps.length) {
+      const nearestTp = dir === 'LONG' ? Math.min(...tps) : Math.max(...tps);
+      const targetsAlreadyHit =
+        dir === 'LONG' ? hi >= nearestTp : lo <= nearestTp;
+      if (targetsAlreadyHit) {
+        return [
+          baseEvent(
+            {
+              type: 'entry_invalid',
+              price,
+              sizeFraction: 0,
+              rDelta: 0,
+              realizedRAfter: 0,
+              message:
+                `🚫 Entry INVALID ${state.symbol} ${dir}: still pending but TP zone already traded ` +
+                `(tp ${fmt(nearestTp)}, lo ${fmt(lo)} / hi ${fmt(hi)}) · missed move · no position`,
+              newStatus: 'entry_invalid',
+              newRemainingSize: 0,
+              outcome: null,
+              closed: true,
+            },
+            state,
+          ),
+        ];
+      }
+    }
+
+    if (!taggedEntry && !hitEntry(dir, price, state.entry)) return [];
+
+    // Legacy / explicit touch: open immediately on tag
     if (confirmType === 'touch') {
       return [
         baseEvent(
@@ -205,6 +289,55 @@ export function evaluateTick(trade: EngineTrade, price: number): EngineEvent[] {
             newStopLifted: false,
             outcome: null,
             closed: false,
+          },
+          state,
+        ),
+      ];
+    }
+
+    // Same bar: swept into zone (and not stopped) then reclaimed confirm → open now
+    // e.g. LONG: low ≤ entry, high ≥ confirm, low > originalStop
+    if (taggedEntry && taggedConfirm && !taggedStop) {
+      return [
+        baseEvent(
+          {
+            type: 'entry_hit',
+            price,
+            sizeFraction: 1,
+            rDelta: 0,
+            realizedRAfter: 0,
+            message:
+              `🎯 Entry CONFIRMED ${state.symbol} ${dir} @ ${fmt(price)} · ` +
+              `zone sweep + reclaim of ${fmt(confirmLevel)} in-bar (lo ${fmt(lo)} / hi ${fmt(hi)}) · NOW OPEN`,
+            newStatus: 'entry_hit',
+            newRemainingSize: 1,
+            newStopToBe: false,
+            newStopLifted: false,
+            outcome: null,
+            closed: false,
+          },
+          state,
+        ),
+      ];
+    }
+
+    // Same bar: tagged zone then ran to SL without holding reclaim → invalid
+    if (taggedEntry && taggedStop) {
+      return [
+        baseEvent(
+          {
+            type: 'entry_invalid',
+            price,
+            sizeFraction: 0,
+            rDelta: 0,
+            realizedRAfter: 0,
+            message:
+              `🚫 Entry INVALID ${state.symbol} ${dir}: wick tagged zone then SL ` +
+              `${fmt(state.originalStop)} (lo ${fmt(lo)} / hi ${fmt(hi)}) without held reclaim · no position`,
+            newStatus: 'entry_invalid',
+            newRemainingSize: 0,
+            outcome: null,
+            closed: true,
           },
           state,
         ),
@@ -242,7 +375,7 @@ export function evaluateTick(trade: EngineTrade, price: number): EngineEvent[] {
   // --- entry_armed: need reclaim, or invalidate if SL tags first ---
   if (state.status === 'entry_armed') {
     // Straight-through: hit original stop before reclaim → not a real trade
-    if (hitStop(dir, price, state.originalStop)) {
+    if (taggedStop || hitStop(dir, price, state.originalStop)) {
       return [
         baseEvent(
           {
@@ -264,7 +397,7 @@ export function evaluateTick(trade: EngineTrade, price: number): EngineEvent[] {
       ];
     }
 
-    if (hitEntryConfirm(dir, price, confirmLevel)) {
+    if (taggedConfirm || hitEntryConfirm(dir, price, confirmLevel)) {
       return [
         baseEvent(
           {
@@ -291,8 +424,14 @@ export function evaluateTick(trade: EngineTrade, price: number): EngineEvent[] {
   }
 
   // --- open (entry_hit or tp1_hit) ---
+  // IMPORTANT: use 1m wick extremes (hi/lo), not only last price.
+  // Poll is ~15s; last can bounce back above SL after a wick and miss the stop.
   if (state.status === 'entry_hit' || state.status === 'tp1_hit') {
-    if (hitStop(dir, price, state.currentStop)) {
+    const stopTagged =
+      (dir === 'LONG' ? lo <= state.currentStop : hi >= state.currentStop) ||
+      hitStop(dir, price, state.currentStop);
+
+    if (stopTagged) {
       const size = state.remainingSize;
       const exitPrice = state.currentStop;
       const rDelta = rForFill(dir, state.entry, state.originalStop, exitPrice, size);
@@ -301,10 +440,16 @@ export function evaluateTick(trade: EngineTrade, price: number): EngineEvent[] {
         realized > 0.05 || nearEntry(exitPrice, state.entry) || Math.abs(realized) < 0.05
           ? 'be_hit'
           : 'sl_hit';
+      const wickNote =
+        dir === 'LONG' && price > state.currentStop
+          ? ` · wick lo ${fmt(lo)} (last ${fmt(price)})`
+          : dir === 'SHORT' && price < state.currentStop
+            ? ` · wick hi ${fmt(hi)} (last ${fmt(price)})`
+            : '';
       const msg =
         finalStatus === 'be_hit'
-          ? `⚖️ Stop exit ${state.symbol}: remaining ${pct(size)} closed @ ${fmt(exitPrice)} · trade R ${fmtR(realized)}`
-          : `🛑 Stop loss: ${state.symbol} ${dir} · closed ${pct(size)} @ ${fmt(exitPrice)} · ${fmtR(rDelta)}R this leg · total ${fmtR(realized)}R`;
+          ? `⚖️ Stop exit ${state.symbol}: remaining ${pct(size)} closed @ ${fmt(exitPrice)} · trade R ${fmtR(realized)}${wickNote}`
+          : `🛑 Stop loss: ${state.symbol} ${dir} · closed ${pct(size)} @ ${fmt(exitPrice)} · ${fmtR(rDelta)}R this leg · total ${fmtR(realized)}R${wickNote}`;
 
       return [
         baseEvent(
@@ -325,6 +470,13 @@ export function evaluateTick(trade: EngineTrade, price: number): EngineEvent[] {
       ];
     }
 
+    const liftTagged =
+      state.stopLiftTrigger != null &&
+      Number.isFinite(state.stopLiftTrigger) &&
+      (dir === 'LONG'
+        ? hi >= state.stopLiftTrigger || hitStopLiftTrigger(dir, price, state.stopLiftTrigger)
+        : lo <= state.stopLiftTrigger || hitStopLiftTrigger(dir, price, state.stopLiftTrigger));
+
     if (
       state.status === 'entry_hit' &&
       !state.stopLifted &&
@@ -332,7 +484,7 @@ export function evaluateTick(trade: EngineTrade, price: number): EngineEvent[] {
       state.stopLiftTo != null &&
       Number.isFinite(state.stopLiftTrigger) &&
       Number.isFinite(state.stopLiftTo) &&
-      hitStopLiftTrigger(dir, price, state.stopLiftTrigger)
+      liftTagged
     ) {
       const liftTo = state.stopLiftTo;
       if (isBetterStop(dir, liftTo, state.currentStop)) {
@@ -367,8 +519,10 @@ export function evaluateTick(trade: EngineTrade, price: number): EngineEvent[] {
 
     const tp1 = state.targets[0];
     const tp2 = state.targets[1];
+    const targetTagged = (level: number) =>
+      (dir === 'LONG' ? hi >= level : lo <= level) || hitTarget(dir, price, level);
 
-    if (state.status === 'entry_hit' && tp1 != null && hitTarget(dir, price, tp1)) {
+    if (state.status === 'entry_hit' && tp1 != null && targetTagged(tp1)) {
       const size = TP1_SIZE;
       const rDelta = rForFill(dir, state.entry, state.originalStop, tp1, size);
       const realized = state.realizedR + rDelta;
@@ -404,7 +558,7 @@ export function evaluateTick(trade: EngineTrade, price: number): EngineEvent[] {
       ];
     }
 
-    if (state.status === 'tp1_hit' && tp2 != null && hitTarget(dir, price, tp2)) {
+    if (state.status === 'tp1_hit' && tp2 != null && targetTagged(tp2)) {
       const size = state.remainingSize;
       const rDelta = rForFill(dir, state.entry, state.originalStop, tp2, size);
       const realized = state.realizedR + rDelta;
@@ -462,6 +616,7 @@ export function rowToEngine(row: Record<string, unknown>): EngineTrade {
     symbol: String(row.symbol),
     direction: String(row.direction).toUpperCase() as Direction,
     grade: String(row.grade || 'B'),
+    source: row.source != null ? String(row.source) : undefined,
     entry: parseFloat(String(row.entry)),
     originalStop: parseFloat(String(row.original_stop ?? row.originalStop)),
     currentStop: parseFloat(String(row.current_stop ?? row.currentStop)),
