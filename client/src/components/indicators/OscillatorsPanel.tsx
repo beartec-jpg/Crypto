@@ -23,6 +23,7 @@ import {
 
 // For divergence detection
 import { detectDivergence } from '@/lib/calculations';
+import { buildIndicatorCoach } from '@/lib/indicators/indicatorCoach';
 
 interface Candle {
   time: number;
@@ -155,76 +156,99 @@ export function OscillatorsPanel({
     }
   };
 
-  // Synopsis generation
-  const getIndicatorReport = (indicator: string): { text: string; color: string } => {
-    if (candles.length < 20) return { text: '', color: '' };
-    
-    switch (indicator) {
+  const getCoach = (indicator: string) => {
+    const div = getOscillatorDivergence(indicator);
+    const values: Record<string, number | undefined> = {};
+    const id = String(indicator).toLowerCase().replace(/[^a-z]/g, '');
+    switch (id) {
       case 'rsi': {
-        const lastRSI = calculatedData.rsi[calculatedData.rsi.length - 1]?.value;
-        if (!lastRSI) return { text: '', color: '' };
-        if (lastRSI >= 70) return { text: `Overbought (${lastRSI.toFixed(0)})`, color: 'text-red-400' };
-        if (lastRSI <= 30) return { text: `Oversold (${lastRSI.toFixed(0)})`, color: 'text-green-400' };
-        return { text: `Neutral (${lastRSI.toFixed(0)})`, color: 'text-gray-400' };
+        const series = calculatedData.rsi;
+        const recent = series.slice(-5).map((d) => d.value);
+        values.value = series[series.length - 1]?.value;
+        values.slope = recent.length >= 2 ? recent[recent.length - 1] - recent[0] : 0;
+        break;
+      }
+      case 'stochrsi': {
+        const series = calculatedData.stochRSI;
+        const recent = series.slice(-5).map((d) => d.k);
+        values.k = series[series.length - 1]?.k;
+        values.slope = recent.length >= 2 ? recent[recent.length - 1] - recent[0] : 0;
+        break;
       }
       case 'macd': {
-        const lastMACD = calculatedData.macd.macd[calculatedData.macd.macd.length - 1]?.value;
-        const lastSignal = calculatedData.macd.signal[calculatedData.macd.signal.length - 1]?.value;
-        const prevMACD = calculatedData.macd.macd[calculatedData.macd.macd.length - 2]?.value;
-        const prevSignal = calculatedData.macd.signal[calculatedData.macd.signal.length - 2]?.value;
-        
-        if (!lastMACD || !lastSignal) return { text: '', color: '' };
-        if (prevMACD < prevSignal && lastMACD > lastSignal) return { text: 'Bullish Cross', color: 'text-green-400' };
-        if (prevMACD > prevSignal && lastMACD < lastSignal) return { text: 'Bearish Cross', color: 'text-red-400' };
-        if (lastMACD > lastSignal) return { text: 'Bullish', color: 'text-green-400' };
-        return { text: 'Bearish', color: 'text-red-400' };
+        const { macd, signal, hist } = calculatedData.macd;
+        const lastMACD = macd[macd.length - 1]?.value;
+        const lastSignal = signal[signal.length - 1]?.value;
+        const prevMACD = macd[macd.length - 2]?.value;
+        const prevSignal = signal[signal.length - 2]?.value;
+        values.macd = lastMACD;
+        values.signal = lastSignal;
+        values.hist = hist[hist.length - 1]?.value;
+        if (lastMACD != null && lastSignal != null && prevMACD != null && prevSignal != null) {
+          values.crossedUp = prevMACD < prevSignal && lastMACD > lastSignal ? 1 : 0;
+          values.crossedDown = prevMACD > prevSignal && lastMACD < lastSignal ? 1 : 0;
+        }
+        break;
       }
       case 'obv': {
-        const recent = calculatedData.obv.slice(-5).map(d => d.value);
-        if (recent.length < 5) return { text: '', color: '' };
-        const trend = recent[recent.length - 1] - recent[0];
-        if (trend > 0) return { text: 'Rising', color: 'text-green-400' };
-        if (trend < 0) return { text: 'Falling', color: 'text-red-400' };
-        return { text: 'Flat', color: 'text-gray-400' };
-      }
-      case 'stochRSI': {
-        const lastK = calculatedData.stochRSI[calculatedData.stochRSI.length - 1]?.k;
-        if (!lastK) return { text: '', color: '' };
-        if (lastK >= 80) return { text: `Overbought (${lastK.toFixed(0)})`, color: 'text-red-400' };
-        if (lastK <= 20) return { text: `Oversold (${lastK.toFixed(0)})`, color: 'text-green-400' };
-        return { text: `Neutral (${lastK.toFixed(0)})`, color: 'text-gray-400' };
+        const recent = calculatedData.obv.slice(-5).map((d) => d.value);
+        values.slope = recent.length >= 2 ? recent[recent.length - 1] - recent[0] : 0;
+        break;
       }
       case 'mfi': {
-        const lastMFI = calculatedData.mfi[calculatedData.mfi.length - 1]?.value;
-        if (!lastMFI) return { text: '', color: '' };
-        if (lastMFI >= 80) return { text: `Overbought (${lastMFI.toFixed(0)})`, color: 'text-red-400' };
-        if (lastMFI <= 20) return { text: `Oversold (${lastMFI.toFixed(0)})`, color: 'text-green-400' };
-        return { text: `Neutral (${lastMFI.toFixed(0)})`, color: 'text-gray-400' };
+        const series = calculatedData.mfi;
+        const recent = series.slice(-5).map((d) => d.value);
+        values.value = series[series.length - 1]?.value;
+        values.slope = recent.length >= 2 ? recent[recent.length - 1] - recent[0] : 0;
+        break;
       }
-      case 'williamsR': {
-        const lastWR = calculatedData.williamsR[calculatedData.williamsR.length - 1]?.value;
-        if (!lastWR) return { text: '', color: '' };
-        if (lastWR >= -20) return { text: `Overbought (${lastWR.toFixed(0)})`, color: 'text-red-400' };
-        if (lastWR <= -80) return { text: `Oversold (${lastWR.toFixed(0)})`, color: 'text-green-400' };
-        return { text: `Neutral (${lastWR.toFixed(0)})`, color: 'text-gray-400' };
+      case 'williamsr': {
+        const series = calculatedData.williamsR;
+        const recent = series.slice(-5).map((d) => d.value);
+        values.value = series[series.length - 1]?.value;
+        values.slope = recent.length >= 2 ? recent[recent.length - 1] - recent[0] : 0;
+        break;
       }
       case 'cci': {
-        const lastCCI = calculatedData.cci[calculatedData.cci.length - 1]?.value;
-        if (!lastCCI) return { text: '', color: '' };
-        if (lastCCI >= 100) return { text: `Overbought (${lastCCI.toFixed(0)})`, color: 'text-red-400' };
-        if (lastCCI <= -100) return { text: `Oversold (${lastCCI.toFixed(0)})`, color: 'text-green-400' };
-        return { text: `Neutral (${lastCCI.toFixed(0)})`, color: 'text-gray-400' };
+        const series = calculatedData.cci;
+        const recent = series.slice(-5).map((d) => d.value);
+        values.value = series[series.length - 1]?.value;
+        values.slope = recent.length >= 2 ? recent[recent.length - 1] - recent[0] : 0;
+        break;
       }
       case 'adx': {
         const lastADX = calculatedData.adx[calculatedData.adx.length - 1];
-        if (!lastADX) return { text: '', color: '' };
-        if (lastADX.adx >= 40) return { text: `Strong Trend (${lastADX.adx.toFixed(0)})`, color: 'text-blue-400' };
-        if (lastADX.adx >= 25) return { text: `Trending (${lastADX.adx.toFixed(0)})`, color: 'text-cyan-400' };
-        return { text: `Weak Trend (${lastADX.adx.toFixed(0)})`, color: 'text-gray-400' };
+        const recent = calculatedData.adx.slice(-5).map((d) => d.adx);
+        values.adx = lastADX?.adx;
+        values.plusDI = lastADX?.plusDI;
+        values.minusDI = lastADX?.minusDI;
+        values.slope = recent.length >= 2 ? recent[recent.length - 1] - recent[0] : 0;
+        break;
       }
       default:
-        return { text: '', color: '' };
+        return null;
     }
+    return buildIndicatorCoach({
+      indicator: id,
+      candles,
+      divergence: id === 'adx' ? { strength: 0, type: 'none' } : div,
+      values,
+    });
+  };
+
+  const CoachReadout = ({ indicator }: { indicator: string }) => {
+    const coach = getCoach(indicator);
+    if (!coach) return null;
+    return (
+      <div className="mt-2 pt-2 border-t border-slate-700/80 space-y-1.5">
+        <div className={`text-[11px] font-semibold ${coach.color}`}>{coach.headline}</div>
+        <p className="text-[12px] leading-relaxed text-slate-200">{coach.meaning}</p>
+        <p className="text-[11px] leading-relaxed text-slate-400">
+          <span className="text-slate-500 font-medium">What it means / what to watch: </span>
+          {coach.lookFor}
+        </p>
+      </div>
+    );
   };
 
   // Divergence Meter component
@@ -273,10 +297,8 @@ export function OscillatorsPanel({
                 <div>
                   <h4 className="text-sm font-semibold text-white">📈 RSI</h4>
                   {(() => {
-                    const report = getIndicatorReport('rsi');
-                    return report.text && (
-                      <p className={`text-xs ${report.color}`}>{report.text}</p>
-                    );
+                    const coach = getCoach('rsi');
+                    return coach ? <p className={`text-xs ${coach.color}`}>{coach.headline}</p> : null;
                   })()}
                 </div>
                 <button
@@ -292,6 +314,7 @@ export function OscillatorsPanel({
                 candles={candles}
               />
               <DivergenceMeter indicator="rsi" />
+              <CoachReadout indicator="rsi" />
             </div>
           )}
 
@@ -301,10 +324,8 @@ export function OscillatorsPanel({
                 <div>
                   <h4 className="text-sm font-semibold text-white">📊 MACD</h4>
                   {(() => {
-                    const report = getIndicatorReport('macd');
-                    return report.text && (
-                      <p className={`text-xs ${report.color}`}>{report.text}</p>
-                    );
+                    const coach = getCoach('macd');
+                    return coach ? <p className={`text-xs ${coach.color}`}>{coach.headline}</p> : null;
                   })()}
                 </div>
                 <button
@@ -323,6 +344,7 @@ export function OscillatorsPanel({
                 signalPeriod={9}
               />
               <DivergenceMeter indicator="macd" />
+              <CoachReadout indicator="macd" />
             </div>
           )}
 
@@ -332,10 +354,8 @@ export function OscillatorsPanel({
                 <div>
                   <h4 className="text-sm font-semibold text-white">📉 OBV</h4>
                   {(() => {
-                    const report = getIndicatorReport('obv');
-                    return report.text && (
-                      <p className={`text-xs ${report.color}`}>{report.text}</p>
-                    );
+                    const coach = getCoach('obv');
+                    return coach ? <p className={`text-xs ${coach.color}`}>{coach.headline}</p> : null;
                   })()}
                 </div>
                 <button
@@ -347,6 +367,7 @@ export function OscillatorsPanel({
               </div>
               <OBVPanel data={calculatedData.obv} />
               <DivergenceMeter indicator="obv" />
+              <CoachReadout indicator="obv" />
             </div>
           )}
 
@@ -356,10 +377,8 @@ export function OscillatorsPanel({
                 <div>
                   <h4 className="text-sm font-semibold text-white">🎯 Stochastic RSI</h4>
                   {(() => {
-                    const report = getIndicatorReport('stochRSI');
-                    return report.text && (
-                      <p className={`text-xs ${report.color}`}>{report.text}</p>
-                    );
+                    const coach = getCoach('stochRSI');
+                    return coach ? <p className={`text-xs ${coach.color}`}>{coach.headline}</p> : null;
                   })()}
                 </div>
                 <button
@@ -375,6 +394,7 @@ export function OscillatorsPanel({
                 candles={candles}
               />
               <DivergenceMeter indicator="stochRSI" />
+              <CoachReadout indicator="stochRSI" />
             </div>
           )}
 
@@ -384,10 +404,8 @@ export function OscillatorsPanel({
                 <div>
                   <h4 className="text-sm font-semibold text-white">💰 MFI</h4>
                   {(() => {
-                    const report = getIndicatorReport('mfi');
-                    return report.text && (
-                      <p className={`text-xs ${report.color}`}>{report.text}</p>
-                    );
+                    const coach = getCoach('mfi');
+                    return coach ? <p className={`text-xs ${coach.color}`}>{coach.headline}</p> : null;
                   })()}
                 </div>
                 <button
@@ -399,6 +417,7 @@ export function OscillatorsPanel({
               </div>
               <MFIPanel data={calculatedData.mfi} period={14} candles={candles} />
               <DivergenceMeter indicator="mfi" />
+              <CoachReadout indicator="mfi" />
             </div>
           )}
 
@@ -408,10 +427,8 @@ export function OscillatorsPanel({
                 <div>
                   <h4 className="text-sm font-semibold text-white">🔄 Williams %R</h4>
                   {(() => {
-                    const report = getIndicatorReport('williamsR');
-                    return report.text && (
-                      <p className={`text-xs ${report.color}`}>{report.text}</p>
-                    );
+                    const coach = getCoach('williamsR');
+                    return coach ? <p className={`text-xs ${coach.color}`}>{coach.headline}</p> : null;
                   })()}
                 </div>
                 <button
@@ -423,6 +440,7 @@ export function OscillatorsPanel({
               </div>
               <WilliamsRPanel data={calculatedData.williamsR} period={14} candles={candles} />
               <DivergenceMeter indicator="williamsR" />
+              <CoachReadout indicator="williamsR" />
             </div>
           )}
 
@@ -432,10 +450,8 @@ export function OscillatorsPanel({
                 <div>
                   <h4 className="text-sm font-semibold text-white">🌊 CCI</h4>
                   {(() => {
-                    const report = getIndicatorReport('cci');
-                    return report.text && (
-                      <p className={`text-xs ${report.color}`}>{report.text}</p>
-                    );
+                    const coach = getCoach('cci');
+                    return coach ? <p className={`text-xs ${coach.color}`}>{coach.headline}</p> : null;
                   })()}
                 </div>
                 <button
@@ -447,6 +463,7 @@ export function OscillatorsPanel({
               </div>
               <CCIPanel data={calculatedData.cci} period={20} candles={candles} />
               <DivergenceMeter indicator="cci" />
+              <CoachReadout indicator="cci" />
             </div>
           )}
 
@@ -456,10 +473,8 @@ export function OscillatorsPanel({
                 <div>
                   <h4 className="text-sm font-semibold text-white">💪 ADX</h4>
                   {(() => {
-                    const report = getIndicatorReport('adx');
-                    return report.text && (
-                      <p className={`text-xs ${report.color}`}>{report.text}</p>
-                    );
+                    const coach = getCoach('adx');
+                    return coach ? <p className={`text-xs ${coach.color}`}>{coach.headline}</p> : null;
                   })()}
                 </div>
                 <button
@@ -474,45 +489,7 @@ export function OscillatorsPanel({
                 period={14}
                 candles={candles}
               />
-              <div className="mt-2 pt-2 border-t border-slate-600">
-                {(() => {
-                  const lastADX = calculatedData.adx[calculatedData.adx.length - 1];
-                  if (!lastADX) return null;
-                  const isBullish = lastADX.plusDI > lastADX.minusDI;
-                  let strengthValue = 0;
-                  if (lastADX.adx >= 40) strengthValue = 3;
-                  else if (lastADX.adx >= 25) strengthValue = 2;
-                  else if (lastADX.adx >= 15) strengthValue = 1;
-                  const signed = isBullish ? strengthValue : -strengthValue;
-                  return (
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] uppercase tracking-wide text-slate-500 w-7 shrink-0">Str</span>
-                      <span className="text-sm">🐻‍❄️</span>
-                      <div className="flex-1 h-2 bg-slate-700 rounded-full relative overflow-hidden">
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="w-px h-full bg-slate-500" />
-                        </div>
-                        <div
-                          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border border-white shadow"
-                          style={{
-                            left: `calc(50% + ${(signed / 3) * 45}% - 6px)`,
-                            background:
-                              signed === 0
-                                ? '#3b82f6'
-                                : signed > 0
-                                  ? '#22c55e'
-                                  : '#ef4444',
-                          }}
-                        />
-                      </div>
-                      <span className="text-sm">🐂</span>
-                    </div>
-                  );
-                })()}
-                <p className="text-[10px] text-slate-500 mt-1">
-                  ADX measures trend strength, not price/oscillator divergence — no Div bar.
-                </p>
-              </div>
+              <CoachReadout indicator="adx" />
             </div>
           )}
         </div>
