@@ -53,31 +53,20 @@ export default function CryptoIndicatorsClean() {
   // Mascot follows watchlist majority (EMA + structure), not a demo timer
   const [targetMarketState, setTargetMarketState] = useState<'bullish' | 'bearish'>('bearish');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [biasSummary, setBiasSummary] = useState<string>('Waiting on watchlist bias…');
 
   const handleWatchlistBias = useCallback((
     rows: Array<{ symbol: string; emaBias: Bias; structureBias: Bias }>,
   ) => {
-    let emaBull = 0;
-    let emaBear = 0;
-    let structBull = 0;
-    let structBear = 0;
+    let bullVotes = 0;
+    let bearVotes = 0;
     for (const row of rows) {
-      if (row.emaBias === 'bullish') emaBull += 1;
-      else if (row.emaBias === 'bearish') emaBear += 1;
-      if (row.structureBias === 'bullish') structBull += 1;
-      else if (row.structureBias === 'bearish') structBear += 1;
+      if (row.emaBias === 'bullish') bullVotes += 1;
+      else if (row.emaBias === 'bearish') bearVotes += 1;
+      if (row.structureBias === 'bullish') bullVotes += 1;
+      else if (row.structureBias === 'bearish') bearVotes += 1;
     }
-    const bullVotes = emaBull + structBull;
-    const bearVotes = emaBear + structBear;
-    const n = rows.length || 1;
-    setBiasSummary(
-      `Watchlist ${rows.length} tickers · EMA ${emaBull}▲/${emaBear}▼ · Structure ${structBull}▲/${structBear}▼`,
-    );
     if (bearVotes > bullVotes) setTargetMarketState('bearish');
     else if (bullVotes > bearVotes) setTargetMarketState('bullish');
-    // tie → keep last mascot so it doesn't flicker
-    void n;
     if (isInitialLoad) setIsInitialLoad(false);
   }, [isInitialLoad]);
 
@@ -157,19 +146,14 @@ export default function CryptoIndicatorsClean() {
               </Link>
             </div>
 
-            {/* Video Animation — driven by watchlist EMA + structure majority */}
-            <div className="flex flex-col items-center mb-12">
+            {/* Video Animation — silent watchlist-majority gimmick, no caption */}
+            <div className="flex justify-center mb-12">
               <div className="relative" style={{ height: '240px', width: '100%', maxWidth: '800px' }}>
                 <VideoSequencePlayer
                   targetMarketState={targetMarketState}
                   isInitialLoad={isInitialLoad}
                   onInitialComplete={() => setIsInitialLoad(false)}
                 />
-              </div>
-              <div className="mt-2 text-center text-xs text-slate-400">
-                {targetMarketState === 'bearish' ? '🐻 Bearish majority' : '🐂 Bullish majority'}
-                {' · '}
-                {biasSummary}
               </div>
             </div>
 
