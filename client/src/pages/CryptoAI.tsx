@@ -1,17 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { Link, useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
-import { AlertCircle, Brain, Download, Loader2, Printer, Search, Sparkles } from 'lucide-react';
+import { AlertCircle, Download, Loader2, Printer, Search, Sparkles } from 'lucide-react';
 
 import { CryptoNavigation } from '@/components/CryptoNavigation';
+import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -122,6 +120,39 @@ function formatValue(value?: string | number): string {
   return String(value);
 }
 
+type AiPageSection = 'setup' | 'analysis' | 'usage';
+
+function Pill({
+  active,
+  onClick,
+  children,
+  disabled,
+}: {
+  active?: boolean;
+  onClick?: () => void;
+  children: ReactNode;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        'rounded-full border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+        active
+          ? 'border-blue-500 bg-blue-600 text-white'
+          : 'border-slate-700 bg-slate-900/80 text-slate-300 hover:bg-slate-800 hover:text-white',
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+const panelClass = 'rounded-xl border border-slate-700 bg-slate-900/80 text-slate-100';
+const labelClass = 'text-xs font-semibold uppercase tracking-wide text-slate-400';
+
 export default function CryptoAI() {
   usePageViewTracking('crypto-ai');
 
@@ -140,6 +171,7 @@ export default function CryptoAI() {
   const [generalStates, setGeneralStates] = useState<Record<string, RequestState>>({});
   const [deepDiveStates, setDeepDiveStates] = useState<Record<string, RequestState>>({});
   const [sessionCandles, setSessionCandles] = useState<Record<string, ReturnType<typeof parseKlinesToCandles>>>({});
+  const [pageSection, setPageSection] = useState<AiPageSection>('analysis');
 
   const { data: preferences, isLoading: preferencesLoading } = useQuery<AiPreferences>({
     queryKey: ['/api/crypto/preferences'],
@@ -423,195 +455,149 @@ export default function CryptoAI() {
 
   if (authLoading || preferencesLoading) {
     return (
-      <div className="min-h-screen bg-background pb-28">
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white pb-32">
         <div className="mx-auto max-w-7xl space-y-6 px-4 py-6">
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-48 w-full" />
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Skeleton className="h-80 w-full" />
-            <Skeleton className="h-80 w-full" />
-          </div>
+          <Skeleton className="h-20 w-40 bg-slate-800" />
+          <Skeleton className="h-10 w-80 bg-slate-800" />
+          <Skeleton className="h-48 w-full bg-slate-800" />
         </div>
-        <CryptoNavigation />
+        <CryptoNavigation showWallet={true} />
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-background pb-28">
-      <Helmet>
-        <title>Crypto AI Analysis</title>
-      </Helmet>
-
-      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6">
-        <Card className="border-purple-500/20 bg-gradient-to-br from-purple-950/40 via-background to-blue-950/30">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-3xl">
-              <Brain className="h-8 w-8 text-purple-400" />
-              AI Analysis
-            </CardTitle>
-            <CardDescription className="max-w-3xl text-base">
-              Multi-timeframe overview with on-demand deep-dive trade search.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-xl">Analysis preferences</CardTitle>
-            <CardDescription>
-              Activate watchlist tickers and tune thresholds.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+  const setupPanel = (
+        <div className={cn(panelClass, 'p-5 space-y-6')}>
+          <div>
+            <h2 className="text-lg font-semibold text-white">Analysis preferences</h2>
+            <p className="text-sm text-slate-400">Activate watchlist tickers and tune thresholds.</p>
+          </div>
+          <div className="grid gap-5">
             <div className="space-y-2">
-              <div className="text-sm font-medium">Higher TF</div>
-              <Select value={aiHigherTimeframe} onValueChange={handleHigherTimeframeChange}>
-                <SelectTrigger className="bg-background text-foreground border-input">
-                  <SelectValue placeholder="Select higher timeframe">
-                    {HIGHER_TIMEFRAME_OPTIONS.find((option) => option.value === aiHigherTimeframe)?.label}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {HIGHER_TIMEFRAME_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className={labelClass}>Higher TF</div>
+              <div className="flex flex-wrap gap-2">
+                {HIGHER_TIMEFRAME_OPTIONS.map((option) => (
+                  <Pill
+                    key={option.value}
+                    active={aiHigherTimeframe === option.value}
+                    onClick={() => void handleHigherTimeframeChange(option.value)}
+                  >
+                    {option.label}
+                  </Pill>
+                ))}
+              </div>
             </div>
 
             <div className="space-y-2">
-              <div className="text-sm font-medium">Lower TF</div>
-              <Select value={aiLowerTimeframe} onValueChange={handleLowerTimeframeChange}>
-                <SelectTrigger className="bg-background text-foreground border-input">
-                  <SelectValue placeholder="Select lower timeframe">
-                    {LOWER_TIMEFRAME_OPTIONS.find((option) => option.value === aiLowerTimeframe)?.label}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {LOWER_TIMEFRAME_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className={labelClass}>Lower TF</div>
+              <div className="flex flex-wrap gap-2">
+                {LOWER_TIMEFRAME_OPTIONS.map((option) => (
+                  <Pill
+                    key={option.value}
+                    active={aiLowerTimeframe === option.value}
+                    onClick={() => void handleLowerTimeframeChange(option.value)}
+                  >
+                    {option.label}
+                  </Pill>
+                ))}
+              </div>
             </div>
 
             <div className="space-y-2">
-              <div className="text-sm font-medium">Trader mode</div>
-              <Select value={aiTraderMode} onValueChange={handleTraderModeChange}>
-                <SelectTrigger className="bg-background text-foreground border-input">
-                  <SelectValue placeholder="Select trader mode">
-                    {ENABLED_AI_TRADER_MODES.find((mode) => mode.id === aiTraderMode)?.label}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {ENABLED_AI_TRADER_MODES.map((mode) => (
-                    <SelectItem key={mode.id} value={mode.id}>
-                      {mode.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className={labelClass}>Trader mode</div>
+              <div className="flex flex-wrap gap-2">
+                {ENABLED_AI_TRADER_MODES.map((mode) => (
+                  <Pill
+                    key={mode.id}
+                    active={aiTraderMode === mode.id}
+                    onClick={() => void handleTraderModeChange(mode.id)}
+                  >
+                    {mode.label}
+                  </Pill>
+                ))}
+              </div>
             </div>
 
             <div className="space-y-2">
-              <div className="text-sm font-medium">Trade length</div>
-              <Select value={aiTradeHorizon} onValueChange={handleTradeHorizonChange}>
-                <SelectTrigger className="bg-background text-foreground border-input">
-                  <SelectValue placeholder="Select trade length">
-                    {getCryptoAiTradeHorizon(aiTradeHorizon).label}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {TRADE_HORIZON_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      <div className="flex flex-col gap-0.5 py-0.5 text-left">
-                        <span className="text-popover-foreground">{option.label}</span>
-                        <span className="text-xs text-muted-foreground">{option.description}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
+              <div className={labelClass}>Trade length</div>
+              <div className="flex flex-wrap gap-2">
+                {TRADE_HORIZON_OPTIONS.map((option) => (
+                  <Pill
+                    key={option.value}
+                    active={aiTradeHorizon === option.value}
+                    onClick={() => void handleTradeHorizonChange(option.value)}
+                  >
+                    {option.label}
+                  </Pill>
+                ))}
+              </div>
+              <p className="text-xs text-slate-500">
                 Hold window ~{getCryptoAiTradeHorizon(aiTradeHorizon).expectedHold}. Scales stop/target structure independently of the chart pair.
               </p>
             </div>
 
-            <div className="space-y-3 md:col-span-2 xl:col-span-4">
+            <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-medium">AI watchlist slots</div>
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-sm font-medium text-white">AI watchlist slots</div>
+                  <div className="text-sm text-slate-400">
                     {trackedTickers.length} of {tickerSlotCap} slots used
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Badge variant="outline">
-                    Pair: {aiHigherTimeframe}/{aiLowerTimeframe}
-                  </Badge>
-                  <Badge variant="outline">
-                    Length: {getCryptoAiTradeHorizon(aiTradeHorizon).label}
-                  </Badge>
+                  <span className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300">
+                    Pair {aiHigherTimeframe}/{aiLowerTimeframe}
+                  </span>
+                  <span className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300">
+                    {getCryptoAiTradeHorizon(aiTradeHorizon).label}
+                  </span>
                 </div>
               </div>
 
               {watchlistOptions.length === 0 ? (
-                <Alert>
+                <Alert className="border-slate-700 bg-slate-900 text-slate-200">
                   <AlertCircle className="h-4 w-4" />
                   <AlertTitle>No watchlist tokens yet</AlertTitle>
-                  <AlertDescription>Add tokens on the indicators page before activating them for AI.</AlertDescription>
+                  <AlertDescription className="text-slate-400">Add tokens on the indicators page before activating them for AI.</AlertDescription>
                 </Alert>
               ) : (
-                <div className="grid gap-3 rounded-lg border border-border/60 p-4 md:grid-cols-2 xl:grid-cols-3">
+                <div className="flex flex-wrap gap-2">
                   {watchlistOptions.map((ticker) => {
                     const checked = trackedTickers.includes(ticker);
                     const disableAdd = !checked && trackedTickers.length >= tickerSlotCap;
                     return (
-                      <label key={ticker} className="flex items-center gap-3 rounded-md border border-border/40 p-3">
-                        <Checkbox
-                          checked={checked}
-                          disabled={!canUseAi || disableAdd || savingPreferences}
-                          onCheckedChange={(value) => void toggleScanTicker(ticker, value === true)}
-                        />
-                        <div className="min-w-0">
-                          <div className="font-medium">{formatTickerDisplay(ticker)}</div>
-                          {disableAdd ? (
-                            <div className="text-xs text-muted-foreground">Slot cap reached</div>
-                          ) : null}
-                        </div>
-                      </label>
+                      <Pill
+                        key={ticker}
+                        active={checked}
+                        disabled={!canUseAi || disableAdd || savingPreferences}
+                        onClick={() => void toggleScanTicker(ticker, !checked)}
+                      >
+                        {formatTickerDisplay(ticker)}
+                        {disableAdd && !checked ? ' (full)' : ''}
+                      </Pill>
                     );
                   })}
                 </div>
               )}
             </div>
 
-            <div className="md:col-span-2 xl:col-span-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-              <Badge variant="outline">Available watchlist: {watchlistOptions.length}</Badge>
-              <Badge variant="outline">Active AI tickers: {trackedTickers.length}</Badge>
-              <Badge variant="outline">General analysis: {aiHigherTimeframe} / {aiLowerTimeframe}</Badge>
-              <Badge variant="outline">Deep dive mode: {ENABLED_AI_TRADER_MODES.find((mode) => mode.id === aiTraderMode)?.label ?? 'SMC / ICT'}</Badge>
-              <Badge variant="outline">Trade length: {getCryptoAiTradeHorizon(aiTradeHorizon).label}</Badge>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+              <span className="rounded-full border border-slate-700 px-3 py-1">Watchlist {watchlistOptions.length}</span>
+              <span className="rounded-full border border-slate-700 px-3 py-1">Active {trackedTickers.length}</span>
+              <span className="rounded-full border border-slate-700 px-3 py-1">{aiHigherTimeframe}/{aiLowerTimeframe}</span>
               {savingPreferences && (
                 <span className="inline-flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Saving preferences…
+                  Saving…
                 </span>
               )}
             </div>
 
-            <div className="space-y-3 md:col-span-2 xl:col-span-4">
-              <div>
-                <div className="text-sm font-medium">Deep-dive thresholds</div>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="space-y-3">
+              <div className={labelClass}>Deep-dive thresholds</div>
+              <div className="grid gap-4 md:grid-cols-2">
                 <label className="space-y-2">
-                  <div className="text-sm font-medium">Min R/R</div>
+                  <div className="text-sm font-medium text-slate-200">Min R/R</div>
                   <Input
                     type="number"
                     step="0.1"
@@ -621,10 +607,11 @@ export default function CryptoAI() {
                     disabled={savingPreferences}
                     onChange={(event) => setMinRiskReward(event.target.value)}
                     onBlur={() => void persistNumericPreference('minRiskReward', minRiskReward)}
+                    className="bg-slate-950 border-slate-700 text-white"
                   />
                 </label>
                 <label className="space-y-2">
-                  <div className="text-sm font-medium">Min confluence</div>
+                  <div className="text-sm font-medium text-slate-200">Min confluence</div>
                   <Input
                     type="number"
                     step="1"
@@ -634,69 +621,63 @@ export default function CryptoAI() {
                     disabled={savingPreferences}
                     onChange={(event) => setMinConfluence(event.target.value)}
                     onBlur={() => void persistNumericPreference('minConfluence', minConfluence)}
+                    className="bg-slate-950 border-slate-700 text-white"
                   />
                 </label>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+  );
 
-        {isAdmin && adminUsage ? (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-xl">AI usage</CardTitle>
-              <CardDescription>Admin-only spend and cache health.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-              <div className="rounded-lg border border-border/60 p-4">
-                <div className="text-xs uppercase text-muted-foreground">Active combos</div>
+  const usagePanel = isAdmin && adminUsage ? (
+          <div className={cn(panelClass, 'p-5')}>
+            <h2 className="text-lg font-semibold text-white">AI usage</h2>
+            <p className="mb-4 text-sm text-slate-400">Admin-only spend and cache health.</p>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-4">
+                <div className="text-xs uppercase text-slate-500">Active combos</div>
                 <div className="mt-1 text-2xl font-semibold">{adminUsage.activeCombos ?? adminUsage.activePairs ?? 0}</div>
               </div>
-              <div className="rounded-lg border border-border/60 p-4">
-                <div className="text-xs uppercase text-muted-foreground">Calls / day</div>
+              <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-4">
+                <div className="text-xs uppercase text-slate-500">Calls / day</div>
                 <div className="mt-1 text-2xl font-semibold">{adminUsage.callsPerDay.toLocaleString()}</div>
               </div>
-              <div className="rounded-lg border border-border/60 p-4">
-                <div className="text-xs uppercase text-muted-foreground">Avg tokens / call</div>
+              <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-4">
+                <div className="text-xs uppercase text-slate-500">Avg tokens / call</div>
                 <div className="mt-1 text-sm font-semibold">
                   {(adminUsage.averageInputTokens ?? 0).toLocaleString()} in / {(adminUsage.averageOutputTokens ?? 0).toLocaleString()} out
                 </div>
               </div>
-              <div className="rounded-lg border border-border/60 p-4">
-                <div className="text-xs uppercase text-muted-foreground">Est. daily cost</div>
+              <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-4">
+                <div className="text-xs uppercase text-slate-500">Est. daily cost</div>
                 <div className="mt-1 text-2xl font-semibold">${(adminUsage.estimatedDailyCost ?? 0).toFixed(2)}</div>
               </div>
-              <div className="rounded-lg border border-border/60 p-4">
-                <div className="text-xs uppercase text-muted-foreground">Cache hit rate</div>
+              <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-4">
+                <div className="text-xs uppercase text-slate-500">Cache hit rate</div>
                 <div className="mt-1 text-2xl font-semibold">{((adminUsage.cacheHitRate ?? 0) * 100).toFixed(0)}%</div>
               </div>
-            </CardContent>
-          </Card>
-        ) : null}
+            </div>
+          </div>
+        ) : null;
 
-        {!canUseAi ? (
-          <Card className="border-amber-500/30">
-            <CardHeader>
-              <CardTitle>Upgrade required</CardTitle>
-              <CardDescription>
+  const analysisPanel = !canUseAi ? (
+          <div className={cn(panelClass, 'border-amber-500/30 p-5')}>
+            <h2 className="text-lg font-semibold text-white">Upgrade required</h2>
+            <p className="mt-1 text-sm text-slate-400">
                 Free accounts do not have access to AI Analysis. Upgrade to Intermediate, Pro, or Elite to unlock pair-based session boards and on-demand deep dives.
-              </CardDescription>
-            </CardHeader>
-          </Card>
+            </p>
+          </div>
         ) : trackedTickers.length === 0 ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>No AI tickers active</CardTitle>
-              <CardDescription>
-                Pick up to {tickerSlotCap} ticker{tickerSlotCap === 1 ? '' : 's'} from your watchlist above to start loading pair analyses.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild>
+          <div className={cn(panelClass, 'p-5 space-y-4')}>
+            <h2 className="text-lg font-semibold text-white">No AI tickers active</h2>
+            <p className="text-sm text-slate-400">
+                Pick up to {tickerSlotCap} ticker{tickerSlotCap === 1 ? '' : 's'} from Setup to start loading pair analyses.
+            </p>
+            <Button asChild className="bg-blue-600 hover:bg-blue-500">
                 <Link href="/cryptoindicators">Open watchlist / indicators</Link>
               </Button>
-            </CardContent>
-          </Card>
+          </div>
         ) : (
           <div className="grid gap-6 xl:grid-cols-2">
             {trackedTickers.map((ticker) => {
@@ -716,15 +697,14 @@ export default function CryptoAI() {
                 generalState.status === 'success' || deepDiveState.status === 'success';
 
               return (
-                <Card key={`${ticker}-${timeframeKey}`} className="h-full border-border/60">
-                  <CardHeader className="space-y-3">
+                <div key={`${ticker}-${timeframeKey}`} className={cn(panelClass, 'h-full p-5 space-y-5')}>
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <CardTitle className="text-2xl">{formatTickerDisplay(ticker)}</CardTitle>
+                        <h2 className="text-2xl font-semibold text-white">{formatTickerDisplay(ticker)}</h2>
                       </div>
                       <div className="flex flex-wrap justify-end gap-2">
-                        <Badge variant="outline">HTF {aiHigherTimeframe}</Badge>
-                        <Badge variant="outline">LTF {aiLowerTimeframe}</Badge>
+                        <span className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300">HTF {aiHigherTimeframe}</span>
+                        <span className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300">LTF {aiLowerTimeframe}</span>
                         {canPrintTotal ? (
                           <Button
                             variant="outline"
@@ -790,19 +770,17 @@ export default function CryptoAI() {
                         ) : null}
                       </div>
                     </div>
-                  </CardHeader>
-
-                  <CardContent className="space-y-6">
-                    <section className="space-y-4 rounded-lg border border-border/60 p-4">
+                  <div className="space-y-6">
+                    <section className="space-y-4 rounded-lg border border-slate-700 bg-slate-950/40 p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <h3 className="font-semibold">Session board</h3>
-                          <p className="text-sm text-muted-foreground">Asia · London · New York</p>
+                          <h3 className="font-semibold text-white">Session board</h3>
+                          <p className="text-sm text-slate-400">Asia · London · New York</p>
                         </div>
                         {generalState.status === 'loading' && (
                           <div className="flex items-center gap-2">
-                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                            <span className="text-sm text-muted-foreground">{loadingMessage}</span>
+                            <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                            <span className="text-sm text-slate-400">{loadingMessage}</span>
                           </div>
                         )}
                       </div>
@@ -834,7 +812,7 @@ export default function CryptoAI() {
                               const bias = higherSection?.bias || lowerSection?.bias;
 
                               return (
-                                <div key={`${ticker}-${session}`} className={cn("rounded-lg p-4", metrics.isActive ? "bg-green-500/15 border border-green-500/30" : "bg-muted/40")}>
+                                <div key={`${ticker}-${session}`} className={cn("rounded-lg p-4", metrics.isActive ? "bg-green-500/15 border border-green-500/30" : "bg-slate-800/70 border border-slate-700")}>
                                   <div className="mb-3 flex items-center justify-between gap-3">
                                     <div>
                                       <h4 className="text-sm font-semibold">{label}</h4>
@@ -842,7 +820,7 @@ export default function CryptoAI() {
                                     <Badge variant={getBiasVariant(bias)}>{bias ?? 'Pending'}</Badge>
                                   </div>
 
-                                  <p className="text-sm text-muted-foreground">{summary}</p>
+                                  <p className="text-sm text-slate-400">{summary}</p>
 
                                   <div className="mt-4 grid gap-3 text-sm">
                                     <div className="flex items-center justify-between gap-3">
@@ -879,19 +857,19 @@ export default function CryptoAI() {
                             })}
                           </div>
 
-                          <div className="rounded-lg border border-border/60 p-4">
-                            <div className="mb-2 text-sm font-semibold">Cross-timeframe summary</div>
-                            <p className="text-sm text-muted-foreground">{getOverallSummary(generalInsights)}</p>
+                          <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-4">
+                            <div className="mb-2 text-sm font-semibold text-white">Cross-timeframe summary</div>
+                            <p className="text-sm text-slate-400">{getOverallSummary(generalInsights)}</p>
                           </div>
                         </div>
                       ) : null}
                     </section>
 
-                    <section className="space-y-4 rounded-lg border border-border/60 p-4">
+                    <section className="space-y-4 rounded-lg border border-slate-700 bg-slate-950/40 p-4">
                       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div>
-                          <h3 className="font-semibold">Deep-dive trade search</h3>
-                          <p className="text-sm text-muted-foreground">
+                          <h3 className="font-semibold text-white">Deep-dive trade search</h3>
+                          <p className="text-sm text-slate-400">
                             Uses {ENABLED_AI_TRADER_MODES.find((mode) => mode.id === aiTraderMode)?.label ?? 'SMC / ICT'} mode
                             {' · '}
                             {getCryptoAiTradeHorizon(aiTradeHorizon).label} length
@@ -923,7 +901,7 @@ export default function CryptoAI() {
 
                       {deepDiveState.status === 'success' ? (
                         <div className="space-y-4">
-                          <div className="rounded-lg border border-border/60 p-4">
+                          <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-4">
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                               <div className="flex items-center gap-2 text-sm font-semibold">
                                 <Sparkles className="h-4 w-4 text-purple-400" />
@@ -963,22 +941,22 @@ export default function CryptoAI() {
                                 Download analysis
                               </Button>
                             </div>
-                            <p className="text-sm text-muted-foreground">{getOverallSummary(deepInsights)}</p>
+                            <p className="text-sm text-slate-400">{getOverallSummary(deepInsights)}</p>
                           </div>
 
                           {tradeIdeas.length === 0 ? (
-                            <div className="rounded-lg border border-dashed border-border/60 p-4">
+                            <div className="rounded-lg border border-dashed border-slate-700 p-4">
                               <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
                                 <Search className="h-4 w-4" />
                                 Key zones to watch
                               </div>
-                              <p className="text-sm text-muted-foreground">
+                              <p className="text-sm text-slate-400">
                                 No setup has cleared the confluence and risk/reward gates yet. Wait for price to reach one of the next structural zones below.
                               </p>
                               {deepDiveWatchLevels.length > 0 ? (
-                                <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+                                <ul className="mt-3 space-y-2 text-sm text-slate-400">
                                   {deepDiveWatchLevels.map((level) => (
-                                    <li key={level} className="rounded-md bg-muted/40 px-3 py-2">
+                                    <li key={level} className="rounded-md bg-slate-800/70 px-3 py-2">
                                       {level}
                                     </li>
                                   ))}
@@ -988,7 +966,7 @@ export default function CryptoAI() {
                           ) : (
                             <div className="space-y-4">
                               {tradeIdeas.map((trade, index) => (
-                                <div key={`${ticker}-trade-${index}`} className="rounded-lg border border-border/60 p-4">
+                                <div key={`${ticker}-trade-${index}`} className="rounded-lg border border-slate-700 bg-slate-800/40 p-4">
                                   <div className="mb-3 flex flex-wrap items-center gap-2">
                                     <Badge variant={trade.direction === 'LONG' ? 'default' : trade.direction === 'SHORT' ? 'destructive' : 'outline'}>
                                       {trade.direction ?? 'Setup'}
@@ -1002,8 +980,8 @@ export default function CryptoAI() {
                                   </div>
 
                                   {(trade.triggerZone || trade.triggerCondition) ? (
-                                    <div className="mb-3 rounded-md bg-muted/40 p-3">
-                                      <div className="text-xs uppercase text-muted-foreground">Trigger</div>
+                                    <div className="mb-3 rounded-md bg-slate-950/60 p-3">
+                                      <div className="text-xs uppercase text-slate-500">Trigger</div>
                                       <div className="font-medium">{trade.triggerZone ?? trade.entryZone ?? '—'}</div>
                                       {trade.triggerCondition ? (
                                         <div className="mt-1 text-sm text-muted-foreground">{trade.triggerCondition}</div>
@@ -1132,15 +1110,50 @@ export default function CryptoAI() {
                         </div>
                       ) : null}
                     </section>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
               );
             })}
           </div>
-        )}
+        );
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
+      <Helmet>
+        <title>Crypto AI Analysis - BearTec Engineering</title>
+      </Helmet>
+
+      <div className="mx-auto max-w-7xl px-4 py-6 pb-32">
+        <div className="mb-8">
+          <Link href="/cryptoindicators">
+            <img
+              src={bearTecLogoNew}
+              alt="BearTec Logo"
+              className="h-20 w-auto cursor-pointer"
+            />
+          </Link>
+        </div>
+
+        <div className="mb-6 flex flex-wrap items-center gap-2">
+          <Pill active={pageSection === 'setup'} onClick={() => setPageSection('setup')}>
+            Setup
+          </Pill>
+          <Pill active={pageSection === 'analysis'} onClick={() => setPageSection('analysis')}>
+            Analysis
+          </Pill>
+          {isAdmin ? (
+            <Pill active={pageSection === 'usage'} onClick={() => setPageSection('usage')}>
+              Usage
+            </Pill>
+          ) : null}
+        </div>
+
+        {pageSection === 'setup' ? setupPanel : null}
+        {pageSection === 'analysis' ? analysisPanel : null}
+        {pageSection === 'usage' ? usagePanel : null}
       </div>
 
-      <CryptoNavigation />
+      <CryptoNavigation showWallet={true} />
     </div>
   );
 }
