@@ -125,8 +125,8 @@ export default function CryptoIndicatorsClean() {
   return (
     <>
       <Helmet>
-        <title>Crypto Indicators - BearTec Engineering</title>
-        <meta name="description" content="Professional crypto trading indicators and analysis" />
+        <title>Crypto Indicators & Oscillators | BearTec</title>
+        <meta name="description" content="Beginner-friendly crypto charts with multiple oscillators, indicators, and AI-powered trade ideas." />
       </Helmet>
 
       {/* Main Content */}

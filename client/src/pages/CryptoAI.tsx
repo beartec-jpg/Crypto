@@ -1120,7 +1120,8 @@ export default function CryptoAI() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
       <Helmet>
-        <title>Crypto AI Analysis - BearTec Engineering</title>
+        <title>AI Trade Ideas | BearTec</title>
+        <meta name="description" content="AI-powered crypto trade ideas in a beginner-friendly workspace, alongside charts, oscillators, and indicators." />
       </Helmet>
 
       <div className="mx-auto max-w-7xl px-4 py-6 pb-32">

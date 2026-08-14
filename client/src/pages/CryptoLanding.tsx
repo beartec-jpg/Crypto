@@ -46,13 +46,14 @@ export default function CryptoLanding() {
   return (
     <>
       <Helmet>
-        <title>BearTec Crypto - Professional Trading Platform with AI Analysis</title>
-        <meta name="description" content="Professional cryptocurrency trading platform featuring AI-powered Grok analysis, Smart Money Concepts (SMC), institutional orderflow signals, CVD confluence, and graded trade setups (A+ to E). Real-time alerts for Bitcoin, Ethereum, and major altcoins with professional technical indicators." />
-        <meta property="og:title" content="BearTec Crypto - AI-Powered Professional Trading Platform" />
-        <meta property="og:description" content="Professional crypto trading with Grok AI analysis, Smart Money Concepts, institutional orderflow, CVD, and graded trade setups. Real-time alerts and professional indicators." />
+        <title>BearTec — Beginner-Friendly Crypto Trading Platform</title>
+        <meta name="description" content="Beginner-friendly crypto trading platform with AI-powered trade ideas, multiple oscillators and indicators, and useful chart tools to help new traders learn." />
+        <meta property="og:title" content="BearTec — Beginner-Friendly Crypto Trading Platform" />
+        <meta property="og:description" content="AI-powered trade ideas, multiple oscillators and indicators, and simple tools made for beginners." />
         <meta property="og:type" content="website" />
-        <meta property="og:url" content="https://beartec.uk/crypto" />
-        <meta name="keywords" content="cryptocurrency trading, crypto trading platform, Bitcoin trading, Ethereum trading, Smart Money Concepts, SMC, orderflow analysis, CVD, Cumulative Volume Delta, institutional trading, Grok AI, crypto alerts, technical indicators, professional crypto analysis, trade setups, BTC, ETH, XRP, crypto signals" />
+        <meta property="og:url" content="https://www.beartec.uk" />
+        <meta property="og:site_name" content="BearTec" />
+        <meta name="keywords" content="beginner crypto trading, crypto trading platform, AI trade ideas, oscillators, RSI, MACD, technical indicators, Bitcoin, Ethereum, XRP, crypto charts, trading tools for beginners" />
       </Helmet>
       <div 
         className="relative w-full h-screen max-h-[800px] md:max-h-[600px] overflow-hidden cursor-pointer bg-black"

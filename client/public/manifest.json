@@ -1,7 +1,7 @@
 {
   "name": "BearTec Crypto Platform",
   "short_name": "BearTec",
-  "description": "Professional cryptocurrency trading platform with advanced technical analysis tools",
+  "description": "Beginner-friendly crypto trading platform with AI trade ideas, indicators, and useful tools for new traders",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",

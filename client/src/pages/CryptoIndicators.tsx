@@ -3780,10 +3780,10 @@ const handleAIMarketReview = () => {
   return (
     <>
       <Helmet>
-        <title>Crypto Trading Indicators - Professional SMC Analysis | BearTec</title>
-        <meta name="description" content="Professional cryptocurrency trading platform with Smart Money Concepts (SMC), order flow analysis, CVD, Fair Value Gaps, and institutional-grade indicators. Real-time BTC, ETH, XRP analysis." />
-        <meta property="og:title" content="Crypto Trading Indicators - Professional SMC Analysis" />
-        <meta property="og:description" content="Professional crypto trading with Smart Money Concepts, order flow, CVD, and institutional indicators." />
+        <title>Crypto Indicators & Oscillators | BearTec</title>
+        <meta name="description" content="Beginner-friendly crypto charts with multiple oscillators, indicators, and AI-powered trade ideas." />
+        <meta property="og:title" content="Crypto Indicators & Oscillators | BearTec" />
+        <meta property="og:description" content="Beginner-friendly crypto charts with multiple oscillators, indicators, and AI-powered trade ideas." />
         <meta property="og:type" content="website" />
       </Helmet>
       <div className="min-h-screen bg-[#0e0e0e] p-4 pb-20">
