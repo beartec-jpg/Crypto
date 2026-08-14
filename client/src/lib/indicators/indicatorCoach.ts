@@ -71,6 +71,33 @@ function divPhrase(div?: CoachDivergence): string {
   return `${grade} ${div.type} divergence vs price`;
 }
 
+/** Explain the divergence in the *current* structure — don't talk about highs when we are at lows. */
+function divExplain(div: CoachDivergence | undefined, structure: string): string {
+  const phrase = divPhrase(div);
+  if (!phrase || !div) return '';
+  const atLows = structure.includes('lower');
+  const atHighs = structure.includes('higher');
+  if (div.type === 'bullish') {
+    if (atLows) {
+      return `${phrase}: price is making lower lows but this oscillator is *not* confirming the dump (higher/held lows on the oscillator). That is an accumulation / bounce tell *at the lows* — not distribution. Wait for a reclaim candle; do not buy the knife just because of the div.`;
+    }
+    if (atHighs) {
+      return `${phrase}: oscillator held up while price only pulled back (hidden bullish). In an uptrend that is often continuation, not a top.`;
+    }
+    return `${phrase}: oscillator is stronger than price. Treat as a possible repair/bounce, confirm with a higher low in price.`;
+  }
+  if (div.type === 'bearish') {
+    if (atHighs) {
+      return `${phrase}: price made a new high (or higher high) and the oscillator did not — that is the classic *distribution under the highs* tell.`;
+    }
+    if (atLows) {
+      return `${phrase}: oscillator is weaker than price while we are already in a downtrend (hidden bearish). That usually means continuation lower, not a buy-the-dip.`;
+    }
+    return `${phrase}: oscillator is weaker than price. Fade only if you also have a failed high or broken structure.`;
+  }
+  return phrase;
+}
+
 function priceVsOsc(structure: string, chgPct: string, lastBar: string): string {
   return `Price recently printed ${structure} (${chgPct} over the last few bars; last candle ${lastBar}).`;
 }
@@ -219,13 +246,21 @@ export function buildIndicatorCoach(opts: {
     }
     case 'obv': {
       const slope = values.slope ?? 0;
-      const headline = slope > 0 ? 'Rising (accumulation)' : slope < 0 ? 'Falling (distribution)' : 'Flat';
+      const flow =
+        slope > 0
+          ? 'rising — more volume on up bars (net accumulation on the last few prints)'
+          : slope < 0
+            ? 'falling — more volume on down bars (net selling on the last few prints)'
+            : 'flat — no side is winning the volume war';
+      const headline =
+        slope > 0 ? 'Rising (accumulation)' : slope < 0 ? 'Falling (recent selling)' : 'Flat';
       const color = slope > 0 ? 'text-green-400' : slope < 0 ? 'text-red-400' : 'text-gray-400';
+      const divBit = divExplain(divergence, px.structure);
       return pack(
         headline,
         color,
-        `On-Balance Volume adds volume on up days and subtracts it on down days. Right now OBV is ${slope > 0 ? 'rising — more volume on up bars (accumulation)' : slope < 0 ? 'falling — more volume on down bars (distribution)' : 'flat — no side is winning the volume war'}. ${pxLine}${div ? ` ${div}: if price makes a new high and OBV does not, that is distribution under the highs.` : ''}`,
-        'Pros treat OBV as a confirmation tool. They want price and OBV to agree. Regular bearish divergence (price HH, OBV LH) is a distribution tell. Hidden bullish (price HL, OBV LL) is trend continuation. Never trade OBV alone.',
+        `On-Balance Volume adds volume on up bars and subtracts it on down bars. Right now OBV is ${flow}. ${pxLine}${divBit ? ` ${divBit}` : ''}`,
+        'Pros use OBV to confirm or contradict price. Regular bullish div (price lower low, OBV higher/held low) at support is a possible bounce — relevant at the *lows*. Regular bearish div (price higher high, OBV lower high) is distribution — only relevant *under highs*. Hidden div is continuation. Never fade a downtrend just because OBV is falling.',
       );
     }
     case 'mfi': {
