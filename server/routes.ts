@@ -289,11 +289,11 @@ function checkXaiApiKey(): { configured: boolean; error?: string } {
   return { configured: true };
 }
 
-// Model routing: Grok 4.5 with thinking for AI trade analysis; fast-reasoning as fallback.
-const XAI_DEFAULT_MODEL = process.env.XAI_MODEL || process.env.XAI_TRADING_MODEL || "grok-4.5";
+// Model routing: Grok 4.6 with thinking for AI trade analysis; fast-reasoning as fallback.
+const XAI_DEFAULT_MODEL = process.env.XAI_MODEL || process.env.XAI_TRADING_MODEL || process.env.XAI_PRIMARY_MODEL || "grok-4.6";
 const XAI_FALLBACK_MODEL = process.env.XAI_FALLBACK_MODEL || process.env.XAI_TRADING_FALLBACK_MODEL || "grok-4-1-fast-reasoning";
 
-// Budget tokens for Grok 4.5 extended thinking on trade analysis (conservative to control cost)
+// Budget tokens for Grok extended thinking on trade analysis (conservative to control cost)
 const XAI_THINKING_BUDGET = parseInt(process.env.XAI_THINKING_BUDGET || "6000", 10);
 
 function isModelSelectionError(error: any): boolean {
@@ -307,19 +307,19 @@ async function createXaiChatCompletionWithFallback(params: {
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
   temperature: number;
   max_tokens: number;
-  enableThinking?: boolean; // Use Grok 4.5 extended thinking
+  enableThinking?: boolean; // Use Grok extended thinking on primary model
 }) {
   const primaryModel = params.preferredModel || XAI_DEFAULT_MODEL;
-  // When thinking is requested, always start with grok-4.5 then fall back to fast-reasoning
+  // When thinking is requested, start with primary (grok-4.6) then fall back to fast-reasoning
   const modelCandidates = params.enableThinking
-    ? ['grok-4.5', XAI_FALLBACK_MODEL]
+    ? [XAI_DEFAULT_MODEL, XAI_FALLBACK_MODEL]
     : primaryModel === XAI_FALLBACK_MODEL
       ? [primaryModel]
       : [primaryModel, XAI_FALLBACK_MODEL];
 
   let lastError: any = null;
   for (const model of modelCandidates) {
-    const useThinking = params.enableThinking && model === 'grok-4.5';
+    const useThinking = params.enableThinking && model !== XAI_FALLBACK_MODEL;
     try {
       const requestParams: any = {
         model,

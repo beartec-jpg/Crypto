@@ -12,6 +12,16 @@ import {
 } from './store.js';
 import { fetchPrices, setPriceOverride, clearPriceOverrides } from './prices.js';
 import { resolveWebhookForSymbol } from './discord.js';
+import {
+  loadBlofinConfig,
+  mapDeskSymbolToInstId,
+  probeAccount,
+  getInstrument,
+  getAvailableMarginForTrade,
+  planSize,
+  finalizeSize,
+} from './blofin.js';
+import { describeSizingExample } from './execution.js';
 
 function json(res: http.ServerResponse, status: number, body: unknown) {
   const payload = JSON.stringify(body);
@@ -59,11 +69,68 @@ export function createServer(pool: pg.Pool) {
 
       if (path === '/health' || path === '/api/health') {
         const active = await listTrades(pool, { activeOnly: true, limit: 500 });
+        const bcfg = loadBlofinConfig();
         return json(res, 200, {
           ok: true,
           service: 'trade-tracker',
           activeTrades: active.length,
           time: new Date().toISOString(),
+          blofin: {
+            configured: bcfg.configured,
+            live: bcfg.live,
+            marginFraction: bcfg.marginFraction,
+            fallbackMarginUsdt: bcfg.defaultMarginUsdt,
+            leverage: bcfg.maxLeverage,
+            symbolMap: bcfg.symbolMap,
+          },
+        });
+      }
+
+      // Blofin connectivity + sizing probe (auth required when key set)
+      if (req.method === 'GET' && (path === '/api/blofin/status' || path === '/blofin/status')) {
+        if (!authorize(req)) return json(res, 401, { error: 'Unauthorized' });
+        const probe = await probeAccount();
+        const cfg = loadBlofinConfig();
+        const samples: Record<string, unknown> = {};
+        for (const desk of ['BTCUSDT', 'XRPUSDT', 'XRPUSD']) {
+          const instId = mapDeskSymbolToInstId(desk, cfg);
+          const inst = await getInstrument(instId).catch(() => null);
+          if (!inst) {
+            samples[desk] = { instId, error: 'instrument not found' };
+            continue;
+          }
+          const px = desk.startsWith('BTC') ? 95000 : 1.03;
+          const avail = await getAvailableMarginForTrade(inst, px, cfg.marginFraction).catch((e: Error) => ({
+            note: e.message,
+            marginUsdt: 0,
+            available: 0,
+            currency: '?',
+          }));
+          const plan = finalizeSize(inst, planSize(inst, px, avail.marginUsdt || 0, cfg.maxLeverage));
+          samples[desk] = {
+            instId,
+            contractType: inst.contractType,
+            settleCurrency: inst.settleCurrency,
+            contractValue: inst.contractValue,
+            minSize: inst.minSize,
+            lotSize: inst.lotSize,
+            examplePrice: px,
+            availableMargin: avail,
+            plan,
+          };
+        }
+        return json(res, 200, {
+          probe,
+          config: {
+            live: cfg.live,
+            marginFraction: cfg.marginFraction,
+            fallbackMarginUsdt: cfg.defaultMarginUsdt,
+            leverage: cfg.maxLeverage,
+            marginMode: cfg.marginMode,
+            symbolMap: cfg.symbolMap,
+          },
+          sizing: describeSizingExample(),
+          samples,
         });
       }
 

@@ -64,6 +64,23 @@ async function main() {
     console.log(`[tracker] HTTP on :${PORT}`);
   });
 
+  // Blofin boot summary (never print secrets)
+  try {
+    const { loadBlofinConfig } = await import('./blofin.js');
+    const b = loadBlofinConfig();
+    console.log(
+      `[blofin] configured=${b.configured} live=${b.live} marginFraction=${b.marginFraction} fallbackMarginUsdt=${b.defaultMarginUsdt} lev=${b.maxLeverage} map=${JSON.stringify(b.symbolMap)}`,
+    );
+    if (b.configured && !b.live) {
+      console.log('[blofin] BLOFIN_LIVE=0 → dry-run only (no real orders). Set BLOFIN_LIVE=1 to go live.');
+    }
+    if (b.configured && b.live) {
+      console.log(`[blofin] LIVE — sizing ${(b.marginFraction * 100).toFixed(0)}% of available margin × ${b.maxLeverage}x`);
+    }
+  } catch (err: unknown) {
+    console.warn('[blofin] config load failed', err);
+  }
+
   console.log(`[tracker] poll every ${POLL_MS}ms; weekly DOW=${WEEKLY_DOW} hourUTC=${WEEKLY_HOUR_UTC}`);
   console.log(`[tracker] next weekly in ~${Math.round(msUntilNextWeekly() / 3600000)}h`);
 

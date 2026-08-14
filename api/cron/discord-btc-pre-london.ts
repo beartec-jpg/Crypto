@@ -1,19 +1,15 @@
 /**
  * Once-daily pre-London desk: deep-dive per symbol and post text embeds to Discord.
- * Default symbols: BTCUSDT + XRPUSDT (same tracker / open-book / entry-confirm loop).
- * No image attachment — message + embeds only, with NFA disclaimer.
- *
- * Schedule: 05:45 UTC (15 minutes before London session board at 06:00 UTC).
+ * Prefer isolated crons (not one multi-symbol request):
+ *   /api/cron/discord-desk-btc  → 05:45 UTC → BTC only → #btc-auto-analysis
+ *   /api/cron/discord-desk-xrp  → 05:50 UTC → XRP only → #xrp-auto-analysis
  *
  * Env:
- *   DISCORD_WEBHOOK_URL      — default Incoming Webhook (all symbols unless overridden)
- *   DISCORD_WEBHOOK_URL_XRP  — optional XRP-only webhook (or DISCORD_WEBHOOK_URL_XRPUSDT)
- *   DISCORD_WEBHOOK_URL_BTC  — optional BTC-only webhook
- *   DISCORD_DESK_SYMBOLS     — comma list, default "BTCUSDT,XRPUSDT"
- *   DISCORD_BTC_SYMBOL       — legacy single-symbol override if DESK_SYMBOLS unset
- *   CRON_SECRET / XAI_API_KEY
+ *   DISCORD_WEBHOOK_URL_BTC / DISCORD_WEBHOOK_URL_XRP — dedicated channels
+ *   DISCORD_WEBHOOK_URL — optional fallback
+ *   Query ?symbol=BTCUSDT|XRPUSDT forces a single-symbol run
+ *   CRON_SECRET / XAI_API_KEY / TRACKER_URL / TRACKER_API_KEY
  *   DISCORD_AI_HIGHER_TF / LOWER_TF / MODE / HORIZON / MIN_RR / MIN_CONFLUENCE
- *   TRACKER_URL / TRACKER_API_KEY
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 

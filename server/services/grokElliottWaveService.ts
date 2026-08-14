@@ -15,7 +15,7 @@ function getXaiClient(): OpenAI {
 }
 
 // Use OpenAI SDK with xAI base URL for reliable API calls
-async function callGrokAPI(messages: any[], model: string = "grok-4.5", maxTokens: number = 600): Promise<string> {
+async function callGrokAPI(messages: any[], model: string = "grok-4.6", maxTokens: number = 600): Promise<string> {
   const startTime = Date.now();
   
   console.log(`🌐 API call: model=${model}, max_tokens=${maxTokens}`);
@@ -140,7 +140,7 @@ async function _detectPivots(candleData: string, _timeoutMs: number = 60000): Pr
     const content = await callGrokAPI([
       { role: "system", content: PIVOT_DETECTION_PROMPT },
       { role: "user", content: `Data:\n${candleData}` }
-    ], "grok-4.5", 2000);
+    ], "grok-4.6", 2000);
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`⏱️ CALL 1 DONE: ${elapsed}s`);
@@ -328,8 +328,8 @@ Return ONLY valid JSON:
     // Use text-only model when no image is provided
     const hasImage = base64Image && base64Image!.length > 0;
     
-    // Use grok-4.5 for all tasks (supports both text and vision)
-    const modelToUse = hasImage ? "grok-4.5" : "grok-4.5";
+    // Use grok-4.6 for all tasks (supports both text and vision)
+    const modelToUse = hasImage ? "grok-4.6" : "grok-4.6";
     console.log(`⏱️ Sending to ${modelToUse} via native fetch...`);
     
     const messages: any[] = [
@@ -443,7 +443,7 @@ What is the most likely next wave and price target? Respond with JSON:
     },
   ];
 
-  const content = await callGrokAPI(messages, "grok-4.5", 500);
+  const content = await callGrokAPI(messages, "grok-4.6", 500);
   if (!content) {
     throw new Error("No response from Grok");
   }

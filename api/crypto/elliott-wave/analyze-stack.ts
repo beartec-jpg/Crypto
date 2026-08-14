@@ -201,7 +201,7 @@ Provide JSON response with:
 }`;
 
     const completion = await openai.chat.completions.create({
-      model: process.env.XAI_ELLIOTT_MODEL || 'grok-4.5',
+      model: process.env.XAI_ELLIOTT_MODEL || process.env.XAI_PRIMARY_MODEL || 'grok-4.6',
       messages: [
         {
           role: 'system',

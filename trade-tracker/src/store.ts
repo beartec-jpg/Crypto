@@ -12,6 +12,7 @@ import {
   type DiscordEmbed,
 } from './discord.js';
 import { computePerformance, formatStatsEmbedFields, type ClosedTradePoint } from './stats.js';
+import { executeExchangeEvent } from './execution.js';
 
 export interface CreateTradeInput {
   userId?: string;
@@ -524,8 +525,22 @@ export async function processTradeAtPrice(
 
   // Apply sequentially; re-read state mentally from event chain
   let working = { ...engine };
+  // Fresh row meta for Blofin idempotency (mutated in-memory as we go)
+  let rowMeta = { ...row };
   for (const ev of events) {
     await applyEvent(pool, working.id, ev);
+    // Live/dry-run exchange side effects (entry open, TP partials, SL, close)
+    try {
+      await executeExchangeEvent(pool, rowMeta, working, ev);
+      // Refresh meta from DB so next event sees updated blofin.done / contracts
+      const refreshed = await pool.query(`SELECT meta FROM tracker_trades WHERE id = $1`, [working.id]);
+      if (refreshed.rows[0]) {
+        rowMeta = { ...rowMeta, meta: refreshed.rows[0].meta };
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[execution] event failed', working.symbol, ev.type, msg);
+    }
     await notifyEvent(webhookUrl, working, ev);
     working = {
       ...working,
