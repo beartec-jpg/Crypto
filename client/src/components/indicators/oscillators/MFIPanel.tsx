@@ -96,5 +96,5 @@ export function MFIPanel({
     }
   }, [mainChartVisibleRange]);
 
-  return <div ref={containerRef} className="w-full" style={{ height: '200px' }} data-testid="chart-mfi" />;
+  return <div ref={containerRef} className="w-full h-full" data-testid="chart-mfi" />;
 }

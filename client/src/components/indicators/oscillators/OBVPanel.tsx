@@ -75,5 +75,5 @@ export function OBVPanel({
     }
   }, [mainChartVisibleRange]);
 
-  return <div ref={containerRef} className="w-full" style={{ height: '200px' }} data-testid="chart-obv" />;
+  return <div ref={containerRef} className="w-full h-full" data-testid="chart-obv" />;
 }

@@ -24,20 +24,12 @@ export function DraggableOscillatorWindow({
   initialSize = { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT },
   onTap,
 }: DraggableOscillatorWindowProps) {
-  // Load position from localStorage, clamped to viewport bounds
-  const [position, setPosition] = useState(() => {
-    let pos = initialPosition;
-    if (storageKey) {
-      try {
-        const saved = localStorage.getItem(`${storageKey}-pos`);
-        if (saved) pos = JSON.parse(saved);
-      } catch {}
-    }
-    return {
-      x: Math.max(0, Math.min(window.innerWidth - MIN_WIDTH, pos.x)),
-      y: Math.max(0, Math.min(window.innerHeight - TITLE_BAR_HEIGHT, pos.y)),
-    };
-  });
+  // Always open in the provided initial position (middle of the chart).
+  // Position is not persisted so cycling mini → middle always recenters.
+  const [position, setPosition] = useState(() => ({
+    x: Math.max(0, Math.min(window.innerWidth - MIN_WIDTH, initialPosition.x)),
+    y: Math.max(0, Math.min(window.innerHeight - TITLE_BAR_HEIGHT, initialPosition.y)),
+  }));
 
   // Load size from localStorage
   const [size, setSize] = useState(() => {
@@ -55,13 +47,6 @@ export function DraggableOscillatorWindow({
   const dragMoved = useRef(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const resizeStart = useRef({ width: 0, height: 0, x: 0, y: 0 });
-
-  // Save position to localStorage
-  useEffect(() => {
-    if (storageKey) {
-      localStorage.setItem(`${storageKey}-pos`, JSON.stringify(position));
-    }
-  }, [position, storageKey]);
 
   // Save size to localStorage
   useEffect(() => {
@@ -193,17 +178,20 @@ export function DraggableOscillatorWindow({
       </div>
 
       {/* Content - chart will fill this and scale with size */}
-      <div className="relative" style={{ height: size.height - TITLE_BAR_HEIGHT }}>
-        {children}
+      <div className="relative overflow-hidden" style={{ height: size.height - TITLE_BAR_HEIGHT }}>
+        <div className="absolute inset-0">
+          {children}
+        </div>
       </div>
 
       {/* Resize Handle - Bottom Right Corner */}
       <div
         onMouseDown={onResizeMouseDown}
         onTouchStart={onResizeTouchStart}
-        className="absolute bottom-0 right-0 w-6 h-6 cursor-se-resize"
+        className="absolute bottom-0 right-0 w-5 h-5 cursor-se-resize z-10"
+        title="Drag to resize"
         style={{
-          background: 'linear-gradient(135deg, transparent 50%, #475569 50%)',
+          background: 'linear-gradient(135deg, transparent 45%, #94a3b8 45%)',
         }}
       />
     </div>

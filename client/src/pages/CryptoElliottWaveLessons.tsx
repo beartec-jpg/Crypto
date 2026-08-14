@@ -962,13 +962,12 @@ export default function CryptoElliottWaveLessons() {
                 <h3 className="text-xl font-bold text-white">Next Steps</h3>
               </div>
               <p className="text-gray-300 mb-4">
-                Now that you understand Elliott Wave theory, practice identifying patterns on real charts using 
-                the BearTec Elliott Wave analysis tool.
+                Now that you understand Elliott Wave theory, practice identifying patterns on real charts from the indicators page.
               </p>
-              <Link href="/cryptoelliottwave">
-                <Button className="bg-[#00c4b4] hover:bg-[#00a89a]" data-testid="button-go-to-elliott-wave">
+              <Link href="/cryptoindicators">
+                <Button className="bg-[#00c4b4] hover:bg-[#00a89a]" data-testid="button-go-to-indicators">
                   <TrendingUp className="w-4 h-4 mr-2" />
-                  Practice on Live Charts
+                  Back to Indicators
                 </Button>
               </Link>
             </CardContent>

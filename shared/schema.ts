@@ -830,7 +830,8 @@ export const userSettings = pgTable("user_settings", {
   chartType: varchar("chart_type").notNull().default("candlestick"), // 'candlestick' | 'line' | 'area'
   // UI preferences
   sidebarCollapsed: boolean("sidebar_collapsed").notNull().default(false),
-  theme: varchar("theme").notNull().default("dark"),
+  // Live DB column is chart_theme; API still exposes this as `theme`.
+  theme: varchar("chart_theme").notNull().default("dark"),
   // Last state
   lastSymbol: varchar("last_symbol").notNull().default("BTCUSDT"),
   lastTimeframe: varchar("last_timeframe").notNull().default("1h"),

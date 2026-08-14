@@ -90,5 +90,5 @@ export function ADXPanel({
     }
   }, [mainChartVisibleRange]);
 
-  return <div ref={containerRef} className="w-full" style={{ height: '200px' }} data-testid="chart-adx" />;
+  return <div ref={containerRef} className="w-full h-full" data-testid="chart-adx" />;
 }

@@ -52,22 +52,30 @@ function getSmartMoneyScoreColor(score: number): string {
 }
 
 const OSCILLATOR_CONFIG = [
-  { id: 'rsi', title: 'RSI (14)', storageKey: 'oscillator-rsi', defaultPos: { x: 10, y: 80 } },
-  { id: 'macd', title: 'MACD', storageKey: 'oscillator-macd', defaultPos: { x: 10, y: 220 } },
-  { id: 'waddah', title: 'Waddah Explosion', storageKey: 'oscillator-waddah', defaultPos: { x: 10, y: 360 } },
-  { id: 'cmf', title: 'CMF (20)', storageKey: 'oscillator-cmf', defaultPos: { x: 10, y: 500 } },
-  { id: 'volume', title: 'Volume', storageKey: 'oscillator-volume', defaultPos: { x: 10, y: 360 } },
-  { id: 'stochRsi', title: 'Stoch RSI (14,14,3,3)', storageKey: 'oscillator-stochrsi', defaultPos: { x: 10, y: 640 } },
-  { id: 'tsi', title: 'TSI (25,13,7)', storageKey: 'oscillator-tsi', defaultPos: { x: 10, y: 780 } },
-  { id: 'williamsR', title: 'Williams %R (14)', storageKey: 'oscillator-williamsr', defaultPos: { x: 220, y: 80 } },
-  { id: 'cci', title: 'CCI (20)', storageKey: 'oscillator-cci', defaultPos: { x: 220, y: 80 } },
-  { id: 'adx', title: 'ADX (14)', storageKey: 'oscillator-adx', defaultPos: { x: 220, y: 220 } },
-  { id: 'obv', title: 'OBV', storageKey: 'oscillator-obv', defaultPos: { x: 220, y: 360 } },
-  { id: 'mfi', title: 'MFI (14)', storageKey: 'oscillator-mfi', defaultPos: { x: 220, y: 500 } },
-  { id: 'klinger', title: 'Klinger (34,55,13)', storageKey: 'oscillator-klinger', defaultPos: { x: 220, y: 640 } },
-  { id: 'smartMoney', title: 'Smart Money Tracker', storageKey: 'oscillator-smart-money', defaultPos: { x: 440, y: 80 } },
-  { id: 'smcTrendEngine', title: 'SMC Trend Engine', storageKey: 'oscillator-smc-trend-engine', defaultPos: { x: 620, y: 80 } },
+  { id: 'rsi', title: 'RSI (14)', storageKey: 'oscillator-rsi' },
+  { id: 'macd', title: 'MACD', storageKey: 'oscillator-macd' },
+  { id: 'waddah', title: 'Waddah Explosion', storageKey: 'oscillator-waddah' },
+  { id: 'cmf', title: 'CMF (20)', storageKey: 'oscillator-cmf' },
+  { id: 'volume', title: 'Volume', storageKey: 'oscillator-volume' },
+  { id: 'stochRsi', title: 'Stoch RSI (14,14,3,3)', storageKey: 'oscillator-stochrsi' },
+  { id: 'tsi', title: 'TSI (25,13,7)', storageKey: 'oscillator-tsi' },
+  { id: 'williamsR', title: 'Williams %R (14)', storageKey: 'oscillator-williamsr' },
+  { id: 'cci', title: 'CCI (20)', storageKey: 'oscillator-cci' },
+  { id: 'adx', title: 'ADX (14)', storageKey: 'oscillator-adx' },
+  { id: 'obv', title: 'OBV', storageKey: 'oscillator-obv' },
+  { id: 'mfi', title: 'MFI (14)', storageKey: 'oscillator-mfi' },
+  { id: 'klinger', title: 'Klinger (34,55,13)', storageKey: 'oscillator-klinger' },
+  { id: 'smartMoney', title: 'Smart Money Tracker', storageKey: 'oscillator-smart-money' },
+  { id: 'smcTrendEngine', title: 'SMC Trend Engine', storageKey: 'oscillator-smc-trend-engine' },
 ];
+
+function getMiddleModePosition(index: number) {
+  if (typeof window === 'undefined') return { x: 240, y: 120 };
+  const width = 200;
+  const x = Math.round((window.innerWidth - width) / 2) + (index % 4) * 22;
+  const y = Math.round(window.innerHeight * 0.26) + Math.floor(index / 4) * 26;
+  return { x, y };
+}
 
 export function PoppedOutOscillators({
   selectedOscillators,
@@ -198,7 +206,7 @@ export function PoppedOutOscillators({
 
   return (
     <>
-      {OSCILLATOR_CONFIG.map(({ id, title, storageKey, defaultPos }) => {
+      {OSCILLATOR_CONFIG.map(({ id, title, storageKey }, index) => {
         if (!poppedOutOscillators.has(id) || !selectedOscillators.has(id)) return null;
         
         return (
@@ -206,7 +214,7 @@ export function PoppedOutOscillators({
             key={id}
             title={title}
             storageKey={storageKey}
-            initialPosition={defaultPos}
+            initialPosition={getMiddleModePosition(index)}
             onTap={onCycleMode ? () => onCycleMode(id) : undefined}
           >
             {renderOscillatorContent(id)}

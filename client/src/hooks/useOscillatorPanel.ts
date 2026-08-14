@@ -103,21 +103,18 @@ export function useOscillatorPanel(): UseOscillatorPanelReturn {
   }, []);
 
   const cycleMode = useCallback((oscillatorId: string) => {
-    // Only cycle if the oscillator is currently enabled
+    // Mini (left) → middle popout → full-width docked → mini (left)
     if (!selectedOscillators.has(oscillatorId)) return;
 
     const isMini = miniOscillators.has(oscillatorId);
     const isPopout = poppedOutOscillators.has(oscillatorId);
 
     if (isMini) {
-      // Mini → Popout
       setMiniOscillators(prev => { const next = new Set(prev); next.delete(oscillatorId); return next; });
       setPoppedOutOscillators(prev => { const next = new Set(prev); next.add(oscillatorId); return next; });
     } else if (isPopout) {
-      // Popout → Bottom (docked)
       setPoppedOutOscillators(prev => { const next = new Set(prev); next.delete(oscillatorId); return next; });
     } else {
-      // Bottom → Mini
       setMiniOscillators(prev => { const next = new Set(prev); next.add(oscillatorId); return next; });
     }
   }, [selectedOscillators, miniOscillators, poppedOutOscillators]);

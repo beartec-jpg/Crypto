@@ -117,29 +117,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.warn('[settings] drawing_defaults column migration warning (column already exists):', schemaErr);
     }
 
+    // Production user_settings uses chart_theme (not theme). Map it in SQL so
+    // the client contract can keep calling the field `theme`.
+    const SETTINGS_SELECT = `
+      SELECT default_timeframe, chart_type, sidebar_collapsed,
+             chart_theme AS theme, last_symbol, last_timeframe, drawing_defaults
+      FROM user_settings WHERE user_id = $1
+    `;
+
+    const normalizeDrawingDefaults = (value: unknown) => {
+      if (!value) return DEFAULT_SETTINGS.drawingDefaults;
+      if (typeof value === 'string') {
+        try {
+          return JSON.parse(value);
+        } catch {
+          return DEFAULT_SETTINGS.drawingDefaults;
+        }
+      }
+      return value;
+    };
+
     if (req.method === 'GET') {
       console.log(`📥 GET /api/users/settings - userId: ${cryptoUserId}`);
 
-      const settingsResult = await pool.query(
-        `SELECT default_timeframe, chart_type, sidebar_collapsed, theme, last_symbol, last_timeframe, drawing_defaults
-         FROM user_settings WHERE user_id = $1`,
-        [cryptoUserId]
-      );
+      const settingsResult = await pool.query(SETTINGS_SELECT, [cryptoUserId]);
 
       if (settingsResult.rows.length === 0) {
-        console.log(`⚠️ No settings found for user ${cryptoUserId}, returning 404`);
-        return res.status(404).json({ error: 'No settings found' });
+        console.log(`⚠️ No settings found for user ${cryptoUserId}, returning defaults`);
+        return res.json(DEFAULT_SETTINGS);
       }
 
       const row = settingsResult.rows[0];
       const settings = {
-        defaultTimeframe: row.default_timeframe,
-        chartType: row.chart_type,
-        sidebarCollapsed: row.sidebar_collapsed,
-        theme: row.theme,
-        lastSymbol: row.last_symbol,
-        lastTimeframe: row.last_timeframe,
-        drawingDefaults: row.drawing_defaults || DEFAULT_SETTINGS.drawingDefaults,
+        defaultTimeframe: row.default_timeframe ?? DEFAULT_SETTINGS.defaultTimeframe,
+        chartType: row.chart_type ?? DEFAULT_SETTINGS.chartType,
+        sidebarCollapsed: row.sidebar_collapsed ?? DEFAULT_SETTINGS.sidebarCollapsed,
+        theme: row.theme ?? DEFAULT_SETTINGS.theme,
+        lastSymbol: row.last_symbol ?? DEFAULT_SETTINGS.lastSymbol,
+        lastTimeframe: row.last_timeframe ?? DEFAULT_SETTINGS.lastTimeframe,
+        drawingDefaults: normalizeDrawingDefaults(row.drawing_defaults),
       };
 
       console.log(`✅ Settings loaded for user ${cryptoUserId}`);
@@ -163,11 +179,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Load existing or use defaults
-      const existingResult = await pool.query(
-        `SELECT default_timeframe, chart_type, sidebar_collapsed, theme, last_symbol, last_timeframe, drawing_defaults
-         FROM user_settings WHERE user_id = $1`,
-        [cryptoUserId]
-      );
+      const existingResult = await pool.query(SETTINGS_SELECT, [cryptoUserId]);
 
       const existing = existingResult.rows.length > 0 ? existingResult.rows[0] : null;
       const merged = {
@@ -177,19 +189,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         theme: theme ?? existing?.theme ?? DEFAULT_SETTINGS.theme,
         lastSymbol: lastSymbol ?? existing?.last_symbol ?? DEFAULT_SETTINGS.lastSymbol,
         lastTimeframe: lastTimeframe ?? existing?.last_timeframe ?? DEFAULT_SETTINGS.lastTimeframe,
-        drawingDefaults: drawingDefaults ?? existing?.drawing_defaults ?? DEFAULT_SETTINGS.drawingDefaults,
+        drawingDefaults: drawingDefaults ?? normalizeDrawingDefaults(existing?.drawing_defaults),
       };
 
       console.log(`💾 PUT /api/users/settings - userId: ${cryptoUserId}`);
 
       await pool.query(
-        `INSERT INTO user_settings (id, user_id, default_timeframe, chart_type, sidebar_collapsed, theme, last_symbol, last_timeframe, drawing_defaults, created_at, updated_at)
+        `INSERT INTO user_settings (id, user_id, default_timeframe, chart_type, sidebar_collapsed, chart_theme, last_symbol, last_timeframe, drawing_defaults, created_at, updated_at)
          VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW(), NOW())
          ON CONFLICT (user_id) DO UPDATE SET
            default_timeframe = EXCLUDED.default_timeframe,
            chart_type = EXCLUDED.chart_type,
            sidebar_collapsed = EXCLUDED.sidebar_collapsed,
-           theme = EXCLUDED.theme,
+           chart_theme = EXCLUDED.chart_theme,
            last_symbol = EXCLUDED.last_symbol,
            last_timeframe = EXCLUDED.last_timeframe,
            drawing_defaults = EXCLUDED.drawing_defaults,

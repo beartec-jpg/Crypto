@@ -377,9 +377,10 @@ export function ChartFullscreenPage({
   const persistDrawingDefaults = useCallback(async (payload: { tool: string; style: any }) => {
     const raw = userSettings?.drawingDefaults as any;
     const byTool = { ...(raw?.byTool || {}) };
+    const { __openColorPicker: _ignored, ...style } = payload.style || {};
     byTool[payload.tool] = {
       ...(byTool[payload.tool] || {}),
-      ...payload.style,
+      ...style,
     };
 
     try {
@@ -398,7 +399,7 @@ export function ChartFullscreenPage({
       console.error('[Drawing] Failed to save drawing defaults:', error);
       toast({
         title: 'Failed to save defaults',
-        description: 'Could not save default style. Please try again.',
+        description: error instanceof Error ? error.message : 'Could not save default style. Please try again.',
         variant: 'destructive',
       });
     }

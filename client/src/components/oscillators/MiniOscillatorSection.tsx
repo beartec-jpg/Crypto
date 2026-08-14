@@ -1,3 +1,4 @@
+import { useRef, useState, type PointerEvent } from 'react';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
 import type { ScoringInput } from '@/lib/tradingSystemScoring';
 import type { SystemEvaluation } from '@/types/systemScoring';
@@ -108,6 +109,93 @@ function getKlingerStatus(klinger: number, signal: number): { label: string; val
   if (klinger > signal) return { label: 'KL', value: klinger.toFixed(0), color: 'text-green-400', zone: 'Bull' };
   if (klinger < signal) return { label: 'KL', value: klinger.toFixed(0), color: 'text-red-400', zone: 'Bear' };
   return { label: 'KL', value: klinger.toFixed(0), color: 'text-yellow-400', zone: 'NEU' };
+}
+
+const DRAG_THRESHOLD_PX = 6;
+
+interface MiniChipProps {
+  id: string;
+  label: string;
+  value: string;
+  color: string;
+  zone: string;
+  onCycle: (id: string) => void;
+}
+
+function DraggableMiniChip({ id, label, value, color, zone, onCycle }: MiniChipProps) {
+  const chipRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+    dragging: boolean;
+  } | null>(null);
+
+  const handlePointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = chipRef.current?.getBoundingClientRect();
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: position?.x ?? rect?.left ?? e.clientX,
+      origY: position?.y ?? rect?.top ?? e.clientY,
+      dragging: false,
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    e.stopPropagation();
+
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    if (!drag.dragging && Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
+      drag.dragging = true;
+    }
+    if (!drag.dragging) return;
+
+    const chipW = chipRef.current?.offsetWidth ?? 64;
+    const chipH = chipRef.current?.offsetHeight ?? 52;
+    const x = Math.max(0, Math.min(window.innerWidth - chipW, drag.origX + dx));
+    const y = Math.max(0, Math.min(window.innerHeight - chipH, drag.origY + dy));
+    setPosition({ x, y });
+  };
+
+  const handlePointerUp = (e: PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+    e.stopPropagation();
+    const wasDragging = drag.dragging;
+    dragRef.current = null;
+    if (!wasDragging) {
+      onCycle(id);
+    }
+  };
+
+  return (
+    <div
+      ref={chipRef}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      title="Drag to move · click to cycle"
+      className="bg-slate-800/90 backdrop-blur-sm rounded px-2 py-1.5 cursor-grab active:cursor-grabbing hover:bg-slate-700/90 transition-colors min-w-[56px] select-none touch-none"
+      style={position ? { position: 'fixed', left: position.x, top: position.y, zIndex: 40 } : undefined}
+    >
+      <div className="text-[10px] text-slate-400 truncate">{label}</div>
+      <div className={`text-xs font-medium ${color}`}>{value}</div>
+      <div className={`text-[10px] ${color}`}>{zone}</div>
+    </div>
+  );
 }
 
 export function MiniOscillatorSection({
@@ -250,15 +338,15 @@ export function MiniOscillatorSection({
   return (
     <div className="absolute left-2 top-1/2 -translate-y-1/2 z-30 flex flex-col gap-2">
       {newMiniItems.map(({ id, label, value, color, zone }) => (
-        <div
+        <DraggableMiniChip
           key={id}
-          onClick={() => onCycleMode(id)}
-          className="bg-slate-800/90 backdrop-blur-sm rounded px-2 py-1.5 cursor-pointer hover:bg-slate-700/90 transition-colors min-w-[56px]"
-        >
-          <div className="text-[10px] text-slate-400 truncate">{label}</div>
-          <div className={`text-xs font-medium ${color}`}>{value}</div>
-          <div className={`text-[10px] ${color}`}>{zone}</div>
-        </div>
+          id={id}
+          label={label}
+          value={value}
+          color={color}
+          zone={zone}
+          onCycle={onCycleMode}
+        />
       ))}
     </div>
   );

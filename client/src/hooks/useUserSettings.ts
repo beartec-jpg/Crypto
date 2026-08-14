@@ -31,10 +31,14 @@ export function useUserSettings() {
       try {
         const response = await authenticatedApiRequest('GET', '/api/users/settings');
         const data = await response.json();
-        return data;
+        return {
+          ...DEFAULT_USER_SETTINGS,
+          ...data,
+          drawingDefaults: data?.drawingDefaults || DEFAULT_USER_SETTINGS.drawingDefaults,
+        };
       } catch (error) {
         // If 404, use defaults (no settings saved yet)
-        if (error instanceof ApiError && error.status === 404) {
+        if (error instanceof ApiError && (error.status === 404 || error.status === 401)) {
           return DEFAULT_USER_SETTINGS;
         }
         throw error;
