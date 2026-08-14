@@ -32,6 +32,8 @@ interface TickerTableProps {
   
   // Settings button handler
   onOpenSettings?: () => void;
+  /** Fired whenever EMA/structure rows refresh so the page mascot can follow majority bias. */
+  onBiasUpdate?: (rows: Array<{ symbol: string; emaBias: Bias; structureBias: Bias }>) => void;
 }
 
 /**
@@ -48,6 +50,7 @@ export function TickerTable({
   structurePivotLength, // NEW
   emaLengths,           // NEW
   onOpenSettings,       // NEW
+  onBiasUpdate,
 }: TickerTableProps) {
   const [tickerData, setTickerData] = useState<Record<string, TickerData>>({});
   const [loading, setLoading] = useState(false);
@@ -119,6 +122,13 @@ export function TickerTable({
         }
 
         setTickerData(newTickerData);
+        onBiasUpdate?.(
+          Object.values(newTickerData).map((row) => ({
+            symbol: row.symbol,
+            emaBias: row.emaBias,
+            structureBias: row.structureBias,
+          })),
+        );
         console.log('✅ Loaded ticker data:', Object.keys(newTickerData).length, 'tickers');
       } catch (error) {
         console.error('Failed to fetch ticker data:', error);
@@ -143,8 +153,9 @@ export function TickerTable({
     tickers,
     timeframe,
     toast,
-    structurePivotLength, // NEW: refetch when structure setting changes
-    emaLengths,           // NEW: refetch when EMA setting changes
+    structurePivotLength,
+    emaLengths,
+    onBiasUpdate,
   ]);
 
   const formatPrice = (price: number) => {

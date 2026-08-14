@@ -18,6 +18,7 @@ interface CleanWatchlistProps {
     timeframe: string;
     watchlist: string[];
   }) => void;
+  onWatchlistBias?: (rows: Array<{ symbol: string; emaBias: 'bullish' | 'bearish' | 'neutral'; structureBias: 'bullish' | 'bearish' | 'neutral' }>) => void;
 }
 
 /**
@@ -28,7 +29,7 @@ interface CleanWatchlistProps {
  * - Shows bias settings in a modal triggered from TickerTable header
  * - Keeps CryptoIndicatorsClean free of inline handlers / watchlist logic
  */
-export function CleanWatchlist({ onExpandChart, onSelectionChange }: CleanWatchlistProps = { onExpandChart: undefined, onSelectionChange: undefined }) {
+export function CleanWatchlist({ onExpandChart, onSelectionChange, onWatchlistBias }: CleanWatchlistProps = { onExpandChart: undefined, onSelectionChange: undefined }) {
   const watchlist = useWatchlistState();
   const biasSettings = useWatchlistBiasSettings();
 
@@ -137,6 +138,7 @@ export function CleanWatchlist({ onExpandChart, onSelectionChange }: CleanWatchl
         structurePivotLength={biasSettings.settings.structurePivotLength}
         emaLengths={biasSettings.settings.emaLengths}
         onOpenSettings={handleOpenSettings}
+        onBiasUpdate={onWatchlistBias}
       />
 
       {/* Chart Preview - only show when ticker selected and tickers exist */}

@@ -17,7 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useMarketStateDemo } from '@/hooks/useMarketStateDemo';
+import type { Bias } from '@/types/candle';
 import { useIndicatorsData } from '@/hooks/useIndicatorsData';
 import { useOscillatorPreferences, type OscillatorId, VALID_OSCILLATOR_IDS } from '@/hooks/useOscillatorPreferences';
 import { Link, useLocation } from 'wouter';
@@ -50,8 +50,36 @@ export default function CryptoIndicatorsClean() {
     }
   }, [prefsLoading, prefsInitialised, favoriteOscillators]);
   
-  // Video player demo state
-  const { targetMarketState, isInitialLoad, setIsInitialLoad } = useMarketStateDemo();
+  // Mascot follows watchlist majority (EMA + structure), not a demo timer
+  const [targetMarketState, setTargetMarketState] = useState<'bullish' | 'bearish'>('bearish');
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [biasSummary, setBiasSummary] = useState<string>('Waiting on watchlist bias…');
+
+  const handleWatchlistBias = useCallback((
+    rows: Array<{ symbol: string; emaBias: Bias; structureBias: Bias }>,
+  ) => {
+    let emaBull = 0;
+    let emaBear = 0;
+    let structBull = 0;
+    let structBear = 0;
+    for (const row of rows) {
+      if (row.emaBias === 'bullish') emaBull += 1;
+      else if (row.emaBias === 'bearish') emaBear += 1;
+      if (row.structureBias === 'bullish') structBull += 1;
+      else if (row.structureBias === 'bearish') structBear += 1;
+    }
+    const bullVotes = emaBull + structBull;
+    const bearVotes = emaBear + structBear;
+    const n = rows.length || 1;
+    setBiasSummary(
+      `Watchlist ${rows.length} tickers · EMA ${emaBull}▲/${emaBear}▼ · Structure ${structBull}▲/${structBear}▼`,
+    );
+    if (bearVotes > bullVotes) setTargetMarketState('bearish');
+    else if (bullVotes > bearVotes) setTargetMarketState('bullish');
+    // tie → keep last mascot so it doesn't flicker
+    void n;
+    if (isInitialLoad) setIsInitialLoad(false);
+  }, [isInitialLoad]);
 
   // Fetch candle and CVD data
   const { candles, cvdData, externalMetrics } = useIndicatorsData({
@@ -129,8 +157,8 @@ export default function CryptoIndicatorsClean() {
               </Link>
             </div>
 
-            {/* Video Animation */}
-            <div className="flex justify-center mb-12">
+            {/* Video Animation — driven by watchlist EMA + structure majority */}
+            <div className="flex flex-col items-center mb-12">
               <div className="relative" style={{ height: '240px', width: '100%', maxWidth: '800px' }}>
                 <VideoSequencePlayer
                   targetMarketState={targetMarketState}
@@ -138,10 +166,19 @@ export default function CryptoIndicatorsClean() {
                   onInitialComplete={() => setIsInitialLoad(false)}
                 />
               </div>
+              <div className="mt-2 text-center text-xs text-slate-400">
+                {targetMarketState === 'bearish' ? '🐻 Bearish majority' : '🐂 Bullish majority'}
+                {' · '}
+                {biasSummary}
+              </div>
             </div>
 
           {/* Watchlist Section */}
-          <CleanWatchlist onExpandChart={handleExpandChart} onSelectionChange={handleSelectionChange} />
+          <CleanWatchlist
+            onExpandChart={handleExpandChart}
+            onSelectionChange={handleSelectionChange}
+            onWatchlistBias={handleWatchlistBias}
+          />
 
           {/* Indicators Section (Oscillators + CVD) */}
           <div className="mb-4 flex items-center justify-end">

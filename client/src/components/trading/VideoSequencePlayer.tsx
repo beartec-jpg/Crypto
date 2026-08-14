@@ -45,6 +45,7 @@ export function VideoSequencePlayer({
   onInitialComplete,
 }: VideoSequencePlayerProps) {
   const [videoPhase, setVideoPhase] = useState<VideoPhase>('initial_bear');
+  const lastStateRef = useRef<MarketState>(targetMarketState);
   
   const bearVideoRef = useRef<HTMLVideoElement>(null);
   const transitionVideoRef = useRef<HTMLVideoElement>(null);
@@ -65,20 +66,17 @@ export function VideoSequencePlayer({
     activeVideo.currentTime = Math.max(0, activeVideo.duration - 0.05);
   };
 
-  // Detect market status changes and trigger video sequences
+  // After the intro, flip mascot only when majority bias actually changes
   useEffect(() => {
-    // Only trigger transition if we're past initial phase and market state actually changed
-    if (videoPhase !== 'initial_bear' && !isInitialLoad) {
-      // Check if we need to transition (market state doesn't match current video)
-      const shouldTransition = 
-        (videoPhase === 'final' && targetMarketState === 'bullish' && transitionVideoRef.current?.paused !== false) ||
-        (videoPhase === 'final' && targetMarketState === 'bearish' && bearVideoRef.current?.paused !== false);
-      
-      if (shouldTransition) {
-        setVideoPhase('transition');
-      }
+    if (videoPhase === 'initial_bear') {
+      lastStateRef.current = targetMarketState;
+      return;
     }
-  }, [targetMarketState, videoPhase, isInitialLoad]);
+    if (videoPhase !== 'final') return;
+    if (lastStateRef.current === targetMarketState) return;
+    lastStateRef.current = targetMarketState;
+    setVideoPhase('transition');
+  }, [targetMarketState, videoPhase]);
 
   // Control video playback based on phase changes
   useEffect(() => {
