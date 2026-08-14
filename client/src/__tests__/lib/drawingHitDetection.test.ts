@@ -7,6 +7,8 @@ const createMockChart = () => {
   return {
     timeScale: () => ({
       timeToCoordinate: (time: number) => time, // Simple 1:1 mapping for testing
+      width: () => 800,
+      getVisibleRange: () => ({ from: 0, to: 800 }),
     }),
   } as unknown as IChartApi;
 };
@@ -169,6 +171,56 @@ describe('drawingHitDetection', () => {
       // Click far from any fib level (> CLICK_RADIUS=20 away from lowest level at 38.2)
       const hits = findDrawingsNearClick(150, 0, [drawing], chart, series);
       expect(hits).toHaveLength(0);
+    });
+
+    it('should detect click on auto-tracked extended fib line', () => {
+      const drawing: Drawing = {
+        id: 'fib5',
+        type: 'fib_retracement',
+        points: [
+          { time: 100, price: 100 },
+          { time: 200, price: 200 },
+        ],
+        style: { autoTrack: true },
+      };
+
+      // 50% level at y=150, well to the right of the drop points
+      const hits = findDrawingsNearClick(500, 150, [drawing], chart, series);
+      expect(hits).toHaveLength(1);
+      expect(hits[0].drawingId).toBe('fib5');
+    });
+
+    it('should detect click on fib level labels', () => {
+      const drawing: Drawing = {
+        id: 'fib6',
+        type: 'fib_retracement',
+        points: [
+          { time: 100, price: 100 },
+          { time: 200, price: 200 },
+        ],
+        style: { autoTrack: true, labelPosition: 'right' },
+      };
+
+      // Right-side labels sit near the auto-track edge (visible range to = 800)
+      const hits = findDrawingsNearClick(740, 150, [drawing], chart, series);
+      expect(hits).toHaveLength(1);
+      expect(hits[0].drawingId).toBe('fib6');
+    });
+
+    it('should detect click on left-side fib labels', () => {
+      const drawing: Drawing = {
+        id: 'fib7',
+        type: 'fib_retracement',
+        points: [
+          { time: 100, price: 100 },
+          { time: 200, price: 200 },
+        ],
+        style: { autoTrack: false, labelPosition: 'left' },
+      };
+
+      const hits = findDrawingsNearClick(90, 148, [drawing], chart, series);
+      expect(hits).toHaveLength(1);
+      expect(hits[0].drawingId).toBe('fib7');
     });
   });
 

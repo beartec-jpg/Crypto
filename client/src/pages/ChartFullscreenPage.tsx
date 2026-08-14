@@ -2113,6 +2113,7 @@ export function ChartFullscreenPage({
   const handleDrawingComplete = useCallback((tool: Exclude<ChartDrawingTool, null>) => {
     const repeatPlaceTools: ChartDrawingTool[] = ['trendline', 'horizontal', 'rectangle', 'channel', 'number_label'];
     setTempDrawing(null);
+    drawingInteraction.suppressNextSelect();
 
     if (repeatPlaceTools.includes(tool)) {
       return;
@@ -2120,7 +2121,7 @@ export function ChartFullscreenPage({
 
     setActiveTool(null);
     activeToolRef.current = null;
-  }, []);
+  }, [drawingInteraction.suppressNextSelect]);
 
   const handleToggleDrawingsVisible = useCallback(() => {
     setDrawingsVisible((visible: boolean) => !visible);
@@ -2269,7 +2270,10 @@ export function ChartFullscreenPage({
   const gestureController = useChartGestures({
     enabled: activeTool !== null && activeTool !== 'free_draw',
     data: candles as unknown as { time: Time; open: number; high: number; low: number; close: number }[],
-    onPointCommit: (point) => onPointCommitRef.current?.(point),
+    onPointCommit: (point) => {
+      drawingInteraction.suppressNextSelect();
+      onPointCommitRef.current?.(point);
+    },
     onCrosshairModeChange: () => {},
     autoSnapEnabled: true,
     waveEndpoints,

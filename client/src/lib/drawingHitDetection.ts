@@ -14,6 +14,8 @@ export interface HitResult {
 }
 
 const CLICK_RADIUS = 20; // pixels
+const FIB_LABEL_HIT_WIDTH = 160;
+const FIB_LABEL_HIT_HEIGHT = 16;
 
 // Fibonacci and channel level constants (must match chartPrimitives.ts)
 const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.272, 1.618];
@@ -95,6 +97,82 @@ function distanceToRay(
   const projY = y1 + clampedT * dy;
   
   return Math.sqrt((clickX - projX) ** 2 + (clickY - projY) ** 2);
+}
+
+function getChartWidth(chart: IChartApi): number {
+  const timeScale = chart.timeScale() as ReturnType<IChartApi['timeScale']> & { width?: () => number };
+  if (typeof timeScale.width === 'function') {
+    const width = timeScale.width();
+    if (width > 0) return width;
+  }
+  const element = (chart as IChartApi & { chartElement?: () => HTMLElement }).chartElement?.();
+  return element?.clientWidth || 800;
+}
+
+function extrapolateTimeToX(
+  timestamp: number,
+  timeScale: ReturnType<IChartApi['timeScale']>,
+  chartWidth: number
+): number | null {
+  const visibleRange = (timeScale as { getVisibleRange?: () => { from: Time; to: Time } | null }).getVisibleRange?.();
+  if (visibleRange) {
+    const fromTime = visibleRange.from as number;
+    const toTime = visibleRange.to as number;
+    if (toTime !== fromTime) {
+      const fromX = timeScale.timeToCoordinate(visibleRange.from);
+      const toX = timeScale.timeToCoordinate(visibleRange.to);
+      if (fromX !== null && toX !== null) {
+        return fromX + (timestamp - fromTime) / (toTime - fromTime) * (toX - fromX);
+      }
+    }
+  }
+  return null;
+}
+
+function resolveTimeX(
+  timeScale: ReturnType<IChartApi['timeScale']>,
+  time: number,
+  chartWidth: number
+): number | null {
+  const x = timeScale.timeToCoordinate(time as Time);
+  if (x !== null) return x;
+  return extrapolateTimeToX(time, timeScale, chartWidth);
+}
+
+function resolveAutoTrackRightX(
+  timeScale: ReturnType<IChartApi['timeScale']>,
+  chartWidth: number,
+  trackTime?: number
+): number | null {
+  if (trackTime !== undefined) {
+    return resolveTimeX(timeScale, trackTime, chartWidth);
+  }
+  const visibleRange = (timeScale as { getVisibleRange?: () => { from: Time; to: Time } | null }).getVisibleRange?.();
+  if (visibleRange?.to != null) {
+    return resolveTimeX(timeScale, visibleRange.to as number, chartWidth);
+  }
+  return chartWidth;
+}
+
+function distanceToLabelBox(
+  clickX: number,
+  clickY: number,
+  labelX: number,
+  labelY: number,
+  isRightLabel: boolean
+): number {
+  const left = isRightLabel ? labelX - FIB_LABEL_HIT_WIDTH : labelX - 4;
+  const right = isRightLabel ? labelX + 4 : labelX + FIB_LABEL_HIT_WIDTH;
+  const top = labelY - FIB_LABEL_HIT_HEIGHT;
+  const bottom = labelY + FIB_LABEL_HIT_HEIGHT;
+
+  if (clickX >= left && clickX <= right && clickY >= top && clickY <= bottom) {
+    return 0;
+  }
+
+  const nearestX = Math.max(left, Math.min(clickX, right));
+  const nearestY = Math.max(top, Math.min(clickY, bottom));
+  return Math.sqrt((clickX - nearestX) ** 2 + (clickY - nearestY) ** 2);
 }
 
 /**
@@ -275,86 +353,132 @@ function getDistanceToDrawing(
       // For fib retracement: requires at least 2 points (for backward compatibility with old drawings)
       // If 3 points available, point3 defines horizontal extent
       if (drawing.points.length < 2) return null;
-      
-      const x1 = timeScale.timeToCoordinate(drawing.points[0].time as Time);
+
+      const chartWidth = getChartWidth(chart);
+      const x1 = resolveTimeX(timeScale, drawing.points[0].time, chartWidth);
       const y1 = series.priceToCoordinate(drawing.points[0].price);
-      const x2 = timeScale.timeToCoordinate(drawing.points[1].time as Time);
+      const x2 = resolveTimeX(timeScale, drawing.points[1].time, chartWidth);
       const y2 = series.priceToCoordinate(drawing.points[1].price);
-      
+      const p3 = drawing.points[2] ?? drawing.points[1];
+      const x3 = resolveTimeX(timeScale, p3.time, chartWidth);
+
       if (x1 === null || y1 === null || x2 === null || y2 === null) return null;
-      
+
+      const extendLeft = drawing.style?.extendLeft ?? false;
+      const extendRight = drawing.style?.extendRight ?? false;
+      const autoTrack = drawing.style?.autoTrack ?? true;
+      const hideLabels = drawing.style?.hideLabels ?? false;
+      const isRightLabel = drawing.style?.labelPosition !== 'left';
+
+      const anchorLeft = Math.min(x1, x2);
+      let anchorRight = x3 !== null ? x3 : Math.max(x1, x2);
+      if (autoTrack && !extendRight) {
+        const trackX = resolveAutoTrackRightX(timeScale, chartWidth, drawing.style?._trackToTime);
+        if (trackX !== null) {
+          anchorRight = Math.max(anchorRight, trackX);
+        }
+      }
+
+      const lineLeft = extendLeft ? 0 : anchorLeft;
+      const lineRight = extendRight ? chartWidth : anchorRight;
+      const labelX = isRightLabel ? lineRight - 5 : lineLeft + 5;
+
       const priceDiff = drawing.points[1].price - drawing.points[0].price;
       const hiddenLevels = drawing.style?.hiddenLevels || [];
       const customValues = drawing.style?.customValues || {};
-      
-      // Check distance to each visible fib level
+
       let minDistance = Infinity;
-      
+
       for (const level of FIB_LEVELS) {
-        // Skip hidden levels
         if (isLevelHidden(level, hiddenLevels)) {
           continue;
         }
-        
-        // Use custom value if set, otherwise use default level
+
         const actualLevel = customValues[level] !== undefined ? customValues[level] : level;
-        
-        // Calculate level price
         const levelPrice = drawing.points[1].price - priceDiff * actualLevel;
         const levelY = series.priceToCoordinate(levelPrice);
-        
         if (levelY === null) continue;
-        
-        // Fib levels are horizontal lines within time bounds
-        const minX = Math.min(x1, x2);
-        const maxX = Math.max(x1, x2);
-        
-        const distance = distanceToHorizontalLine(clickX, clickY, levelY, minX, maxX);
-        minDistance = Math.min(minDistance, distance);
+
+        minDistance = Math.min(
+          minDistance,
+          distanceToHorizontalLine(clickX, clickY, levelY, lineLeft, lineRight),
+        );
+
+        if (!hideLabels) {
+          minDistance = Math.min(
+            minDistance,
+            distanceToLabelBox(clickX, clickY, labelX, levelY, isRightLabel),
+          );
+        }
       }
-      
+
+      // Also allow clicking the diagonal between the two drop points
+      minDistance = Math.min(
+        minDistance,
+        distanceToRay(clickX, clickY, x1, y1, x2, y2, false, false),
+      );
+
       return minDistance === Infinity ? null : minDistance;
     }
     
     case 'trend_fib': {
       if (drawing.points.length < 3) return null;
-      
-      const x1 = timeScale.timeToCoordinate(drawing.points[0].time as Time);
-      const y1 = series.priceToCoordinate(drawing.points[0].price);
-      const x2 = timeScale.timeToCoordinate(drawing.points[1].time as Time);
-      const y2 = series.priceToCoordinate(drawing.points[1].price);
-      const x3 = timeScale.timeToCoordinate(drawing.points[2].time as Time);
+
+      const chartWidth = getChartWidth(chart);
+      const x3 = resolveTimeX(timeScale, drawing.points[2].time, chartWidth);
       const y3 = series.priceToCoordinate(drawing.points[2].price);
-      
+
       if (x3 === null || y3 === null) return null;
-      
+
+      const extendLeft = drawing.style?.extendLeft ?? false;
+      const extendRight = drawing.style?.extendRight ?? false;
+      const autoTrack = drawing.style?.autoTrack ?? true;
+      const hideLabels = drawing.style?.hideLabels ?? false;
+      const isRightLabel = drawing.style?.labelPosition !== 'left';
+
+      let baseEndX = extendRight
+        ? chartWidth
+        : Math.min(x3 + (chartWidth - x3) * 0.5, chartWidth);
+      if (autoTrack && !extendRight) {
+        const trackX = resolveAutoTrackRightX(timeScale, chartWidth, drawing.style?._trackToTime);
+        if (trackX !== null) {
+          baseEndX = Math.max(x3, trackX);
+        }
+      }
+
+      const lineLeft = extendLeft ? 0 : x3;
+      const lineRight = extendRight ? chartWidth : baseEndX;
+      const labelX = isRightLabel ? lineRight - 5 : lineLeft + 5;
+
       const waveDiff = drawing.points[1].price - drawing.points[0].price;
       const hiddenLevels = drawing.style?.hiddenLevels || [];
       const customValues = drawing.style?.customValues || {};
-      
-      // Check distance to each visible trend fib level
+
       let minDistance = Infinity;
-      
+
       for (const level of TREND_FIB_LEVELS) {
-        // Skip hidden levels
         if (isLevelHidden(level, hiddenLevels)) {
           continue;
         }
-        
-        // Use custom value if set, otherwise use default level
+
         const actualLevel = customValues[level] !== undefined ? customValues[level] : level;
-        
-        // Calculate level price
         const levelPrice = drawing.points[2].price + waveDiff * actualLevel;
         const levelY = series.priceToCoordinate(levelPrice);
-        
         if (levelY === null) continue;
-        
-        // Trend fib levels are horizontal lines extending across the chart
-        const distance = distanceToHorizontalLine(clickX, clickY, levelY);
-        minDistance = Math.min(minDistance, distance);
+
+        minDistance = Math.min(
+          minDistance,
+          distanceToHorizontalLine(clickX, clickY, levelY, lineLeft, lineRight),
+        );
+
+        if (!hideLabels) {
+          minDistance = Math.min(
+            minDistance,
+            distanceToLabelBox(clickX, clickY, labelX, levelY, isRightLabel),
+          );
+        }
       }
-      
+
       return minDistance === Infinity ? null : minDistance;
     }
     

@@ -9,7 +9,7 @@ interface DrawingQuickMenuProps {
   onAlert?: () => void;
   onDelete: () => void;
   onClose: () => void;
-  /** When true, the drawing is from a higher timeframe and cannot be edited or deleted here. */
+  /** When true, the drawing was created on another timeframe. */
   isHigherTimeframe?: boolean;
   /** The timeframe label to display when isHigherTimeframe is true (e.g. '4h', '1d'). */
   sourceTimeframe?: string;
@@ -52,7 +52,7 @@ export function DrawingQuickMenu({
           {isHigherTimeframe && (
             <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-amber-400/90 border-b border-slate-700/60 mb-0.5">
               <Lock className="h-3 w-3" />
-              <span>{sourceTimeframe ? `${sourceTimeframe} drawing (read-only)` : 'Higher TF drawing (read-only)'}</span>
+              <span>{sourceTimeframe ? `From ${sourceTimeframe}` : 'From another timeframe'}</span>
             </div>
           )}
 
@@ -84,7 +84,7 @@ export function DrawingQuickMenu({
             Settings
           </Button>
           
-          {!isHigherTimeframe && onAlert && (
+          {onAlert && (
             <Button
               variant="ghost"
               size="sm"
@@ -99,20 +99,18 @@ export function DrawingQuickMenu({
             </Button>
           )}
           
-          {!isHigherTimeframe && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                onDelete();
-                onClose();
-              }}
-              className="justify-start text-red-400 hover:text-red-300 hover:bg-red-950/30"
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Delete
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              onDelete();
+              onClose();
+            }}
+            className="justify-start text-red-400 hover:text-red-300 hover:bg-red-950/30"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Delete
+          </Button>
         </div>
       </div>
     </>

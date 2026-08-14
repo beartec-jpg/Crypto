@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { IChartApi, ISeriesApi } from 'lightweight-charts';
 import { findDrawingsNearClick } from '@/lib/drawingHitDetection';
 import { TOUCH_TAP_THRESHOLD, TOUCH_MOVE_THRESHOLD } from '@/lib/constants/layout';
@@ -32,6 +32,7 @@ interface UseDrawingInteractionReturn {
   selectFromModal: (id: string) => void;
   handleChartClick: (event: MouseEvent | TouchEvent) => void;
   handleTouchEnd: (event: TouchEvent) => void;
+  suppressNextSelect: () => void;
 }
 
 export function useDrawingInteraction({
@@ -47,6 +48,35 @@ export function useDrawingInteraction({
   const [nearbyDrawings, setNearbyDrawings] = useState<NearbyDrawing[]>([]);
   
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const activeToolRef = useRef(activeTool);
+  const blockSelectRef = useRef(false);
+
+  useEffect(() => {
+    activeToolRef.current = activeTool;
+    if (activeTool) {
+      blockSelectRef.current = true;
+      return;
+    }
+    // Keep blocking through the click that finishes a drawing, then release.
+    const release = window.setTimeout(() => {
+      blockSelectRef.current = false;
+    }, 80);
+    return () => window.clearTimeout(release);
+  }, [activeTool]);
+
+  const suppressNextSelect = useCallback(() => {
+    blockSelectRef.current = true;
+  }, []);
+
+  const shouldIgnoreSelect = useCallback(() => {
+    if (activeToolRef.current || blockSelectRef.current) {
+      if (!activeToolRef.current) {
+        blockSelectRef.current = false;
+      }
+      return true;
+    }
+    return false;
+  }, []);
 
   const closeQuickMenu = useCallback(() => {
     setQuickMenuPosition(null);
@@ -95,8 +125,8 @@ export function useDrawingInteraction({
   }, [drawings]);
 
   const handleChartClick = useCallback((event: MouseEvent | TouchEvent) => {
-    // Only handle clicks when no tool is active
-    if (activeTool) return;
+    // While placing a drawing, never steal the click to select something else.
+    if (shouldIgnoreSelect()) return;
     
     if (event.type === 'click') {
       const chartElement = containerRef.current;
@@ -120,10 +150,10 @@ export function useDrawingInteraction({
         time: Date.now()
       };
     }
-  }, [activeTool, drawings, chartRef, candleSeriesRef, containerRef, processHits]);
+  }, [shouldIgnoreSelect, drawings, chartRef, candleSeriesRef, containerRef, processHits]);
 
   const handleTouchEnd = useCallback((event: TouchEvent) => {
-    if (!touchStartRef.current || activeTool) {
+    if (!touchStartRef.current || shouldIgnoreSelect()) {
       touchStartRef.current = null;
       return;
     }
@@ -152,7 +182,7 @@ export function useDrawingInteraction({
     }
     
     touchStartRef.current = null;
-  }, [activeTool, drawings, chartRef, candleSeriesRef, containerRef, processHits]);
+  }, [shouldIgnoreSelect, drawings, chartRef, candleSeriesRef, containerRef, processHits]);
 
   return {
     selectedDrawingId,
@@ -166,5 +196,6 @@ export function useDrawingInteraction({
     selectFromModal,
     handleChartClick,
     handleTouchEnd,
+    suppressNextSelect,
   };
 }

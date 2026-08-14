@@ -34,8 +34,6 @@ export function useFullscreenDrawingActions({
     if (!id) return;
 
     const drawing = drawings.find(item => item.id === id);
-    // Prevent deleting drawings that belong to a higher timeframe
-    if (drawing?.timeframe && drawing.timeframe !== currentTimeframe) return;
 
     if (drawing?.type === 'elliott_wave') {
       deleteEWLabelMutation.mutate(id);
@@ -49,7 +47,7 @@ export function useFullscreenDrawingActions({
     }
 
     setSelectedDrawingId(null);
-  }, [selectedDrawingId, drawings, currentTimeframe, deleteEWLabelMutation, setDrawings, recordDelete, drawingsPersistence, setSelectedDrawingId]);
+  }, [selectedDrawingId, drawings, deleteEWLabelMutation, setDrawings, recordDelete, drawingsPersistence, setSelectedDrawingId]);
 
   const handleUpdateDrawing = useCallback((updates: { style: Partial<Drawing['style']> }) => {
     const selectedId = selectedDrawingId;
