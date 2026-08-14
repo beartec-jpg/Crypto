@@ -410,12 +410,13 @@ function detectSwingPivots(bars: any[], lookback = 5): { highs: number[]; lows: 
   return { highs: highs.slice(-5), lows: lows.slice(-5) };
 }
 
-async function fetchBarsForTF(symbol: string, tf: string) {
+async function fetchBarsForTF(symbol: string, tf: string, limit = 500) {
+  const capped = Math.max(50, Math.min(1000, limit));
   // Prefer global / data-api endpoints (Vercel often blocked on binance.us alone)
   const urls = [
-    `https://data-api.binance.vision/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=500`,
-    `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=500`,
-    `https://api.binance.us/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=500`,
+    `https://data-api.binance.vision/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=${capped}`,
+    `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=${capped}`,
+    `https://api.binance.us/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=${capped}`,
   ];
   let lastError: Error | null = null;
   for (const url of urls) {
@@ -443,6 +444,153 @@ async function fetchBarsForTF(symbol: string, tf: string) {
     }
   }
   throw lastError || new Error(`Failed to fetch ${tf} data`);
+}
+
+function formatMacroPrice(n: number): string {
+  if (!Number.isFinite(n)) return 'n/a';
+  if (n >= 100) return n.toFixed(2);
+  if (n >= 1) return n.toFixed(4);
+  return n.toFixed(5);
+}
+
+function formatMacroDate(tsSec: number): string {
+  return new Date(tsSec * 1000).toISOString().slice(0, 10);
+}
+
+function detectDatedSwings(
+  bars: any[],
+  lookback: number,
+  maxEach = 10,
+): { highs: Array<{ price: number; date: string; time: number }>; lows: Array<{ price: number; date: string; time: number }> } {
+  const highs: Array<{ price: number; date: string; time: number }> = [];
+  const lows: Array<{ price: number; date: string; time: number }> = [];
+  if (bars.length < lookback * 2 + 1) return { highs, lows };
+  for (let i = lookback; i < bars.length - lookback; i++) {
+    const window = bars.slice(i - lookback, i + lookback + 1);
+    if (bars[i].high === Math.max(...window.map((b) => b.high))) {
+      highs.push({ price: bars[i].high, date: formatMacroDate(bars[i].time), time: bars[i].time });
+    }
+    if (bars[i].low === Math.min(...window.map((b) => b.low))) {
+      lows.push({ price: bars[i].low, date: formatMacroDate(bars[i].time), time: bars[i].time });
+    }
+  }
+  return { highs: highs.slice(-maxEach), lows: lows.slice(-maxEach) };
+}
+
+function rangeOf(bars: any[], count: number): { high: number; low: number } | null {
+  const slice = bars.slice(-count);
+  if (!slice.length) return null;
+  return {
+    high: Math.max(...slice.map((b) => b.high)),
+    low: Math.min(...slice.map((b) => b.low)),
+  };
+}
+
+type MacroProximity = 'near' | 'approaching' | 'far';
+
+function classifyMacroDistance(
+  price: number,
+  level: number,
+  nearPct = 8,
+  approachPct = 16,
+): { pct: number; band: MacroProximity } {
+  const pct = Math.abs(level - price) / price * 100;
+  if (pct <= nearPct) return { pct, band: 'near' };
+  if (pct <= approachPct) return { pct, band: 'approaching' };
+  return { pct, band: 'far' };
+}
+
+/**
+ * Weekly + monthly areas of interest. Only nearby / approaching levels are
+ * candidates for analysis or TP2. Far-away history is listed as IGNORE.
+ */
+async function buildMacroContext(symbol: string): Promise<{ text: string; levels: string[] }> {
+  const [weekly, monthly] = await Promise.all([
+    fetchBarsForTF(symbol, '1w', 400).catch((err) => {
+      console.warn(`[macro] weekly fetch failed for ${symbol}:`, err?.message || err);
+      return [] as any[];
+    }),
+    fetchBarsForTF(symbol, '1M', 160).catch((err) => {
+      console.warn(`[macro] monthly fetch failed for ${symbol}:`, err?.message || err);
+      return [] as any[];
+    }),
+  ]);
+
+  const price = weekly.at(-1)?.close ?? monthly.at(-1)?.close;
+  if (!price) {
+    return { text: 'MACRO CONTEXT: unavailable (no weekly/monthly bars).', levels: [] };
+  }
+
+  const weeklyAtr = weekly.length ? calculateATR(weekly, 14) : 0;
+  const nearPct = weeklyAtr > 0 ? Math.min(12, Math.max(6, (weeklyAtr / price) * 100 * 2)) : 8;
+  const approachPct = nearPct * 2;
+
+  const lines: string[] = [
+    `**MACRO CONTEXT (weekly / monthly)**`,
+    `Spot: $${formatMacroPrice(price)} · nearby ≈ within ${nearPct.toFixed(1)}% or ~2.5 weekly ATRs`,
+    `Relevance: IGNORE far levels. Only NEAR / APPROACHING levels may be mentioned or used as TP2, and only if price can get there without first reversing the other way.`,
+  ];
+  const relevant: string[] = [];
+
+  const addCandidate = (label: string, levelPrice: number, extra = '') => {
+    const { pct, band } = classifyMacroDistance(price, levelPrice, nearPct, approachPct);
+    const dir = levelPrice >= price ? 'above' : 'below';
+    const tag = band === 'far' ? 'IGNORE (too far)' : band === 'near' ? 'NEAR' : 'APPROACHING';
+    const line = `${tag} ${label} $${formatMacroPrice(levelPrice)} (${pct.toFixed(1)}% ${dir})${extra ? ` — ${extra}` : ''}`;
+    lines.push(`- ${line}`);
+    if (band !== 'far') relevant.push(line);
+  };
+
+  const describeTf = (tf: string, bars: any[], lookback: number, rangeBars: number) => {
+    if (!bars.length) {
+      lines.push(`- ${tf}: no data`);
+      return;
+    }
+    const swings = detectDatedSwings(bars, lookback, 10);
+    const range = rangeOf(bars, rangeBars);
+    const ema20 = calculateEMA(bars.map((b) => b.close), 20);
+
+    if (range) {
+      addCandidate(`${tf} range high`, range.high);
+      addCandidate(`${tf} range low`, range.low);
+    }
+    lines.push(`- ${tf} EMA20 $${formatMacroPrice(ema20)}`);
+
+    for (const h of swings.highs) {
+      const idx = bars.findIndex((b) => b.time === h.time);
+      const laterBroke = idx >= 0 && bars.slice(idx + 1).some((b) => b.close > h.price * 1.002);
+      const extra = laterBroke ? `old breakout/retest ${h.date}` : `swing high ${h.date}`;
+      addCandidate(`${tf} ${extra}`, h.price);
+    }
+    for (const l of swings.lows) {
+      const idx = bars.findIndex((b) => b.time === l.time);
+      const laterBroke = idx >= 0 && bars.slice(idx + 1).some((b) => b.close < l.price * 0.998);
+      const extra = laterBroke ? `old breakdown/retest ${l.date}` : `swing low ${l.date}`;
+      addCandidate(`${tf} ${extra}`, l.price);
+    }
+  };
+
+  describeTf('1w', weekly, 3, 52);
+  describeTf('1M', monthly, 2, 24);
+
+  if (!relevant.length) {
+    lines.push('- No weekly/monthly level is close enough to matter on this trade. Keep TP2 on current-range structure.');
+  }
+
+  return { text: lines.join('\n'), levels: relevant.slice(0, 10) };
+}
+
+function buildTargetsRule(higherTimeframe: string, lowerTimeframe: string): string {
+  return (
+    `9. TARGETS:\n` +
+    `   - TP1 = nearest valid opposing level of the CURRENT range/swing in the trade direction ` +
+    `(range high for LONG, range low for SHORT on ${higherTimeframe}/${lowerTimeframe}). Keep TP1 local.\n` +
+    `   - TP2 = next structural target on this trade's path. A weekly/monthly magnet may be TP2 ONLY if it is NEAR or APPROACHING ` +
+    `AND you judge price can reach it without first reversing the other way past invalidation / the opposing range. ` +
+    `If the macro level is far, IGNORE it — do not stretch TP2 to a 2023 high just because it exists.\n` +
+    `   - If a macro level is getting close, mention it in analysis (and in tp2Rationale if you use it). If it is far, do not mention it.\n` +
+    `   - Min R/R is measured to TP1 (not TP2).`
+  );
 }
 
 function computeIndicators(bars: any[]) {
@@ -730,6 +878,7 @@ export async function runSystemDeepDive(options: {
   modeId: string;
   gatesRelaxed?: boolean;
   rawTradeCount?: number;
+  macroLevels?: string[];
 }> {
   const {
     DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
@@ -766,6 +915,7 @@ export async function runSystemDeepDive(options: {
 
   const lowerData = computeIndicators(barsByTimeframe[lowerTimeframe]);
   const higherData = computeIndicators(barsByTimeframe[higherTimeframe]);
+  const macro = await buildMacroContext(symbol);
 
   const fmtTF = (label: string, d: ReturnType<typeof computeIndicators>) => `
 **${label} (${label === higherTimeframe ? 'Higher TF bias' : 'Lower TF execution'}):**
@@ -799,6 +949,8 @@ ${horizonPrompt}
 ${fmtTF(higherTimeframe, higherData)}
 ${fmtTF(lowerTimeframe, lowerData)}
 
+${macro.text}
+
 **OPEN BOOK (from trade tracker — your previous desk ideas still live)**
 ${openBookBlock}
 
@@ -822,7 +974,7 @@ For EVERY setup listed above with an id, decide keep or cancel against CURRENT s
    - entryConfirmRationale: technique-specific rule in plain language (e.g. "tag FVG then close back above zone high", "sweep liquidity then reclaim prior low").
    - If price tags entry and then hits stop without reclaim → setup is INVALID (no trade), not a stop-loss loss.
 8. STOP LOSS: behind the invalidation structure for the selected TRADE HORIZON (see above) — not automatically the nearest LTF wick. Below structural low for LONGs, above structural high for SHORTs. No arbitrary ATR padding.
-9. TARGETS: level-to-level at the horizon's scale. TP1 nearest valid opposing level for this horizon; TP2 next major level. On swing/position prefer ${higherTimeframe} levels. Min R/R is measured to TP1 (not TP2).
+${buildTargetsRule(higherTimeframe, lowerTimeframe)}
 10. STOP LIFT (MANDATORY on every trade): AFTER confirmed open and BEFORE TP1, pick a structural proof level — then move the stop. Fields: stopLiftTrigger + stopLiftTo + stopLiftRationale.
    - stopLiftTrigger: between confirmed entry and TP1 (LONG above entry; SHORT below entry).
    - stopLiftTo: usually entry (BE) or small lock-in. Must improve original stop.
@@ -832,6 +984,7 @@ For EVERY setup listed above with an id, decide keep or cancel against CURRENT s
 14. If no valid trade exists yet, return an empty bestTrades array and use overallSummary plus keyLevels to explain the key zones to watch next.
 15. Expected hold should match the horizon (${tradeHorizonMeta.expectedHold}).
 16. Do not re-issue a bestTrade that duplicates an open-book setup you marked keep (same direction + similar entry).
+17. MACRO RELEVANCE: only discuss NEAR/APPROACHING weekly-monthly levels. Far history is IGNORE. Use a nearby macro level as TP2 only if price can get there without first going the other way through invalidation.
 
 Respond with ONLY valid JSON:
 {
@@ -841,6 +994,7 @@ Respond with ONLY valid JSON:
   "multiTFInsights": {
     "${higherTimeframe}": { "summary": "2 sentences on higher timeframe bias/trend", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["..."] },
     "${lowerTimeframe}": { "summary": "2 sentences on lower timeframe momentum/structure", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["..."] },
+    "macro": { "summary": "1-2 sentences ONLY if a weekly/monthly level is near or approaching and reachable on this path; otherwise say none relevant", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["only NEAR/APPROACHING levels, or empty"] },
     "overallSummary": "2 sentences on the next high-probability setup(s) or the zones to watch next"
   },
   "bestTrades": [
@@ -872,7 +1026,7 @@ Respond with ONLY valid JSON:
 }`;
 
   const systemContent =
-    `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Stop-loss goes just behind the horizon-appropriate invalidation structure (not automatically the nearest LTF wick) — no arbitrary ATR padding. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. When an OPEN BOOK is provided, re-validate every id with openTradeReviews (keep|cancel) before proposing new bestTrades; cancel stale/broken zones. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
+    `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Weekly/monthly magnets only matter if they are NEAR or APPROACHING and price can reach them without first reversing the other way; far-away history must be ignored. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Stop-loss goes just behind the horizon-appropriate invalidation structure (not automatically the nearest LTF wick) — no arbitrary ATR padding. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. When an OPEN BOOK is provided, re-validate every id with openTradeReviews (keep|cancel) before proposing new bestTrades; cancel stale/broken zones. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
 
   const openai = new OpenAI({
     baseURL: 'https://api.x.ai/v1',
@@ -1038,6 +1192,21 @@ Respond with ONLY valid JSON:
     }));
   }
 
+  if (multiTFInsights && typeof multiTFInsights === 'object') {
+    const existing = multiTFInsights.macro && typeof multiTFInsights.macro === 'object'
+      ? multiTFInsights.macro
+      : {};
+    const modelLevels = Array.isArray(existing.keyLevels) ? existing.keyLevels.filter(Boolean) : [];
+    multiTFInsights.macro = {
+      ...existing,
+      keyLevels: modelLevels.length ? modelLevels : macro.levels,
+      summary: existing.summary
+        || (macro.levels.length
+          ? `Nearby/approaching weekly-monthly: ${macro.levels.slice(0, 3).join('; ')}`
+          : 'No weekly/monthly level is close enough to matter on this trade.'),
+    };
+  }
+
   return {
     multiTFInsights,
     bestTrades,
@@ -1050,6 +1219,7 @@ Respond with ONLY valid JSON:
     modeId: traderMode.id,
     gatesRelaxed,
     rawTradeCount,
+    macroLevels: macro.levels,
   };
 }
 

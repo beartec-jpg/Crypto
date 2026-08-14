@@ -51,7 +51,8 @@ export const CRYPTO_AI_TRADE_HORIZON_META: Record<CryptoAiTradeHorizon, CryptoAi
     structureRules:
       'SWING HORIZON: Lower TF is ONLY for entry timing / trigger. Stop-loss MUST sit behind HIGHER-timeframe structure ' +
       '(HTF swing pivot, HTF order block, or HTF FVG boundary) — never a tight 15m wick. Targets are HTF level-to-level ' +
-      '(prior day/week swing, HTF liquidity, value-area extremes). Wider stops are expected; keep R:R honest by using farther TPs.',
+      '(prior day/week swing, HTF liquidity, value-area extremes). Weekly/monthly magnets are optional TP2 only if nearby ' +
+      'and reachable without a deep opposite-direction retrace first; ignore far-away history. Wider stops are expected; keep R:R honest by using farther TPs.',
   },
   position: {
     id: 'position',

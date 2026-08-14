@@ -442,7 +442,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Build readable deep text even when overallSummary is missing (was showing "Deep-dive completed.")
     const deepHigher = sectionOf(deepInsights, htf);
     const deepLower = sectionOf(deepInsights, ltf);
-    const watchLevels = collectLevels(deepInsights, [ltf, htf]);
+    const deepMacro = sectionOf(deepInsights, 'macro');
+    const watchLevels = collectLevels(deepInsights, [ltf, htf, 'macro']);
+    const nearbyMacro = [
+      ...(deep.macroLevels || []),
+      ...((deepMacro?.keyLevels || []).filter(Boolean)),
+    ].filter((level, i, arr) => arr.indexOf(level) === i).slice(0, 6);
     const deepSummary =
       overallOf(deepInsights)
       || [deepHigher?.summary, deepLower?.summary].filter(Boolean).join('\n\n')
@@ -495,6 +500,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         fields.push({
           name: `${ltf.toUpperCase()} · ${deepLower?.bias || '—'}`,
           value: (deepLower?.summary || '—').slice(0, 900),
+          inline: false,
+        });
+      }
+      if (deepMacro?.summary || nearbyMacro.length) {
+        fields.push({
+          name: `Weekly / monthly · ${deepMacro?.bias || 'only if nearby'}`,
+          value: [
+            deepMacro?.summary,
+            nearbyMacro.length ? nearbyMacro.map((l) => `• ${l}`).join('\n') : null,
+          ].filter(Boolean).join('\n').slice(0, 900) || 'None nearby.',
           inline: false,
         });
       }
