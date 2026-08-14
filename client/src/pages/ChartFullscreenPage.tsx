@@ -745,7 +745,7 @@ export function ChartFullscreenPage({
 
   // Hooks - Auto-Fibonacci detection
   const autoFibSettings = useAutoFibSettings();
-  const autoFibVisibleRange = useVisibleRange(chartRef.current);
+  const autoFibVisibleRange = useVisibleRange(chartRef.current, chartReady);
   const autoFibResult = useAutoFibDetection(effectiveCandles, autoFibVisibleRange, autoFibSettings.settings);
 
   // Hooks - SuperTrend
@@ -792,12 +792,12 @@ export function ChartFullscreenPage({
   });
   // Hooks - Volume Profile
   const vpSettings = useVolumeProfileSettings();
-  const visibleRange = useVisibleRange(vpSettings.settings.updateOnPan ? chartRef.current : null);
+  const visibleRange = useVisibleRange(vpSettings.settings.updateOnPan ? chartRef.current : null, chartReady);
   const volumeProfileData = useVolumeProfileCalculation(effectiveCandles, visibleRange, vpSettings.settings);
 
   // Hooks - Liquidity Heatmap
   const lhSettings = useLiquidityHeatmapSettings();
-  const lhVisibleRange = useVisibleRange(chartRef.current);
+  const lhVisibleRange = useVisibleRange(chartRef.current, chartReady);
   const liquidityHeatmapDataResult = useLiquidityHeatmapData(
     symbol,
     lhSettings.settings,

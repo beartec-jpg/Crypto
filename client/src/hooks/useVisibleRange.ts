@@ -1,33 +1,47 @@
 import { useState, useEffect } from 'react';
 import type { IChartApi } from 'lightweight-charts';
 
+export interface VisibleChartRange {
+  from: number;
+  to: number;
+  fromIndex: number;
+  toIndex: number;
+}
+
 export function useVisibleRange(
-  chart: IChartApi | null
-): { from: number; to: number } | null {
-  const [range, setRange] = useState<{ from: number; to: number } | null>(null);
+  chart: IChartApi | null,
+  ready = true,
+): VisibleChartRange | null {
+  const [range, setRange] = useState<VisibleChartRange | null>(null);
 
   useEffect(() => {
-    if (!chart) return;
+    if (!chart || !ready) return;
+
+    const timeScale = chart.timeScale();
 
     const updateRange = () => {
-      const timeScale = chart.timeScale();
-      const visibleRange = timeScale.getVisibleRange();
+      const timeRange = timeScale.getVisibleRange();
+      const logical = timeScale.getVisibleLogicalRange();
 
-      if (!visibleRange) return;
+      if (!logical && !timeRange) return;
 
       setRange({
-        from: visibleRange.from as number,
-        to: visibleRange.to as number,
+        from: Number(timeRange?.from ?? 0),
+        to: Number(timeRange?.to ?? 0),
+        fromIndex: logical ? logical.from : 0,
+        toIndex: logical ? logical.to : 0,
       });
     };
 
     updateRange();
-    chart.timeScale().subscribeVisibleTimeRangeChange(updateRange);
+    timeScale.subscribeVisibleTimeRangeChange(updateRange);
+    timeScale.subscribeVisibleLogicalRangeChange(updateRange);
 
     return () => {
-      chart.timeScale().unsubscribeVisibleTimeRangeChange(updateRange);
+      timeScale.unsubscribeVisibleTimeRangeChange(updateRange);
+      timeScale.unsubscribeVisibleLogicalRangeChange(updateRange);
     };
-  }, [chart]);
+  }, [chart, ready]);
 
   return range;
 }

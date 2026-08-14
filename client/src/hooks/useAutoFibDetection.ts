@@ -31,28 +31,84 @@ const ALL_FIB_LEVELS: Array<{ key: string; ratio: number; isExtension: boolean; 
  * Find the absolute highest high and lowest low within a candle array.
  * Returns null if the array is empty.
  */
+function findCandleIndex(fullCandles: Candle[], time: number): number {
+  let idx = -1;
+  for (let i = 0; i < fullCandles.length; i++) {
+    if (Number(fullCandles[i].time) === time) idx = i;
+  }
+  return idx;
+}
+
+function estimateBarInterval(candles: Candle[]): number {
+  if (candles.length < 2) return 900;
+  const last = Number(candles[candles.length - 1].time);
+  const prev = Number(candles[candles.length - 2].time);
+  const delta = last - prev;
+  return Number.isFinite(delta) && delta > 0 ? delta : 900;
+}
+
+/**
+ * Candles actually on screen. Prefer LWC logical indices so the live bar is
+ * included; time filters can drop the forming 15m candle when `to` sits on
+ * the previous bar.
+ */
+function sliceVisibleCandles(
+  candles: Candle[],
+  visibleRange: { from: number; to: number; fromIndex?: number; toIndex?: number } | null,
+  settings: AutoFibSettings,
+): Candle[] {
+  if (
+    visibleRange &&
+    Number.isFinite(visibleRange.fromIndex) &&
+    Number.isFinite(visibleRange.toIndex)
+  ) {
+    const fromIdx = Math.max(0, Math.floor(visibleRange.fromIndex as number));
+    const toIdx = Math.min(candles.length - 1, Math.ceil(visibleRange.toIndex as number));
+    if (toIdx >= fromIdx) {
+      return candles.slice(fromIdx, toIdx + 1);
+    }
+  }
+
+  if (visibleRange && Number.isFinite(visibleRange.from) && Number.isFinite(visibleRange.to)) {
+    const slack = estimateBarInterval(candles);
+    const from = Number(visibleRange.from) - slack;
+    const to = Number(visibleRange.to) + slack;
+    const windowed = candles.filter((c) => {
+      const t = Number(c.time);
+      return t >= from && t <= to;
+    });
+    if (windowed.length >= 2) return windowed;
+  }
+
+  return candles.slice(-Math.max(settings.swingLookback * 2, 40));
+}
+
+/**
+ * Find the absolute highest high and lowest low within a candle array.
+ * Returns null if the array is empty.
+ */
 function findHighLow(
   candles: Candle[],
   fullCandles: Candle[]
 ): { high: SwingPoint; low: SwingPoint } | null {
   if (candles.length === 0) return null;
 
-  let highPrice = -Infinity, highTime = 0;
-  let lowPrice = Infinity, lowTime = 0;
+  let highCandle = candles[0];
+  let lowCandle = candles[0];
 
   for (const c of candles) {
-    if (c.high > highPrice) { highPrice = c.high; highTime = Number(c.time); }
-    if (c.low < lowPrice)   { lowPrice  = c.low;  lowTime  = Number(c.time); }
+    if (c.high > highCandle.high) highCandle = c;
+    if (c.low < lowCandle.low) lowCandle = c;
   }
 
-  const highIdx = fullCandles.findIndex(c => Number(c.time) === highTime && c.high === highPrice);
-  const lowIdx  = fullCandles.findIndex(c => Number(c.time) === lowTime  && c.low  === lowPrice);
+  const highIdx = findCandleIndex(fullCandles, Number(highCandle.time));
+  const lowIdx = findCandleIndex(fullCandles, Number(lowCandle.time));
 
   if (highIdx === -1 || lowIdx === -1) return null;
 
   return {
-    high: { index: highIdx, time: highTime, price: highPrice },
-    low:  { index: lowIdx,  time: lowTime,  price: lowPrice  },
+    high: { index: highIdx, time: Number(highCandle.time), price: highCandle.high },
+    low:  { index: lowIdx,  time: Number(lowCandle.time),  price: lowCandle.low  },
   };
 }
 
@@ -168,7 +224,7 @@ function detectConfluence(
  */
 export function useAutoFibDetection(
   candles: Candle[],
-  visibleRange: { from: number; to: number } | null,
+  visibleRange: { from: number; to: number; fromIndex?: number; toIndex?: number } | null,
   settings: AutoFibSettings
 ): AutoFibResult {
   return useMemo(() => {
@@ -177,9 +233,7 @@ export function useAutoFibDetection(
     if (candles.length === 0) return empty;
 
     // Determine which candles are "visible" for anchor detection
-    const anchorCandles = visibleRange
-      ? candles.filter(c => Number(c.time) >= visibleRange.from && Number(c.time) <= visibleRange.to)
-      : candles.slice(-Math.max(settings.swingLookback * 2, 40));
+    const anchorCandles = sliceVisibleCandles(candles, visibleRange, settings);
 
     if (anchorCandles.length < 2) return empty;
 
