@@ -2,23 +2,22 @@
  * Volume EMA Overlay (v1)
  *
  * Maps per-candle volume relative to its EMA onto the price scale, signed
- * by buy/sell pressure (candle close vs open). Elevated volume is pushed
- * clear of the candle wicks — not stuck inside the bar body:
+ * by buy/sell pressure (candle close vs open).
+ *
+ * Quiet / average volume tracks candle mid.
+ * Elevated volume is wick-anchored and pushed past the bar:
  *
  *   r         = volume / EMA(volume, period)
  *   magnitude = clamp(max(0, log2(r)), 0, clampSigmas)  // 0 at/avg, 1@2×, 2@4×
- *   // only elevated vol leaves mid; quiet vol → 0 → tracks mid
- *   distance  = (wickClearAtr + magnitude * k) * ATR     // when magnitude > 0
- *   rawOff    = sign * distance   // +buy above, −sell below
- *   offset    = double-EMA(rawOff, smoothPeriod)  // heavy smooth, less jagged
- *   plot      = mid + offset
+ *   pad       = (wickClearAtr + magnitude * k) * ATR     // distance *beyond* the wick
+ *   buy  → plot target = high + pad
+ *   sell → plot target = low  - pad
+ *   quiet → mid
  *
- * With defaults (k=1.75, wickClear=0.65, smooth=10): sustained 4× still clears
- * the wick; single-bar noise is heavily damped.
+ * Offset from mid is double-EMA smoothed for a clean path, then elevated bars
+ * are re-clamped so the printed point still clears that bar's wick.
  *
- * Spike markers fire when raw ratio >= spikeRatio (default 2×):
- *   buy → green triangle under the bar
- *   sell → red triangle above the bar
+ * Spike markers fire when raw ratio >= spikeRatio (default 2×).
  */
 
 export interface VolumeEmaCandle {
@@ -70,13 +69,13 @@ export interface VolumeEmaOverlayOptions {
   /** ATR period. Default 14. */
   atrPeriod?: number;
   /**
-   * Extra distance per log2(vol ratio) unit, in ATRs.
-   * 2× (mag=1) and 4× (mag=2) stack on top of wickClearAtr. Default 1.75.
+   * Extra distance *beyond the wick* per log2(vol ratio) unit, in ATRs.
+   * 2× (mag=1) and 4× (mag=2) stack on top of wickClearAtr. Default 2.
    */
   k?: number;
   /**
-   * Base clearance past mid (in ATRs) whenever volume is elevated, so the
-   * path clears the typical wick before magnitude adds more. Default 0.65.
+   * Base clearance past the candle wick (high for buy / low for sell) in ATRs
+   * whenever volume is elevated. Default 0.9.
    */
   wickClearAtr?: number;
   /** Clamp elevated log2(ratio) to this many "sigmas". Default 4. */
@@ -100,8 +99,8 @@ export interface VolumeEmaOverlayOptions {
 export const DEFAULT_VOLUME_EMA_OPTIONS = {
   volumeEmaPeriod: 20,
   atrPeriod: 14,
-  k: 1.75,
-  wickClearAtr: 0.65,
+  k: 2,
+  wickClearAtr: 0.9,
   clampSigmas: 4,
   smoothPeriod: 10,
   spikeRatio: 2,
@@ -109,10 +108,10 @@ export const DEFAULT_VOLUME_EMA_OPTIONS = {
 } as const;
 
 /**
- * Distance from mid (in price) for an elevated volume reading.
- * Always includes wick clearance so 2×/4× prints outside the bar, not inside it.
+ * How far past the wick extremity (high/low) to place the path for a given
+ * elevated magnitude. 0 when volume is not elevated.
  */
-export function elevatedDistanceFromMid(
+export function padBeyondWick(
   magnitude: number,
   atr: number,
   k: number,
@@ -120,6 +119,31 @@ export function elevatedDistanceFromMid(
 ): number {
   if (!(magnitude > 0) || !(atr > 0)) return 0;
   return (wickClearAtr + magnitude * k) * atr;
+}
+
+/**
+ * Raw signed offset from mid so elevated buy clears above high and sell
+ * clears below low.
+ *
+ * buy:  (high - mid) + pad  → value = high + pad
+ * sell: (low  - mid) - pad  → value = low  - pad
+ * quiet: 0                    → value = mid
+ */
+export function rawOffsetFromMid(
+  candle: Pick<VolumeEmaCandle, 'high' | 'low'>,
+  magnitude: number,
+  direction: VolumeEmaSpikeDirection,
+  atr: number,
+  k: number,
+  wickClearAtr: number,
+): number {
+  const mid = (candle.high + candle.low) / 2;
+  if (!(magnitude > 0)) return 0;
+  const pad = padBeyondWick(magnitude, atr, k, wickClearAtr);
+  if (direction === 'buy') {
+    return candle.high - mid + pad;
+  }
+  return candle.low - mid - pad;
 }
 
 function emaSeries(values: number[], period: number): (number | null)[] {
@@ -285,6 +309,8 @@ export function calculateVolumeEmaOverlay(
     logRatio: number;
     rawOffset: number;
     candle: VolumeEmaCandle;
+    magnitude: number;
+    direction: VolumeEmaSpikeDirection;
   };
 
   const raw: Raw[] = [];
@@ -301,12 +327,10 @@ export function calculateVolumeEmaOverlay(
     const magnitude = elevatedLogMagnitude(ratio, clampSigmas);
     const direction = pressureDirection(c);
     const sign = direction === 'buy' ? 1 : -1;
-    // Signed elevated contribution: low vol → 0 (mid); high buy up / high sell down
     const logRatio = sign * magnitude;
     const mid = (c.high + c.low) / 2;
-    // Push clear of wicks: base clearance + magnitude * k * ATR (not just mag*ATR from mid)
-    const distance = elevatedDistanceFromMid(magnitude, atrVal, k, wickClearAtr);
-    const rawOffset = sign * distance;
+    // Wick-anchored: buy above high, sell below low, quiet at mid
+    const rawOffset = rawOffsetFromMid(c, magnitude, direction, atrVal, k, wickClearAtr);
 
     if (!Number.isFinite(rawOffset) || !Number.isFinite(mid)) continue;
 
@@ -318,13 +342,14 @@ export function calculateVolumeEmaOverlay(
       logRatio,
       rawOffset,
       candle: c,
+      magnitude,
+      direction,
     });
   }
 
   if (raw.length === 0) return [];
 
-  // Double-EMA on the signed offset: first pass kills bar noise, second pass
-  // softens residual corners so the path reads as a smooth band, not a zigzag.
+  // Double-EMA on the signed offset for a smooth path
   const once = emaDense(
     raw.map((r) => r.rawOffset),
     smoothPeriod,
@@ -334,12 +359,32 @@ export function calculateVolumeEmaOverlay(
   const points: VolumeEmaPoint[] = [];
   for (let i = 0; i < raw.length; i++) {
     const r = raw[i];
-    const offset = smoothOffsets[i];
-    const value = r.mid + offset;
+    let offset = smoothOffsets[i];
+    let value = r.mid + offset;
+
+    // Elevated bars: force the printed point past *this* candle's wick so
+    // smoothing cannot pull a 2×/4× reading back inside the bar.
+    if (r.magnitude > 0) {
+      const pad = padBeyondWick(r.magnitude, r.atr, k, wickClearAtr);
+      if (r.direction === 'buy') {
+        const floor = r.candle.high + pad;
+        if (value < floor) {
+          value = floor;
+          offset = value - r.mid;
+        }
+      } else {
+        const ceiling = r.candle.low - pad;
+        if (value > ceiling) {
+          value = ceiling;
+          offset = value - r.mid;
+        }
+      }
+    }
+
     if (!Number.isFinite(value)) continue;
 
     const spike: VolumeEmaSpikeDirection | null =
-      r.ratio >= spikeRatio ? pressureDirection(r.candle) : null;
+      r.ratio >= spikeRatio ? r.direction : null;
 
     points.push({
       time: r.time,

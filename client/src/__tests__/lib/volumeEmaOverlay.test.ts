@@ -3,8 +3,8 @@ import {
   buildVolumeEmaSpikes,
   calculateVolumeEmaOverlay,
   DEFAULT_VOLUME_EMA_OPTIONS,
-  elevatedDistanceFromMid,
   elevatedLogMagnitude,
+  padBeyondWick,
   formatVolumeEmaLabel,
   type VolumeEmaCandle,
 } from '@/lib/indicators/volumeEmaOverlay';
@@ -56,17 +56,18 @@ describe('elevatedLogMagnitude', () => {
   });
 });
 
-describe('elevatedDistanceFromMid', () => {
+describe('padBeyondWick', () => {
   it('is 0 when magnitude is 0', () => {
-    expect(elevatedDistanceFromMid(0, 10, 1.75, 0.65)).toBe(0);
+    expect(padBeyondWick(0, 10, 2, 0.9)).toBe(0);
   });
 
-  it('clears well past a half-wick at 4× (mag=2)', () => {
+  it('grows with magnitude so 4× pads more past the wick than 2×', () => {
     const atr = 10;
-    // half of a 1×ATR candle is 5; 4× distance must exceed that by a lot
-    const dist4x = elevatedDistanceFromMid(2, atr, 1.75, 0.65);
-    expect(dist4x).toBeCloseTo((0.65 + 2 * 1.75) * atr, 5); // 41.5
-    expect(dist4x).toBeGreaterThan(atr * 2); // past typical wick from mid
+    const pad2x = padBeyondWick(1, atr, 2, 0.9);
+    const pad4x = padBeyondWick(2, atr, 2, 0.9);
+    expect(pad2x).toBeCloseTo((0.9 + 2) * atr, 5);
+    expect(pad4x).toBeCloseTo((0.9 + 4) * atr, 5);
+    expect(pad4x).toBeGreaterThan(pad2x);
   });
 });
 
