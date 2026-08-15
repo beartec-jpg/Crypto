@@ -1,3 +1,4 @@
+import { resolveDrawingColor, resolveLabelColor } from '@/constants/drawingColors';
 import { ColorPicker } from './shared/ColorPicker';
 import { OpacitySlider } from './shared/OpacitySlider';
 import { LineWidthSelector } from './shared/LineWidthSelector';
@@ -10,7 +11,7 @@ interface TrendlineSettingsProps {
 }
 
 export function TrendlineSettings({ drawing, onUpdate }: TrendlineSettingsProps) {
-  const color = drawing.style?.color || '#facc15';
+  const color = resolveDrawingColor(drawing.style);
   const opacity = drawing.style?.opacity ?? 1;
   const lineWidth = drawing.style?.lineWidth || 2;
   const lineStyle = drawing.style?.lineStyle || 'solid';
@@ -19,7 +20,7 @@ export function TrendlineSettings({ drawing, onUpdate }: TrendlineSettingsProps)
   const label = drawing.style?.label || '';
   const showLabel = drawing.style?.showLabel !== false;
   const labelPosition = drawing.style?.labelPosition || 'right';
-  const labelColor = drawing.style?.labelColor || '#ffffff';
+  const labelColor = resolveLabelColor(drawing.style);
   const labelSize = drawing.style?.labelSize || 'md';
 
   // Helper to wrap updates in { style: { ... } } format

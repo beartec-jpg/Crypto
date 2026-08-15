@@ -1,3 +1,7 @@
+import {
+  resolveChannelBoundaryColor,
+  resolveChannelLevelSwatch,
+} from '@/constants/drawingColors';
 import { ColorPicker } from './shared/ColorPicker';
 import { OpacitySlider } from './shared/OpacitySlider';
 import { LineStyleSelector } from './shared/LineStyleSelector';
@@ -60,7 +64,7 @@ export function ChannelSettings({ drawing, onUpdate }: ChannelSettingsProps) {
           {CHANNEL_LEVELS.map(level => {
             const isVisible = !isLevelHidden(level);
             const customLabel = customLabels[level] || '';
-            const levelColor = levelColors[level] || '#facc15';
+            const levelColor = resolveChannelLevelSwatch(level, drawing.style);
             
             return (
               <div key={level} className="flex items-center gap-2 text-xs">
@@ -108,7 +112,7 @@ export function ChannelSettings({ drawing, onUpdate }: ChannelSettingsProps) {
           <div className="flex items-center gap-2 text-xs">
             <span className="text-gray-400 w-16">Top:</span>
             <ColorPicker
-              color={boundaryColors.top || '#ef4444'}
+              color={resolveChannelBoundaryColor('top', drawing.style)}
               onChange={(c) => {
                 handleUpdate({ boundaryColors: { ...boundaryColors, top: c } });
               }}
@@ -127,7 +131,7 @@ export function ChannelSettings({ drawing, onUpdate }: ChannelSettingsProps) {
           <div className="flex items-center gap-2 text-xs">
             <span className="text-gray-400 w-16">Bottom:</span>
             <ColorPicker
-              color={boundaryColors.bottom || '#22c55e'}
+              color={resolveChannelBoundaryColor('bottom', drawing.style)}
               onChange={(c) => {
                 handleUpdate({ boundaryColors: { ...boundaryColors, bottom: c } });
               }}

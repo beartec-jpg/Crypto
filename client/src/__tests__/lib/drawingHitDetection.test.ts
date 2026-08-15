@@ -3,11 +3,11 @@ import { findDrawingsNearClick, type Drawing } from '../../lib/drawingHitDetecti
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 
 // Mock chart and series
-const createMockChart = () => {
+const createMockChart = (chartWidth = 800) => {
   return {
     timeScale: () => ({
       timeToCoordinate: (time: number) => time, // Simple 1:1 mapping for testing
-      width: () => 800,
+      width: () => chartWidth,
       getVisibleRange: () => ({ from: 0, to: 800 }),
     }),
   } as unknown as IChartApi;
@@ -223,6 +223,24 @@ describe('drawingHitDetection', () => {
       expect(hits[0].drawingId).toBe('fib7');
     });
   });
+
+
+    it('should detect click between fib levels within the fib span', () => {
+      const drawing: Drawing = {
+        id: 'fib-band',
+        type: 'fib_retracement',
+        points: [
+          { time: 100, price: 100 },
+          { time: 200, price: 200 },
+        ],
+        style: { autoTrack: false },
+      };
+
+      // Midway between levels in Y, between anchors in X (still near a level with larger radius)
+      const hits = findDrawingsNearClick(150, 152, [drawing], chart, series);
+      expect(hits).toHaveLength(1);
+      expect(hits[0].drawingId).toBe('fib-band');
+    });
 
   describe('Trend-based Fibonacci', () => {
     it('should detect click on trend fib extension level', () => {

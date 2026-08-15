@@ -1,4 +1,5 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
+import { DEFAULT_DRAWING_COLOR } from '@/constants/drawingColors';
 import { authenticatedApiRequest } from '@/lib/apiAuth';
 import { queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
@@ -13,7 +14,7 @@ interface Drawing {
   [key: string]: any;
 }
 
-const DEFAULT_DRAWING_STYLE = { color: '#3b82f6', lineWidth: 2 };
+const DEFAULT_DRAWING_STYLE = { color: DEFAULT_DRAWING_COLOR, lineWidth: 2 };
 
 export function useDrawingsPersistence(symbol: string, interval: string) {
   const { toast } = useToast();

@@ -15,6 +15,8 @@ interface UseOscillatorPanelReturn {
   miniCount: number;
   totalHeight: number;
   toggleOscillator: (id: string, enabled: boolean) => void;
+  /** Enable oscillator in docked bottom panel (not mini badge). */
+  toggleDockedOscillator: (id: string, enabled: boolean) => void;
   popoutOscillator: (id: string) => void;
   toggleMini: (id: string) => void;
   cycleMode: (id: string) => void;
@@ -102,6 +104,19 @@ export function useOscillatorPanel(): UseOscillatorPanelReturn {
     }
   }, []);
 
+  /** Turn on as full bottom histogram panel (e.g. per-candle Volume). */
+  const toggleDockedOscillator = useCallback((oscillator: string, enabled: boolean) => {
+    if (enabled) {
+      setSelectedOscillators(prev => { const next = new Set(prev); next.add(oscillator); return next; });
+      setMiniOscillators(prev => { const next = new Set(prev); next.delete(oscillator); return next; });
+      setPoppedOutOscillators(prev => { const next = new Set(prev); next.delete(oscillator); return next; });
+    } else {
+      setSelectedOscillators(prev => { const next = new Set(prev); next.delete(oscillator); return next; });
+      setMiniOscillators(prev => { const next = new Set(prev); next.delete(oscillator); return next; });
+      setPoppedOutOscillators(prev => { const next = new Set(prev); next.delete(oscillator); return next; });
+    }
+  }, []);
+
   const cycleMode = useCallback((oscillatorId: string) => {
     // Mini (left) → middle popout → full-width docked → mini (left)
     if (!selectedOscillators.has(oscillatorId)) return;
@@ -127,6 +142,7 @@ export function useOscillatorPanel(): UseOscillatorPanelReturn {
     miniCount,
     totalHeight,
     toggleOscillator,
+    toggleDockedOscillator,
     popoutOscillator,
     toggleMini,
     cycleMode,

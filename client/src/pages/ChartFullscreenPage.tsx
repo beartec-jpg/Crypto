@@ -395,11 +395,11 @@ export function ChartFullscreenPage({
         title: 'Defaults saved',
         description: `Default style saved for ${payload.tool.replace('_', ' ')}`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('[Drawing] Failed to save drawing defaults:', error);
       toast({
         title: 'Failed to save defaults',
-        description: error instanceof Error ? error.message : 'Could not save default style. Please try again.',
+        description: error instanceof Error ? error.message : (error?.message || 'Could not save default style. Please try again.'),
         variant: 'destructive',
       });
     }
@@ -422,11 +422,11 @@ export function ChartFullscreenPage({
         title: 'Defaults reset',
         description: `Saved default removed for ${tool.replace('_', ' ')}`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('[Drawing] Failed to reset drawing defaults:', error);
       toast({
         title: 'Failed to reset defaults',
-        description: 'Could not reset default style. Please try again.',
+        description: error?.message || 'Could not reset default style. Check auth / DB connection.',
         variant: 'destructive',
       });
     }
@@ -2433,6 +2433,9 @@ export function ChartFullscreenPage({
         const indices = simplifyForLine(rawPx);
         // indices are guaranteed within [0, allPoints.length-1] by simplifyForLine
         finalPoints = indices.map((i) => allPoints[i]).filter(Boolean);
+      } else if (currentMode === 'arrow') {
+        // Straight line (start → end only) with arrow head rendered at tip
+        finalPoints = [allPoints[0], allPoints[allPoints.length - 1]];
       } else {
         // curve_assisted
         const indices = simplifyForCurve(rawPx);
@@ -2806,7 +2809,11 @@ export function ChartFullscreenPage({
           freeDrawMode={freeDrawMode}
           onFreeDrawModeChange={setFreeDrawMode}
           selectedOscillators={oscillatorPanel.selectedOscillators}
-          onToggleOscillator={oscillatorPanel.toggleOscillator}
+          onToggleOscillator={(id, enabled) => {
+            // Volume as bottom histogram pane (not mini badge)
+            if (id === 'volume') oscillatorPanel.toggleDockedOscillator('volume', enabled);
+            else oscillatorPanel.toggleOscillator(id, enabled);
+          }}
           onOpenOscillators={() => oscillatorPanel.setShowSelector(true)}
           emaShow={indicators.ema.show}
           onEmaToggle={indicators.ema.setShow}
@@ -2919,6 +2926,8 @@ export function ChartFullscreenPage({
           vpEnabled={vpSettings.settings.enabled}
           onToggleVolumeProfile={(enabled) => vpSettings.updateSettings({ enabled })}
           onOpenVolumeProfileSettings={() => setShowVPModal(true)}
+          volumeEnabled={oscillatorPanel.selectedOscillators.has('volume')}
+          onToggleVolume={(enabled) => oscillatorPanel.toggleDockedOscillator('volume', enabled)}
           liquidityHeatmapEnabled={lhSettings.settings.enabled}
           onToggleLiquidityHeatmap={(enabled) => lhSettings.updateSettings({ enabled })}
           onOpenLiquidityHeatmapSettings={() => setShowLHModal(true)}
@@ -3204,7 +3213,10 @@ export function ChartFullscreenPage({
         showOscillatorSelector={oscillatorPanel.showSelector}
         onCloseOscillatorSelector={() => oscillatorPanel.setShowSelector(false)}
         selectedOscillators={oscillatorPanel.selectedOscillators}
-        onToggleOscillator={oscillatorPanel.toggleOscillator}
+        onToggleOscillator={(id, enabled) => {
+          if (id === 'volume') oscillatorPanel.toggleDockedOscillator('volume', enabled);
+          else oscillatorPanel.toggleOscillator(id, enabled);
+        }}
         oscillatorConfigs={oscillatorModalConfigs}
         onUpdateOscillatorConfig={handleUpdateOscillatorConfig}
         showSmcModal={showSmcModal}

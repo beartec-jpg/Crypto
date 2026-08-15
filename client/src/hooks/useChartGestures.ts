@@ -10,18 +10,8 @@ const GESTURE_CONFIG = {
   DRAG_PROXIMITY_PX: 50,
 };
 
-// Snap window sizes based on visible candles - returns number of candles to search (radius from center)
+// Tap mode snap window (quick-tap only — long-press crosshair does not snap)
 // User requested thresholds: <50→1, <150→3, <300→5, <500→7, <700→9, >=700→11
-const getCrosshairSnapRadius = (visibleCandles: number): number => {
-  if (visibleCandles >= 700) return 5; // 11 candle window
-  if (visibleCandles >= 500) return 4; // 9 candle window
-  if (visibleCandles >= 300) return 3; // 7 candle window
-  if (visibleCandles >= 150) return 2; // 5 candle window  
-  if (visibleCandles >= 50) return 1;  // 3 candle window
-  return 0; // 1 candle (single) for <50 visible
-};
-
-// Tap mode uses same thresholds as crosshair for consistency
 const getTapSnapRadius = (visibleCandles: number): number => {
   if (visibleCandles >= 700) return 5; // 11 candle window
   if (visibleCandles >= 500) return 4; // 9 candle window
@@ -472,13 +462,8 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       timeStr = String(time);
     }
     
-    // Calculate window size for display
-    const visibleCount = getVisibleCandleCount();
-    const radius = getCrosshairSnapRadius(visibleCount);
-    const windowSize = radius * 2 + 1;
-    
-    // Position and update the label with window size
-    labelRef.current.textContent = `📍 ${timeStr} | $${formatPriceDynamic(price)} | ${windowSize} candle${windowSize > 1 ? 's' : ''}`;
+    // Long-press places at crosshair (no candle snap) — label shows exact coords only
+    labelRef.current.textContent = `📍 ${timeStr} | $${formatPriceDynamic(price)}`;
     labelRef.current.style.left = `${localX}px`;
     labelRef.current.style.top = `${localY}px`;
     labelRef.current.style.display = 'block';
@@ -578,7 +563,9 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
     onPreviewPointRef.current?.(null);
   };
 
-  // Commit point from stored crosshair position with window snapping
+  // Commit from long-press crosshair: always use crosshair coords (no candle snap).
+  // Magnet/auto-snap remains for quick-tap only — user expects the crosshair to drop
+  // exactly where it is, not latch to OHLC.
   const commitFromCrosshair = () => {
     const coords = crosshairCoordsRef.current;
     if (!coords) {
@@ -586,36 +573,15 @@ export function useChartGestures(options: UseChartGesturesOptions): UseChartGest
       return;
     }
 
-    console.log('[Gesture] Committing from crosshair:', coords, 'autoSnap:', autoSnapEnabledRef.current);
-
-    // If auto-snap is disabled, use raw coords
-    if (!autoSnapEnabledRef.current) {
-      console.log('[Gesture] COMMIT POINT (no snap - raw):', { time: coords.time, price: coords.price });
-      onPointCommitRef.current({ time: coords.time, price: coords.price, snapType: 'none' });
-      deactivateCrosshairMode();
-      return;
-    }
-
-    // Use the STORED logical index (not recalculated) to prevent drift
-    const centerIdx = coords.logicalIdx;
-
-    // Get snap radius based on visible candles (crosshair mode)
-    const visibleCount = getVisibleCandleCount();
-    const radius = getCrosshairSnapRadius(visibleCount);
-    
-    console.log('[Gesture] Crosshair snap - visible:', visibleCount, 'radius:', radius, 'centerIdx:', centerIdx);
-
-    // Find best snap point in window using 2D screen distance
-    const snapPoint = findSnapPointInWindow(centerIdx, radius, coords.price, coords.localX, coords.localY);
-    
-    if (snapPoint) {
-      console.log('[Gesture] COMMIT POINT (snapped):', snapPoint);
-      onPointCommitRef.current(snapPoint);
-    } else {
-      // Fallback to raw coords
-      console.warn('[Gesture] No snap point found, using raw coords');
-      onPointCommitRef.current({ time: coords.time, price: coords.price, snapType: 'none' });
-    }
+    console.log('[Gesture] COMMIT POINT (crosshair raw, no snap):', {
+      time: coords.time,
+      price: coords.price,
+    });
+    onPointCommitRef.current({
+      time: coords.time,
+      price: coords.price,
+      snapType: 'none',
+    });
     
     deactivateCrosshairMode();
   };

@@ -1,3 +1,4 @@
+import { resolveDrawingColor } from '@/constants/drawingColors';
 import { ColorPicker } from './shared/ColorPicker';
 import { OpacitySlider } from './shared/OpacitySlider';
 import { LineWidthSelector } from './shared/LineWidthSelector';
@@ -9,7 +10,7 @@ interface VerticalLineSettingsProps {
 }
 
 export function VerticalLineSettings({ drawing, onUpdate }: VerticalLineSettingsProps) {
-  const color = drawing.style?.color || '#facc15';
+  const color = resolveDrawingColor(drawing.style);
   const opacity = drawing.style?.opacity ?? 1;
   const lineWidth = drawing.style?.lineWidth || 1;
   const lineStyle = drawing.style?.lineStyle || 'solid';

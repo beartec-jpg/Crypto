@@ -1,3 +1,4 @@
+import { resolveDrawingColor } from '@/constants/drawingColors';
 import { ColorPicker } from './shared/ColorPicker';
 import { OpacitySlider } from './shared/OpacitySlider';
 
@@ -7,7 +8,7 @@ interface TextSettingsProps {
 }
 
 export function TextSettings({ drawing, onUpdate }: TextSettingsProps) {
-  const color = drawing.style?.color || '#facc15';
+  const color = resolveDrawingColor(drawing.style);
   const opacity = drawing.style?.opacity ?? 1;
   const text = drawing.style?.text || 'Text';
   const fontSize = drawing.style?.fontSize ?? 14;

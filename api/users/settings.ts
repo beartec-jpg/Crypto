@@ -143,8 +143,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const settingsResult = await pool.query(SETTINGS_SELECT, [cryptoUserId]);
 
       if (settingsResult.rows.length === 0) {
+        // Return defaults with 200 so the client can save without treating empty as error
         console.log(`⚠️ No settings found for user ${cryptoUserId}, returning defaults`);
-        return res.json(DEFAULT_SETTINGS);
+        return res.json({ ...DEFAULT_SETTINGS });
       }
 
       const row = settingsResult.rows[0];

@@ -57,9 +57,23 @@ export function useUserSettings() {
         ...partial,
       };
 
-      const response = await authenticatedApiRequest('PUT', '/api/users/settings', newSettings);
-      const data = await response.json();
-      return data;
+      try {
+        const response = await authenticatedApiRequest('PUT', '/api/users/settings', newSettings);
+        const data = await response.json();
+        return data as UserSettingsResponse;
+      } catch (error) {
+        if (error instanceof ApiError) {
+          // Re-throw with a clearer message for UI toasts
+          const detail =
+            error.status === 401
+              ? 'Not signed in (401). Please log in again.'
+              : error.status === 404
+                ? 'Account not linked to settings (404). Re-login or contact support.'
+                : error.message;
+          throw new ApiError(detail, error.status);
+        }
+        throw error;
+      }
     },
     onMutate: async (partial) => {
       // Optimistically update local state
@@ -79,7 +93,11 @@ export function useUserSettings() {
         queryClient.setQueryData(['user-settings'], context.previous);
       }
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Prefer server payload so drawingDefaults.byTool matches DB
+      if (data && typeof data === 'object') {
+        queryClient.setQueryData(['user-settings'], data);
+      }
       queryClient.invalidateQueries({ queryKey: ['user-settings'] });
     },
   });

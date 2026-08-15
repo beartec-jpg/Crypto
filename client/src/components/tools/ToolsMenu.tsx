@@ -16,6 +16,9 @@ interface ToolsMenuProps {
   vpEnabled: boolean;
   onToggleVolumeProfile: (enabled: boolean) => void;
   onOpenVolumeProfileSettings: () => void;
+  /** Per-candle volume histogram (bottom pane) — not Volume Profile */
+  volumeEnabled: boolean;
+  onToggleVolume: (enabled: boolean) => void;
   liquidityHeatmapEnabled: boolean;
   onToggleLiquidityHeatmap: (enabled: boolean) => void;
   onOpenLiquidityHeatmapSettings: () => void;
@@ -39,6 +42,8 @@ export function ToolsMenu({
   vpEnabled,
   onToggleVolumeProfile,
   onOpenVolumeProfileSettings,
+  volumeEnabled,
+  onToggleVolume,
   liquidityHeatmapEnabled,
   onToggleLiquidityHeatmap,
   onOpenLiquidityHeatmapSettings,
@@ -57,6 +62,7 @@ export function ToolsMenu({
     divergenceScannerEnabled ||
     htfBiasEnabled ||
     vpEnabled ||
+    volumeEnabled ||
     liquidityHeatmapEnabled ||
     gdsMiniBadgeEnabled ||
     rewindEnabled;
@@ -170,7 +176,7 @@ export function ToolsMenu({
                 Volume Profile
               </div>
               <div className="text-xs text-slate-400 leading-tight">
-                VP settings and visibility
+                Horizontal volume by price (POC/VAH/VAL)
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -195,6 +201,23 @@ export function ToolsMenu({
                 </Button>
               }
             </div>
+          </div>
+
+          <div className="flex items-center justify-between py-1.5 px-1">
+            <div className="min-w-0 mr-3">
+              <div className="text-sm font-medium text-slate-100 leading-tight">
+                Volume
+              </div>
+              <div className="text-xs text-slate-400 leading-tight">
+                Per-candle volume bars under the chart
+              </div>
+            </div>
+            <Switch
+              checked={volumeEnabled}
+              onCheckedChange={onToggleVolume}
+              className="shrink-0 data-[state=checked]:bg-blue-600"
+              data-testid="switch-volume-indicator"
+            />
           </div>
 
           <div className="flex items-center justify-between py-1.5 px-1">

@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
+import { sanitizeDrawingStyleColors } from '@/constants/drawingColors';
 import type { Drawing } from '@/types/drawing';
 
 interface UseHydratedDrawingsParams {
@@ -51,12 +52,27 @@ export function useHydratedDrawings({ persistedDrawings, ewLabels, setDrawings }
           if (!drawing.id) return null;
           const drawingType = drawing.drawingType || drawing.drawing_type || drawing.tool || 'trendline';
           if (drawingType === 'elliott_wave') return null;
+          const rawStyle =
+            typeof drawing.style === 'string'
+              ? (() => {
+                  try {
+                    return JSON.parse(drawing.style);
+                  } catch {
+                    return {};
+                  }
+                })()
+              : drawing.style || {};
+          const mergedStyle = sanitizeDrawingStyleColors({
+            color: rawStyle?.color || '#3b82f6',
+            lineWidth: rawStyle?.lineWidth || 2,
+            ...rawStyle,
+          });
           return {
             id: drawing.id,
             type: drawingType,
             timeframe: drawing.timeframe,
             points: drawing.coordinates?.points || drawing.points || [],
-            style: { color: drawing.style?.color || '#3b82f6', lineWidth: drawing.style?.lineWidth || 2, ...drawing.style },
+            style: mergedStyle,
           };
         } catch {
           return null;

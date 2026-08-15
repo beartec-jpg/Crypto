@@ -1,5 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import { Time } from 'lightweight-charts';
+import { DEFAULT_DRAWING_COLOR } from '@/constants/drawingColors';
 import { useToast } from '@/hooks/use-toast';
 import { getAutoColor } from '@/lib/chart/colorUtils';
 import { GesturePoint } from '@/hooks/useChartGestures';
@@ -115,7 +116,8 @@ export function DrawingRenderer({
       if (newPoints.length >= requiredPoints) {
         const toolDefaults = drawingDefaultsByTool?.[currentTool] || {};
         const useAutoColor = toolDefaults.autoColor ?? autoColorEnabledRef.current;
-        const fallbackColor = toolDefaults.color || '#3b82f6';
+        // Keep create-path default in sync with edit-panel resolveDrawingColor
+        const fallbackColor = toolDefaults.color || DEFAULT_DRAWING_COLOR;
         const color = useAutoColor ? getAutoColor(newPoints, candles) : fallbackColor;
         
         // Load saved defaults for fib and channel tools

@@ -14,6 +14,7 @@ const MODES: { mode: FreeDrawMode; label: string; title: string }[] = [
   { mode: 'free', label: '~', title: 'Free – exact freehand stroke' },
   { mode: 'line_assisted', label: '⟋', title: 'Line assisted – straightens segments' },
   { mode: 'curve_assisted', label: '∪', title: 'Curve assisted – smooth curves' },
+  { mode: 'arrow', label: '→', title: 'Arrow – straight line with arrow head' },
 ];
 
 const PRESET_COLORS = [

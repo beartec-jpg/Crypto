@@ -1,3 +1,7 @@
+import {
+  resolveElliottImpulseColor,
+  resolveElliottZigzagColor,
+} from '@/constants/drawingColors';
 import { ColorPicker } from './shared/ColorPicker';
 import { OpacitySlider } from './shared/OpacitySlider';
 import { LineWidthSelector } from './shared/LineWidthSelector';
@@ -11,11 +15,11 @@ interface ElliottWaveSettingsProps {
 export function ElliottWaveSettings({ drawing, onUpdate }: ElliottWaveSettingsProps) {
   const style = drawing.style || {};
 
-  const impulseColor   = style.impulseColor   ?? style.color ?? '#00CED1';
+  const impulseColor   = resolveElliottImpulseColor(style);
   const impulseOpacity = style.impulseOpacity  ?? style.opacity ?? 1;
   const impulseWidth   = style.impulseWidth    ?? style.lineWidth ?? 2;
   const impulseStyle   = style.impulseStyle    ?? 'solid';
-  const zigzagColor    = style.zigzagColor     ?? '#808080';
+  const zigzagColor    = resolveElliottZigzagColor(style);
   const zigzagOpacity  = style.zigzagOpacity   ?? 1;
   const zigzagStyle    = style.zigzagStyle     ?? 'dashed';
   const degreeLabel    = style.degreeLabel     ?? 'Minor';

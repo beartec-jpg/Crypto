@@ -1,3 +1,8 @@
+import {
+  FIB_LEVEL_COLORS,
+  resolveFibLevelColor,
+  sanitizeDrawingStyleColors,
+} from '@/constants/drawingColors';
 import { ColorPicker } from './shared/ColorPicker';
 import { OpacitySlider } from './shared/OpacitySlider';
 import { useFibLevelValues } from './shared/useFibLevelValues';
@@ -10,17 +15,19 @@ interface FibRetracementSettingsProps {
 const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.272, 1.618];
 
 export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSettingsProps) {
-  const hiddenLevels = drawing.style?.hiddenLevels || [];
-  const customLabels = drawing.style?.customLabels || {};
-  const levelColors = drawing.style?.levelColors || {};
-  const customValues = drawing.style?.customValues || {};
-  const opacity = drawing.style?.opacity ?? 1;
-  const hideLabels = drawing.style?.hideLabels || false;
+  // Drop all-white levelColors maps so swatches match multi-color chart lines
+  const style = sanitizeDrawingStyleColors(drawing.style || {}) || {};
+  const hiddenLevels = style.hiddenLevels || [];
+  const customLabels = style.customLabels || {};
+  const levelColors = style.levelColors || {};
+  const customValues = style.customValues || {};
+  const opacity = style.opacity ?? 1;
+  const hideLabels = style.hideLabels || false;
 
   // Helper to wrap updates in { style: { ... } } format
   const handleUpdate = (styleUpdates: any) => {
     console.log('[FibRetracementSettings] Updating with:', styleUpdates);
-    onUpdate({ style: { ...drawing.style, ...styleUpdates } });
+    onUpdate({ style: { ...style, ...drawing.style, ...styleUpdates } });
   };
 
   const { getLevelDisplayPct, onDraftChange, commitLevelValue } = useFibLevelValues(
@@ -40,8 +47,12 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
         <div className="space-y-2">
           {FIB_LEVELS.map(level => {
             const isVisible = !isLevelHidden(level);
-            const customLabel = customLabels[level] || '';
-            const levelColor = levelColors[level] || '#ffffff';
+            const customLabel = customLabels[level] || customLabels[String(level)] || '';
+            // Always resolve via shared map so tabs match chart (ignore bogus white maps)
+            const levelColor =
+              resolveFibLevelColor(level, style) ||
+              FIB_LEVEL_COLORS[level] ||
+              '#3b82f6';
             
             return (
               <div key={level} className="flex items-center gap-2 text-xs">
@@ -101,7 +112,7 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
           <div className="flex items-center gap-2 text-xs">
             <input
               type="checkbox"
-              checked={drawing.style?.autoTrack ?? true}
+              checked={style?.autoTrack ?? true}
               onChange={(e) => {
                 handleUpdate({ autoTrack: e.target.checked });
               }}
@@ -113,9 +124,9 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => handleUpdate({ extendLeft: !(drawing.style?.extendLeft ?? false) })}
+              onClick={() => handleUpdate({ extendLeft: !(style?.extendLeft ?? false) })}
               className={`flex-1 px-3 py-1.5 rounded text-xs transition-colors ${
-                (drawing.style?.extendLeft ?? false)
+                (style?.extendLeft ?? false)
                   ? 'bg-cyan-600 text-white'
                   : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
               }`}
@@ -125,12 +136,12 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
             <button
               type="button"
               onClick={() => {
-                const newExtendRight = !(drawing.style?.extendRight ?? false);
+                const newExtendRight = !(style?.extendRight ?? false);
                 // Turning on extend right deselects auto track
                 handleUpdate({ extendRight: newExtendRight, ...(newExtendRight ? { autoTrack: false } : {}) });
               }}
               className={`flex-1 px-3 py-1.5 rounded text-xs transition-colors ${
-                (drawing.style?.extendRight ?? false)
+                (style?.extendRight ?? false)
                   ? 'bg-cyan-600 text-white'
                   : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
               }`}
@@ -148,7 +159,7 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
           <button
             onClick={() => handleUpdate({ labelPosition: 'left' })}
             className={`flex-1 px-3 py-1.5 rounded text-xs transition-colors ${
-              (drawing.style?.labelPosition || 'right') === 'left'
+              (style?.labelPosition || 'right') === 'left'
                 ? 'bg-cyan-600 text-white' 
                 : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
             }`}
@@ -159,7 +170,7 @@ export function FibRetracementSettings({ drawing, onUpdate }: FibRetracementSett
           <button
             onClick={() => handleUpdate({ labelPosition: 'right' })}
             className={`flex-1 px-3 py-1.5 rounded text-xs transition-colors ${
-              (drawing.style?.labelPosition || 'right') === 'right'
+              (style?.labelPosition || 'right') === 'right'
                 ? 'bg-cyan-600 text-white' 
                 : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
             }`}

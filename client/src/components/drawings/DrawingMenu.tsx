@@ -134,6 +134,7 @@ const FREE_DRAW_MODES: { mode: FreeDrawMode; label: string; title: string }[] = 
   { mode: 'free', label: '~', title: 'Free – exact stroke' },
   { mode: 'line_assisted', label: '⟋', title: 'Line assisted – straightens segments' },
   { mode: 'curve_assisted', label: '∪', title: 'Curve assisted – smooth curves' },
+  { mode: 'arrow', label: '→', title: 'Arrow – straight line with arrow head' },
 ];
 
 export function DrawingMenu({ activeTool, onSelectTool, freeDrawMode = 'line_assisted', onFreeDrawModeChange, className }: DrawingMenuProps) {

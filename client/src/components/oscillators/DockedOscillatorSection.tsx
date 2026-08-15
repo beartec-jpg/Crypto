@@ -157,7 +157,11 @@ export function DockedOscillatorSection({
               <span>Volume</span>
               <span className="text-slate-600 ml-2">tap to cycle</span>
             </div>
-            <VolumePanel data={oscillatorData.volume} mainChartVisibleRange={mainChartVisibleRange} />
+            <VolumePanel
+              data={oscillatorData.volume}
+              mainChartVisibleRange={mainChartVisibleRange}
+              syncWithMainChart
+            />
           </div>
         )}
 

@@ -26,19 +26,24 @@ export function VolumePanel({
       width: containerRef.current.clientWidth, 
       height: containerRef.current.clientHeight || height, 
       layout: {
-        background: { type: ColorType.Solid, color: '#1e293b' },
+        background: { type: ColorType.Solid, color: '#0f172a' },
         textColor: '#94a3b8',
       },
       grid: {
-        vertLines: { color: '#334155' },
-        horzLines: { color: '#334155' },
+        vertLines: { color: '#1e293b' },
+        horzLines: { color: '#1e293b' },
       },
       timeScale: {
-        borderColor: '#475569',
+        borderColor: '#334155',
         timeVisible: true,
+        visible: true,
       },
       rightPriceScale: {
-        borderColor: '#475569',
+        borderColor: '#334155',
+        scaleMargins: { top: 0.1, bottom: 0 },
+      },
+      crosshair: {
+        mode: 0,
       },
     });
 

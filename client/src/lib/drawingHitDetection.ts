@@ -14,6 +14,8 @@ export interface HitResult {
 }
 
 const CLICK_RADIUS = 20; // pixels
+/** Fib levels: slightly larger hit radius */
+const FIB_CLICK_RADIUS = 28;
 const FIB_LABEL_HIT_WIDTH = 160;
 const FIB_LABEL_HIT_HEIGHT = 16;
 
@@ -243,7 +245,12 @@ export function findDrawingsNearClick(
   for (const drawing of drawings) {
     const distance = getDistanceToDrawing(clickX, clickY, drawing, chart, series);
     
-    if (distance !== null && distance <= CLICK_RADIUS) {
+    if (distance === null) continue;
+    const radius =
+      drawing.type === 'fib_retracement' || drawing.type === 'trend_fib'
+        ? FIB_CLICK_RADIUS
+        : CLICK_RADIUS;
+    if (distance <= radius) {
       hits.push({
         drawingId: drawing.id,
         drawingType: drawing.type,

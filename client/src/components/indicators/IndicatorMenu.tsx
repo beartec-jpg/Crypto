@@ -18,6 +18,7 @@ const OSCILLATORS = [
   { id: 'macd', name: 'MACD', description: 'MACD (12, 26, 9)' },
   { id: 'waddah', name: 'Waddah Explosion', description: 'MACD momentum + volatility explosion' },
   { id: 'cmf', name: 'CMF', description: 'Chaikin Money Flow (20)' },
+  { id: 'volume', name: 'Volume', description: 'Per-candle volume bars (bottom pane)' },
   { id: 'stochRsi', name: 'Stoch RSI', description: 'Stochastic RSI (14)' },
   { id: 'tsi', name: 'TSI', description: 'True Strength Index (25, 13, 7)' },
   { id: 'obv', name: 'OBV', description: 'On Balance Volume' },

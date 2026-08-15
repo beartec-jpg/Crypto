@@ -1,3 +1,8 @@
+import {
+  TREND_FIB_LEVEL_COLORS,
+  resolveTrendFibLevelColor,
+  sanitizeDrawingStyleColors,
+} from '@/constants/drawingColors';
 import { ColorPicker } from './shared/ColorPicker';
 import { OpacitySlider } from './shared/OpacitySlider';
 import { useFibLevelValues } from './shared/useFibLevelValues';
@@ -10,17 +15,18 @@ interface TrendFibSettingsProps {
 const TREND_FIB_LEVELS = [0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618, 2.0, 2.618, 3.618, 4.236];
 
 export function TrendFibSettings({ drawing, onUpdate }: TrendFibSettingsProps) {
-  const hiddenLevels = drawing.style?.hiddenLevels || [];
-  const customLabels = drawing.style?.customLabels || {};
-  const levelColors = drawing.style?.levelColors || {};
-  const customValues = drawing.style?.customValues || {};
-  const opacity = drawing.style?.opacity ?? 1;
-  const hideLabels = drawing.style?.hideLabels || false;
+  const style = sanitizeDrawingStyleColors(drawing.style || {}) || {};
+  const hiddenLevels = style.hiddenLevels || [];
+  const customLabels = style.customLabels || {};
+  const levelColors = style.levelColors || {};
+  const customValues = style.customValues || {};
+  const opacity = style.opacity ?? 1;
+  const hideLabels = style.hideLabels || false;
 
   // Helper to wrap updates in { style: { ... } } format
   const handleUpdate = (styleUpdates: any) => {
     console.log('[TrendFibSettings] Updating with:', styleUpdates);
-    onUpdate({ style: { ...drawing.style, ...styleUpdates } });
+    onUpdate({ style: { ...style, ...drawing.style, ...styleUpdates } });
   };
 
   const { getLevelDisplayPct, onDraftChange, commitLevelValue } = useFibLevelValues(
@@ -40,8 +46,11 @@ export function TrendFibSettings({ drawing, onUpdate }: TrendFibSettingsProps) {
         <div className="space-y-2">
           {TREND_FIB_LEVELS.map(level => {
             const isVisible = !isLevelHidden(level);
-            const customLabel = customLabels[level] || '';
-            const levelColor = levelColors[level] || '#ffffff';
+            const customLabel = customLabels[level] || customLabels[String(level)] || '';
+            const levelColor =
+              resolveTrendFibLevelColor(level, style) ||
+              TREND_FIB_LEVEL_COLORS[level] ||
+              '#3b82f6';
             
             return (
               <div key={level} className="flex items-center gap-2 text-xs">

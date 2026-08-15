@@ -9,6 +9,13 @@ import type {
   SeriesType,
   Coordinate
 } from 'lightweight-charts';
+import {
+  DEFAULT_DRAWING_COLOR,
+  resolveChannelBoundaryColor,
+  resolveFibLevelColor,
+  resolveTrendFibLevelColor,
+  resolveChannelLevelColor,
+} from '@/constants/drawingColors';
 
 interface DrawingPoint {
   time: number;
@@ -48,7 +55,7 @@ interface DrawingStyle {
   showBackground?: boolean;
   __openColorPicker?: string | null;
   /** For free_draw drawings: the rendering sub-mode */
-  drawSubMode?: 'free' | 'line_assisted' | 'curve_assisted';
+  drawSubMode?: 'free' | 'line_assisted' | 'curve_assisted' | 'arrow';
 }
 
 type RequestUpdateCallback = () => void;
@@ -903,17 +910,6 @@ export class RectanglePrimitive implements ISeriesPrimitive<Time> {
 }
 
 const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.272, 1.618];
-const FIB_COLORS: Record<number, string> = {
-  0: '#787B86',
-  0.236: '#F7525F',
-  0.382: '#FF9800',
-  0.5: '#4CAF50',
-  0.618: '#089981',
-  0.786: '#9C27B0',
-  1: '#787B86',
-  1.272: '#3179F5',
-  1.618: '#E91E63'
-};
 
 class FibRetracementRenderer implements IPrimitivePaneRenderer {
   private _point1: DrawingPoint;
@@ -1011,9 +1007,8 @@ class FibRetracementRenderer implements IPrimitivePaneRenderer {
         const y = this._series!.priceToCoordinate(levelPrice);
         if (y === null) return;
 
-        // Check for per-level color from style, then fall back to default FIB_COLORS, then global color
-        const levelColors = this._style.levelColors || {};
-        const baseColor = levelColors[level] || FIB_COLORS[level] || this._style.color;
+        // Check for per-level color from style, then shared FIB map, then global color
+        const baseColor = resolveFibLevelColor(level, this._style);
         const color = applyOpacity(baseColor, opacity);
         
         ctx.beginPath();
@@ -1186,19 +1181,6 @@ export class FibRetracementPrimitive implements ISeriesPrimitive<Time> {
 }
 
 const TREND_FIB_LEVELS = [0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618, 2.0, 2.618, 3.618, 4.236];
-const TREND_FIB_COLORS: Record<number, string> = {
-  0.382: '#FF9800',
-  0.5: '#4CAF50',
-  0.618: '#089981',
-  0.786: '#9C27B0',
-  1.0: '#787B86',
-  1.272: '#3179F5',
-  1.618: '#E91E63',
-  2.0: '#F7525F',
-  3.618: '#FF9800',
-  4.236: '#9C27B0',
-  2.618: '#3179F5'
-};
 class TrendFibRenderer implements IPrimitivePaneRenderer {
   private _points: DrawingPoint[];
   private _style: DrawingStyle;
@@ -1277,8 +1259,7 @@ class TrendFibRenderer implements IPrimitivePaneRenderer {
         const y = this._series!.priceToCoordinate(levelPrice);
         if (y === null) return;
 
-        const levelColors = this._style.levelColors || {};
-        const baseColor = levelColors[level] || TREND_FIB_COLORS[level] || this._style.color;
+        const baseColor = resolveTrendFibLevelColor(level, this._style);
         const color = applyOpacity(baseColor, opacity);
         
         ctx.beginPath();
@@ -1503,8 +1484,16 @@ class ChannelRenderer implements IPrimitivePaneRenderer {
 
       const autoColor = this._style.autoColor ?? true;
       const boundaryColors = this._style.boundaryColors || {};
-      const topColor = boundaryColors.top || (autoColor ? '#ef4444' : (this._style.color || '#3b82f6'));
-      const bottomColor = boundaryColors.bottom || (autoColor ? '#22c55e' : (this._style.color || '#3b82f6'));
+      const topColor = resolveChannelBoundaryColor('top', {
+        ...this._style,
+        autoColor,
+        boundaryColors,
+      });
+      const bottomColor = resolveChannelBoundaryColor('bottom', {
+        ...this._style,
+        autoColor,
+        boundaryColors,
+      });
 
       // Apply boundary line style
       applyLineStyle(ctx, this._style.lineStyle);
@@ -1560,7 +1549,6 @@ class ChannelRenderer implements IPrimitivePaneRenderer {
 
       // Draw internal level lines (25%, 50%, 75%)
       const hiddenLevels = this._style.hiddenLevels || [];
-      const levelColors = this._style.levelColors || {};
       const priceDiff = topPrice - bottomPrice;
       
       // Apply internal line style
@@ -1574,7 +1562,7 @@ class ChannelRenderer implements IPrimitivePaneRenderer {
         const y = this._series!.priceToCoordinate(levelPrice);
         if (y === null) return;
 
-        const levelColor = levelColors[level] || 'rgba(255, 255, 255, 0.5)';
+        const levelColor = resolveChannelLevelColor(level, this._style);
         ctx.beginPath();
         ctx.strokeStyle = levelColor;
         ctx.lineWidth = 1;
@@ -1968,7 +1956,7 @@ class NumberLabelRenderer implements IPrimitivePaneRenderer {
       const fontSize = this._style.fontSize || 13;
       const opacity = this._style.opacity !== undefined ? this._style.opacity : 1;
       const radius = Math.max(fontSize, NUMBER_LABEL_MIN_RADIUS);
-      const color = this._style.color || '#3b82f6';
+      const color = this._style.color || DEFAULT_DRAWING_COLOR;
       const fillColor = applyOpacity(color, opacity);
 
       // Draw filled circle
@@ -2116,7 +2104,7 @@ class FreeDrawRenderer implements IPrimitivePaneRenderer {
     if (coords.length < 2) return;
 
     const opacity = this._style.opacity !== undefined ? this._style.opacity : 1;
-    const color = applyOpacity(this._style.color || '#3b82f6', opacity);
+    const color = applyOpacity(this._style.color || DEFAULT_DRAWING_COLOR, opacity);
     const lineWidth = this._style.lineWidth || 2;
     const drawSubMode = this._style.drawSubMode;
 
@@ -2147,7 +2135,7 @@ class FreeDrawRenderer implements IPrimitivePaneRenderer {
           ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
         }
       } else {
-        // Polyline (free / line_assisted)
+        // Polyline (free / line_assisted / arrow)
         ctx.moveTo(coords[0].x, coords[0].y);
         for (let i = 1; i < coords.length; i++) {
           ctx.lineTo(coords[i].x, coords[i].y);
@@ -2155,6 +2143,31 @@ class FreeDrawRenderer implements IPrimitivePaneRenderer {
       }
 
       ctx.stroke();
+
+      // Arrow head on stroke end (straight-line style + head)
+      if (drawSubMode === 'arrow' && coords.length >= 2) {
+        const tip = coords[coords.length - 1];
+        const prev = coords[coords.length - 2];
+        const dx = tip.x - prev.x;
+        const dy = tip.y - prev.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const ux = dx / len;
+        const uy = dy / len;
+        const headLen = 6 + lineWidth * 2.5;
+        const headWidth = 4 + lineWidth * 1.5;
+        const baseX = tip.x - ux * headLen;
+        const baseY = tip.y - uy * headLen;
+        const px = -uy * headWidth;
+        const py = ux * headWidth;
+
+        ctx.beginPath();
+        ctx.fillStyle = color;
+        ctx.moveTo(tip.x, tip.y);
+        ctx.lineTo(baseX + px, baseY + py);
+        ctx.lineTo(baseX - px, baseY - py);
+        ctx.closePath();
+        ctx.fill();
+      }
 
       // Selection endpoint handles
       if (this._isSelected) {
