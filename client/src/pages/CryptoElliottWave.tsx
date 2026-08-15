@@ -2674,6 +2674,8 @@ export default function CryptoElliottWave() {
   const localTier = isAdmin ? 'elite' : rawTier; // Admin gets unrestricted elite access
   const authReady = useEnsureAuthReady();
   const { toast } = useToast();
+  // Scope all user-owned query caches so account switches never show another user's data
+  const userScope = user?.id ?? (isDevelopment ? 'dev' : 'signed-out');
   
   usePageViewTracking('crypto-elliott-wave');
   
@@ -2905,18 +2907,23 @@ export default function CryptoElliottWave() {
   const authAndSubReady = authReady.ready && !authLoading && !subLoading;
   const hasElliottAccess = isDevelopment || isAdmin || (authAndSubReady && isAuthenticated && canUseElliottFeatures);
 
-  // Fetch saved drawings from database
+  // Fetch saved drawings from database (keyed by user so caches never cross accounts)
+  const drawingsQueryKey = ['/api/crypto/chart-drawings', userScope, symbol, timeframe] as const;
   const { data: savedDrawings = [], refetch: refetchDrawings } = useQuery<any[]>({
-    queryKey: ['/api/crypto/chart-drawings', symbol, timeframe],
+    queryKey: drawingsQueryKey,
     queryFn: async () => {
       const response = await authenticatedApiRequest('GET', `/api/crypto/chart-drawings?symbol=${symbol}&timeframe=${timeframe}`);
       return response.json();
     },
-    enabled: isAuthenticated && !authLoading && !!symbol && !!timeframe,
+    enabled: isAuthenticated && !authLoading && !!user?.id && !!symbol && !!timeframe,
   });
   
-  // Load saved drawings into state when data changes
+  // Load saved drawings into state when data changes; clear when signed out / user switch
   useEffect(() => {
+    if (!user?.id && !isDevelopment) {
+      setDrawings([]);
+      return;
+    }
     if (savedDrawings) {
       setDrawings(savedDrawings.map(d => ({
         id: d.id,
@@ -2925,7 +2932,7 @@ export default function CryptoElliottWave() {
         style: d.style || { color: '#3b82f6', lineWidth: 2 },
       })).filter(d => d.points.length > 0));
     }
-  }, [savedDrawings]);
+  }, [savedDrawings, user?.id]);
   
   // Save drawing mutation
   const saveDrawingMutation = useMutation({
@@ -3124,16 +3131,17 @@ export default function CryptoElliottWave() {
     }
   }, [historyData]);
 
-  // Fetch saved wave labels (with centralized auth)
+  // Fetch saved wave labels (scoped by user so caches never cross accounts)
   // In development: open access, no auth required
   // In production: require isAuthenticated, canUseElliott (elite OR addon), and authReady
+  const labelsQueryKey = ['/api/crypto/elliott-wave/labels', userScope, symbol, timeframe] as const;
   const { data: labelsData, refetch: refetchLabels } = useQuery<ElliottWaveLabel[]>({
-    queryKey: ['/api/crypto/elliott-wave/labels', symbol, timeframe],
+    queryKey: labelsQueryKey,
     queryFn: async () => {
       const response = await authenticatedApiRequest('GET', `/api/crypto/elliott-wave/labels?symbol=${symbol}&timeframe=${timeframe}`);
       return response.json();
     },
-    enabled: isDevelopment || (isAuthenticated && canUseElliottFeatures && authReady.ready),
+    enabled: isDevelopment || (isAuthenticated && !!user?.id && canUseElliottFeatures && authReady.ready),
   });
 
   // Helper to snap a time to the nearest valid candle time (for data layer)
@@ -3188,6 +3196,11 @@ export default function CryptoElliottWave() {
   }, [snapTimeToCandle]);
 
   useEffect(() => {
+    if (!user?.id && !isDevelopment) {
+      setSavedLabels([]);
+      savedLabelsRef.current = [];
+      return;
+    }
     if (labelsData && candles.length > 0) {
       // CRITICAL: Snap all point times to valid candle times when loading
       // This prevents markers from disappearing during pan/zoom
@@ -3201,16 +3214,17 @@ export default function CryptoElliottWave() {
       savedLabelsRef.current = labelsData;
       console.log('📋 Loaded labels from DB (unsnapped, waiting for candles)');
     }
-  }, [labelsData, candles, snapLabelPointTimes]);
+  }, [labelsData, candles, snapLabelPointTimes, user?.id]);
 
-  // Fetch ALL labels across all timeframes for Wave Stacking
+  // Fetch ALL labels across all timeframes for Wave Stacking (scoped by user)
+  const labelsAllQueryKey = ['/api/crypto/elliott-wave/labels-all', userScope, symbol] as const;
   const { data: allTimeframeLabels } = useQuery<ElliottWaveLabel[]>({
-    queryKey: ['/api/crypto/elliott-wave/labels-all', symbol],
+    queryKey: labelsAllQueryKey,
     queryFn: async () => {
       const response = await authenticatedApiRequest('GET', `/api/crypto/elliott-wave/labels?symbol=${symbol}&allTimeframes=true`);
       return response.json();
     },
-    enabled: isDevelopment || (isAuthenticated && canUseElliottFeatures && authReady.ready),
+    enabled: isDevelopment || (isAuthenticated && !!user?.id && canUseElliottFeatures && authReady.ready),
   });
 
   // Convert labels to stack entries for pattern analysis
@@ -3339,7 +3353,7 @@ export default function CryptoElliottWave() {
       // Update React Query cache directly instead of refetching
       // This prevents the race condition where refetch overwrites local state
       queryClient.setQueryData(
-        ['/api/crypto/elliott-wave/labels', symbol, timeframe],
+        labelsQueryKey,
         (oldData: ElliottWaveLabel[] | undefined) => {
           const existing = oldData || [];
           return [...existing, snappedLabel]; // Use snapped label in cache too
@@ -3347,7 +3361,7 @@ export default function CryptoElliottWave() {
       );
       
       // Invalidate all-timeframe query for Wave Stacking
-      queryClient.invalidateQueries({ queryKey: ['/api/crypto/elliott-wave/labels-all', symbol] });
+      queryClient.invalidateQueries({ queryKey: labelsAllQueryKey });
     },
     onError: (error: Error) => {
       if (error instanceof ApiError) {
@@ -3410,14 +3424,14 @@ export default function CryptoElliottWave() {
       
       // Update React Query cache directly instead of refetching
       queryClient.setQueryData(
-        ['/api/crypto/elliott-wave/labels', symbol, timeframe],
+        labelsQueryKey,
         (oldData: ElliottWaveLabel[] | undefined) => {
           return (oldData || []).filter(l => l.id !== deletedId);
         }
       );
       
       // Invalidate all-timeframe query for Wave Stacking
-      queryClient.invalidateQueries({ queryKey: ['/api/crypto/elliott-wave/labels-all', symbol] });
+      queryClient.invalidateQueries({ queryKey: labelsAllQueryKey });
     },
     onError: (error: Error) => {
       if (error instanceof ApiError) {
@@ -3465,7 +3479,7 @@ export default function CryptoElliottWave() {
       setDraggedPointIndex(null);
       refetchLabels();
       // Invalidate all-timeframe query for Wave Stacking
-      queryClient.invalidateQueries({ queryKey: ['/api/crypto/elliott-wave/labels-all', symbol] });
+      queryClient.invalidateQueries({ queryKey: labelsAllQueryKey });
     },
     onError: (error: Error) => {
       if (error instanceof ApiError) {
@@ -3501,14 +3515,14 @@ export default function CryptoElliottWave() {
   });
 
   // === Saved Projection Lines ===
-  // Query to fetch saved projection lines for current symbol
+  // Query to fetch saved projection lines for current symbol (scoped by user)
   const { data: savedProjectionLinesData, refetch: refetchProjectionLines } = useQuery<SavedProjectionLine[]>({
-    queryKey: ['/api/crypto/projection-lines', symbol],
+    queryKey: ['/api/crypto/projection-lines', userScope, symbol],
     queryFn: async () => {
       const response = await authenticatedApiRequest('GET', `/api/crypto/projection-lines?symbol=${symbol}`);
       return response.json();
     },
-    enabled: isDevelopment || (isAuthenticated && canUseElliottFeatures && authReady.ready),
+    enabled: isDevelopment || (isAuthenticated && !!user?.id && canUseElliottFeatures && authReady.ready),
   });
   
   const savedProjectionLinesFromDB = savedProjectionLinesData || [];

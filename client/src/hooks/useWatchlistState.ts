@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@clerk/clerk-react';
 import { authenticatedApiRequest } from '@/lib/apiAuth';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
@@ -6,10 +7,12 @@ import { formatTickerDisplay } from '@/lib/chart/priceUtils';
 
 export function useWatchlistState() {
   const { toast } = useToast();
+  const { userId, isLoaded } = useAuth();
+  const scope = userId ?? 'signed-out';
   
-  // Watchlist management - synced to database
+  // Watchlist management - synced to database, scoped by user
   const { data: watchlistData, refetch: refetchWatchlist } = useQuery({
-    queryKey: ['watchlist'],
+    queryKey: ['watchlist', scope],
     queryFn: async () => {
       console.log('📥 Fetching watchlist from API');
       const response = await authenticatedApiRequest('GET', '/api/crypto/watchlist');
@@ -17,17 +20,24 @@ export function useWatchlistState() {
       console.log('✅ Watchlist loaded:', data);
       return data;
     },
+    enabled: Boolean(isLoaded && userId),
     staleTime: Infinity,
   });
 
   const [watchlistTickers, setWatchlistTickers] = useState<string[]>([]);
 
-  // Sync watchlist from API to local state
+  // Sync watchlist from API to local state; clear when signed out / user switch
   useEffect(() => {
+    if (!userId) {
+      setWatchlistTickers([]);
+      return;
+    }
     if (watchlistData?.tickers) {
       setWatchlistTickers(watchlistData.tickers);
+    } else if (watchlistData && Array.isArray(watchlistData.tickers)) {
+      setWatchlistTickers(watchlistData.tickers);
     }
-  }, [watchlistData]);
+  }, [watchlistData, userId]);
 
   // Save watchlist mutation
   const saveWatchlistMutation = useMutation({

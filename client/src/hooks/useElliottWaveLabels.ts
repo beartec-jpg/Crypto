@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { useAuth } from '@clerk/clerk-react';
 import { queryClient } from '@/lib/queryClient';
 import { authenticatedApiRequest } from '@/lib/apiAuth';
 
@@ -9,8 +10,12 @@ interface UseElliottWaveLabelsParams {
 }
 
 export function useElliottWaveLabels({ symbol, timeframe, toast }: UseElliottWaveLabelsParams) {
+  const { userId, isLoaded } = useAuth();
+  const scope = userId ?? 'signed-out';
+  const labelsKey = ['/api/crypto/elliott-wave/labels', scope, symbol, timeframe] as const;
+
   const { data: ewLabels = [] } = useQuery<any[]>({
-    queryKey: ['/api/crypto/elliott-wave/labels', symbol, timeframe],
+    queryKey: labelsKey,
     queryFn: async () => {
       const response = await authenticatedApiRequest(
         'GET',
@@ -18,6 +23,7 @@ export function useElliottWaveLabels({ symbol, timeframe, toast }: UseElliottWav
       );
       return response.json();
     },
+    enabled: Boolean(isLoaded && userId && symbol && timeframe),
   });
 
   const saveEWLabelMutation = useMutation({
@@ -27,7 +33,7 @@ export function useElliottWaveLabels({ symbol, timeframe, toast }: UseElliottWav
     },
     onSuccess: () => {
       toast({ title: 'Wave saved', description: 'Elliott Wave saved successfully.' });
-      queryClient.invalidateQueries({ queryKey: ['/api/crypto/elliott-wave/labels', symbol, timeframe] });
+      queryClient.invalidateQueries({ queryKey: labelsKey });
     },
     onError: (error: any) => {
       toast({ title: 'Failed to save wave', description: error?.message, variant: 'destructive' });
@@ -40,7 +46,7 @@ export function useElliottWaveLabels({ symbol, timeframe, toast }: UseElliottWav
     },
     onSuccess: () => {
       toast({ title: 'Wave deleted successfully' });
-      queryClient.invalidateQueries({ queryKey: ['/api/crypto/elliott-wave/labels', symbol, timeframe] });
+      queryClient.invalidateQueries({ queryKey: labelsKey });
     },
     onError: (error: any) => {
       toast({ title: 'Failed to delete wave', description: error?.message, variant: 'destructive' });
@@ -48,7 +54,7 @@ export function useElliottWaveLabels({ symbol, timeframe, toast }: UseElliottWav
   });
 
   return {
-    ewLabels,
+    ewLabels: userId ? ewLabels : [],
     saveEWLabelMutation,
     deleteEWLabelMutation,
   };

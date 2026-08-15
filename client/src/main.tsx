@@ -8,6 +8,7 @@ import App from './App.tsx'
 import './index.css'
 import { setupPerformanceMonitoring } from '@/lib/monitoring'
 import { setupErrorTracking } from '@/lib/errorTracking'
+import { AuthQueryIsolation } from '@/components/AuthQueryIsolation'
 
 // Initialize monitoring
 setupPerformanceMonitoring();
@@ -94,6 +95,7 @@ function AppWrapper() {
     <ClerkProvider publishableKey={PUBLISHABLE_KEY!}>
       <WagmiProvider config={wagmiConfig}>
         <QueryClientProvider client={queryClient}>
+          <AuthQueryIsolation />
           <App />
         </QueryClientProvider>
       </WagmiProvider>

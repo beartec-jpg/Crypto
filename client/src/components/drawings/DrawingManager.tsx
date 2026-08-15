@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
+import { useAuth } from '@clerk/clerk-react';
 import { authenticatedApiRequest } from '@/lib/apiAuth';
 import { ISeriesApi } from 'lightweight-charts';
 import {
@@ -47,18 +48,33 @@ export function DrawingManager({
   onRefetchDrawings,
 }: DrawingManagerProps) {
   
-  // Load saved drawings from DB
+  const { userId } = useAuth();
+  const drawingsKey = [
+    '/api/crypto/chart-drawings',
+    userId ?? 'signed-out',
+    symbol,
+    interval,
+  ] as const;
+
+  // Load saved drawings from DB (scoped by user so caches never cross accounts)
   const { data: savedDrawings = [], refetch: refetchDrawings } = useQuery<any[]>({
-    queryKey: ['/api/crypto/chart-drawings', symbol, interval],
+    queryKey: drawingsKey,
     queryFn: async () => {
-      const response = await authenticatedApiRequest('GET', `/api/crypto/chart-drawings?symbol=${symbol}&timeframe=${interval}`);
+      const response = await authenticatedApiRequest(
+        'GET',
+        `/api/crypto/chart-drawings?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(interval)}`,
+      );
       return response.json();
     },
-    enabled: isAuthenticated && !authLoading && !!symbol && !!interval,
+    enabled: isAuthenticated && !authLoading && !!userId && !!symbol && !!interval,
   });
   
   // Load saved drawings into state when data changes
   useEffect(() => {
+    if (!userId) {
+      setDrawings([]);
+      return;
+    }
     // Always sync state with database, even for empty arrays
     if (savedDrawings) {
       setDrawings(savedDrawings.map(d => ({
@@ -69,7 +85,7 @@ export function DrawingManager({
         style: d.style || { color: '#3b82f6', lineWidth: 2 },
       })).filter(d => d.points.length > 0)); // Only keep drawings with valid points
     }
-  }, [savedDrawings, setDrawings]);
+  }, [savedDrawings, setDrawings, userId]);
   
   // Expose refetch to parent
   useEffect(() => {
