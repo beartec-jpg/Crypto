@@ -87,6 +87,7 @@ interface FullscreenChartActionToolbarProps {
   onToggleVolume: (enabled: boolean) => void;
   volumeEmaEnabled: boolean;
   onToggleVolumeEma: (enabled: boolean) => void;
+  onOpenVolumeEmaSettings: () => void;
   autoTrendlineEnabled: boolean;
   onToggleAutoTrendline: (enabled: boolean) => void;
   onOpenAutoTrendlineSettings: () => void;
@@ -171,6 +172,7 @@ export function FullscreenChartActionToolbar({
   onToggleVolume,
   volumeEmaEnabled,
   onToggleVolumeEma,
+  onOpenVolumeEmaSettings,
   autoTrendlineEnabled,
   onToggleAutoTrendline,
   onOpenAutoTrendlineSettings,
@@ -243,6 +245,7 @@ export function FullscreenChartActionToolbar({
         onToggleVolume={onToggleVolume}
         volumeEmaEnabled={volumeEmaEnabled}
         onToggleVolumeEma={onToggleVolumeEma}
+        onOpenVolumeEmaSettings={onOpenVolumeEmaSettings}
         autoTrendlineEnabled={autoTrendlineEnabled}
         onToggleAutoTrendline={onToggleAutoTrendline}
         onOpenAutoTrendlineSettings={onOpenAutoTrendlineSettings}

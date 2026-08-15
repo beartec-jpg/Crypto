@@ -4,6 +4,7 @@ import {
   LineSeries,
   ISeriesApi,
   LineType,
+  LineStyle,
   LineWidth,
   Time,
   createSeriesMarkers,
@@ -17,20 +18,32 @@ import {
   type VolumeEmaCandle,
   type VolumeEmaOverlayOptions,
 } from '@/lib/indicators/volumeEmaOverlay';
-
-/** Single continuous Vol EMA path */
-const COLOR_LINE = '#22d3ee';
-const COLOR_BUY_SPIKE = '#22c55e';
-const COLOR_SELL_SPIKE = '#ef4444';
+import type { VolumeEmaSettings } from '@/types/volumeEma';
+import { DEFAULT_VOLUME_EMA_SETTINGS } from '@/types/volumeEma';
 
 interface VolumeEmaOverlayProps {
   chart: IChartApi | null;
   candles: VolumeEmaCandle[];
   show: boolean;
+  /** Display settings (color / width / style). */
+  settings?: VolumeEmaSettings;
+  /** Math options override (optional). */
   options?: VolumeEmaOverlayOptions;
 }
 
-export function VolumeEmaOverlay({ chart, candles, show, options }: VolumeEmaOverlayProps) {
+function toLineStyle(style: VolumeEmaSettings['lineStyle']): LineStyle {
+  if (style === 'dashed') return LineStyle.Dashed;
+  if (style === 'dotted') return LineStyle.Dotted;
+  return LineStyle.Solid;
+}
+
+export function VolumeEmaOverlay({
+  chart,
+  candles,
+  show,
+  settings = DEFAULT_VOLUME_EMA_SETTINGS,
+  options,
+}: VolumeEmaOverlayProps) {
   const seriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
 
@@ -59,9 +72,10 @@ export function VolumeEmaOverlay({ chart, candles, show, options }: VolumeEmaOve
     try {
       if (!seriesRef.current) {
         seriesRef.current = chart.addSeries(LineSeries, {
-          color: COLOR_LINE,
-          lineWidth: 2 as LineWidth,
-          lineType: LineType.Curved,
+          color: settings.color,
+          lineWidth: Math.min(4, Math.max(1, settings.lineWidth)) as LineWidth,
+          lineStyle: toLineStyle(settings.lineStyle),
+          lineType: settings.curved ? LineType.Curved : LineType.Simple,
           priceLineVisible: false,
           lastValueVisible: true,
           title: 'Vol EMA',
@@ -69,7 +83,6 @@ export function VolumeEmaOverlay({ chart, candles, show, options }: VolumeEmaOve
         });
       }
       if (!markersRef.current && seriesRef.current) {
-        // autoScaleMarkers ensures offset triangles stay visible in the pane
         markersRef.current = createSeriesMarkers(seriesRef.current, [], {
           autoScale: true,
         });
@@ -96,7 +109,30 @@ export function VolumeEmaOverlay({ chart, candles, show, options }: VolumeEmaOve
         seriesRef.current = null;
       }
     };
-  }, [chart, show]);
+    // Recreate when curved changes (lineType is sticky at create for some versions)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chart, show, settings.curved]);
+
+  // Style updates without full teardown
+  useEffect(() => {
+    if (!seriesRef.current || !show) return;
+    try {
+      seriesRef.current.applyOptions({
+        color: settings.color,
+        lineWidth: Math.min(4, Math.max(1, settings.lineWidth)) as LineWidth,
+        lineStyle: toLineStyle(settings.lineStyle),
+        lineType: settings.curved ? LineType.Curved : LineType.Simple,
+      });
+    } catch {
+      /* disposed */
+    }
+  }, [
+    show,
+    settings.color,
+    settings.lineWidth,
+    settings.lineStyle,
+    settings.curved,
+  ]);
 
   // Push line + spike markers when candles / options change
   useEffect(() => {
@@ -122,9 +158,12 @@ export function VolumeEmaOverlay({ chart, candles, show, options }: VolumeEmaOve
         })),
       );
 
-      const spikes = buildVolumeEmaSpikes(candles, points, options);
+      if (!settings.showSpikes) {
+        markersRef.current?.setMarkers([]);
+        return;
+      }
 
-      // Price-positioned markers sit clear of candle wicks (pad via ATR)
+      const spikes = buildVolumeEmaSpikes(candles, points, options);
       const markers: SeriesMarker<Time>[] = spikes.map((s) => {
         const isBuy = s.direction === 'buy';
         return {
@@ -132,7 +171,7 @@ export function VolumeEmaOverlay({ chart, candles, show, options }: VolumeEmaOve
           position: 'atPriceMiddle' as const,
           price: s.markerPrice,
           shape: (isBuy ? 'arrowUp' : 'arrowDown') as 'arrowUp' | 'arrowDown',
-          color: isBuy ? COLOR_BUY_SPIKE : COLOR_SELL_SPIKE,
+          color: isBuy ? settings.buySpikeColor : settings.sellSpikeColor,
           size: 1,
           text: `${s.ratio.toFixed(1)}×`,
         };
@@ -148,7 +187,15 @@ export function VolumeEmaOverlay({ chart, candles, show, options }: VolumeEmaOve
     } catch {
       /* disposed */
     }
-  }, [chart, show, candles, options]);
+  }, [
+    chart,
+    show,
+    candles,
+    options,
+    settings.showSpikes,
+    settings.buySpikeColor,
+    settings.sellSpikeColor,
+  ]);
 
   return null;
 }

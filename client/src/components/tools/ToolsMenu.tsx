@@ -22,6 +22,7 @@ interface ToolsMenuProps {
   /** Volume relative to EMA, plotted on price scale around candle mid */
   volumeEmaEnabled: boolean;
   onToggleVolumeEma: (enabled: boolean) => void;
+  onOpenVolumeEmaSettings: () => void;
   autoTrendlineEnabled: boolean;
   onToggleAutoTrendline: (enabled: boolean) => void;
   onOpenAutoTrendlineSettings: () => void;
@@ -52,6 +53,7 @@ export function ToolsMenu({
   onToggleVolume,
   volumeEmaEnabled,
   onToggleVolumeEma,
+  onOpenVolumeEmaSettings,
   autoTrendlineEnabled,
   onToggleAutoTrendline,
   onOpenAutoTrendlineSettings,
@@ -242,12 +244,27 @@ export function ToolsMenu({
                 Buy pressure above mid, sell below; quiet vol returns to mid
               </div>
             </div>
-            <Switch
-              checked={volumeEmaEnabled}
-              onCheckedChange={onToggleVolumeEma}
-              className="shrink-0 data-[state=checked]:bg-blue-600"
-              data-testid="switch-volume-ema-overlay"
-            />
+            <div className="flex items-center gap-1">
+              <Switch
+                checked={volumeEmaEnabled}
+                onCheckedChange={onToggleVolumeEma}
+                className="shrink-0 data-[state=checked]:bg-blue-600"
+                data-testid="switch-volume-ema-overlay"
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
+                title="Volume EMA Settings"
+                onClick={() => {
+                  setOpen(false);
+                  onOpenVolumeEmaSettings();
+                }}
+                data-testid="btn-volume-ema-settings"
+              >
+                <Settings className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
 
           <div className="flex items-center justify-between py-1.5 px-1">

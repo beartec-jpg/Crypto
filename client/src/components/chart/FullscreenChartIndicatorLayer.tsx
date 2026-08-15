@@ -16,10 +16,12 @@ import { SuperTrendRenderer } from '@/components/indicators/SuperTrendRenderer';
 import { ElderImpulseRenderer } from '@/components/indicators/ElderImpulseRenderer';
 import { HighLowRenderer } from '@/components/indicators/HighLowRenderer';
 import { VolumeEmaOverlay } from '@/components/indicators/volume/VolumeEmaOverlay';
+import { VolumeEmaSettingsModal } from '@/components/modals/VolumeEmaSettingsModal';
 import { AutoTrendlineRenderer } from '@/components/indicators/AutoTrendlineRenderer';
 import { AutoTrendlineSettingsModal } from '@/components/modals/AutoTrendlineSettingsModal';
 import { DivergenceRenderer } from '@/components/divergence/DivergenceRenderer';
 import type { AutoTrendlineResult, AutoTrendlineSettings, AutoTrendlineTierId, AutoTrendlineTierSettings } from '@/types/autoTrendline';
+import type { VolumeEmaSettings } from '@/types/volumeEma';
 import { DivergenceBadgePopup } from '@/components/divergence/DivergenceBadgePopup';
 import { DivergenceSettingsModal } from '@/components/divergence/DivergenceSettingsModal';
 import { getConditionWeights } from '@/lib/conditionWeights';
@@ -90,6 +92,11 @@ interface FullscreenChartIndicatorLayerProps {
 
   highLowEnabled: boolean;
   volumeEmaEnabled: boolean;
+  volumeEmaSettings: VolumeEmaSettings;
+  showVolumeEmaModal: boolean;
+  onCloseVolumeEmaModal: () => void;
+  onVolumeEmaSettingsChange: (updates: Partial<VolumeEmaSettings>) => void;
+  onVolumeEmaReset?: () => void;
   autoTrendlineSettings: AutoTrendlineSettings;
   autoTrendlineResult: AutoTrendlineResult;
   showAutoTrendlineModal: boolean;
@@ -160,6 +167,11 @@ export function FullscreenChartIndicatorLayer({
   superTrendSettings,
   highLowEnabled,
   volumeEmaEnabled,
+  volumeEmaSettings,
+  showVolumeEmaModal,
+  onCloseVolumeEmaModal,
+  onVolumeEmaSettingsChange,
+  onVolumeEmaReset,
   autoTrendlineSettings,
   autoTrendlineResult,
   showAutoTrendlineModal,
@@ -334,6 +346,7 @@ export function FullscreenChartIndicatorLayer({
         chart={chart}
         candles={candles}
         show={volumeEmaEnabled}
+        settings={volumeEmaSettings}
       />
 
       <AutoTrendlineRenderer
@@ -395,6 +408,14 @@ export function FullscreenChartIndicatorLayer({
         onSettingsChange={onAutoTrendlineSettingsChange}
         onTierChange={onAutoTrendlineTierChange}
         onReset={onAutoTrendlineReset}
+      />
+
+      <VolumeEmaSettingsModal
+        isOpen={showVolumeEmaModal}
+        onClose={onCloseVolumeEmaModal}
+        settings={volumeEmaSettings}
+        onSettingsChange={onVolumeEmaSettingsChange}
+        onReset={onVolumeEmaReset}
       />
     </>
   );

@@ -61,6 +61,7 @@ import { useAutoFibSettings } from '@/hooks/useAutoFibSettings';
 import { useAutoFibDetection } from '@/hooks/useAutoFibDetection';
 import { useAutoTrendlineSettings } from '@/hooks/useAutoTrendlineSettings';
 import { useAutoTrendlineDetection } from '@/hooks/useAutoTrendlineDetection';
+import { useVolumeEmaSettings } from '@/hooks/useVolumeEmaSettings';
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
 import { calculateEMA } from '@/lib/indicators';
 import { useMultiTimeframeDivergenceScanner } from '@/hooks/useMultiTimeframeDivergenceScanner';
@@ -256,7 +257,7 @@ export function ChartFullscreenPage({
   const [selectedWavePatternType, setSelectedWavePatternType] = useState('impulse');
 
   const [highLowEnabled, setHighLowEnabled] = useState(false);
-  const [volumeEmaEnabled, setVolumeEmaEnabled] = useState(false);
+  const [showVolumeEmaModal, setShowVolumeEmaModal] = useState(false);
   const [showAutoTrendlineModal, setShowAutoTrendlineModal] = useState(false);
   const [divergenceScannerEnabled, setDivergenceScannerEnabled] = useState(false);
   const [selectedDivergencePoint, setSelectedDivergencePoint] = useState<DivergencePoint | null>(null);
@@ -758,6 +759,9 @@ export function ChartFullscreenPage({
     effectiveCandles as Array<{ time: number; open: number; high: number; low: number; close: number; volume?: number }>,
     autoTrendlineSettings.settings,
   );
+
+  // Hooks - Volume EMA overlay (display settings)
+  const volumeEmaSettings = useVolumeEmaSettings();
 
   // Hooks - SuperTrend
   const superTrendSettings = useSuperTrendSettings();
@@ -2168,7 +2172,7 @@ export function ChartFullscreenPage({
     });
 
     setDivergenceScannerEnabled(false);
-    setVolumeEmaEnabled(false);
+    volumeEmaSettings.updateSettings({ enabled: false });
     autoTrendlineSettings.updateSettings({ enabled: false });
     fvgSettings.updateSetting('enabled', false);
     obSettings.updateSetting('enabled', false);
@@ -2203,6 +2207,7 @@ export function ChartFullscreenPage({
     pdZoneSettings,
     autoFibSettings,
     autoTrendlineSettings,
+    volumeEmaSettings,
     superTrendSettings,
     vpSettings,
     lhSettings,
@@ -2942,8 +2947,9 @@ export function ChartFullscreenPage({
           onOpenVolumeProfileSettings={() => setShowVPModal(true)}
           volumeEnabled={oscillatorPanel.selectedOscillators.has('volume')}
           onToggleVolume={(enabled) => oscillatorPanel.toggleDockedOscillator('volume', enabled)}
-          volumeEmaEnabled={volumeEmaEnabled}
-          onToggleVolumeEma={setVolumeEmaEnabled}
+          volumeEmaEnabled={volumeEmaSettings.settings.enabled}
+          onToggleVolumeEma={(enabled) => volumeEmaSettings.updateSettings({ enabled })}
+          onOpenVolumeEmaSettings={() => setShowVolumeEmaModal(true)}
           autoTrendlineEnabled={autoTrendlineSettings.settings.enabled}
           onToggleAutoTrendline={(enabled) => autoTrendlineSettings.updateSettings({ enabled })}
           onOpenAutoTrendlineSettings={() => setShowAutoTrendlineModal(true)}
@@ -3071,7 +3077,12 @@ export function ChartFullscreenPage({
           superTrendData={superTrendData}
           superTrendSettings={superTrendSettings.settings}
           highLowEnabled={highLowEnabled}
-          volumeEmaEnabled={volumeEmaEnabled}
+          volumeEmaEnabled={volumeEmaSettings.settings.enabled}
+          volumeEmaSettings={volumeEmaSettings.settings}
+          showVolumeEmaModal={showVolumeEmaModal}
+          onCloseVolumeEmaModal={() => setShowVolumeEmaModal(false)}
+          onVolumeEmaSettingsChange={volumeEmaSettings.updateSettings}
+          onVolumeEmaReset={volumeEmaSettings.resetToDefaults}
           autoTrendlineSettings={autoTrendlineSettings.settings}
           autoTrendlineResult={autoTrendlineResult}
           showAutoTrendlineModal={showAutoTrendlineModal}
