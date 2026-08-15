@@ -56,6 +56,20 @@ describe('elevatedLogMagnitude', () => {
   });
 });
 
+describe('elevatedDistanceFromMid', () => {
+  it('is 0 when magnitude is 0', () => {
+    expect(elevatedDistanceFromMid(0, 10, 1.75, 0.65)).toBe(0);
+  });
+
+  it('clears well past a half-wick at 4× (mag=2)', () => {
+    const atr = 10;
+    // half of a 1×ATR candle is 5; 4× distance must exceed that by a lot
+    const dist4x = elevatedDistanceFromMid(2, atr, 1.75, 0.65);
+    expect(dist4x).toBeCloseTo((0.65 + 2 * 1.75) * atr, 5); // 41.5
+    expect(dist4x).toBeGreaterThan(atr * 2); // past typical wick from mid
+  });
+});
+
 describe('calculateVolumeEmaOverlay', () => {
   it('returns empty when not enough candles for EMA + ATR', () => {
     expect(calculateVolumeEmaOverlay(makeCandles(10))).toEqual([]);
@@ -141,21 +155,41 @@ describe('calculateVolumeEmaOverlay', () => {
     expect(p4.offset / p2.offset).toBeCloseTo(2, 0); // roughly double distance
   });
 
-  it('clamps extreme elevated ratios', () => {
+  it('clamps extreme elevated ratios and still clears wicks', () => {
     const candles = makeCandles(80, {
       volFn: (i) => (i === 75 ? 1e12 : 1000),
       biasFn: () => 'bull',
     });
     const clampSigmas = 2;
+    const k = 1.75;
+    const wickClearAtr = 0.65;
     const result = calculateVolumeEmaOverlay(candles, {
       clampSigmas,
-      k: 1,
+      k,
+      wickClearAtr,
       smoothPeriod: 1,
     });
     const spike = result.find((p) => p.time === candles[75].time);
     expect(spike).toBeDefined();
     expect(spike!.logRatio).toBe(clampSigmas);
-    expect(spike!.value).toBeCloseTo(spike!.mid + clampSigmas * spike!.atr, 5);
+    const expectedDist = (wickClearAtr + clampSigmas * k) * spike!.atr;
+    expect(spike!.value).toBeCloseTo(spike!.mid + expectedDist, 5);
+    // Above the high of the bar
+    expect(spike!.value).toBeGreaterThan(candles[75].high);
+  });
+
+  it('places 4× sell volume well below the candle wick', () => {
+    const candles = makeCandles(80, {
+      volFn: (i) => (i === 70 ? 4000 : 1000),
+      biasFn: () => 'bear',
+    });
+    const result = calculateVolumeEmaOverlay(candles, { smoothPeriod: 1 });
+    const sell = result.find((p) => p.time === candles[70].time)!;
+    expect(sell).toBeDefined();
+    expect(sell.ratio).toBeGreaterThan(3);
+    expect(sell.value).toBeLessThan(candles[70].low);
+    // Comfortable clearance past the low (not hugging the wick)
+    expect(candles[70].low - sell.value).toBeGreaterThan(sell.atr * 0.5);
   });
 
   it('respects k multiplier', () => {
@@ -180,12 +214,29 @@ describe('calculateVolumeEmaOverlay', () => {
       biasFn: () => 'bull',
     });
     const raw = calculateVolumeEmaOverlay(candles, { smoothPeriod: 1 });
-    const smooth = calculateVolumeEmaOverlay(candles, { smoothPeriod: 5 });
+    const smooth = calculateVolumeEmaOverlay(candles, { smoothPeriod: 10 });
     const r = raw.find((p) => p.time === candles[70].time)!;
     const s = smooth.find((p) => p.time === candles[70].time)!;
     expect(r).toBeDefined();
     expect(s).toBeDefined();
     expect(Math.abs(s.offset)).toBeLessThan(Math.abs(r.offset));
+  });
+
+  it('default double-smooth is smoother than period-1 path', () => {
+    const candles = makeCandles(100, {
+      volFn: (i) => 1000 + (i % 3) * 800 + (i % 7 === 0 ? 5000 : 0),
+      biasFn: (i) => (i % 2 === 0 ? 'bull' : 'bear'),
+    });
+    const jagged = calculateVolumeEmaOverlay(candles, { smoothPeriod: 1 });
+    const smooth = calculateVolumeEmaOverlay(candles); // defaults
+    const pathJitter = (pts: typeof jagged) => {
+      let s = 0;
+      for (let i = 1; i < pts.length; i++) {
+        s += Math.abs(pts[i].value - pts[i - 1].value);
+      }
+      return s;
+    };
+    expect(pathJitter(smooth)).toBeLessThan(pathJitter(jagged));
   });
 
   it('flags buy/sell spikes at ≥2× volume EMA', () => {
@@ -231,9 +282,10 @@ describe('calculateVolumeEmaOverlay', () => {
     expect(DEFAULT_VOLUME_EMA_OPTIONS).toEqual({
       volumeEmaPeriod: 20,
       atrPeriod: 14,
-      k: 1,
+      k: 1.75,
+      wickClearAtr: 0.65,
       clampSigmas: 4,
-      smoothPeriod: 5,
+      smoothPeriod: 2,
       spikeRatio: 2,
       spikeOffsetAtr: 0.85,
     });

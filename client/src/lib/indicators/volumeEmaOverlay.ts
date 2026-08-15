@@ -10,11 +10,11 @@
  *   // only elevated vol leaves mid; quiet vol → 0 → tracks mid
  *   distance  = (wickClearAtr + magnitude * k) * ATR     // when magnitude > 0
  *   rawOff    = sign * distance   // +buy above, −sell below
- *   offset    = light EMA(rawOff)
+ *   offset    = double-EMA(rawOff, smoothPeriod)  // heavy smooth, less jagged
  *   plot      = mid + offset
  *
- * With defaults (k=1.75, wickClear=0.65): a 4× sell sits ~4.15 ATR below mid
- * (well past the wick); 2× is ~2.4 ATR clear of the bar.
+ * With defaults (k=1.75, wickClear=0.65, smooth=10): sustained 4× still clears
+ * the wick; single-bar noise is heavily damped.
  *
  * Spike markers fire when raw ratio >= spikeRatio (default 2×):
  *   buy → green triangle under the bar
