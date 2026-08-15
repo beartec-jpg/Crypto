@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { detectAutoTrendlines, type AutoTrendlineCandle } from '@/lib/indicators/autoTrendline';
+import {
+  detectAutoTrendlines,
+  isLineExternal,
+  type AutoTrendlineCandle,
+} from '@/lib/indicators/autoTrendline';
 import { DEFAULT_AUTO_TRENDLINE_SETTINGS } from '@/types/autoTrendline';
 
-/** Rising channel-ish series with clear higher lows and lower highs on a downtrend segment. */
+/** Rising channel-ish series with clear higher lows. */
 function makeSupportUptrend(count: number): AutoTrendlineCandle[] {
   return Array.from({ length: count }, (_, i) => {
-    // Rising support: lows climb slowly
     const base = 100 + i * 0.15;
     const low = base + Math.sin(i / 7) * 0.3;
     const high = low + 2 + (i % 5 === 0 ? 0.5 : 0);
@@ -17,6 +20,22 @@ function makeSupportUptrend(count: number): AutoTrendlineCandle[] {
       high,
       low,
       close,
+      volume: 1000,
+    };
+  });
+}
+
+/** Perfect external support: lows sit exactly on a rising line; highs well above. */
+function makePerfectExternalSupport(count: number): AutoTrendlineCandle[] {
+  return Array.from({ length: count }, (_, i) => {
+    const low = 100 + i * 0.2;
+    const high = low + 3;
+    return {
+      time: 1_700_000_000 + i * 3600,
+      open: low + 1,
+      high,
+      low,
+      close: low + 1.5,
       volume: 1000,
     };
   });
