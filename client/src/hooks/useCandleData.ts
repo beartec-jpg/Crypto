@@ -72,7 +72,12 @@ export function useCandleData({
   }, [symbol, timeframe]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !symbol?.trim()) {
+      setCandles([]);
+      setIsLoading(false);
+      setError(null);
+      return;
+    }
 
     // Do NOT immediately clear candles on symbol/timeframe changes.
     // Keeping the previous bars visible prevents the chart from going blank
@@ -94,7 +99,7 @@ export function useCandleData({
       initialController.abort();
       clearInterval(interval);
     };
-  }, [symbol, timeframe, enabled, refreshInterval]);
+  }, [symbol, timeframe, enabled, refreshInterval, fetchCandles]);
 
   return {
     candles,

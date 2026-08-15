@@ -22,10 +22,12 @@ export function useIndicatorsData({
   symbol,
   timeframe,
 }: UseIndicatorsDataOptions): UseIndicatorsDataReturn {
+  const hasSymbol = Boolean(symbol && symbol.trim());
+
   const { candles, isLoading, error } = useCandleData({
     symbol,
     timeframe,
-    enabled: true,
+    enabled: hasSymbol,
     refreshInterval: 10000,
   });
 
@@ -37,7 +39,7 @@ export function useIndicatorsData({
   } = useGDSMarketMetrics({
     symbol,
     timeframe,
-    enabled: true,
+    enabled: hasSymbol,
   });
 
   // Generate mock CVD data when candles update

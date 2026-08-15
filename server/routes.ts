@@ -1298,17 +1298,17 @@ const requireCryptoAuth: RequestHandler = async (req: Request, res: Response, ne
         })
         .returning();
       
-      // Create default subscription with default watchlist
+      // New users start with an empty watchlist (no pre-seeded BTC/XRP/ETH)
       await db
         .insert(cryptoSubscriptions)
         .values({
           userId: payload.sub,
           tier: 'free',
-          selectedTickers: ['XRPUSDT', 'BTCUSDT', 'ETHUSDT'],
+          selectedTickers: [],
         })
         .onConflictDoNothing();
       
-      console.log(`✅ User created with default watchlist: ${payload.sub}`);
+      console.log(`✅ User created with empty watchlist: ${payload.sub}`);
     }
     // ===== END NEW CODE =====
     
@@ -7324,13 +7324,13 @@ Return ONLY valid JSON in this exact format:
         .limit(1);
       
       if (!watchlist) {
-        // Create default watchlist
-        console.log(`✅ Creating default watchlist for user ${userId}`);
+        // New users start empty — add tickers themselves
+        console.log(`✅ Creating empty watchlist for user ${userId}`);
         [watchlist] = await db
           .insert(userWatchlists)
           .values({
             userId,
-            tickers: ['XRPUSDT', 'BTCUSDT', 'ETHUSDT'],
+            tickers: [],
           })
           .returning();
       }
@@ -9072,7 +9072,7 @@ CRITICAL DATA RULES:
             const subRows = userRows.map(u => ({
               userId: u.id,
               tier: 'free' as const,
-              selectedTickers: ['XRPUSDT', 'BTCUSDT', 'ETHUSDT'],
+              selectedTickers: [] as string[],
             }));
             await db.insert(subsTable).values(subRows).onConflictDoNothing();
           }

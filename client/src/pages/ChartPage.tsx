@@ -9,15 +9,13 @@ export default function ChartPage() {
   const symbol = params.get('symbol') || 'XRPUSDT';
   const timeframe = params.get('timeframe') || '1h';
   
-  // Get watchlist from localStorage or default
+  // Get watchlist from localStorage (empty for new users — no pre-seeded majors)
   let watchlistTickers: string[];
   try {
-    watchlistTickers = JSON.parse(
-      localStorage.getItem('watchlistTickers') || '["XRPUSDT", "BTCUSDT", "ETHUSDT"]'
-    );
-  } catch (error) {
-    // Fall back to default if localStorage contains malformed JSON
-    watchlistTickers = ['XRPUSDT', 'BTCUSDT', 'ETHUSDT'];
+    watchlistTickers = JSON.parse(localStorage.getItem('watchlistTickers') || '[]');
+    if (!Array.isArray(watchlistTickers)) watchlistTickers = [];
+  } catch {
+    watchlistTickers = [];
   }
   
   const handleClose = () => {

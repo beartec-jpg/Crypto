@@ -33,8 +33,8 @@ export function CleanWatchlist({ onExpandChart, onSelectionChange, onWatchlistBi
   const watchlist = useWatchlistState();
   const biasSettings = useWatchlistBiasSettings();
 
-  // Which row in the table is selected
-  const [selectedSymbol, setSelectedSymbol] = useState('XRPUSDT');
+  // Selected row — empty until the user adds a ticker
+  const [selectedSymbol, setSelectedSymbol] = useState('');
 
   // Timeframe for watchlist bias calculations (drives TickerTable Select)
   const [tableTimeframe, setTableTimeframe] = useState<'1m' | '5m' | '15m' | '1h' | '4h' | '1d' | '1w' | '1M'>('1h');

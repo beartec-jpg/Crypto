@@ -22,30 +22,29 @@ import { useIndicatorsData } from '@/hooks/useIndicatorsData';
 import { useOscillatorPreferences, type OscillatorId, VALID_OSCILLATOR_IDS } from '@/hooks/useOscillatorPreferences';
 import { Link, useLocation } from 'wouter';
 
-// Default symbol and timeframe for demo
-const DEFAULT_SYMBOL = 'XRPUSDT';
 const DEFAULT_TIMEFRAME = '1h';
 
 export default function CryptoIndicatorsClean() {
   usePageViewTracking('Crypto Indicators');
   
   const [, navigate] = useLocation();
-  const [selectedSymbol, setSelectedSymbol] = useState(DEFAULT_SYMBOL);
+  // No default ticker — user picks from watchlist after adding
+  const [selectedSymbol, setSelectedSymbol] = useState('');
   const [selectedTimeframe, setSelectedTimeframe] = useState(DEFAULT_TIMEFRAME);
 
   // Persistent oscillator preferences from DB
   const { favoriteOscillators, isLoading: prefsLoading, updatePreferences } = useOscillatorPreferences();
 
-  // Local state initialised from persisted prefs once loaded; default to rsi+macd until data arrives
-  const [activeOscillators, setActiveOscillators] = useState<OscillatorId[]>(['rsi', 'macd']);
+  // No oscillators on by default for new users; hydrate from saved prefs when available
+  const [activeOscillators, setActiveOscillators] = useState<OscillatorId[]>([]);
   const [prefsInitialised, setPrefsInitialised] = useState(false);
+  const [watchlistTickers, setWatchlistTickers] = useState<string[]>([]);
 
   // Hydrate local state from persisted prefs exactly once after they load
   useEffect(() => {
     if (!prefsLoading && !prefsInitialised) {
-      if (favoriteOscillators.length > 0) {
-        setActiveOscillators(favoriteOscillators);
-      }
+      // Empty array is valid — new users start with nothing selected
+      setActiveOscillators(favoriteOscillators);
       setPrefsInitialised(true);
     }
   }, [prefsLoading, prefsInitialised, favoriteOscillators]);
@@ -70,9 +69,11 @@ export default function CryptoIndicatorsClean() {
     if (isInitialLoad) setIsInitialLoad(false);
   }, [isInitialLoad]);
 
-  // Fetch candle and CVD data
+  const watchlistHasTickers = watchlistTickers.length > 0;
+
+  // Fetch candle/CVD only when the watchlist has at least one ticker
   const { candles, cvdData, externalMetrics } = useIndicatorsData({
-    symbol: selectedSymbol,
+    symbol: watchlistHasTickers ? selectedSymbol : '',
     timeframe: selectedTimeframe,
   });
 
@@ -83,6 +84,7 @@ export default function CryptoIndicatorsClean() {
   }) => {
     setSelectedSymbol(context.symbol);
     setSelectedTimeframe(context.timeframe);
+    setWatchlistTickers(context.watchlist.filter(Boolean));
   }, []);
 
   // Handler to expand chart to fullscreen - navigate to chart page
@@ -201,6 +203,7 @@ export default function CryptoIndicatorsClean() {
             showPatternBacktest={false}
             activeOscillators={activeOscillators}
             onActiveOscillatorsChange={setActiveOscillators}
+            watchlistHasTickers={watchlistHasTickers}
           />
           </div>
 
