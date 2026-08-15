@@ -130,6 +130,17 @@ export function VolumeEmaSettingsModal({
               />
             </div>
 
+            <NumRow
+              label="Opacity"
+              hint="How solid the path is (0 = invisible, 100 = solid)"
+              value={settings.opacity ?? 100}
+              min={5}
+              max={100}
+              step={1}
+              onChange={(opacity) => onSettingsChange({ opacity: Math.round(opacity) })}
+              testId="input-volume-ema-opacity"
+            />
+
             <div className="flex items-center justify-between gap-2">
               <Label className="text-xs text-slate-300">Thickness</Label>
               <select

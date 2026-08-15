@@ -11,6 +11,8 @@ export interface VolumeEmaSettings {
 
   // —— Look
   color: string;
+  /** Line opacity 0–100 (%). */
+  opacity: number;
   lineWidth: number;
   lineStyle: VolumeEmaLineStyle;
   curved: boolean;

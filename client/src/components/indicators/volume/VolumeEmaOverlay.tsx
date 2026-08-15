@@ -19,7 +19,11 @@ import {
   type VolumeEmaOverlayOptions,
 } from '@/lib/indicators/volumeEmaOverlay';
 import type { VolumeEmaSettings } from '@/types/volumeEma';
-import { DEFAULT_VOLUME_EMA_SETTINGS, volumeEmaMathOptions } from '@/types/volumeEma';
+import {
+  DEFAULT_VOLUME_EMA_SETTINGS,
+  colorWithOpacity,
+  volumeEmaMathOptions,
+} from '@/types/volumeEma';
 
 interface VolumeEmaOverlayProps {
   chart: IChartApi | null;
