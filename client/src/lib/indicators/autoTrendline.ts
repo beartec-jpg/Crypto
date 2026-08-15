@@ -1,15 +1,20 @@
 /**
  * Auto Trendline detection (macro / mid / ltf).
  *
- * Lines must sit *outside* the candles (classic external trendlines):
- *  - Resistance: on/above every high between endpoints (never cuts down through bars)
- *  - Support: on/below every low between endpoints (never cuts up through bars)
+ * A real trendline sits on the *outside* of price. If full candles keep
+ * punching through it, it is not a trendline and must not be drawn.
  *
- * For each enabled tier we:
- *  1. Take a lookback window (full chart for macro, shorter for mid/ltf).
- *  2. Find swing wick pivots.
- *  3. Score external-only candidates by wick touches + span.
- *  4. Emit best support + best resistance for that tier.
+ * Method:
+ *  1. Window candles for the tier (macro = full chart, mid/ltf = shorter).
+ *  2. Build the upper convex hull of highs (resistance) / lower hull of lows
+ *     (support). Every hull edge is, by construction, an external line —
+ *     no wick of the window lies on the wrong side of that edge.
+ *  3. Re-verify every bar on the edge (strict: no wick pierce, no full-body
+ *     cross). Any pierce → discard.
+ *  4. Score remaining edges by touches + span; emit the best support and
+ *     resistance per enabled tier.
+ *  5. Extend only while still external; free-extend to the chart edge only
+ *     when the line is still clean through the latest bar.
  */
 
 import type {
@@ -29,20 +34,20 @@ export interface AutoTrendlineCandle {
   volume?: number;
 }
 
-interface Pivot {
+interface Pt {
   index: number;
-  time: number;
   price: number;
+  time: number;
 }
 
 interface TierDetectParams {
-  /** Fraction of the series to search, measured from the right (1 = full chart). */
   lookbackFraction: number;
   minBars: number;
-  pivotLength: number;
+  /** Subsample stride for hull when series is huge (1 = every bar). */
+  sampleStride: number;
   minTouches: number;
   minSpanBars: number;
-  /** Relative price tolerance for a wick "touch" / float slack on external check. */
+  /** Float slack only — not a free pass for pierces. */
   touchTolerancePct: number;
 }
 
@@ -50,70 +55,30 @@ const TIER_PARAMS: Record<AutoTrendlineTierId, TierDetectParams> = {
   macro: {
     lookbackFraction: 1,
     minBars: 80,
-    pivotLength: 16,
+    sampleStride: 1,
     minTouches: 3,
     minSpanBars: 30,
-    touchTolerancePct: 0.0015,
+    touchTolerancePct: 0.0008,
   },
   mid: {
     lookbackFraction: 0.48,
     minBars: 55,
-    pivotLength: 8,
+    sampleStride: 1,
     minTouches: 3,
     minSpanBars: 16,
-    touchTolerancePct: 0.0012,
+    touchTolerancePct: 0.0008,
   },
   ltf: {
     lookbackFraction: 0.2,
     minBars: 36,
-    pivotLength: 4,
+    sampleStride: 1,
     minTouches: 2,
     minSpanBars: 8,
-    touchTolerancePct: 0.001,
+    touchTolerancePct: 0.0008,
   },
 };
 
 const TIERS: AutoTrendlineTierId[] = ['macro', 'mid', 'ltf'];
-
-function findWickPivots(
-  candles: AutoTrendlineCandle[],
-  startIdx: number,
-  endIdx: number,
-  pivotLength: number,
-  kind: AutoTrendlineKind,
-): Pivot[] {
-  const pivots: Pivot[] = [];
-  const lo = Math.max(startIdx + pivotLength, pivotLength);
-  const hi = Math.min(endIdx - pivotLength, candles.length - 1 - pivotLength);
-  if (hi <= lo) return pivots;
-
-  for (let i = lo; i <= hi; i++) {
-    if (kind === 'resistance') {
-      let isPeak = true;
-      const h = candles[i].high;
-      for (let j = i - pivotLength; j <= i + pivotLength; j++) {
-        if (j === i) continue;
-        if (candles[j].high > h) {
-          isPeak = false;
-          break;
-        }
-      }
-      if (isPeak) pivots.push({ index: i, time: candles[i].time, price: h });
-    } else {
-      let isTrough = true;
-      const l = candles[i].low;
-      for (let j = i - pivotLength; j <= i + pivotLength; j++) {
-        if (j === i) continue;
-        if (candles[j].low < l) {
-          isTrough = false;
-          break;
-        }
-      }
-      if (isTrough) pivots.push({ index: i, time: candles[i].time, price: l });
-    }
-  }
-  return pivots;
-}
 
 interface Candidate {
   slope: number;
@@ -126,7 +91,6 @@ interface Candidate {
   lastPrice: number;
   firstTime: number;
   lastTime: number;
-  /** Furthest bar index (≤ series end) where the line is still external. */
   validToIdx: number;
   score: number;
 }
@@ -137,13 +101,98 @@ function priceOnLine(slope: number, intercept: number, index: number): number {
 
 function touchTol(price: number, pct: number): number {
   const p = Math.abs(price);
-  return Math.max(p * pct, p * 0.00025, 1e-12);
+  return Math.max(p * pct, p * 0.00015, 1e-12);
 }
 
 /**
- * True when the line sits fully outside candles in [from, to] inclusive.
- * Resistance: line ≥ every high (above/on the structure).
- * Support: line ≤ every low (below/on the structure).
+ * Cross product (b - a) × (c - a). >0 => c left of ab (CCW).
+ */
+function cross(a: Pt, b: Pt, c: Pt): number {
+  return (b.index - a.index) * (c.price - a.price) - (b.price - a.price) * (c.index - a.index);
+}
+
+/**
+ * Monotone-chain upper or lower hull of points sorted by index.
+ * Upper: no point above any edge. Lower: no point below any edge.
+ */
+export function convexHullChain(points: Pt[], side: 'upper' | 'lower'): Pt[] {
+  if (points.length <= 1) return points.slice();
+  const sorted = [...points].sort((a, b) => a.index - b.index || a.price - b.price);
+  // Deduplicate same index — keep extreme price for that bar
+  const dedup: Pt[] = [];
+  for (const p of sorted) {
+    if (dedup.length && dedup[dedup.length - 1].index === p.index) {
+      const prev = dedup[dedup.length - 1];
+      if (side === 'upper' ? p.price > prev.price : p.price < prev.price) {
+        dedup[dedup.length - 1] = p;
+      }
+      continue;
+    }
+    dedup.push(p);
+  }
+
+  const hull: Pt[] = [];
+  for (const p of dedup) {
+    if (side === 'upper') {
+      // Keep turning right (clockwise) along the top
+      while (
+        hull.length >= 2 &&
+        cross(hull[hull.length - 2], hull[hull.length - 1], p) >= 0
+      ) {
+        hull.pop();
+      }
+    } else {
+      // Keep turning left (CCW) along the bottom
+      while (
+        hull.length >= 2 &&
+        cross(hull[hull.length - 2], hull[hull.length - 1], p) <= 0
+      ) {
+        hull.pop();
+      }
+    }
+    hull.push(p);
+  }
+  return hull;
+}
+
+/**
+ * Does this candle count as a real pierce of the line?
+ * - Wick on the wrong side, or
+ * - Full body completely through (open & close on the wrong side), or
+ * - Body straddling the line (open and close on opposite sides) = cut-through.
+ */
+export function candlePiercesLine(
+  candle: AutoTrendlineCandle,
+  linePrice: number,
+  kind: AutoTrendlineKind,
+  touchTolerancePct: number,
+): boolean {
+  const tol = touchTol(linePrice, touchTolerancePct);
+  const o = candle.open;
+  const c = candle.close;
+  const bodyLo = Math.min(o, c);
+  const bodyHi = Math.max(o, c);
+
+  if (kind === 'resistance') {
+    // Anything meaningfully above resistance is a pierce
+    if (candle.high > linePrice + tol) return true;
+    // Full body closed above the line
+    if (bodyLo > linePrice + tol) return true;
+    // Body straddles the line (opens one side, closes the other through it)
+    if (bodyLo < linePrice - tol && bodyHi > linePrice + tol) return true;
+    return false;
+  }
+
+  // support
+  if (candle.low < linePrice - tol) return true;
+  if (bodyHi < linePrice - tol) return true;
+  if (bodyLo < linePrice - tol && bodyHi > linePrice + tol) return true;
+  return false;
+}
+
+/**
+ * Strict: every bar in [from, to] must leave the line outside the candle.
+ * One pierce → not a trendline.
  */
 export function isLineExternal(
   candles: AutoTrendlineCandle[],
@@ -159,23 +208,33 @@ export function isLineExternal(
   for (let i = from; i <= to; i++) {
     const y = priceOnLine(slope, intercept, i);
     if (!Number.isFinite(y)) return false;
-    const tol = touchTol(y, touchTolerancePct);
-
-    if (kind === 'resistance') {
-      // Candle must not poke above the line
-      if (candles[i].high > y + tol) return false;
-    } else {
-      // Candle must not poke below the line
-      if (candles[i].low < y - tol) return false;
-    }
+    if (candlePiercesLine(candles[i], y, kind, touchTolerancePct)) return false;
   }
   return true;
 }
 
-/**
- * Grow `fromLast` forward while the segment [firstIdx, j] stays external.
- * Stops at the first piercing bar (exclusive).
- */
+function countTouches(
+  candles: AutoTrendlineCandle[],
+  slope: number,
+  intercept: number,
+  from: number,
+  to: number,
+  kind: AutoTrendlineKind,
+  touchTolerancePct: number,
+): number {
+  let touches = 0;
+  for (let i = from; i <= to; i++) {
+    const y = priceOnLine(slope, intercept, i);
+    const tol = touchTol(y, touchTolerancePct * 2.5); // slightly looser for "kiss"
+    if (kind === 'resistance') {
+      if (Math.abs(candles[i].high - y) <= tol) touches++;
+    } else {
+      if (Math.abs(candles[i].low - y) <= tol) touches++;
+    }
+  }
+  return touches;
+}
+
 function farthestExternalIndex(
   candles: AutoTrendlineCandle[],
   slope: number,
@@ -188,18 +247,18 @@ function farthestExternalIndex(
 ): number {
   let validTo = fromLast;
   for (let j = fromLast + 1; j <= hardEnd; j++) {
-    if (!isLineExternal(candles, slope, intercept, firstIdx, j, kind, touchTolerancePct)) {
-      break;
-    }
+    // Only need to test the new bar if prefix was already external
+    const y = priceOnLine(slope, intercept, j);
+    if (candlePiercesLine(candles[j], y, kind, touchTolerancePct)) break;
     validTo = j;
   }
   return validTo;
 }
 
-function evaluateCandidate(
+function edgeToCandidate(
   candles: AutoTrendlineCandle[],
-  a: Pivot,
-  b: Pivot,
+  a: Pt,
+  b: Pt,
   kind: AutoTrendlineKind,
   params: TierDetectParams,
   windowEnd: number,
@@ -210,7 +269,7 @@ function evaluateCandidate(
   const slope = (b.price - a.price) / span;
   const intercept = a.price - slope * a.index;
 
-  // Hard reject if the anchors themselves already cut through anything between them
+  // Hull edges should already be external on sample points; re-check every bar
   if (
     !isLineExternal(
       candles,
@@ -225,72 +284,49 @@ function evaluateCandidate(
     return null;
   }
 
-  // Collect wick touches on the exterior of the line
-  const touchIndices: number[] = [a.index, b.index];
-  for (let i = a.index + 1; i < b.index; i++) {
-    const expected = priceOnLine(slope, intercept, i);
-    if (!(expected > 0) || !Number.isFinite(expected)) continue;
-    const tol = touchTol(expected, params.touchTolerancePct);
-    if (kind === 'resistance') {
-      // High kisses the underside of resistance
-      if (Math.abs(candles[i].high - expected) <= tol) touchIndices.push(i);
-    } else {
-      // Low kisses the topside of support
-      if (Math.abs(candles[i].low - expected) <= tol) touchIndices.push(i);
-    }
-  }
+  const touches = countTouches(
+    candles,
+    slope,
+    intercept,
+    a.index,
+    b.index,
+    kind,
+    params.touchTolerancePct,
+  );
+  if (touches < params.minTouches) return null;
 
-  if (touchIndices.length < params.minTouches) return null;
-
-  touchIndices.sort((x, y) => x - y);
-  const firstIdx = touchIndices[0];
-  const lastIdx = touchIndices[touchIndices.length - 1];
-
-  // Re-check external on the tightened touch span (should still pass)
-  if (
-    !isLineExternal(
-      candles,
-      slope,
-      intercept,
-      firstIdx,
-      lastIdx,
-      kind,
-      params.touchTolerancePct,
-    )
-  ) {
-    return null;
-  }
-
-  // Extend validity forward until the first pierce so extend-right never cuts bars
   const validToIdx = farthestExternalIndex(
     candles,
     slope,
     intercept,
-    firstIdx,
-    lastIdx,
+    a.index,
+    b.index,
     windowEnd,
     kind,
     params.touchTolerancePct,
   );
 
+  // If price has already ripped through this line many times after the edge,
+  // validTo will stop early — that's fine. If the formation itself had pierces
+  // we already returned null.
+
+  const firstIdx = a.index;
+  const lastIdx = b.index;
+  const endIdx = validToIdx; // draw at least through last clean bar
   const firstPrice = priceOnLine(slope, intercept, firstIdx);
-  // Draw end = last external bar (keeps line outside candles even past last touch)
-  const endIdx = validToIdx;
   const lastPrice = priceOnLine(slope, intercept, endIdx);
 
-  const spanBars = lastIdx - firstIdx;
   const score =
-    touchIndices.length * 1000 +
-    spanBars * 3 +
-    // Prefer lines that stay external further into recent price
-    (validToIdx - lastIdx) * 0.5 +
+    touches * 1000 +
+    span * 3 +
+    (validToIdx - lastIdx) * 0.25 +
     lastIdx * 0.01;
 
   return {
     slope,
     intercept,
-    touches: touchIndices.length,
-    spanBars,
+    touches,
+    spanBars: span,
     firstIdx,
     lastIdx,
     firstPrice,
@@ -302,6 +338,28 @@ function evaluateCandidate(
   };
 }
 
+function samplePoints(
+  candles: AutoTrendlineCandle[],
+  startIdx: number,
+  endIdx: number,
+  kind: AutoTrendlineKind,
+  stride: number,
+): Pt[] {
+  const pts: Pt[] = [];
+  const step = Math.max(1, stride);
+  for (let i = startIdx; i <= endIdx; i += step) {
+    const price = kind === 'resistance' ? candles[i].high : candles[i].low;
+    pts.push({ index: i, price, time: candles[i].time });
+  }
+  // Always include window end so hull can reach the right edge of structure
+  if (pts.length && pts[pts.length - 1].index !== endIdx) {
+    const i = endIdx;
+    const price = kind === 'resistance' ? candles[i].high : candles[i].low;
+    pts.push({ index: i, price, time: candles[i].time });
+  }
+  return pts;
+}
+
 function bestLineForKind(
   candles: AutoTrendlineCandle[],
   startIdx: number,
@@ -309,30 +367,34 @@ function bestLineForKind(
   kind: AutoTrendlineKind,
   params: TierDetectParams,
 ): Candidate | null {
-  const pivots = findWickPivots(candles, startIdx, endIdx, params.pivotLength, kind);
-  if (pivots.length < 2) return null;
+  const pts = samplePoints(candles, startIdx, endIdx, kind, params.sampleStride);
+  if (pts.length < 2) return null;
 
-  let working = pivots;
-  if (pivots.length > 28) {
-    const sortedExt =
-      kind === 'resistance'
-        ? [...pivots].sort((a, b) => b.price - a.price)
-        : [...pivots].sort((a, b) => a.price - b.price);
-    const extremes = sortedExt.slice(0, 10);
-    const step = Math.ceil(pivots.length / 18);
-    const sampled = pivots.filter((_, i) => i % step === 0);
-    const byIdx = new Map<number, Pivot>();
-    for (const p of [...extremes, ...sampled]) byIdx.set(p.index, p);
-    working = Array.from(byIdx.values()).sort((a, b) => a.index - b.index);
-  }
+  const hull = convexHullChain(pts, kind === 'resistance' ? 'upper' : 'lower');
+  if (hull.length < 2) return null;
 
   let best: Candidate | null = null;
 
-  for (let i = 0; i < working.length; i++) {
-    for (let j = i + 1; j < working.length; j++) {
-      const cand = evaluateCandidate(candles, working[i], working[j], kind, params, endIdx);
-      if (!cand) continue;
-      if (!best || cand.score > best.score) best = cand;
+  // Every consecutive hull edge is a pure external candidate
+  for (let i = 0; i < hull.length - 1; i++) {
+    const cand = edgeToCandidate(candles, hull[i], hull[i + 1], kind, params, endIdx);
+    if (!cand) continue;
+    if (!best || cand.score > best.score) best = cand;
+  }
+
+  // Also try non-adjacent hull vertices (longer external chords that skip
+  // intermediate hull points — still external because hull is convex).
+  // Cap pairs for performance.
+  if (hull.length > 2) {
+    const maxPairs = 40;
+    let tried = 0;
+    for (let i = 0; i < hull.length - 2 && tried < maxPairs; i++) {
+      for (let j = i + 2; j < hull.length && tried < maxPairs; j++) {
+        tried++;
+        const cand = edgeToCandidate(candles, hull[i], hull[j], kind, params, endIdx);
+        if (!cand) continue;
+        if (!best || cand.score > best.score) best = cand;
+      }
     }
   }
 
@@ -346,7 +408,8 @@ function windowStart(n: number, params: TierDetectParams): number {
 }
 
 /**
- * Detect auto trendlines for all enabled tiers in settings.
+ * Detect auto trendlines for all enabled tiers.
+ * Returns only lines that stay outside candles for their whole drawn span.
  */
 export function detectAutoTrendlines(
   candles: AutoTrendlineCandle[],
@@ -372,7 +435,21 @@ export function detectAutoTrendlines(
       const best = bestLineForKind(candles, startIdx, endIdx, kind, params);
       if (!best) continue;
 
-      // Only free-extend past the last bar when the line is still external through it
+      // Final hard gate: re-verify the exact segment we will draw
+      if (
+        !isLineExternal(
+          candles,
+          best.slope,
+          best.intercept,
+          best.firstIdx,
+          best.validToIdx,
+          kind,
+          params.touchTolerancePct,
+        )
+      ) {
+        continue; // never emit a pierced "trendline"
+      }
+
       const canFreeExtend = tierSettings.extendRight && best.validToIdx >= endIdx;
 
       lines.push({
@@ -389,7 +466,6 @@ export function detectAutoTrendlines(
         color: kind === 'support' ? tierSettings.supportColor : tierSettings.resistanceColor,
         lineWidth: tierSettings.lineWidth,
         lineStyle: tierSettings.lineStyle,
-        // If a later candle would be pierced, keep extend off so we stop at validTo
         extendRight: canFreeExtend,
       });
     }
@@ -398,7 +474,6 @@ export function detectAutoTrendlines(
   return { lines };
 }
 
-/** Price of a segment at a given candle index. */
 export function autoTrendlinePriceAt(
   line: Pick<AutoTrendlineSegment, 'slope' | 'intercept'>,
   index: number,
