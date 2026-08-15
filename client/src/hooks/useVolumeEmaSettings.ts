@@ -4,16 +4,27 @@ import {
   type VolumeEmaSettings,
 } from '@/types/volumeEma';
 
-const STORAGE_KEY = 'volume-ema-settings';
+/** Bump when locked defaults change so stale localStorage cannot override. */
+const STORAGE_KEY = 'volume-ema-settings-v2';
+const LEGACY_STORAGE_KEYS = ['volume-ema-settings'];
 
 function loadSettings(): VolumeEmaSettings {
   try {
+    // Drop pre-lock-in saves once so everyone gets the tuned defaults
+    for (const key of LEGACY_STORAGE_KEYS) {
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        /* ignore */
+      }
+    }
+
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const parsed = JSON.parse(stored) as Partial<VolumeEmaSettings> & {
         smoothPeriod?: number;
       };
-      // Migrate legacy smoothPeriod → lookback
+      // Migrate legacy smoothPeriod → lookback; always fill missing keys from defaults
       const lookback =
         parsed.lookback ??
         parsed.smoothPeriod ??
