@@ -76,7 +76,7 @@ export function VolumeEmaOverlay({
     try {
       if (!seriesRef.current) {
         seriesRef.current = chart.addSeries(LineSeries, {
-          color: settings.color,
+          color: colorWithOpacity(settings.color, settings.opacity ?? 100),
           lineWidth: Math.min(4, Math.max(1, settings.lineWidth)) as LineWidth,
           lineStyle: toLineStyle(settings.lineStyle),
           lineType: settings.curved ? LineType.Curved : LineType.Simple,
@@ -122,7 +122,7 @@ export function VolumeEmaOverlay({
     if (!seriesRef.current || !show) return;
     try {
       seriesRef.current.applyOptions({
-        color: settings.color,
+        color: colorWithOpacity(settings.color, settings.opacity ?? 100),
         lineWidth: Math.min(4, Math.max(1, settings.lineWidth)) as LineWidth,
         lineStyle: toLineStyle(settings.lineStyle),
         lineType: settings.curved ? LineType.Curved : LineType.Simple,
@@ -133,6 +133,7 @@ export function VolumeEmaOverlay({
   }, [
     show,
     settings.color,
+    settings.opacity,
     settings.lineWidth,
     settings.lineStyle,
     settings.curved,
@@ -145,7 +146,7 @@ export function VolumeEmaOverlay({
     const math = { ...volumeEmaMathOptions(settings), ...options };
     const points = calculateVolumeEmaOverlay(candles, math);
     const last = points.length > 0 ? points[points.length - 1] : null;
-    const label = formatVolumeEmaLabel(last?.ratio);
+    const label = formatVolumeEmaLabel(last?.ratio, last?.logRatio);
 
     try {
       seriesRef.current.applyOptions({ title: label });

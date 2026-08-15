@@ -1,6 +1,5 @@
 /**
- * Volume EMA overlay — display + tunable math (Tools settings).
- * Math defaults mirror DEFAULT_VOLUME_EMA_OPTIONS in the indicator module.
+ * Volume EMA / Delta overlay — display + tunable math (Tools settings).
  */
 
 export type VolumeEmaLineStyle = 'solid' | 'dashed' | 'dotted';
@@ -20,33 +19,34 @@ export interface VolumeEmaSettings {
   buySpikeColor: string;
   sellSpikeColor: string;
 
-  // —— Math (play with these, then lock in defaults later)
-  /** EMA period on volume. */
+  // —— Math (delta path + spikes)
+  /** EMA period on total volume (baseline for ratio + strength scale). */
   volumeEmaPeriod: number;
-  /** ATR period for pad scale. */
+  /** ATR period for price offset scale. */
   atrPeriod: number;
   /**
-   * Extra distance beyond the wick per log2(vol ratio) unit (in ATRs).
-   * Higher = more push past candles on 2×/4× volume.
+   * Path amplitude: offset ≈ strength × k × ATR.
+   * Higher = stronger reaction to net delta.
    */
   k: number;
   /**
-   * Base clearance past high (buy) / low (sell) in ATRs when elevated.
+   * Soft extra ATR bias when |delta strength| is high (continuous, not flip).
    */
   wickClearAtr: number;
-  /** Cap on log2(ratio) magnitude (e.g. 4 ≈ 16× vol). */
+  /** Clamp |delta / avgVol| (e.g. 3 = ±3× average volume of net flow). */
   clampSigmas: number;
-  /** Double-EMA smooth period on the path (higher = less jagged). */
+  /** Double-EMA on signed volume — main smoothness control. */
   smoothPeriod: number;
-  /** Vol/EMA ratio that fires spike triangles. */
+  /** Absolute vol / EMA fires spike triangles. */
   spikeRatio: number;
-  /** Extra ATR pad for spike marker placement past the wick. */
+  /** Spike marker pad past wick (ATR). */
   spikeOffsetAtr: number;
 }
 
 export const DEFAULT_VOLUME_EMA_SETTINGS: VolumeEmaSettings = {
   enabled: false,
   color: '#22d3ee',
+  opacity: 100,
   lineWidth: 2,
   lineStyle: 'solid',
   curved: true,
@@ -55,10 +55,10 @@ export const DEFAULT_VOLUME_EMA_SETTINGS: VolumeEmaSettings = {
   sellSpikeColor: '#ef4444',
   volumeEmaPeriod: 20,
   atrPeriod: 14,
-  k: 2,
-  wickClearAtr: 0.9,
-  clampSigmas: 4,
-  smoothPeriod: 10,
+  k: 1.25,
+  wickClearAtr: 0.35,
+  clampSigmas: 3,
+  smoothPeriod: 14,
   spikeRatio: 2,
   spikeOffsetAtr: 0.85,
 };
@@ -75,4 +75,34 @@ export function volumeEmaMathOptions(settings: VolumeEmaSettings) {
     spikeRatio: settings.spikeRatio,
     spikeOffsetAtr: settings.spikeOffsetAtr,
   };
+}
+
+/**
+ * Apply 0–100 opacity to a CSS color for lightweight-charts.
+ */
+export function colorWithOpacity(color: string, opacityPercent: number): string {
+  const a = Math.min(1, Math.max(0, (Number.isFinite(opacityPercent) ? opacityPercent : 100) / 100));
+  const c = (color || '#22d3ee').trim();
+
+  if (c.startsWith('#')) {
+    let hex = c.slice(1);
+    if (hex.length === 3) {
+      hex = hex.split('').map((ch) => ch + ch).join('');
+    }
+    if (hex.length >= 6) {
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      if ([r, g, b].every((n) => Number.isFinite(n))) {
+        return `rgba(${r}, ${g}, ${b}, ${a})`;
+      }
+    }
+  }
+
+  const rgbMatch = c.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+  if (rgbMatch) {
+    return `rgba(${rgbMatch[1]}, ${rgbMatch[2]}, ${rgbMatch[3]}, ${a})`;
+  }
+
+  return a >= 1 ? c : c;
 }

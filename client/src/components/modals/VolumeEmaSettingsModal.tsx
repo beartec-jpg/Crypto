@@ -191,43 +191,21 @@ export function VolumeEmaSettingsModal({
             <div className="border-t border-slate-700 pt-3 space-y-3">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                  Math — tune live
+                  Math — delta path (tune live)
                 </div>
                 <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
-                  Buy = above high + pad · Sell = below low − pad · pad =
-                  (wick clear + mag × k) × ATR. Play with these, then we lock
-                  defaults.
+                  Path uses <span className="text-slate-400">smoothed delta volume</span>
+                  (net buy↑ / sell↓) so it does not flip with every candle color.
+                  Spike triangles still fire on absolute volume spikes.
                 </p>
               </div>
 
               <NumRow
-                label="Push strength (k)"
-                hint="Higher = further past the wick on 2×/4× vol"
-                value={settings.k}
-                min={0.25}
-                max={6}
-                step={0.05}
-                onChange={(k) => onSettingsChange({ k })}
-                testId="input-volume-ema-k"
-              />
-
-              <NumRow
-                label="Wick clear (ATR)"
-                hint="Base pad beyond high/low when elevated"
-                value={settings.wickClearAtr}
-                min={0}
-                max={4}
-                step={0.05}
-                onChange={(wickClearAtr) => onSettingsChange({ wickClearAtr })}
-                testId="input-volume-ema-wick-clear"
-              />
-
-              <NumRow
                 label="Smooth period"
-                hint="Double-EMA; higher = less jagged"
+                hint="Double-EMA on signed volume — main anti-flip control"
                 value={settings.smoothPeriod}
                 min={1}
-                max={30}
+                max={40}
                 step={1}
                 onChange={(smoothPeriod) =>
                   onSettingsChange({ smoothPeriod: Math.round(smoothPeriod) })
@@ -236,8 +214,30 @@ export function VolumeEmaSettingsModal({
               />
 
               <NumRow
+                label="Delta strength (k)"
+                hint="How far net flow moves the path (× ATR)"
+                value={settings.k}
+                min={0.1}
+                max={4}
+                step={0.05}
+                onChange={(k) => onSettingsChange({ k })}
+                testId="input-volume-ema-k"
+              />
+
+              <NumRow
+                label="Strong-flow bias (ATR)"
+                hint="Soft extra push when |delta| is large"
+                value={settings.wickClearAtr}
+                min={0}
+                max={2}
+                step={0.05}
+                onChange={(wickClearAtr) => onSettingsChange({ wickClearAtr })}
+                testId="input-volume-ema-wick-clear"
+              />
+
+              <NumRow
                 label="Volume EMA period"
-                hint="Baseline average volume window"
+                hint="Baseline average volume (strength scale + spike ×)"
                 value={settings.volumeEmaPeriod}
                 min={5}
                 max={100}
@@ -249,7 +249,7 @@ export function VolumeEmaSettingsModal({
 
               <NumRow
                 label="ATR period"
-                hint="Scales how far “pad” is in price"
+                hint="Price scale for path offset"
                 value={settings.atrPeriod}
                 min={5}
                 max={50}
@@ -260,10 +260,10 @@ export function VolumeEmaSettingsModal({
               />
 
               <NumRow
-                label="Clamp (log2 cap)"
-                hint="Max magnitude; 4 ≈ 16× volume"
+                label="Clamp |delta / avgVol|"
+                hint="Cap net-flow strength (e.g. 3 = ±3× avg vol)"
                 value={settings.clampSigmas}
-                min={1}
+                min={0.5}
                 max={8}
                 step={0.5}
                 onChange={(clampSigmas) => onSettingsChange({ clampSigmas })}
@@ -271,7 +271,7 @@ export function VolumeEmaSettingsModal({
 
               <NumRow
                 label="Spike ratio"
-                hint="Triangles when vol ≥ this × EMA"
+                hint="Triangles when total vol ≥ this × EMA (still absolute)"
                 value={settings.spikeRatio}
                 min={1.2}
                 max={5}
