@@ -3,21 +3,18 @@
  *
  * Path (smooth — does NOT flip candle-to-candle):
  *   signedVol  = +volume on bullish bar, −volume on bearish (close vs open)
- *   deltaEma   = double-EMA(signedVol, smoothPeriod)   // continuous net flow
- *   strength   = deltaEma / EMA(volume)                  // units of avg volume
- *   strength   = clamp(strength, ±clampSigmas)
- *   offset     = strength * k * ATR
- *   // optional wick bias when flow is strong:
- *   offset    ±= wickClearAtr * ATR * soft(|strength|)
+ *   deltaAvg   = SMA(signedVol, lookback)   // longer lookback = smoother
+ *   volAvg     = SMA(volume, lookback)        // same window for scale
+ *   strength   = clamp(deltaAvg / volAvg, ±clampSigmas)
+ *   offset     = strength * k * ATR  ± soft wick bias
  *   plot       = mid + offset
  *
- * Spike markers (separate from path):
- *   total vol / EMA(vol) ≥ spikeRatio → triangle
- *   direction from that bar's candle (buy/sell)
+ * Lookback is the main smoothness control:
+ *   2–3  → very reactive (swings hard)
+ *   10–14 → medium
+ *   20–40 → much smoother (averages over more candles)
  *
- * Why delta: old mode assigned full +/− from each bar's color, so green/red
- * alternation yanked the path every candle. Delta accumulates net flow so
- * the line drifts up on sustained buy pressure and down on sell.
+ * Spike markers (separate): total vol / EMA(vol) ≥ spikeRatio → triangle.
  */
 
 export interface VolumeEmaCandle {
@@ -82,8 +79,12 @@ export interface VolumeEmaOverlayOptions {
   /** Clamp |delta strength| (avg-volume units). Default 3. */
   clampSigmas?: number;
   /**
-   * Double-EMA period on signed volume (the main smoothness knob). Default 14.
+   * Lookback length in candles for the rolling average of signed volume.
+   * Primary smoothness control: 2–3 whippy, 20+ smooth. Default 20.
+   * `smoothPeriod` is a legacy alias for lookback.
    */
+  lookback?: number;
+  /** @deprecated Use lookback. */
   smoothPeriod?: number;
   /** Raw vol/EMA ratio that triggers a spike triangle. Default 2. */
   spikeRatio?: number;
@@ -97,10 +98,29 @@ export const DEFAULT_VOLUME_EMA_OPTIONS = {
   k: 1.25,
   wickClearAtr: 0.35,
   clampSigmas: 3,
-  smoothPeriod: 14,
+  lookback: 20,
   spikeRatio: 2,
   spikeOffsetAtr: 0.85,
 } as const;
+
+/**
+ * Simple rolling average over the last `period` values (inclusive of i).
+ * Shorter period → more swing; longer → smoother path.
+ */
+export function rollingSma(values: number[], period: number): number[] {
+  const n = values.length;
+  const out = new Array<number>(n);
+  if (n === 0) return out;
+  const p = Math.max(1, Math.floor(period));
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    sum += values[i];
+    if (i >= p) sum -= values[i - p];
+    const count = i + 1 < p ? i + 1 : p;
+    out[i] = sum / count;
+  }
+  return out;
+}
 
 function emaSeries(values: number[], period: number): (number | null)[] {
   const out: (number | null)[] = new Array(values.length).fill(null);
@@ -280,7 +300,15 @@ export function calculateVolumeEmaOverlay(
   const k = options.k ?? DEFAULT_VOLUME_EMA_OPTIONS.k;
   const wickClearAtr = options.wickClearAtr ?? DEFAULT_VOLUME_EMA_OPTIONS.wickClearAtr;
   const clampSigmas = options.clampSigmas ?? DEFAULT_VOLUME_EMA_OPTIONS.clampSigmas;
-  const smoothPeriod = options.smoothPeriod ?? DEFAULT_VOLUME_EMA_OPTIONS.smoothPeriod;
+  // lookback = primary smoothness (legacy smoothPeriod still accepted)
+  const lookback = Math.max(
+    1,
+    Math.floor(
+      options.lookback ??
+        options.smoothPeriod ??
+        DEFAULT_VOLUME_EMA_OPTIONS.lookback,
+    ),
+  );
   const spikeRatio = options.spikeRatio ?? DEFAULT_VOLUME_EMA_OPTIONS.spikeRatio;
 
   if (
@@ -288,7 +316,7 @@ export function calculateVolumeEmaOverlay(
     k <= 0 ||
     wickClearAtr < 0 ||
     clampSigmas <= 0 ||
-    smoothPeriod < 1 ||
+    lookback < 1 ||
     spikeRatio <= 0
   ) {
     return [];
@@ -296,29 +324,31 @@ export function calculateVolumeEmaOverlay(
 
   const volumes = candles.map((c) => (Number.isFinite(c.volume) && c.volume > 0 ? c.volume : 0));
   const signed = candles.map((c) => signedVolume(c));
+  // Spike ratio still uses a stable volume EMA baseline
   const volEma = emaSeries(volumes, volumeEmaPeriod);
   const atr = atrSeries(candles, atrPeriod);
 
-  // Smooth signed volume heavily first (this is the anti-flip), then once more
-  const deltaOnce = emaDense(signed, smoothPeriod);
-  const deltaSmooth = emaDense(deltaOnce, smoothPeriod);
+  // Rolling SMA over lookback: 2–3 = whippy, 20–40 = much smoother
+  const deltaAvg = rollingSma(signed, lookback);
+  const volAvg = rollingSma(volumes, lookback);
 
   const points: VolumeEmaPoint[] = [];
 
   for (let i = 0; i < candles.length; i++) {
     const emaVol = volEma[i];
     const atrVal = atr[i];
+    const avgVol = volAvg[i];
     if (emaVol == null || atrVal == null) continue;
-    if (!(emaVol > 0) || !(atrVal > 0)) continue;
+    if (!(emaVol > 0) || !(atrVal > 0) || !(avgVol > 0)) continue;
 
     const c = candles[i];
     const vol = volumes[i];
     const ratio = Math.max(vol, Number.EPSILON) / emaVol;
     const mid = (c.high + c.low) / 2;
-    const d = deltaSmooth[i];
+    const d = deltaAvg[i];
 
-    // strength in units of average volume: +1 ≈ net +1× avg vol of buy
-    let strength = d / emaVol;
+    // strength in units of lookback-avg volume: +1 ≈ net +1× avg vol of buy
+    let strength = d / avgVol;
     if (!Number.isFinite(strength)) strength = 0;
     strength = Math.max(-clampSigmas, Math.min(clampSigmas, strength));
 

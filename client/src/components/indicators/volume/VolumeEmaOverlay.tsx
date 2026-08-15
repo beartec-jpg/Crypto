@@ -206,7 +206,7 @@ export function VolumeEmaOverlay({
     settings.k,
     settings.wickClearAtr,
     settings.clampSigmas,
-    settings.smoothPeriod,
+    settings.lookback,
     settings.spikeRatio,
     settings.spikeOffsetAtr,
   ]);

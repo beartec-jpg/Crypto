@@ -194,23 +194,23 @@ export function VolumeEmaSettingsModal({
                   Math — delta path (tune live)
                 </div>
                 <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
-                  Path uses <span className="text-slate-400">smoothed delta volume</span>
-                  (net buy↑ / sell↓) so it does not flip with every candle color.
-                  Spike triangles still fire on absolute volume spikes.
+                  Path = rolling average of signed volume over lookback candles
+                  (net buy↑ / sell↓). Short lookback swings hard; long lookback
+                  is much smoother. Spikes still use absolute volume.
                 </p>
               </div>
 
               <NumRow
-                label="Smooth period"
-                hint="Double-EMA on signed volume — main anti-flip control"
-                value={settings.smoothPeriod}
-                min={1}
-                max={40}
+                label="Lookback (candles)"
+                hint="2–3 = very reactive · 20 = smooth avg · 40 = very smooth"
+                value={settings.lookback ?? 20}
+                min={2}
+                max={80}
                 step={1}
-                onChange={(smoothPeriod) =>
-                  onSettingsChange({ smoothPeriod: Math.round(smoothPeriod) })
+                onChange={(lookback) =>
+                  onSettingsChange({ lookback: Math.round(lookback) })
                 }
-                testId="input-volume-ema-smooth"
+                testId="input-volume-ema-lookback"
               />
 
               <NumRow

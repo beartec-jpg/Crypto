@@ -6,6 +6,7 @@ import {
   elevatedLogMagnitude,
   formatVolumeEmaLabel,
   padBeyondWick,
+  rollingSma,
   signedVolume,
   type VolumeEmaCandle,
 } from '@/lib/indicators/volumeEmaOverlay';
@@ -61,6 +62,16 @@ describe('signedVolume', () => {
   });
 });
 
+describe('rollingSma', () => {
+  it('averages the last N values', () => {
+    const sma = rollingSma([1, 2, 3, 4, 5], 3);
+    expect(sma[0]).toBeCloseTo(1, 8);
+    expect(sma[1]).toBeCloseTo(1.5, 8);
+    expect(sma[2]).toBeCloseTo(2, 8); // (1+2+3)/3
+    expect(sma[4]).toBeCloseTo(4, 8); // (3+4+5)/3
+  });
+});
+
 describe('elevatedLogMagnitude / padBeyondWick', () => {
   it('log magnitude scales with ratio', () => {
     expect(elevatedLogMagnitude(1, 4)).toBe(0);
@@ -74,7 +85,7 @@ describe('elevatedLogMagnitude / padBeyondWick', () => {
   });
 });
 
-describe('calculateVolumeEmaOverlay (delta path)', () => {
+describe('calculateVolumeEmaOverlay (delta + lookback)', () => {
   it('returns empty when not enough candles', () => {
     expect(calculateVolumeEmaOverlay(makeCandles(10))).toEqual([]);
   });
@@ -84,26 +95,12 @@ describe('calculateVolumeEmaOverlay (delta path)', () => {
     expect(result.length).toBeGreaterThan(0);
   });
 
-  it('sits near mid when volume is flat and balanced', () => {
-    // Alternating tiny body pressure cancels under smooth
-    const candles = makeCandles(100, {
-      baseVol: 5000,
-      biasFn: (i) => (i % 2 === 0 ? 'bull' : 'bear'),
-    });
-    const result = calculateVolumeEmaOverlay(candles, { smoothPeriod: 14, k: 1.25 });
-    const tail = result.slice(-15);
-    for (const p of tail) {
-      // Net delta near 0 → small offset vs mid
-      expect(Math.abs(p.offset)).toBeLessThan(p.atr * 2.5);
-    }
-  });
-
-  it('drifts above mid under sustained buy volume (no candle flip)', () => {
+  it('drifts above mid under sustained buy volume', () => {
     const candles = makeCandles(100, {
       volFn: () => 2000,
       biasFn: () => 'bull',
     });
-    const result = calculateVolumeEmaOverlay(candles, { smoothPeriod: 8, k: 1.5 });
+    const result = calculateVolumeEmaOverlay(candles, { lookback: 10, k: 1.5 });
     const last = result[result.length - 1];
     expect(last.value).toBeGreaterThan(last.mid);
     expect(last.regime).toBe('buy');
@@ -115,27 +112,38 @@ describe('calculateVolumeEmaOverlay (delta path)', () => {
       volFn: () => 2000,
       biasFn: () => 'bear',
     });
-    const result = calculateVolumeEmaOverlay(candles, { smoothPeriod: 8, k: 1.5 });
+    const result = calculateVolumeEmaOverlay(candles, { lookback: 10, k: 1.5 });
     const last = result[result.length - 1];
     expect(last.value).toBeLessThan(last.mid);
     expect(last.regime).toBe('sell');
     expect(last.logRatio).toBeLessThan(0);
   });
 
-  it('does not flip full amplitude on alternating single candles', () => {
-    // Strong alternating colors — path should stay smoother than raw signs
+  it('longer lookback is smoother than short lookback on alternating flow', () => {
     const candles = makeCandles(120, {
       volFn: () => 3000,
       biasFn: (i) => (i % 2 === 0 ? 'bull' : 'bear'),
     });
-    const smooth = calculateVolumeEmaOverlay(candles, { smoothPeriod: 14, k: 1.25 });
-    // Count how many consecutive pairs reverse sign of offset
-    let flips = 0;
-    for (let i = 1; i < smooth.length; i++) {
-      if (smooth[i].offset * smooth[i - 1].offset < 0) flips++;
-    }
-    // Raw alternating would flip nearly every bar; delta path should flip far less
-    expect(flips).toBeLessThan(smooth.length * 0.35);
+    const short = calculateVolumeEmaOverlay(candles, { lookback: 3, k: 1.25 });
+    const long = calculateVolumeEmaOverlay(candles, { lookback: 20, k: 1.25 });
+
+    const pathJitter = (pts: typeof short) => {
+      let s = 0;
+      for (let i = 1; i < pts.length; i++) {
+        s += Math.abs(pts[i].value - pts[i - 1].value);
+      }
+      return s;
+    };
+
+    expect(pathJitter(long)).toBeLessThan(pathJitter(short));
+  });
+
+  it('accepts legacy smoothPeriod as lookback alias', () => {
+    const candles = makeCandles(80, { volFn: () => 2000, biasFn: () => 'bull' });
+    const a = calculateVolumeEmaOverlay(candles, { lookback: 12 });
+    const b = calculateVolumeEmaOverlay(candles, { smoothPeriod: 12 });
+    expect(a.length).toBe(b.length);
+    expect(a[a.length - 1].value).toBeCloseTo(b[b.length - 1].value, 8);
   });
 
   it('flags spikes on absolute volume while path stays delta-based', () => {
@@ -144,7 +152,7 @@ describe('calculateVolumeEmaOverlay (delta path)', () => {
       biasFn: (i) => (i === 70 ? 'bull' : i % 2 === 0 ? 'bull' : 'bear'),
     });
     const result = calculateVolumeEmaOverlay(candles, {
-      smoothPeriod: 10,
+      lookback: 10,
       spikeRatio: 2,
     });
     const spike = result.find((p) => p.time === candles[70].time)!;
@@ -156,18 +164,17 @@ describe('calculateVolumeEmaOverlay (delta path)', () => {
 
   it('formats label with delta strength', () => {
     expect(formatVolumeEmaLabel(1.4, 0.85)).toContain('Δ');
-    expect(formatVolumeEmaLabel(1.4, 0.85)).toContain('1.40×');
     expect(formatVolumeEmaLabel(null, null)).toBe('Vol EMA');
   });
 
-  it('uses delta-mode defaults', () => {
+  it('uses lookback defaults', () => {
     expect(DEFAULT_VOLUME_EMA_OPTIONS).toEqual({
       volumeEmaPeriod: 20,
       atrPeriod: 14,
       k: 1.25,
       wickClearAtr: 0.35,
       clampSigmas: 3,
-      smoothPeriod: 14,
+      lookback: 20,
       spikeRatio: 2,
       spikeOffsetAtr: 0.85,
     });

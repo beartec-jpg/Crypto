@@ -10,7 +10,19 @@ function loadSettings(): VolumeEmaSettings {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      return { ...DEFAULT_VOLUME_EMA_SETTINGS, ...JSON.parse(stored) };
+      const parsed = JSON.parse(stored) as Partial<VolumeEmaSettings> & {
+        smoothPeriod?: number;
+      };
+      // Migrate legacy smoothPeriod → lookback
+      const lookback =
+        parsed.lookback ??
+        parsed.smoothPeriod ??
+        DEFAULT_VOLUME_EMA_SETTINGS.lookback;
+      return {
+        ...DEFAULT_VOLUME_EMA_SETTINGS,
+        ...parsed,
+        lookback,
+      };
     }
   } catch {
     /* ignore */

@@ -35,8 +35,12 @@ export interface VolumeEmaSettings {
   wickClearAtr: number;
   /** Clamp |delta / avgVol| (e.g. 3 = ±3× average volume of net flow). */
   clampSigmas: number;
-  /** Double-EMA on signed volume — main smoothness control. */
-  smoothPeriod: number;
+  /**
+   * Lookback length in candles for the rolling average of delta volume.
+   * Short (2–3) = very reactive; long (20–40) = much smoother.
+   * Legacy field name: smoothPeriod (still merged on load).
+   */
+  lookback: number;
   /** Absolute vol / EMA fires spike triangles. */
   spikeRatio: number;
   /** Spike marker pad past wick (ATR). */
@@ -58,20 +62,23 @@ export const DEFAULT_VOLUME_EMA_SETTINGS: VolumeEmaSettings = {
   k: 1.25,
   wickClearAtr: 0.35,
   clampSigmas: 3,
-  smoothPeriod: 14,
+  lookback: 20,
   spikeRatio: 2,
   spikeOffsetAtr: 0.85,
 };
 
 /** Map UI settings → indicator math options. */
 export function volumeEmaMathOptions(settings: VolumeEmaSettings) {
+  // Prefer lookback; fall back to legacy smoothPeriod if present on old saves
+  const legacy = (settings as VolumeEmaSettings & { smoothPeriod?: number }).smoothPeriod;
+  const lookback = settings.lookback ?? legacy ?? DEFAULT_VOLUME_EMA_SETTINGS.lookback;
   return {
     volumeEmaPeriod: settings.volumeEmaPeriod,
     atrPeriod: settings.atrPeriod,
     k: settings.k,
     wickClearAtr: settings.wickClearAtr,
     clampSigmas: settings.clampSigmas,
-    smoothPeriod: settings.smoothPeriod,
+    lookback,
     spikeRatio: settings.spikeRatio,
     spikeOffsetAtr: settings.spikeOffsetAtr,
   };
