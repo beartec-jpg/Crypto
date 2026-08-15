@@ -92,15 +92,16 @@ export interface VolumeEmaOverlayOptions {
   spikeOffsetAtr?: number;
 }
 
+/** Locked-in math defaults from live tuning (2026-08). */
 export const DEFAULT_VOLUME_EMA_OPTIONS = {
-  volumeEmaPeriod: 20,
-  atrPeriod: 14,
-  k: 1.25,
-  wickClearAtr: 0.35,
-  clampSigmas: 3,
-  lookback: 20,
-  spikeRatio: 2,
-  spikeOffsetAtr: 0.85,
+  volumeEmaPeriod: 5,
+  atrPeriod: 10,
+  k: 2.7,
+  wickClearAtr: 2,
+  clampSigmas: 5.5,
+  lookback: 52,
+  spikeRatio: 3,
+  spikeOffsetAtr: 3,
 } as const;
 
 /**

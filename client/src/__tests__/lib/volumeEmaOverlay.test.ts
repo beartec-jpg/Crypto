@@ -167,16 +167,16 @@ describe('calculateVolumeEmaOverlay (delta + lookback)', () => {
     expect(formatVolumeEmaLabel(null, null)).toBe('Vol EMA');
   });
 
-  it('uses lookback defaults', () => {
+  it('uses locked-in math defaults', () => {
     expect(DEFAULT_VOLUME_EMA_OPTIONS).toEqual({
-      volumeEmaPeriod: 20,
-      atrPeriod: 14,
-      k: 1.25,
-      wickClearAtr: 0.35,
-      clampSigmas: 3,
-      lookback: 20,
-      spikeRatio: 2,
-      spikeOffsetAtr: 0.85,
+      volumeEmaPeriod: 5,
+      atrPeriod: 10,
+      k: 2.7,
+      wickClearAtr: 2,
+      clampSigmas: 5.5,
+      lookback: 52,
+      spikeRatio: 3,
+      spikeOffsetAtr: 3,
     });
   });
 });
