@@ -162,8 +162,8 @@ describe('calculateVolumeEmaOverlay', () => {
       biasFn: () => 'bull',
     });
     const clampSigmas = 2;
-    const k = 1.75;
-    const wickClearAtr = 0.65;
+    const k = 2;
+    const wickClearAtr = 0.9;
     const result = calculateVolumeEmaOverlay(candles, {
       clampSigmas,
       k,
@@ -173,9 +173,9 @@ describe('calculateVolumeEmaOverlay', () => {
     const spike = result.find((p) => p.time === candles[75].time);
     expect(spike).toBeDefined();
     expect(spike!.logRatio).toBe(clampSigmas);
-    const expectedDist = (wickClearAtr + clampSigmas * k) * spike!.atr;
-    expect(spike!.value).toBeCloseTo(spike!.mid + expectedDist, 5);
-    // Above the high of the bar
+    const pad = (wickClearAtr + clampSigmas * k) * spike!.atr;
+    // Buy: high + pad
+    expect(spike!.value).toBeCloseTo(candles[75].high + pad, 5);
     expect(spike!.value).toBeGreaterThan(candles[75].high);
   });
 
@@ -189,24 +189,40 @@ describe('calculateVolumeEmaOverlay', () => {
     expect(sell).toBeDefined();
     expect(sell.ratio).toBeGreaterThan(3);
     expect(sell.value).toBeLessThan(candles[70].low);
-    // Comfortable clearance past the low (not hugging the wick)
-    expect(candles[70].low - sell.value).toBeGreaterThan(sell.atr * 0.5);
+    // Past the low by at least wickClear ATR
+    expect(candles[70].low - sell.value).toBeGreaterThan(sell.atr * 0.8);
   });
 
-  it('respects k multiplier', () => {
+  it('places 4× buy volume well above the candle wick', () => {
     const candles = makeCandles(80, {
       volFn: (i) => (i === 70 ? 4000 : 1000),
       biasFn: () => 'bull',
     });
-    const k1 = calculateVolumeEmaOverlay(candles, { k: 1, smoothPeriod: 1 });
-    const k2 = calculateVolumeEmaOverlay(candles, { k: 2, smoothPeriod: 1 });
+    // Wide wick so mid-based math would fail; wick-anchor must clear high
+    candles[70].high = candles[70].close + 5;
+    candles[70].low = candles[70].close - 0.5;
+    const result = calculateVolumeEmaOverlay(candles, { smoothPeriod: 1 });
+    const buy = result.find((p) => p.time === candles[70].time)!;
+    expect(buy).toBeDefined();
+    expect(buy.value).toBeGreaterThan(candles[70].high);
+    expect(buy.value - candles[70].high).toBeGreaterThan(buy.atr * 0.8);
+  });
+
+  it('respects k multiplier on pad beyond the wick', () => {
+    const candles = makeCandles(80, {
+      volFn: (i) => (i === 70 ? 4000 : 1000),
+      biasFn: () => 'bull',
+    });
+    const k1 = calculateVolumeEmaOverlay(candles, { k: 1, wickClearAtr: 0.9, smoothPeriod: 1 });
+    const k2 = calculateVolumeEmaOverlay(candles, { k: 2, wickClearAtr: 0.9, smoothPeriod: 1 });
     const p1 = k1.find((p) => p.time === candles[70].time)!;
     const p2 = k2.find((p) => p.time === candles[70].time)!;
     expect(p1).toBeDefined();
     expect(p2).toBeDefined();
-    const off1 = p1.value - p1.mid;
-    const off2 = p2.value - p2.mid;
-    expect(off2 / off1).toBeCloseTo(2, 4);
+    // Pad beyond high (not offset from mid) should scale with k
+    const pad1 = p1.value - candles[70].high;
+    const pad2 = p2.value - candles[70].high;
+    expect(pad2).toBeGreaterThan(pad1);
   });
 
   it('smoothPeriod damps single-bar volume spikes vs unsmoothed', () => {
@@ -283,8 +299,8 @@ describe('calculateVolumeEmaOverlay', () => {
     expect(DEFAULT_VOLUME_EMA_OPTIONS).toEqual({
       volumeEmaPeriod: 20,
       atrPeriod: 14,
-      k: 1.75,
-      wickClearAtr: 0.65,
+      k: 2,
+      wickClearAtr: 0.9,
       clampSigmas: 4,
       smoothPeriod: 10,
       spikeRatio: 2,
