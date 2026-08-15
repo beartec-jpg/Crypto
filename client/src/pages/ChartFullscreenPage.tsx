@@ -254,6 +254,7 @@ export function ChartFullscreenPage({
   const [selectedWavePatternType, setSelectedWavePatternType] = useState('impulse');
 
   const [highLowEnabled, setHighLowEnabled] = useState(false);
+  const [volumeEmaEnabled, setVolumeEmaEnabled] = useState(false);
   const [divergenceScannerEnabled, setDivergenceScannerEnabled] = useState(false);
   const [selectedDivergencePoint, setSelectedDivergencePoint] = useState<DivergencePoint | null>(null);
   const [showDivergenceSettings, setShowDivergenceSettings] = useState(false);
@@ -2157,6 +2158,7 @@ export function ChartFullscreenPage({
     });
 
     setDivergenceScannerEnabled(false);
+    setVolumeEmaEnabled(false);
     fvgSettings.updateSetting('enabled', false);
     obSettings.updateSetting('enabled', false);
     breakerSettings.updateSetting('enabled', false);
@@ -2928,6 +2930,8 @@ export function ChartFullscreenPage({
           onOpenVolumeProfileSettings={() => setShowVPModal(true)}
           volumeEnabled={oscillatorPanel.selectedOscillators.has('volume')}
           onToggleVolume={(enabled) => oscillatorPanel.toggleDockedOscillator('volume', enabled)}
+          volumeEmaEnabled={volumeEmaEnabled}
+          onToggleVolumeEma={setVolumeEmaEnabled}
           liquidityHeatmapEnabled={lhSettings.settings.enabled}
           onToggleLiquidityHeatmap={(enabled) => lhSettings.updateSettings({ enabled })}
           onOpenLiquidityHeatmapSettings={() => setShowLHModal(true)}
@@ -3004,7 +3008,7 @@ export function ChartFullscreenPage({
         <FullscreenChartIndicatorLayer
           chart={chartRef.current}
           candleSeries={candleSeriesRef.current}
-          candles={candles}
+          candles={effectiveCandles}
           calculateEMA={calculateEMA}
           emaConfigs={indicators.ema.configs}
           showEma={indicators.ema.show}
@@ -3052,6 +3056,7 @@ export function ChartFullscreenPage({
           superTrendData={superTrendData}
           superTrendSettings={superTrendSettings.settings}
           highLowEnabled={highLowEnabled}
+          volumeEmaEnabled={volumeEmaEnabled}
           divergenceScannerEnabled={divergenceScannerEnabled}
           filteredDivergencePoints={filteredDivergencePoints}
           onSelectDivergencePoint={setSelectedDivergencePoint}

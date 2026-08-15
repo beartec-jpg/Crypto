@@ -85,6 +85,8 @@ interface FullscreenChartActionToolbarProps {
   onOpenVolumeProfileSettings: () => void;
   volumeEnabled: boolean;
   onToggleVolume: (enabled: boolean) => void;
+  volumeEmaEnabled: boolean;
+  onToggleVolumeEma: (enabled: boolean) => void;
   liquidityHeatmapEnabled: boolean;
   onToggleLiquidityHeatmap: (enabled: boolean) => void;
   onOpenLiquidityHeatmapSettings: () => void;
@@ -164,6 +166,8 @@ export function FullscreenChartActionToolbar({
   onOpenVolumeProfileSettings,
   volumeEnabled,
   onToggleVolume,
+  volumeEmaEnabled,
+  onToggleVolumeEma,
   liquidityHeatmapEnabled,
   onToggleLiquidityHeatmap,
   onOpenLiquidityHeatmapSettings,
@@ -231,6 +235,8 @@ export function FullscreenChartActionToolbar({
         onOpenVolumeProfileSettings={onOpenVolumeProfileSettings}
         volumeEnabled={volumeEnabled}
         onToggleVolume={onToggleVolume}
+        volumeEmaEnabled={volumeEmaEnabled}
+        onToggleVolumeEma={onToggleVolumeEma}
         liquidityHeatmapEnabled={liquidityHeatmapEnabled}
         onToggleLiquidityHeatmap={onToggleLiquidityHeatmap}
         onOpenLiquidityHeatmapSettings={onOpenLiquidityHeatmapSettings}

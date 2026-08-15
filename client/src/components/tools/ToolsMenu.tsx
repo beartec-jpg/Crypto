@@ -19,6 +19,9 @@ interface ToolsMenuProps {
   /** Per-candle volume histogram (bottom pane) — not Volume Profile */
   volumeEnabled: boolean;
   onToggleVolume: (enabled: boolean) => void;
+  /** Volume relative to EMA, plotted on price scale around candle mid */
+  volumeEmaEnabled: boolean;
+  onToggleVolumeEma: (enabled: boolean) => void;
   liquidityHeatmapEnabled: boolean;
   onToggleLiquidityHeatmap: (enabled: boolean) => void;
   onOpenLiquidityHeatmapSettings: () => void;
@@ -44,6 +47,8 @@ export function ToolsMenu({
   onOpenVolumeProfileSettings,
   volumeEnabled,
   onToggleVolume,
+  volumeEmaEnabled,
+  onToggleVolumeEma,
   liquidityHeatmapEnabled,
   onToggleLiquidityHeatmap,
   onOpenLiquidityHeatmapSettings,
@@ -63,6 +68,7 @@ export function ToolsMenu({
     htfBiasEnabled ||
     vpEnabled ||
     volumeEnabled ||
+    volumeEmaEnabled ||
     liquidityHeatmapEnabled ||
     gdsMiniBadgeEnabled ||
     rewindEnabled;
@@ -217,6 +223,23 @@ export function ToolsMenu({
               onCheckedChange={onToggleVolume}
               className="shrink-0 data-[state=checked]:bg-blue-600"
               data-testid="switch-volume-indicator"
+            />
+          </div>
+
+          <div className="flex items-center justify-between py-1.5 px-1">
+            <div className="min-w-0 mr-3">
+              <div className="text-sm font-medium text-slate-100 leading-tight">
+                Volume EMA
+              </div>
+              <div className="text-xs text-slate-400 leading-tight">
+                Rel-vol path on price (above mid = spike, below = dry)
+              </div>
+            </div>
+            <Switch
+              checked={volumeEmaEnabled}
+              onCheckedChange={onToggleVolumeEma}
+              className="shrink-0 data-[state=checked]:bg-blue-600"
+              data-testid="switch-volume-ema-overlay"
             />
           </div>
 

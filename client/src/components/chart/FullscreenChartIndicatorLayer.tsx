@@ -15,6 +15,7 @@ import { LiquidityHeatmapDebugPanel } from '@/components/debug/LiquidityHeatmapD
 import { SuperTrendRenderer } from '@/components/indicators/SuperTrendRenderer';
 import { ElderImpulseRenderer } from '@/components/indicators/ElderImpulseRenderer';
 import { HighLowRenderer } from '@/components/indicators/HighLowRenderer';
+import { VolumeEmaOverlay } from '@/components/indicators/volume/VolumeEmaOverlay';
 import { DivergenceRenderer } from '@/components/divergence/DivergenceRenderer';
 import { DivergenceBadgePopup } from '@/components/divergence/DivergenceBadgePopup';
 import { DivergenceSettingsModal } from '@/components/divergence/DivergenceSettingsModal';
@@ -85,6 +86,7 @@ interface FullscreenChartIndicatorLayerProps {
   superTrendSettings: any;
 
   highLowEnabled: boolean;
+  volumeEmaEnabled: boolean;
   divergenceScannerEnabled: boolean;
   filteredDivergencePoints: any[];
   onSelectDivergencePoint: (point: any) => void;
@@ -147,6 +149,7 @@ export function FullscreenChartIndicatorLayer({
   superTrendData,
   superTrendSettings,
   highLowEnabled,
+  volumeEmaEnabled,
   divergenceScannerEnabled,
   filteredDivergencePoints,
   onSelectDivergencePoint,
@@ -308,6 +311,12 @@ export function FullscreenChartIndicatorLayer({
         candleSeries={candleSeries}
         candles={candles}
         enabled={highLowEnabled}
+      />
+
+      <VolumeEmaOverlay
+        chart={chart}
+        candles={candles}
+        show={volumeEmaEnabled}
       />
 
       {divergenceScannerEnabled && (
