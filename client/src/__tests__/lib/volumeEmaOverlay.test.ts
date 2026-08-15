@@ -285,7 +285,7 @@ describe('calculateVolumeEmaOverlay', () => {
       k: 1.75,
       wickClearAtr: 0.65,
       clampSigmas: 4,
-      smoothPeriod: 2,
+      smoothPeriod: 10,
       spikeRatio: 2,
       spikeOffsetAtr: 0.85,
     });
