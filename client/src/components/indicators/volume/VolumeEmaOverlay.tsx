@@ -19,7 +19,7 @@ import {
   type VolumeEmaOverlayOptions,
 } from '@/lib/indicators/volumeEmaOverlay';
 import type { VolumeEmaSettings } from '@/types/volumeEma';
-import { DEFAULT_VOLUME_EMA_SETTINGS } from '@/types/volumeEma';
+import { DEFAULT_VOLUME_EMA_SETTINGS, volumeEmaMathOptions } from '@/types/volumeEma';
 
 interface VolumeEmaOverlayProps {
   chart: IChartApi | null;
@@ -134,11 +134,12 @@ export function VolumeEmaOverlay({
     settings.curved,
   ]);
 
-  // Push line + spike markers when candles / options change
+  // Push line + spike markers when candles / options / math settings change
   useEffect(() => {
     if (!chart || !show || !seriesRef.current) return;
 
-    const points = calculateVolumeEmaOverlay(candles, options);
+    const math = { ...volumeEmaMathOptions(settings), ...options };
+    const points = calculateVolumeEmaOverlay(candles, math);
     const last = points.length > 0 ? points[points.length - 1] : null;
     const label = formatVolumeEmaLabel(last?.ratio);
 
@@ -163,7 +164,7 @@ export function VolumeEmaOverlay({
         return;
       }
 
-      const spikes = buildVolumeEmaSpikes(candles, points, options);
+      const spikes = buildVolumeEmaSpikes(candles, points, math);
       const markers: SeriesMarker<Time>[] = spikes.map((s) => {
         const isBuy = s.direction === 'buy';
         return {
@@ -195,6 +196,14 @@ export function VolumeEmaOverlay({
     settings.showSpikes,
     settings.buySpikeColor,
     settings.sellSpikeColor,
+    settings.volumeEmaPeriod,
+    settings.atrPeriod,
+    settings.k,
+    settings.wickClearAtr,
+    settings.clampSigmas,
+    settings.smoothPeriod,
+    settings.spikeRatio,
+    settings.spikeOffsetAtr,
   ]);
 
   return null;
