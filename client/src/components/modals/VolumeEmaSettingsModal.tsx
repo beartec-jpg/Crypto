@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { X } from 'lucide-react';
+import { ChevronDown, ChevronRight, X } from 'lucide-react';
 import type { VolumeEmaLineStyle, VolumeEmaSettings } from '@/types/volumeEma';
 
 interface VolumeEmaSettingsModalProps {
@@ -20,6 +21,60 @@ const STYLES: Array<{ value: VolumeEmaLineStyle; label: string }> = [
   { value: 'dotted', label: 'Dotted' },
 ];
 
+function NumRow({
+  label,
+  hint,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+  testId,
+}: {
+  label: string;
+  hint?: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (n: number) => void;
+  testId?: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <Label className="text-xs text-slate-300">{label}</Label>
+          {hint && <div className="text-[10px] text-slate-500 leading-snug">{hint}</div>}
+        </div>
+        <input
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={Number.isFinite(value) ? value : min}
+          onChange={(e) => {
+            const n = parseFloat(e.target.value);
+            if (!Number.isFinite(n)) return;
+            onChange(Math.min(max, Math.max(min, n)));
+          }}
+          className="w-20 bg-slate-800 text-slate-100 text-xs px-2 py-1 rounded border border-slate-600 text-right"
+          data-testid={testId}
+        />
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={Number.isFinite(value) ? value : min}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        className="w-full h-1.5 accent-cyan-500 cursor-pointer"
+      />
+    </div>
+  );
+}
+
 export function VolumeEmaSettingsModal({
   isOpen,
   onClose,
@@ -27,9 +82,11 @@ export function VolumeEmaSettingsModal({
   onSettingsChange,
   onReset,
 }: VolumeEmaSettingsModalProps) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-sm bg-slate-900 border-slate-700 text-slate-100 p-0 gap-0">
+      <DialogContent className="max-w-md bg-slate-900 border-slate-700 text-slate-100 p-0 gap-0">
         <DialogHeader className="px-4 py-3 border-b border-slate-700 flex flex-row items-center justify-between space-y-0">
           <DialogTitle className="text-sm font-semibold text-slate-100">
             Volume EMA
@@ -44,7 +101,7 @@ export function VolumeEmaSettingsModal({
           </Button>
         </DialogHeader>
 
-        <div className="p-4 space-y-3">
+        <div className="p-4 space-y-3 max-h-[75vh] overflow-y-auto">
           <div className="flex items-center justify-between py-1">
             <div>
               <div className="text-sm font-medium text-slate-100">Enable</div>
@@ -60,6 +117,10 @@ export function VolumeEmaSettingsModal({
           </div>
 
           <div className={`space-y-3 ${settings.enabled ? '' : 'opacity-40 pointer-events-none'}`}>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 pt-1">
+              Look
+            </div>
+
             <div className="flex items-center justify-between gap-2">
               <Label className="text-xs text-slate-300">Line color</Label>
               <input
@@ -142,7 +203,7 @@ export function VolumeEmaSettingsModal({
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <Label className="text-xs text-slate-300">Spike markers</Label>
-                  <div className="text-[10px] text-slate-500">3× volume triangles</div>
+                  <div className="text-[10px] text-slate-500">Volume spike triangles</div>
                 </div>
                 <Switch
                   checked={settings.showSpikes}
@@ -173,6 +234,124 @@ export function VolumeEmaSettingsModal({
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Advanced math — hidden by default, still fully adjustable */}
+            <div className="border-t border-slate-700 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((v) => !v)}
+                className="flex w-full items-center gap-1.5 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-200"
+                data-testid="btn-volume-ema-advanced"
+              >
+                {showAdvanced ? (
+                  <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                )}
+                Advanced math
+                <span className="ml-1 font-normal normal-case tracking-normal text-slate-500">
+                  (lookback, k, periods…)
+                </span>
+              </button>
+
+              {showAdvanced && (
+                <div className="mt-2 space-y-3 pb-1">
+                  <p className="text-[10px] text-slate-500 leading-snug">
+                    Defaults are locked from your live tune. Change only if you want to
+                    experiment further — Reset restores the locked defaults.
+                  </p>
+
+                  <NumRow
+                    label="Lookback (candles)"
+                    hint="2–3 = reactive · 52 = default smooth · 80 = very smooth"
+                    value={settings.lookback ?? 52}
+                    min={2}
+                    max={80}
+                    step={1}
+                    onChange={(lookback) =>
+                      onSettingsChange({ lookback: Math.round(lookback) })
+                    }
+                    testId="input-volume-ema-lookback"
+                  />
+
+                  <NumRow
+                    label="Delta strength (k)"
+                    hint="How far net flow moves the path (× ATR)"
+                    value={settings.k}
+                    min={0.1}
+                    max={6}
+                    step={0.05}
+                    onChange={(k) => onSettingsChange({ k })}
+                    testId="input-volume-ema-k"
+                  />
+
+                  <NumRow
+                    label="Strong-flow bias (ATR)"
+                    hint="Soft extra push when |delta| is large"
+                    value={settings.wickClearAtr}
+                    min={0}
+                    max={4}
+                    step={0.05}
+                    onChange={(wickClearAtr) => onSettingsChange({ wickClearAtr })}
+                    testId="input-volume-ema-wick-clear"
+                  />
+
+                  <NumRow
+                    label="Volume EMA period"
+                    hint="Baseline average volume (strength scale + spike ×)"
+                    value={settings.volumeEmaPeriod}
+                    min={5}
+                    max={100}
+                    step={1}
+                    onChange={(volumeEmaPeriod) =>
+                      onSettingsChange({ volumeEmaPeriod: Math.round(volumeEmaPeriod) })
+                    }
+                  />
+
+                  <NumRow
+                    label="ATR period"
+                    hint="Price scale for path offset"
+                    value={settings.atrPeriod}
+                    min={5}
+                    max={50}
+                    step={1}
+                    onChange={(atrPeriod) =>
+                      onSettingsChange({ atrPeriod: Math.round(atrPeriod) })
+                    }
+                  />
+
+                  <NumRow
+                    label="Clamp |delta / avgVol|"
+                    hint="Cap net-flow strength"
+                    value={settings.clampSigmas}
+                    min={0.5}
+                    max={8}
+                    step={0.5}
+                    onChange={(clampSigmas) => onSettingsChange({ clampSigmas })}
+                  />
+
+                  <NumRow
+                    label="Spike ratio"
+                    hint="Triangles when total vol ≥ this × EMA"
+                    value={settings.spikeRatio}
+                    min={1.2}
+                    max={5}
+                    step={0.1}
+                    onChange={(spikeRatio) => onSettingsChange({ spikeRatio })}
+                  />
+
+                  <NumRow
+                    label="Spike marker pad (ATR)"
+                    hint="How far triangles sit past the wick"
+                    value={settings.spikeOffsetAtr}
+                    min={0.2}
+                    max={5}
+                    step={0.05}
+                    onChange={(spikeOffsetAtr) => onSettingsChange({ spikeOffsetAtr })}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
