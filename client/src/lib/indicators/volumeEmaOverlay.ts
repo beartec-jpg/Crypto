@@ -82,8 +82,8 @@ export interface VolumeEmaOverlayOptions {
   /** Clamp elevated log2(ratio) to this many "sigmas". Default 4. */
   clampSigmas?: number;
   /**
-   * Light EMA on the raw offset (keep low so single-bar 4× spikes still punch
-   * well past the wick). 1 = none. Default 2.
+   * EMA period applied twice (double-smooth) to the raw offset so the path
+   * is not jagged. 1 = none. Default 10.
    */
   smoothPeriod?: number;
   /**
@@ -103,7 +103,7 @@ export const DEFAULT_VOLUME_EMA_OPTIONS = {
   k: 1.75,
   wickClearAtr: 0.65,
   clampSigmas: 4,
-  smoothPeriod: 2,
+  smoothPeriod: 10,
   spikeRatio: 2,
   spikeOffsetAtr: 0.85,
 } as const;
@@ -323,10 +323,13 @@ export function calculateVolumeEmaOverlay(
 
   if (raw.length === 0) return [];
 
-  const smoothOffsets = emaDense(
+  // Double-EMA on the signed offset: first pass kills bar noise, second pass
+  // softens residual corners so the path reads as a smooth band, not a zigzag.
+  const once = emaDense(
     raw.map((r) => r.rawOffset),
     smoothPeriod,
   );
+  const smoothOffsets = emaDense(once, smoothPeriod);
 
   const points: VolumeEmaPoint[] = [];
   for (let i = 0; i < raw.length; i++) {
