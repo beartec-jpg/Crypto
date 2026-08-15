@@ -99,7 +99,7 @@ export const DEFAULT_VOLUME_EMA_OPTIONS = {
   k: 2.7,
   wickClearAtr: 2,
   clampSigmas: 5.5,
-  lookback: 52,
+  lookback: 10,
   spikeRatio: 3,
   spikeOffsetAtr: 3,
 } as const;

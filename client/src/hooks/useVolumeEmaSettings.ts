@@ -6,12 +6,13 @@ import {
 
 /**
  * Bump this when locked defaults change so every client reloads the tuned set.
- * v3 = user-specified lock-in (lookback 52, k 2.7, opacity 70, dotted 1px, …).
+ * v4 = lookback 10 (was 52), rest of lock-in unchanged.
  */
-const STORAGE_KEY = 'volume-ema-settings-v3';
+const STORAGE_KEY = 'volume-ema-settings-v4';
 const LEGACY_STORAGE_KEYS = [
   'volume-ema-settings',
   'volume-ema-settings-v2',
+  'volume-ema-settings-v3',
 ];
 
 function loadSettings(): VolumeEmaSettings {

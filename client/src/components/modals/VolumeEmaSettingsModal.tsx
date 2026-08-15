@@ -264,8 +264,8 @@ export function VolumeEmaSettingsModal({
 
                   <NumRow
                     label="Lookback (candles)"
-                    hint="2–3 = reactive · 52 = default smooth · 80 = very smooth"
-                    value={settings.lookback ?? 52}
+                    hint="2–3 = reactive · 10 = default · 40+ = very smooth"
+                    value={settings.lookback ?? 10}
                     min={2}
                     max={80}
                     step={1}
