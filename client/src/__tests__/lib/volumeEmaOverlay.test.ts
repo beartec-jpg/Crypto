@@ -3,6 +3,7 @@ import {
   buildVolumeEmaSpikes,
   calculateVolumeEmaOverlay,
   DEFAULT_VOLUME_EMA_OPTIONS,
+  elevatedDistanceFromMid,
   elevatedLogMagnitude,
   formatVolumeEmaLabel,
   type VolumeEmaCandle,

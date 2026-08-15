@@ -2,19 +2,19 @@
  * Volume EMA Overlay (v1)
  *
  * Maps per-candle volume relative to its EMA onto the price scale, signed
- * by buy/sell pressure (candle close vs open):
+ * by buy/sell pressure (candle close vs open). Elevated volume is pushed
+ * clear of the candle wicks — not stuck inside the bar body:
  *
- *   r        = volume / EMA(volume, period)
- *   magnitude = clamp(max(0, log2(r)), 0, clampSigmas)
- *               // only elevated volume pulls away from mid;
- *               // low / average volume → 0 → tracks mid
- *   sign     = +1 buy pressure (close ≥ open), −1 sell pressure
- *   rawOff   = sign * magnitude * k * ATR
- *   offset   = EMA(rawOff, smoothPeriod)
- *   plot     = mid + offset
+ *   r         = volume / EMA(volume, period)
+ *   magnitude = clamp(max(0, log2(r)), 0, clampSigmas)  // 0 at/avg, 1@2×, 2@4×
+ *   // only elevated vol leaves mid; quiet vol → 0 → tracks mid
+ *   distance  = (wickClearAtr + magnitude * k) * ATR     // when magnitude > 0
+ *   rawOff    = sign * distance   // +buy above, −sell below
+ *   offset    = light EMA(rawOff)
+ *   plot      = mid + offset
  *
- * So 2× buy sits ~1 ATR above mid, 4× buy ~2 ATR above, 2× sell below mid,
- * and quiet volume eases the line back to the candle middle.
+ * With defaults (k=1.75, wickClear=0.65): a 4× sell sits ~4.15 ATR below mid
+ * (well past the wick); 2× is ~2.4 ATR clear of the bar.
  *
  * Spike markers fire when raw ratio >= spikeRatio (default 2×):
  *   buy → green triangle under the bar
@@ -69,13 +69,21 @@ export interface VolumeEmaOverlayOptions {
   volumeEmaPeriod?: number;
   /** ATR period. Default 14. */
   atrPeriod?: number;
-  /** Amplitude multiplier (S = k * ATR). Default 1. */
+  /**
+   * Extra distance per log2(vol ratio) unit, in ATRs.
+   * 2× (mag=1) and 4× (mag=2) stack on top of wickClearAtr. Default 1.75.
+   */
   k?: number;
+  /**
+   * Base clearance past mid (in ATRs) whenever volume is elevated, so the
+   * path clears the typical wick before magnitude adds more. Default 0.65.
+   */
+  wickClearAtr?: number;
   /** Clamp elevated log2(ratio) to this many "sigmas". Default 4. */
   clampSigmas?: number;
   /**
-   * EMA period applied to the raw price offset so the path is not jagged.
-   * 1 = no extra smoothing. Default 5.
+   * Light EMA on the raw offset (keep low so single-bar 4× spikes still punch
+   * well past the wick). 1 = none. Default 2.
    */
   smoothPeriod?: number;
   /**
@@ -92,12 +100,27 @@ export interface VolumeEmaOverlayOptions {
 export const DEFAULT_VOLUME_EMA_OPTIONS = {
   volumeEmaPeriod: 20,
   atrPeriod: 14,
-  k: 1,
+  k: 1.75,
+  wickClearAtr: 0.65,
   clampSigmas: 4,
-  smoothPeriod: 5,
+  smoothPeriod: 2,
   spikeRatio: 2,
   spikeOffsetAtr: 0.85,
 } as const;
+
+/**
+ * Distance from mid (in price) for an elevated volume reading.
+ * Always includes wick clearance so 2×/4× prints outside the bar, not inside it.
+ */
+export function elevatedDistanceFromMid(
+  magnitude: number,
+  atr: number,
+  k: number,
+  wickClearAtr: number,
+): number {
+  if (!(magnitude > 0) || !(atr > 0)) return 0;
+  return (wickClearAtr + magnitude * k) * atr;
+}
 
 function emaSeries(values: number[], period: number): (number | null)[] {
   const out: (number | null)[] = new Array(values.length).fill(null);
@@ -234,11 +257,19 @@ export function calculateVolumeEmaOverlay(
   const volumeEmaPeriod = options.volumeEmaPeriod ?? DEFAULT_VOLUME_EMA_OPTIONS.volumeEmaPeriod;
   const atrPeriod = options.atrPeriod ?? DEFAULT_VOLUME_EMA_OPTIONS.atrPeriod;
   const k = options.k ?? DEFAULT_VOLUME_EMA_OPTIONS.k;
+  const wickClearAtr = options.wickClearAtr ?? DEFAULT_VOLUME_EMA_OPTIONS.wickClearAtr;
   const clampSigmas = options.clampSigmas ?? DEFAULT_VOLUME_EMA_OPTIONS.clampSigmas;
   const smoothPeriod = options.smoothPeriod ?? DEFAULT_VOLUME_EMA_OPTIONS.smoothPeriod;
   const spikeRatio = options.spikeRatio ?? DEFAULT_VOLUME_EMA_OPTIONS.spikeRatio;
 
-  if (!candles.length || k <= 0 || clampSigmas <= 0 || smoothPeriod < 1 || spikeRatio <= 0) {
+  if (
+    !candles.length ||
+    k <= 0 ||
+    wickClearAtr < 0 ||
+    clampSigmas <= 0 ||
+    smoothPeriod < 1 ||
+    spikeRatio <= 0
+  ) {
     return [];
   }
 
@@ -273,7 +304,9 @@ export function calculateVolumeEmaOverlay(
     // Signed elevated contribution: low vol → 0 (mid); high buy up / high sell down
     const logRatio = sign * magnitude;
     const mid = (c.high + c.low) / 2;
-    const rawOffset = logRatio * k * atrVal;
+    // Push clear of wicks: base clearance + magnitude * k * ATR (not just mag*ATR from mid)
+    const distance = elevatedDistanceFromMid(magnitude, atrVal, k, wickClearAtr);
+    const rawOffset = sign * distance;
 
     if (!Number.isFinite(rawOffset) || !Number.isFinite(mid)) continue;
 
