@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { cryptoSubscriptions, cryptoUsers, cryptoAiAnalyses } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { MONTHLY_AI_CREDITS, AI_TICKER_SLOTS } from '../shared/aiUsageTiers';
 
 // Base tiers (Elliott Wave is a separate add-on, not a tier)
 type BaseTier = "free" | "beginner" | "intermediate" | "pro" | "elite";
@@ -11,15 +12,6 @@ const TIER_HIERARCHY: Record<BaseTier, number> = {
   intermediate: 2,
   pro: 3,
   elite: 4,
-};
-
-// Monthly AI Trade credits per tier — reduced to reflect Grok 4 extended-thinking cost
-const MONTHLY_AI_CREDITS: Record<BaseTier, number> = {
-  free: 0,
-  beginner: 0,
-  intermediate: 100,
-  pro: 200,
-  elite: 300,
 };
 
 // Monthly Elliott Wave AI credits (separate from trade AI)
@@ -33,13 +25,6 @@ const MONTHLY_ELLIOTT_AI_CREDITS: Record<BaseTier, number> = {
 
 // Elliott add-on gives 50 monthly Elliott AI credits
 const ELLIOTT_ADDON_CREDITS = 50;
-const AI_TICKER_SLOTS: Record<BaseTier, number> = {
-  free: 0,
-  beginner: 0,
-  intermediate: 1,
-  pro: 3,
-  elite: 5,
-};
 
 // Feature capability flags computed from base tier + add-ons
 export function getCapabilities(tier: BaseTier, hasElliottAddon: boolean) {

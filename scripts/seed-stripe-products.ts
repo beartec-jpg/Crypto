@@ -20,22 +20,22 @@ const PRODUCTS: ProductConfig[] = [
     interval: 'month',
   },
   {
-    name: 'Intermediate',
-    description: 'AI analysis credits (50/month) plus all Beginner features',
+    name: 'Core',
+    description: '80 AI tokens per month for 1 nominated ticker. Charts stay free.',
     metadata: { tier: 'intermediate', type: 'base_tier' },
     priceAmount: 1500, // $15/month
     interval: 'month',
   },
   {
     name: 'Pro',
-    description: 'Unlimited AI analysis plus push notifications',
+    description: '160 AI tokens per month for 3 nominated tickers',
     metadata: { tier: 'pro', type: 'base_tier' },
     priceAmount: 3000, // $30/month
     interval: 'month',
   },
   {
     name: 'Elite',
-    description: 'Everything including Elliott Wave analysis (all features)',
+    description: '270 AI tokens per month for 5 nominated tickers',
     metadata: { tier: 'elite', type: 'base_tier' },
     priceAmount: 5000, // $50/month
     interval: 'month',

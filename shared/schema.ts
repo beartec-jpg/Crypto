@@ -85,7 +85,7 @@ export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
   elliottAlertsEnabled: boolean("elliott_alerts_enabled").default(true), // Elliott Wave projection alerts
   aiTradeAlertsEnabled: boolean("ai_trade_alerts_enabled").default(true), // AI tracked trade alerts
   indicatorAlertsEnabled: boolean("indicator_alerts_enabled").default(true), // Smart Money/Indicator alerts
-  aiCredits: integer("ai_credits").default(0), // Remaining AI trade credits (monthly: Intermediate 200, Pro 400, Elite 500)
+  aiCredits: integer("ai_credits").default(0), // AI tokens used this month (Core 80, Pro 160, Elite 270)
   aiCreditsResetAt: timestamp("ai_credits_reset_at"), // When credits were last reset (monthly)
   elliottAiCredits: integer("elliott_ai_credits").default(0), // Remaining Elliott Wave AI credits (monthly: Elite 150, Add-on 50)
   elliottAiCreditsResetAt: timestamp("elliott_ai_credits_reset_at"), // When Elliott credits were last reset (monthly)

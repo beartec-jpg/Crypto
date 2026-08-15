@@ -158,28 +158,27 @@ export default function CryptoSubscribe() {
       name: 'Free',
       tier: 'free',
       price: 'Free',
-      description: 'Basic charting access',
+      description: 'Charts and tools with an email signup',
       features: [
-        'View all chart pages',
-        'Basic indicators & oscillators (RSI, MACD, EMA, etc.)',
-        'No SMC indicators',
-        'No AI features',
-        'No Elliott Wave access',
+        'Full indicator page after email signup',
+        'All oscillators, drawings, and SMC tools',
+        'Auto-Fibonacci and training lessons',
+        'No AI trade ideas',
       ],
-      current: currentTier === 'free',
+      current: currentTier === 'free' || currentTier === 'beginner',
     },
     {
       name: 'Core',
       tier: 'intermediate',
       price: '£15/mo',
-      description: 'Smart Money Concepts + AI insights',
+      description: 'AI usage for one nominated ticker',
       features: [
-        'Everything in Free',
-        'All SMC indicators (FVG, BOS/CHoCH, Order Blocks)',
-        'Auto-Fibonacci (swing-based fib levels, auto-drawn)',
-        'Market AI review (Indicator page)',
-        '50 AI credits/month for trade analysis',
-        'Push notifications (indicators & drawings)',
+        'Everything on Free',
+        '1 nominated ticker on the AI page',
+        '80 AI tokens / month',
+        'General analysis = 1 token',
+        'Deep dive = 1 token',
+        'About 40 general+deep pair reads',
       ],
       current: currentTier === 'intermediate',
       popular: true,
@@ -188,13 +187,14 @@ export default function CryptoSubscribe() {
       name: 'Pro',
       tier: 'pro',
       price: '£30/mo',
-      description: 'Professional trading suite',
+      description: 'AI usage for three nominated tickers',
       features: [
         'Everything in Core',
-        'AI Trade Analysis: 4h auto-refresh',
-        '12 manual AI triggers per day',
-        'AI trade notifications',
-        'Priority notifications',
+        '3 nominated tickers on the AI page',
+        '160 AI tokens / month',
+        'General analysis = 1 token',
+        'Deep dive = 1 token',
+        'About 80 general+deep pair reads',
       ],
       current: currentTier === 'pro',
     },
@@ -202,12 +202,14 @@ export default function CryptoSubscribe() {
       name: 'Elite',
       tier: 'elite',
       price: '£50/mo',
-      description: 'Complete trading arsenal',
+      description: 'AI usage for five nominated tickers',
       features: [
         'Everything in Pro',
-        'AI Trade Analysis: 1h auto-refresh',
-        '24 manual AI triggers per day',
-        'Custom indicator requests',
+        '5 nominated tickers on the AI page',
+        '270 AI tokens / month',
+        'General analysis = 1 token',
+        'Deep dive = 1 token',
+        'About 135 general+deep pair reads',
         'Priority support',
       ],
       current: currentTier === 'elite',
@@ -220,9 +222,10 @@ export default function CryptoSubscribe() {
       
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold mb-4">Choose Your Plan</h1>
-          <p className="text-gray-400 text-lg">
-            Unlock powerful trading tools and analysis features
+          <h1 className="text-4xl font-bold mb-4">AI usage plans</h1>
+          <p className="text-gray-400 text-lg max-w-2xl mx-auto">
+            Charts and indicators are free with an email signup. Paid plans only add AI trade ideas —
+            each general reading or deep dive uses 1 token.
           </p>
         </div>
 
@@ -230,9 +233,9 @@ export default function CryptoSubscribe() {
           <Card className="max-w-md mx-auto bg-slate-900 border-slate-800 mb-8">
             <CardContent className="pt-6 text-center">
               <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
-              <h3 className="text-xl font-bold mb-2">Sign in to Subscribe</h3>
+              <h3 className="text-xl font-bold mb-2">Sign in to manage a plan</h3>
               <p className="text-gray-400 mb-4">
-                Create an account or sign in to access premium features
+                Create a free account for charts. Subscribe only if you want AI usage on nominated tickers.
               </p>
               <ClerkSignInButton mode="modal">
                 <Button className="bg-cyan-600 hover:bg-cyan-700">
@@ -323,6 +326,10 @@ export default function CryptoSubscribe() {
                   </Card>
                 ))}
               </div>
+              <p className="text-center text-sm text-slate-500 max-w-3xl mx-auto">
+                Tokens are sized for about 50% margin after model cost (about £0.07 per token blended).
+                A general overview and a deep dive on the same ticker use 2 tokens. Unused tokens reset each month.
+              </p>
             </>
           )}
         </ClerkSignedIn>

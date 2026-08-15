@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
+import { MONTHLY_AI_CREDITS } from '../../shared/aiUsageTiers.js';
 
 // Base tiers (Elliott Wave is a separate add-on)
 type BaseTier = "free" | "beginner" | "intermediate" | "pro" | "elite";
@@ -10,14 +11,6 @@ const TIER_HIERARCHY: Record<BaseTier, number> = {
   intermediate: 2,
   pro: 3,
   elite: 4,
-};
-
-const MONTHLY_AI_CREDITS: Record<BaseTier, number> = {
-  free: 0,
-  beginner: 0,
-  intermediate: 200,
-  pro: 400,
-  elite: 500,
 };
 
 const MONTHLY_ELLIOTT_AI_CREDITS: Record<BaseTier, number> = {

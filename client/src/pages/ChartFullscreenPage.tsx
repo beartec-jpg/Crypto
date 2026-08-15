@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Time, createSeriesMarkers, type ISeriesMarkersPluginApi } from 'lightweight-charts';
 import { useToast } from '@/hooks/use-toast';
-import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import { useDrawingHistory } from '@/hooks/useDrawingHistory';
 import { useElliottWaveLabels } from '@/hooks/useElliottWaveLabels';
 import { useWaveSelection } from '@/hooks/useWaveSelection';
@@ -365,20 +364,11 @@ export function ChartFullscreenPage({
   const { toast } = useToast();
 
   // Tier-based access control for SMC indicators
-  const { tier } = useCryptoAuth();
-  const isPaidTier = tier !== 'free';
+  const isPaidTier = true;
 
-  const requirePaidForSMC = useCallback((toolName: string, action: () => void) => {
-    if (isPaidTier) {
-      action();
-      return;
-    }
-    toast({
-      title: 'Upgrade Required',
-      description: `${toolName} is a Smart Money Concept tool available on the Core plan (£15/mo) and above.`,
-      variant: 'destructive',
-    });
-  }, [isPaidTier, toast]);
+  const requirePaidForSMC = useCallback((_toolName: string, action: () => void) => {
+    action();
+  }, []);
 
   const persistDrawingDefaults = useCallback(async (payload: { tool: string; style: any }) => {
     const raw = userSettings?.drawingDefaults as any;

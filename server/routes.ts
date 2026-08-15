@@ -6305,18 +6305,7 @@ Return ONLY valid JSON in this exact format:
         scanTickers, aiTraderMode, aiHigherTimeframe, aiLowerTimeframe, aiTradeHorizon,
         minRiskReward, minConfluence
       } = req.body;
-      const getTickerSlotCap = (userTier: string) => {
-        switch (userTier) {
-          case 'elite':
-            return 5;
-          case 'pro':
-            return 3;
-          case 'intermediate':
-            return 1;
-          default:
-            return 0;
-        }
-      };
+      const { getTickerSlotCap } = await import('../shared/aiUsageTiers');
 
       // Get user subscription for tier-based validation
       const subscription = await cryptoSubscriptionService.getUserSubscription(userId);

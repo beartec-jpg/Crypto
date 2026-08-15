@@ -337,7 +337,7 @@ export default function CryptoAccount() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                   <div className="bg-slate-800/50 rounded-lg p-4 text-center">
                     <Bot className="w-6 h-6 text-cyan-400 mx-auto mb-2" />
-                    <p className="text-sm text-gray-400">AI Credits</p>
+                    <p className="text-sm text-gray-400">AI tokens used</p>
                     <p className="text-lg font-bold">
                       {isAdmin ? '∞' : subscription?.monthlyUsage ? (
                         `${subscription.monthlyUsage.aiCredits}/${subscription.monthlyUsage.aiLimit}`

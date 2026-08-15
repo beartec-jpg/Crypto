@@ -2,13 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
 
-const MONTHLY_AI_CREDITS: Record<string, number> = {
-  free: 0,
-  beginner: 0,
-  intermediate: 200,
-  pro: 400,
-  elite: 500,
-};
+import { MONTHLY_AI_CREDITS } from '../../shared/aiUsageTiers.js';
 
 const ALLOWED_TIERS = ['intermediate', 'pro', 'elite'];
 const ADMIN_EMAIL = 'beartec@beartec.uk';

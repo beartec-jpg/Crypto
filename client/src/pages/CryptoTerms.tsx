@@ -102,11 +102,10 @@ export default function CryptoTerms() {
               <div>
                 <h3 className="text-lg font-semibold text-white mb-2">Subscription Levels</h3>
                 <ul className="list-disc list-inside space-y-2 text-sm">
-                  <li><strong>Free:</strong> Basic chart access and limited indicators</li>
-                  <li><strong>Beginner ($10/month):</strong> AI market summaries, basic alerts</li>
-                  <li><strong>Intermediate ($15/month):</strong> 50 monthly AI credits, advanced indicators</li>
-                  <li><strong>Pro ($40/month):</strong> Unlimited AI credits, push notifications, all features</li>
-                  <li><strong>Elite ($100/month):</strong> Priority AI processing, dedicated support</li>
+                  <li><strong>Free:</strong> Full charts, indicators, and drawings after email signup</li>
+                  <li><strong>Core (£15/month):</strong> 80 AI tokens, 1 nominated ticker (general or deep dive = 1 token each)</li>
+                  <li><strong>Pro (£30/month):</strong> 160 AI tokens, 3 nominated tickers</li>
+                  <li><strong>Elite (£50/month):</strong> 270 AI tokens, 5 nominated tickers</li>
                 </ul>
               </div>
               <div>

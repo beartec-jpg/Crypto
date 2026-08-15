@@ -295,7 +295,7 @@ export default function CryptoIndicators() {
     enabled: isAuthenticated && !authLoading
   });
   const tier = subscription?.tier || 'free';
-  const isPaidTier = tier !== 'free';
+  const isPaidTier = true;
   
   // Memoized tier check to prevent infinite loops
   const hasMinimalTier = useMemo(() => {

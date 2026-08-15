@@ -69,18 +69,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       isCryptoAiTradeHorizon,
       getCryptoAiTradeHorizon,
     } = await import('../_lib/cryptoAiConfig.js');
-    const getTickerSlotCap = (tier: string) => {
-      switch (tier) {
-        case 'elite':
-          return 5;
-        case 'pro':
-          return 3;
-        case 'intermediate':
-          return 1;
-        default:
-          return 0;
-      }
-    };
+    const { getTickerSlotCap } = await import('../../shared/aiUsageTiers.js');
 
     // Get user ID from crypto_users
     const userResult = await pool.query(

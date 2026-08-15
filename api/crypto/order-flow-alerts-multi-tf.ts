@@ -1305,13 +1305,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await pool.end();
       return res.status(403).json({ 
         error: 'Upgrade required',
-        message: 'AI Analysis is available on Intermediate, Pro, and Elite plans.',
+        message: 'AI Analysis is on Core, Pro, and Elite. Charts and indicators stay free — upgrade only if you want AI trade ideas.',
         requireUpgrade: true
       });
     }
 
-    const MONTHLY_CREDITS: Record<string, number> = { free: 0, beginner: 0, intermediate: 200, pro: 400, elite: 500 };
-    const aiLimit = MONTHLY_CREDITS[tier] || 0;
+    const { MONTHLY_AI_CREDITS } = await import('../../shared/aiUsageTiers.js');
+    const aiLimit = MONTHLY_AI_CREDITS[tier] || 0;
     let aiCreditsUsed = subscription?.ai_credits || 0;
 
     const now = new Date();
@@ -1324,6 +1324,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const creditsRemaining = isAdmin ? 999 : (aiLimit - aiCreditsUsed);
+    const consumeAiToken = async () => {
+      if (isAdmin) return 999;
+      await pool.query(
+        'UPDATE crypto_subscriptions SET ai_credits = ai_credits + 1, updated_at = NOW() WHERE user_id = $1',
+        [cryptoUserId],
+      );
+      return Math.max(0, creditsRemaining - 1);
+    };
     const minRiskReward = Number(subscription?.min_risk_reward ?? AI_MIN_RISK_REWARD_RATIO);
     const minConfluence = Number(subscription?.min_confluence ?? 3);
     const tradeHorizonMeta = getCryptoAiTradeHorizon(
@@ -1332,11 +1340,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const tradeHorizon = tradeHorizonMeta.id;
     const deepDiveCacheMode = encodeCryptoAiDeepDiveMode(traderMode.id, tradeHorizon);
     const horizonPrompt = buildCryptoAiHorizonPromptBlock(tradeHorizon, higherTimeframe, lowerTimeframe);
-    if (analysisType === 'deep' && !isAdmin && creditsRemaining <= 0) {
+    if (!isAdmin && creditsRemaining <= 0) {
       await pool.end();
       return res.status(403).json({ 
         error: 'No AI credits remaining',
-        message: 'You have used all your monthly AI credits.',
+        message: 'You have used all your monthly AI tokens. Each general analysis or deep dive uses 1 token.',
         creditsRemaining: 0
       });
     }
@@ -1392,6 +1400,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (cachedRow && isCryptoAiCacheFresh(cachedRow.updated_at)) {
         const snapshots = Array.isArray(cachedRow.snapshots) ? cachedRow.snapshots : [];
         const aiNarration = typeof cachedRow.ai_narration === 'string' ? JSON.parse(cachedRow.ai_narration) : (cachedRow.ai_narration || {});
+        const remaining = await consumeAiToken();
         await pool.end();
         return res.json({
           success: true,
@@ -1400,7 +1409,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           bestTrades: [],
           estimatedCost: 0,
           tokens: { input: 0, output: 0 },
-          creditsRemaining: isAdmin ? 999 : creditsRemaining,
+          creditsRemaining: remaining,
           sessionBoard: {
             session: aiNarration.session || null,
             refreshedAt: cachedRow.updated_at,
@@ -1411,6 +1420,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       try {
         const generated = await runGeneralPairRefresh(pool, apiKey, symbol, higherTimeframe, lowerTimeframe);
+        const remaining = await consumeAiToken();
         await pool.end();
         return res.json({
           success: true,
@@ -1419,7 +1429,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           bestTrades: [],
           estimatedCost: generated.estimatedCost,
           tokens: generated.tokens,
-          creditsRemaining: isAdmin ? 999 : creditsRemaining,
+          creditsRemaining: remaining,
           sessionBoard: {
             session: generated.session,
             refreshedAt: generated.refreshedAt,
@@ -1430,6 +1440,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (cachedRow) {
           const snapshots = Array.isArray(cachedRow.snapshots) ? cachedRow.snapshots : [];
           const aiNarration = typeof cachedRow.ai_narration === 'string' ? JSON.parse(cachedRow.ai_narration) : (cachedRow.ai_narration || {});
+          const remaining = await consumeAiToken();
           await pool.end();
           return res.json({
             success: true,
@@ -1438,7 +1449,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             bestTrades: [],
             estimatedCost: 0,
             tokens: { input: 0, output: 0 },
-            creditsRemaining: isAdmin ? 999 : creditsRemaining,
+            creditsRemaining: remaining,
             sessionBoard: {
               session: aiNarration.session || null,
               refreshedAt: cachedRow.updated_at,
@@ -1663,9 +1674,9 @@ Respond with ONLY valid JSON:
       parsedResult = { multiTFInsights: null, bestTrades: [] };
     }
 
-    if (analysisType === 'deep' && !isAdmin) {
-      await pool.query('UPDATE crypto_subscriptions SET ai_credits = ai_credits + 1, updated_at = NOW() WHERE user_id = $1', [cryptoUserId]);
-    }
+    const remainingAfterRun = analysisType === 'deep' || analysisType === 'general'
+      ? await consumeAiToken()
+      : creditsRemaining;
 
     if (analysisType === 'deep') {
       try {
@@ -1733,9 +1744,7 @@ Respond with ONLY valid JSON:
       bestTrades: parsedResult.bestTrades || [],
       estimatedCost,
       tokens: { input: inputTokens, output: outputTokens },
-      creditsRemaining: analysisType === 'deep'
-        ? (isAdmin ? 999 : Math.max(0, creditsRemaining - 1))
-        : creditsRemaining
+      creditsRemaining: remainingAfterRun
     });
 
   } catch (error: any) {

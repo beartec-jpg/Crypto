@@ -541,7 +541,7 @@ export default function CryptoAI() {
                 <div>
                   <div className="text-sm font-medium text-white">AI watchlist slots</div>
                   <div className="text-sm text-slate-400">
-                    {trackedTickers.length} of {tickerSlotCap} slots used
+                    {trackedTickers.length} of {tickerSlotCap} nominated ticker{tickerSlotCap === 1 ? '' : 's'} · each general or deep dive uses 1 token
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -665,7 +665,7 @@ export default function CryptoAI() {
           <div className={cn(panelClass, 'border-amber-500/30 p-5')}>
             <h2 className="text-lg font-semibold text-white">Upgrade required</h2>
             <p className="mt-1 text-sm text-slate-400">
-                Free accounts do not have access to AI Analysis. Upgrade to Intermediate, Pro, or Elite to unlock pair-based session boards and on-demand deep dives.
+                Charts stay free. AI trade ideas need a Core, Pro, or Elite usage plan. Each general reading or deep dive uses 1 token on your nominated ticker(s).
             </p>
           </div>
         ) : trackedTickers.length === 0 ? (
