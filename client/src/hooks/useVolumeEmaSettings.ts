@@ -4,13 +4,18 @@ import {
   type VolumeEmaSettings,
 } from '@/types/volumeEma';
 
-/** Bump when locked defaults change so stale localStorage cannot override. */
-const STORAGE_KEY = 'volume-ema-settings-v2';
-const LEGACY_STORAGE_KEYS = ['volume-ema-settings'];
+/**
+ * Bump this when locked defaults change so every client reloads the tuned set.
+ * v3 = user-specified lock-in (lookback 52, k 2.7, opacity 70, dotted 1px, …).
+ */
+const STORAGE_KEY = 'volume-ema-settings-v3';
+const LEGACY_STORAGE_KEYS = [
+  'volume-ema-settings',
+  'volume-ema-settings-v2',
+];
 
 function loadSettings(): VolumeEmaSettings {
   try {
-    // Drop pre-lock-in saves once so everyone gets the tuned defaults
     for (const key of LEGACY_STORAGE_KEYS) {
       try {
         localStorage.removeItem(key);
@@ -24,21 +29,29 @@ function loadSettings(): VolumeEmaSettings {
       const parsed = JSON.parse(stored) as Partial<VolumeEmaSettings> & {
         smoothPeriod?: number;
       };
-      // Migrate legacy smoothPeriod → lookback; always fill missing keys from defaults
       const lookback =
         parsed.lookback ??
         parsed.smoothPeriod ??
         DEFAULT_VOLUME_EMA_SETTINGS.lookback;
-      return {
+      const merged: VolumeEmaSettings = {
         ...DEFAULT_VOLUME_EMA_SETTINGS,
         ...parsed,
         lookback,
       };
+      return merged;
     }
   } catch {
     /* ignore */
   }
-  return { ...DEFAULT_VOLUME_EMA_SETTINGS };
+
+  // First visit / cleared storage: persist the locked defaults immediately
+  const defaults = { ...DEFAULT_VOLUME_EMA_SETTINGS };
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaults));
+  } catch {
+    /* ignore */
+  }
+  return defaults;
 }
 
 function saveSettings(settings: VolumeEmaSettings): void {
