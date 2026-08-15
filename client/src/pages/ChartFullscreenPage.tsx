@@ -94,6 +94,7 @@ import { RewindControls } from '@/components/chart/RewindControls';
 import { useRewindSettings } from '@/hooks/useRewindSettings';
 import { useUserSettings } from '@/hooks/useUserSettings';
 import { findDrawingsNearClick } from '@/lib/drawingHitDetection';
+import { readMainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 // Defensive import: ensures Button is included in the ChartPage chunk scope.
 // Child components (DrawingMenu, IndicatorMenu, ToolsMenu, TradingSystemsMenu)
 // all use Button, but Vite's production scope-hoisting can drop the binding
@@ -459,15 +460,17 @@ export function ChartFullscreenPage({
     mobileNavHeight: 0, // No mobile nav in fullscreen mode
   });
 
-  // Subscribe to main chart visible range for oscillator sync,
-  // and increment chartViewVersion on pan/zoom to repaint the SVG wave click overlay
+  // Subscribe to main chart visible range for oscillator sync (time + logical).
+  // Logical range is required so bottom panes track empty space past the last
+  // candle when the user pans price bars left.
+  // Also increment chartViewVersion on pan/zoom to repaint the SVG wave click overlay.
   const [mainChartVisibleRange, setMainChartVisibleRange] = useState<any>(null);
   useEffect(() => {
     if (!chartRef.current) return;
     const handleVisibleRangeChange = () => {
       try {
-        const range = chartRef.current?.timeScale().getVisibleRange();
-        if (range) setMainChartVisibleRange(range);
+        const range = readMainChartVisibleRange(chartRef.current);
+        if (range.time || range.logical) setMainChartVisibleRange(range);
         setChartViewVersion(v => v + 1);
       } catch (err) {
         // A throw here would propagate into lightweight-charts' internal event
@@ -475,9 +478,20 @@ export function ChartFullscreenPage({
         console.error('[Chart] visible range handler error:', err);
       }
     };
-    chartRef.current.timeScale().subscribeVisibleTimeRangeChange(handleVisibleRangeChange);
+    // Seed once so docked oscillators sync on first paint
+    handleVisibleRangeChange();
+    const ts = chartRef.current.timeScale();
+    ts.subscribeVisibleTimeRangeChange(handleVisibleRangeChange);
+    // Logical range fires when right-margin / bar-shift changes (pan left past last candle)
+    ts.subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
     return () => {
-      chartRef.current?.timeScale().unsubscribeVisibleTimeRangeChange(handleVisibleRangeChange);
+      try {
+        const scale = chartRef.current?.timeScale();
+        scale?.unsubscribeVisibleTimeRangeChange(handleVisibleRangeChange);
+        scale?.unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+      } catch {
+        /* disposed */
+      }
     };
   }, [chartRef.current]);
 

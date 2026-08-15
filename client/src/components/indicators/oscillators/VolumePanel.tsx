@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createChart, ColorType, IChartApi, HistogramSeries, Time } from 'lightweight-charts';
+import { applyMainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 
 interface VolumePanelProps {
   data: { time: number; value: number; color?: string }[];
@@ -38,6 +39,18 @@ export function VolumePanel({
         timeVisible: true,
         visible: true,
       },
+      handleScroll: {
+        mouseWheel: false,
+        pressedMouseMove: false,
+        horzTouchDrag: false,
+        vertTouchDrag: false,
+      },
+      handleScale: {
+        axisPressedMouseMove: false,
+        mouseWheel: false,
+        pinch: false,
+      },
+
       rightPriceScale: {
         borderColor: '#334155',
         scaleMargins: { top: 0.1, bottom: 0 },
@@ -54,15 +67,6 @@ export function VolumePanel({
       onChartCreated(chart);
     }
     
-    // Sync with main chart if enabled
-    if (syncWithMainChart && mainChartVisibleRange) {
-      try {
-        chart.timeScale().setVisibleRange(mainChartVisibleRange);
-      } catch (e) { 
-        console.warn('Failed to sync volume chart with main chart:', e);
-      }
-    }
-    
     const volumeSeries = chart.addSeries(HistogramSeries, { 
       color: '#26a69a',
       priceFormat: {
@@ -75,7 +79,12 @@ export function VolumePanel({
       time: d.time as Time,
       color: d.color || '#26a69a'
     })));
-    
+
+    // Sync after data so logical range past last bar can show empty right margin
+    if (mainChartVisibleRange) {
+      applyMainChartVisibleRange(chart, mainChartVisibleRange);
+    }
+
     // Observe container size changes and resize chart accordingly
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -91,13 +100,13 @@ export function VolumePanel({
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, [data, onChartCreated]);
+  }, [data, onChartCreated, mainChartVisibleRange, syncWithMainChart]);
 
   // Sync time axis with main chart when visible range changes
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {
       try {
-        chartRef.current.timeScale().setVisibleRange(mainChartVisibleRange);
+        applyMainChartVisibleRange(chartRef.current, mainChartVisibleRange);
       } catch (e) { /* ignore if range invalid */ }
     }
   }, [mainChartVisibleRange]);

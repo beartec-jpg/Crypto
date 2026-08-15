@@ -93,7 +93,7 @@ export function DockedOscillatorSection({
               <span>RSI (14)</span>
               <span className="text-slate-600 ml-2">tap to cycle</span>
             </div>
-            <RSIPanel data={oscillatorData.rsi} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />
+            <RSIPanel data={oscillatorData.rsi} period={14} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
         
@@ -113,7 +113,7 @@ export function DockedOscillatorSection({
               fastPeriod={12}
               slowPeriod={26}
               signalPeriod={9}
-              mainChartVisibleRange={mainChartVisibleRange}
+              syncWithMainChart mainChartVisibleRange={mainChartVisibleRange}
             />
           </div>
         )}
@@ -130,7 +130,7 @@ export function DockedOscillatorSection({
             <WaddahExplosionPanel
               histogramData={oscillatorData.waddah.histogram}
               explosionData={oscillatorData.waddah.explosion}
-              mainChartVisibleRange={mainChartVisibleRange}
+              syncWithMainChart mainChartVisibleRange={mainChartVisibleRange}
             />
           </div>
         )}
@@ -144,7 +144,7 @@ export function DockedOscillatorSection({
               <span>CMF (20)</span>
               <span className="text-slate-600 ml-2">tap to cycle</span>
             </div>
-            <CMFPanel data={oscillatorData.cmf} mainChartVisibleRange={mainChartVisibleRange} />
+            <CMFPanel data={oscillatorData.cmf} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
         
@@ -159,8 +159,7 @@ export function DockedOscillatorSection({
             </div>
             <VolumePanel
               data={oscillatorData.volume}
-              mainChartVisibleRange={mainChartVisibleRange}
-              syncWithMainChart
+              syncWithMainChart mainChartVisibleRange={mainChartVisibleRange}
             />
           </div>
         )}
@@ -174,7 +173,7 @@ export function DockedOscillatorSection({
               <span>Stoch RSI (14,14,3,3)</span>
               <span className="text-slate-600 ml-2">tap to cycle</span>
             </div>
-            <StochasticPanel data={oscillatorData.stochRsi} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />
+            <StochasticPanel data={oscillatorData.stochRsi} period={14} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
 
@@ -190,7 +189,7 @@ export function DockedOscillatorSection({
             <TSIPanel
               tsiData={oscillatorData.tsi.tsi}
               signalData={oscillatorData.tsi.signal}
-              mainChartVisibleRange={mainChartVisibleRange}
+              syncWithMainChart mainChartVisibleRange={mainChartVisibleRange}
             />
           </div>
         )}
@@ -204,7 +203,7 @@ export function DockedOscillatorSection({
               <span>Williams %R (14)</span>
               <span className="text-slate-600 ml-2">tap to cycle</span>
             </div>
-            <WilliamsRPanel data={oscillatorData.williamsR} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />
+            <WilliamsRPanel data={oscillatorData.williamsR} period={14} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
 
@@ -217,7 +216,7 @@ export function DockedOscillatorSection({
               <span>CCI (20)</span>
               <span className="text-slate-600 ml-2">tap to cycle</span>
             </div>
-            <CCIPanel data={oscillatorData.cci} period={20} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />
+            <CCIPanel data={oscillatorData.cci} period={20} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
 
@@ -230,7 +229,7 @@ export function DockedOscillatorSection({
               <span>ADX (14)</span>
               <span className="text-slate-600 ml-2">tap to cycle</span>
             </div>
-            <ADXPanel data={oscillatorData.adx} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />
+            <ADXPanel data={oscillatorData.adx} period={14} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
 
@@ -243,7 +242,7 @@ export function DockedOscillatorSection({
               <span>OBV</span>
               <span className="text-slate-600 ml-2">tap to cycle</span>
             </div>
-            <OBVPanel data={oscillatorData.obv} mainChartVisibleRange={mainChartVisibleRange} />
+            <OBVPanel data={oscillatorData.obv} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
 
@@ -256,7 +255,7 @@ export function DockedOscillatorSection({
               <span>MFI (14)</span>
               <span className="text-slate-600 ml-2">tap to cycle</span>
             </div>
-            <MFIPanel data={oscillatorData.mfi} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />
+            <MFIPanel data={oscillatorData.mfi} period={14} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
 
@@ -272,7 +271,7 @@ export function DockedOscillatorSection({
             <KlingerPanel
               klingerData={oscillatorData.klinger.klinger}
               signalData={oscillatorData.klinger.signal}
-              mainChartVisibleRange={mainChartVisibleRange}
+              syncWithMainChart mainChartVisibleRange={mainChartVisibleRange}
             />
           </div>
         )}

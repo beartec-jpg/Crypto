@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createChart, ColorType, IChartApi, LineSeries, Time } from 'lightweight-charts';
+import { applyMainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 
 interface KlingerPanelProps {
   klingerData: { time: number; value: number }[];
@@ -37,6 +38,18 @@ export function KlingerPanel({
         borderColor: '#475569',
         timeVisible: true,
       },
+      handleScroll: {
+        mouseWheel: false,
+        pressedMouseMove: false,
+        horzTouchDrag: false,
+        vertTouchDrag: false,
+      },
+      handleScale: {
+        axisPressedMouseMove: false,
+        mouseWheel: false,
+        pinch: false,
+      },
+
       rightPriceScale: {
         borderColor: '#475569',
       },
@@ -45,11 +58,6 @@ export function KlingerPanel({
     chartRef.current = chart;
     onChartCreated?.(chart);
 
-    if (syncWithMainChart && mainChartVisibleRange) {
-      try {
-        chart.timeScale().setVisibleRange(mainChartVisibleRange);
-      } catch {}
-    }
 
     chart.addSeries(LineSeries, { color: '#14b8a6', lineWidth: 2 }).setData(
       klingerData.map(d => ({ ...d, time: d.time as Time })),
@@ -64,6 +72,11 @@ export function KlingerPanel({
     chart.addSeries(LineSeries, { color: '#64748b', lineStyle: 1, lineWidth: 1 }).setData(
       klingerData.map(d => ({ time: d.time as Time, value: 0 })),
     );
+
+    // Sync viewport after data so empty right margin matches main chart
+    if (mainChartVisibleRange) {
+      applyMainChartVisibleRange(chart, mainChartVisibleRange);
+    }
 
     const resizeObserver = new ResizeObserver(entries => {
       for (const entry of entries) {
@@ -85,7 +98,7 @@ export function KlingerPanel({
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {
       try {
-        chartRef.current.timeScale().setVisibleRange(mainChartVisibleRange);
+        applyMainChartVisibleRange(chartRef.current, mainChartVisibleRange);
       } catch {}
     }
   }, [mainChartVisibleRange]);

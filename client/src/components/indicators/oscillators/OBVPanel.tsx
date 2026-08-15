@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createChart, ColorType, IChartApi, LineSeries, Time } from 'lightweight-charts';
+import { applyMainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 
 interface OBVPanelProps {
   data: { time: number; value: number }[];
@@ -35,6 +36,18 @@ export function OBVPanel({
         borderColor: '#475569',
         timeVisible: true,
       },
+      handleScroll: {
+        mouseWheel: false,
+        pressedMouseMove: false,
+        horzTouchDrag: false,
+        vertTouchDrag: false,
+      },
+      handleScale: {
+        axisPressedMouseMove: false,
+        mouseWheel: false,
+        pinch: false,
+      },
+
       rightPriceScale: {
         borderColor: '#475569',
       },
@@ -48,6 +61,12 @@ export function OBVPanel({
     }
     
     chart.addSeries(LineSeries, { color: '#9580ff', lineWidth: 2 }).setData(data.map(d => ({ ...d, time: d.time as Time })));
+
+
+    // Sync viewport after data so empty right margin matches main chart
+    if (mainChartVisibleRange) {
+      applyMainChartVisibleRange(chart, mainChartVisibleRange);
+    }
 
     // Observe container size changes and resize chart accordingly
     const resizeObserver = new ResizeObserver((entries) => {
@@ -64,13 +83,13 @@ export function OBVPanel({
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, [data, onChartCreated]);
+  }, [data, onChartCreated, mainChartVisibleRange, syncWithMainChart]);
 
   // Sync time axis with main chart when visible range changes
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {
       try {
-        chartRef.current.timeScale().setVisibleRange(mainChartVisibleRange);
+        applyMainChartVisibleRange(chartRef.current, mainChartVisibleRange);
       } catch (e) { /* ignore if range invalid */ }
     }
   }, [mainChartVisibleRange]);

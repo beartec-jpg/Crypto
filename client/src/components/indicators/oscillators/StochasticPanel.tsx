@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createChart, ColorType, IChartApi, LineSeries, Time } from 'lightweight-charts';
+import { applyMainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 
 interface StochasticPanelProps {
   data: Array<{ time: number; k: number; d: number }>;
@@ -39,6 +40,18 @@ export function StochasticPanel({
         borderColor: '#475569',
         timeVisible: true,
       },
+      handleScroll: {
+        mouseWheel: false,
+        pressedMouseMove: false,
+        horzTouchDrag: false,
+        vertTouchDrag: false,
+      },
+      handleScale: {
+        axisPressedMouseMove: false,
+        mouseWheel: false,
+        pinch: false,
+      },
+
       rightPriceScale: {
         borderColor: '#475569',
       },
@@ -50,14 +63,7 @@ export function StochasticPanel({
     if (onChartCreated) {
       onChartCreated(chart);
     }
-    
-    // Sync with main chart if enabled
-    if (syncWithMainChart && mainChartVisibleRange) {
-      try {
-        chart.timeScale().setVisibleRange(mainChartVisibleRange);
-      } catch (e) { /* ignore */ }
-    }
-    
+        
     const kLine = chart.addSeries(LineSeries, { color: '#3b82f6', lineWidth: 2, title: '%K' });
     const dLine = chart.addSeries(LineSeries, { color: '#f97316', lineWidth: 2, title: '%D' });
     
@@ -84,12 +90,12 @@ export function StochasticPanel({
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, [data, candles, period, onChartCreated]);
+  }, [data, candles, period, onChartCreated, mainChartVisibleRange]);
 
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {
       try {
-        chartRef.current.timeScale().setVisibleRange(mainChartVisibleRange);
+        applyMainChartVisibleRange(chartRef.current, mainChartVisibleRange);
       } catch (e) { /* ignore if range invalid */ }
     }
   }, [mainChartVisibleRange]);

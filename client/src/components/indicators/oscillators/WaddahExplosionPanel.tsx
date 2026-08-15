@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createChart, ColorType, IChartApi, HistogramSeries, LineSeries, Time } from 'lightweight-charts';
+import { applyMainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 
 interface WaddahExplosionPanelProps {
   histogramData: { time: number; value: number; color: string }[];
@@ -37,6 +38,18 @@ export function WaddahExplosionPanel({
         borderColor: '#475569',
         timeVisible: true,
       },
+      handleScroll: {
+        mouseWheel: false,
+        pressedMouseMove: false,
+        horzTouchDrag: false,
+        vertTouchDrag: false,
+      },
+      handleScale: {
+        axisPressedMouseMove: false,
+        mouseWheel: false,
+        pinch: false,
+      },
+
       rightPriceScale: {
         borderColor: '#475569',
       },
@@ -45,11 +58,6 @@ export function WaddahExplosionPanel({
     chartRef.current = chart;
     onChartCreated?.(chart);
 
-    if (syncWithMainChart && mainChartVisibleRange) {
-      try {
-        chart.timeScale().setVisibleRange(mainChartVisibleRange);
-      } catch {}
-    }
 
     chart.addSeries(HistogramSeries, { base: 0 }).setData(
       histogramData.map(d => ({ ...d, time: d.time as Time })),
@@ -58,6 +66,11 @@ export function WaddahExplosionPanel({
     chart.addSeries(LineSeries, { color: '#facc15', lineWidth: 2 }).setData(
       explosionData.map(d => ({ ...d, time: d.time as Time })),
     );
+
+    // Sync viewport after data so empty right margin matches main chart
+    if (mainChartVisibleRange) {
+      applyMainChartVisibleRange(chart, mainChartVisibleRange);
+    }
 
     const resizeObserver = new ResizeObserver(entries => {
       for (const entry of entries) {
@@ -79,7 +92,7 @@ export function WaddahExplosionPanel({
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {
       try {
-        chartRef.current.timeScale().setVisibleRange(mainChartVisibleRange);
+        applyMainChartVisibleRange(chartRef.current, mainChartVisibleRange);
       } catch {}
     }
   }, [mainChartVisibleRange]);

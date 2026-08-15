@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createChart, ColorType, IChartApi, LineSeries, Time } from 'lightweight-charts';
+import { applyMainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 
 interface RSIPanelProps {
   data: { time: number; value: number }[];
@@ -41,6 +42,18 @@ export function RSIPanel({
         borderColor: '#475569',
         timeVisible: true,
       },
+      handleScroll: {
+        mouseWheel: false,
+        pressedMouseMove: false,
+        horzTouchDrag: false,
+        vertTouchDrag: false,
+      },
+      handleScale: {
+        axisPressedMouseMove: false,
+        mouseWheel: false,
+        pinch: false,
+      },
+
       rightPriceScale: {
         borderColor: '#475569',
       },
@@ -52,14 +65,7 @@ export function RSIPanel({
     if (onChartCreated) {
       onChartCreated(chart);
     }
-    
-    // Sync with main chart if enabled
-    if (syncWithMainChart && mainChartVisibleRange) {
-      try {
-        chart.timeScale().setVisibleRange(mainChartVisibleRange);
-      } catch (e) { /* ignore */ }
-    }
-    
+        
     const line = chart.addSeries(LineSeries, { color: '#ffa726', lineWidth: 2 });
     line.setData(data.map(d => ({ ...d, time: d.time as Time })));
     
@@ -69,6 +75,12 @@ export function RSIPanel({
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 70 })));
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 30 })));
     
+
+    // Sync viewport after data so empty right margin matches main chart
+    if (mainChartVisibleRange) {
+      applyMainChartVisibleRange(chart, mainChartVisibleRange);
+    }
+
     // Observe container size changes and resize chart accordingly
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -84,13 +96,13 @@ export function RSIPanel({
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, [data, candles, period, onChartCreated]);
+  }, [data, candles, period, onChartCreated, mainChartVisibleRange]);
 
   // Sync time axis with main chart when visible range changes
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {
       try {
-        chartRef.current.timeScale().setVisibleRange(mainChartVisibleRange);
+        applyMainChartVisibleRange(chartRef.current, mainChartVisibleRange);
       } catch (e) { /* ignore if range invalid */ }
     }
   }, [mainChartVisibleRange]);

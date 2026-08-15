@@ -91,7 +91,7 @@ export function PoppedOutOscillators({
   const renderOscillatorContent = (id: string) => {
     switch (id) {
       case 'rsi':
-        return <RSIPanel data={oscillatorData.rsi} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />;
+        return <RSIPanel data={oscillatorData.rsi} period={14} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />;
       case 'macd':
         return (
           <MACDPanel 
@@ -101,7 +101,7 @@ export function PoppedOutOscillators({
             fastPeriod={12}
             slowPeriod={26}
             signalPeriod={9}
-            mainChartVisibleRange={mainChartVisibleRange}
+            syncWithMainChart mainChartVisibleRange={mainChartVisibleRange}
           />
         );
       case 'waddah':
@@ -109,39 +109,39 @@ export function PoppedOutOscillators({
           <WaddahExplosionPanel
             histogramData={oscillatorData.waddah.histogram}
             explosionData={oscillatorData.waddah.explosion}
-            mainChartVisibleRange={mainChartVisibleRange}
+            syncWithMainChart mainChartVisibleRange={mainChartVisibleRange}
           />
         );
       case 'cmf':
-        return <CMFPanel data={oscillatorData.cmf} mainChartVisibleRange={mainChartVisibleRange} />;
+        return <CMFPanel data={oscillatorData.cmf} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />;
       case 'volume':
-        return <VolumePanel data={oscillatorData.volume} mainChartVisibleRange={mainChartVisibleRange} />;
+        return <VolumePanel data={oscillatorData.volume} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />;
       case 'stochRsi':
-        return <StochasticPanel data={oscillatorData.stochRsi} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />;
+        return <StochasticPanel data={oscillatorData.stochRsi} period={14} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />;
       case 'tsi':
         return (
           <TSIPanel
             tsiData={oscillatorData.tsi.tsi}
             signalData={oscillatorData.tsi.signal}
-            mainChartVisibleRange={mainChartVisibleRange}
+            syncWithMainChart mainChartVisibleRange={mainChartVisibleRange}
           />
         );
       case 'williamsR':
-        return <WilliamsRPanel data={oscillatorData.williamsR} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />;
+        return <WilliamsRPanel data={oscillatorData.williamsR} period={14} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />;
       case 'cci':
-        return <CCIPanel data={oscillatorData.cci} period={20} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />;
+        return <CCIPanel data={oscillatorData.cci} period={20} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />;
       case 'adx':
-        return <ADXPanel data={oscillatorData.adx} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />;
+        return <ADXPanel data={oscillatorData.adx} period={14} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />;
       case 'obv':
-        return <OBVPanel data={oscillatorData.obv} mainChartVisibleRange={mainChartVisibleRange} />;
+        return <OBVPanel data={oscillatorData.obv} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />;
       case 'mfi':
-        return <MFIPanel data={oscillatorData.mfi} period={14} candles={candles} mainChartVisibleRange={mainChartVisibleRange} />;
+        return <MFIPanel data={oscillatorData.mfi} period={14} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />;
       case 'klinger':
         return (
           <KlingerPanel
             klingerData={oscillatorData.klinger.klinger}
             signalData={oscillatorData.klinger.signal}
-            mainChartVisibleRange={mainChartVisibleRange}
+            syncWithMainChart mainChartVisibleRange={mainChartVisibleRange}
           />
         );
       case 'smartMoney':

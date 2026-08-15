@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createChart, ColorType, IChartApi, LineSeries, Time } from 'lightweight-charts';
+import { applyMainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 
 interface ADXPanelProps {
   data: Array<{ time: number; adx: number; plusDI: number; minusDI: number }>;
@@ -39,6 +40,18 @@ export function ADXPanel({
         borderColor: '#475569',
         timeVisible: true,
       },
+      handleScroll: {
+        mouseWheel: false,
+        pressedMouseMove: false,
+        horzTouchDrag: false,
+        vertTouchDrag: false,
+      },
+      handleScale: {
+        axisPressedMouseMove: false,
+        mouseWheel: false,
+        pinch: false,
+      },
+
       rightPriceScale: {
         borderColor: '#475569',
       },
@@ -64,6 +77,12 @@ export function ADXPanel({
     // Add strength level line (25 is typically considered strong trend)
     chart.addSeries(LineSeries, { color: '#666', lineStyle: 1, lineWidth: 1 }).setData(candles.map(d => ({ time: d.time as Time, value: 25 })));
 
+
+    // Sync viewport after data so empty right margin matches main chart
+    if (mainChartVisibleRange) {
+      applyMainChartVisibleRange(chart, mainChartVisibleRange);
+    }
+
     // Observe container size changes and resize chart accordingly
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -79,13 +98,13 @@ export function ADXPanel({
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, [data, candles, period, onChartCreated]);
+  }, [data, candles, period, onChartCreated, mainChartVisibleRange]);
 
   // Sync time axis with main chart when visible range changes
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {
       try {
-        chartRef.current.timeScale().setVisibleRange(mainChartVisibleRange);
+        applyMainChartVisibleRange(chartRef.current, mainChartVisibleRange);
       } catch (e) { /* ignore if range invalid */ }
     }
   }, [mainChartVisibleRange]);

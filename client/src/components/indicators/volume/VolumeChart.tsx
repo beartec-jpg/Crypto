@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createChart, ColorType, IChartApi, HistogramSeries, Time } from 'lightweight-charts';
+import { applyMainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 
 interface VolumeChartProps {
   data: { time: number; value: number; color?: string }[];
@@ -35,6 +36,18 @@ export function VolumeChart({
         borderColor: '#475569',
         timeVisible: true,
       },
+      handleScroll: {
+        mouseWheel: false,
+        pressedMouseMove: false,
+        horzTouchDrag: false,
+        vertTouchDrag: false,
+      },
+      handleScale: {
+        axisPressedMouseMove: false,
+        mouseWheel: false,
+        pinch: false,
+      },
+
       rightPriceScale: {
         borderColor: '#475569',
       },
@@ -50,7 +63,7 @@ export function VolumeChart({
     // Sync with main chart if enabled
     if (syncWithMainChart && mainChartVisibleRange) {
       try {
-        chart.timeScale().setVisibleRange(mainChartVisibleRange);
+        applyMainChartVisibleRange(chart, mainChartVisibleRange);
       } catch (e) { /* ignore */ }
     }
     

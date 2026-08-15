@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createChart, ColorType, IChartApi, LineSeries, HistogramSeries, Time } from 'lightweight-charts';
+import { applyMainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 
 interface MACDPanelProps {
   macdData: { time: number; value: number }[];
@@ -47,6 +48,18 @@ export function MACDPanel({
         borderColor: '#475569',
         timeVisible: true,
       },
+      handleScroll: {
+        mouseWheel: false,
+        pressedMouseMove: false,
+        horzTouchDrag: false,
+        vertTouchDrag: false,
+      },
+      handleScale: {
+        axisPressedMouseMove: false,
+        mouseWheel: false,
+        pinch: false,
+      },
+
       rightPriceScale: {
         borderColor: '#475569',
       },
@@ -58,18 +71,17 @@ export function MACDPanel({
     if (onChartCreated) {
       onChartCreated(chart);
     }
-    
-    // Sync with main chart if enabled
-    if (syncWithMainChart && mainChartVisibleRange) {
-      try {
-        chart.timeScale().setVisibleRange(mainChartVisibleRange);
-      } catch (e) { /* ignore */ }
-    }
-    
+        
     chart.addSeries(LineSeries, { color: '#26a69a', lineWidth: 2 }).setData(macdData.map(d => ({ ...d, time: d.time as Time })));
     chart.addSeries(LineSeries, { color: '#ef5350', lineWidth: 2 }).setData(signalData.map(d => ({ ...d, time: d.time as Time })));
     chart.addSeries(HistogramSeries, { color: '#26a69a' }).setData(histogramData.map(d => ({ ...d, time: d.time as Time })));
     
+
+    // Sync viewport after data so empty right margin matches main chart
+    if (mainChartVisibleRange) {
+      applyMainChartVisibleRange(chart, mainChartVisibleRange);
+    }
+
     // Observe container size changes and resize chart accordingly
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -91,7 +103,7 @@ export function MACDPanel({
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {
       try {
-        chartRef.current.timeScale().setVisibleRange(mainChartVisibleRange);
+        applyMainChartVisibleRange(chartRef.current, mainChartVisibleRange);
       } catch (e) { /* ignore if range invalid */ }
     }
   }, [mainChartVisibleRange]);

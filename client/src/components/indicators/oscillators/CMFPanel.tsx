@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createChart, ColorType, IChartApi, LineSeries, Time } from 'lightweight-charts';
+import { applyMainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 
 interface CMFPanelProps {
   data: { time: number; value: number }[];
@@ -35,6 +36,18 @@ export function CMFPanel({
         borderColor: '#475569',
         timeVisible: true,
       },
+      handleScroll: {
+        mouseWheel: false,
+        pressedMouseMove: false,
+        horzTouchDrag: false,
+        vertTouchDrag: false,
+      },
+      handleScale: {
+        axisPressedMouseMove: false,
+        mouseWheel: false,
+        pinch: false,
+      },
+
       rightPriceScale: {
         borderColor: '#475569',
       },
@@ -43,11 +56,6 @@ export function CMFPanel({
     chartRef.current = chart;
     onChartCreated?.(chart);
 
-    if (syncWithMainChart && mainChartVisibleRange) {
-      try {
-        chart.timeScale().setVisibleRange(mainChartVisibleRange);
-      } catch {}
-    }
 
     chart.addSeries(LineSeries, { color: '#22c55e', lineWidth: 2 }).setData(
       data.map(d => ({ ...d, time: d.time as Time })),
@@ -56,6 +64,11 @@ export function CMFPanel({
     chart.addSeries(LineSeries, { color: '#64748b', lineStyle: 1, lineWidth: 1 }).setData(
       data.map(d => ({ time: d.time as Time, value: 0 })),
     );
+
+    // Sync viewport after data so empty right margin matches main chart
+    if (mainChartVisibleRange) {
+      applyMainChartVisibleRange(chart, mainChartVisibleRange);
+    }
 
     const resizeObserver = new ResizeObserver(entries => {
       for (const entry of entries) {
@@ -77,7 +90,7 @@ export function CMFPanel({
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {
       try {
-        chartRef.current.timeScale().setVisibleRange(mainChartVisibleRange);
+        applyMainChartVisibleRange(chartRef.current, mainChartVisibleRange);
       } catch {}
     }
   }, [mainChartVisibleRange]);

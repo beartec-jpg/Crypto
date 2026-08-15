@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { createChart, ColorType, IChartApi, LineSeries, Time } from 'lightweight-charts';
+import { applyMainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 
 interface WilliamsRPanelProps {
   data: { time: number; value: number }[];
@@ -49,6 +50,18 @@ export function WilliamsRPanel({
         borderColor: '#475569',
         timeVisible: true,
       },
+      handleScroll: {
+        mouseWheel: false,
+        pressedMouseMove: false,
+        horzTouchDrag: false,
+        vertTouchDrag: false,
+      },
+      handleScale: {
+        axisPressedMouseMove: false,
+        mouseWheel: false,
+        pinch: false,
+      },
+
       rightPriceScale: {
         borderColor: '#475569',
       },
@@ -60,14 +73,7 @@ export function WilliamsRPanel({
     if (onChartCreated) {
       onChartCreated(chart);
     }
-    
-    // Sync with main chart if enabled
-    if (syncWithMainChart && mainChartVisibleRange) {
-      try {
-        chart.timeScale().setVisibleRange(mainChartVisibleRange);
-      } catch (e) { /* ignore */ }
-    }
-    
+        
     const line = chart.addSeries(LineSeries, { color: '#a855f7', lineWidth: 2 });
     line.setData(data.map(d => ({ ...d, time: d.time as Time })));
     
@@ -91,12 +97,12 @@ export function WilliamsRPanel({
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, [data, candles, period, onChartCreated]);
+  }, [data, candles, period, onChartCreated, mainChartVisibleRange]);
 
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {
       try {
-        chartRef.current.timeScale().setVisibleRange(mainChartVisibleRange);
+        applyMainChartVisibleRange(chartRef.current, mainChartVisibleRange);
       } catch (e) { /* ignore if range invalid */ }
     }
   }, [mainChartVisibleRange]);
