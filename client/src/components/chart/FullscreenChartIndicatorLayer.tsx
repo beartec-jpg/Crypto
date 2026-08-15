@@ -16,7 +16,10 @@ import { SuperTrendRenderer } from '@/components/indicators/SuperTrendRenderer';
 import { ElderImpulseRenderer } from '@/components/indicators/ElderImpulseRenderer';
 import { HighLowRenderer } from '@/components/indicators/HighLowRenderer';
 import { VolumeEmaOverlay } from '@/components/indicators/volume/VolumeEmaOverlay';
+import { AutoTrendlineRenderer } from '@/components/indicators/AutoTrendlineRenderer';
+import { AutoTrendlineSettingsModal } from '@/components/modals/AutoTrendlineSettingsModal';
 import { DivergenceRenderer } from '@/components/divergence/DivergenceRenderer';
+import type { AutoTrendlineResult, AutoTrendlineSettings, AutoTrendlineTierId, AutoTrendlineTierSettings } from '@/types/autoTrendline';
 import { DivergenceBadgePopup } from '@/components/divergence/DivergenceBadgePopup';
 import { DivergenceSettingsModal } from '@/components/divergence/DivergenceSettingsModal';
 import { getConditionWeights } from '@/lib/conditionWeights';
@@ -87,6 +90,13 @@ interface FullscreenChartIndicatorLayerProps {
 
   highLowEnabled: boolean;
   volumeEmaEnabled: boolean;
+  autoTrendlineSettings: AutoTrendlineSettings;
+  autoTrendlineResult: AutoTrendlineResult;
+  showAutoTrendlineModal: boolean;
+  onCloseAutoTrendlineModal: () => void;
+  onAutoTrendlineSettingsChange: (updates: Partial<AutoTrendlineSettings>) => void;
+  onAutoTrendlineTierChange: (tier: AutoTrendlineTierId, updates: Partial<AutoTrendlineTierSettings>) => void;
+  onAutoTrendlineReset?: () => void;
   divergenceScannerEnabled: boolean;
   filteredDivergencePoints: any[];
   onSelectDivergencePoint: (point: any) => void;
@@ -150,6 +160,13 @@ export function FullscreenChartIndicatorLayer({
   superTrendSettings,
   highLowEnabled,
   volumeEmaEnabled,
+  autoTrendlineSettings,
+  autoTrendlineResult,
+  showAutoTrendlineModal,
+  onCloseAutoTrendlineModal,
+  onAutoTrendlineSettingsChange,
+  onAutoTrendlineTierChange,
+  onAutoTrendlineReset,
   divergenceScannerEnabled,
   filteredDivergencePoints,
   onSelectDivergencePoint,
@@ -319,6 +336,19 @@ export function FullscreenChartIndicatorLayer({
         show={volumeEmaEnabled}
       />
 
+      <AutoTrendlineRenderer
+        chart={chart}
+        candleSeries={candleSeries}
+        result={autoTrendlineResult}
+        settings={autoTrendlineSettings}
+        lastIndex={Math.max(0, (candles?.length ?? 1) - 1)}
+        lastTime={
+          candles?.length
+            ? (candles[candles.length - 1] as { time?: number })?.time ?? null
+            : null
+        }
+      />
+
       {divergenceScannerEnabled && (
         <DivergenceRenderer
           chart={chart}
@@ -356,6 +386,15 @@ export function FullscreenChartIndicatorLayer({
         onClose={onCloseDivergenceSettings}
         settings={divergenceSettings}
         onSettingsChange={onDivergenceSettingsChange}
+      />
+
+      <AutoTrendlineSettingsModal
+        isOpen={showAutoTrendlineModal}
+        onClose={onCloseAutoTrendlineModal}
+        settings={autoTrendlineSettings}
+        onSettingsChange={onAutoTrendlineSettingsChange}
+        onTierChange={onAutoTrendlineTierChange}
+        onReset={onAutoTrendlineReset}
       />
     </>
   );

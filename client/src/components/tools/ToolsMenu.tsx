@@ -22,6 +22,9 @@ interface ToolsMenuProps {
   /** Volume relative to EMA, plotted on price scale around candle mid */
   volumeEmaEnabled: boolean;
   onToggleVolumeEma: (enabled: boolean) => void;
+  autoTrendlineEnabled: boolean;
+  onToggleAutoTrendline: (enabled: boolean) => void;
+  onOpenAutoTrendlineSettings: () => void;
   liquidityHeatmapEnabled: boolean;
   onToggleLiquidityHeatmap: (enabled: boolean) => void;
   onOpenLiquidityHeatmapSettings: () => void;
@@ -49,6 +52,9 @@ export function ToolsMenu({
   onToggleVolume,
   volumeEmaEnabled,
   onToggleVolumeEma,
+  autoTrendlineEnabled,
+  onToggleAutoTrendline,
+  onOpenAutoTrendlineSettings,
   liquidityHeatmapEnabled,
   onToggleLiquidityHeatmap,
   onOpenLiquidityHeatmapSettings,
@@ -69,6 +75,7 @@ export function ToolsMenu({
     vpEnabled ||
     volumeEnabled ||
     volumeEmaEnabled ||
+    autoTrendlineEnabled ||
     liquidityHeatmapEnabled ||
     gdsMiniBadgeEnabled ||
     rewindEnabled;
@@ -232,7 +239,7 @@ export function ToolsMenu({
                 Volume EMA
               </div>
               <div className="text-xs text-slate-400 leading-tight">
-                Rel-vol path on price (above mid = spike, below = dry)
+                Buy pressure above mid, sell below; quiet vol returns to mid
               </div>
             </div>
             <Switch
@@ -241,6 +248,38 @@ export function ToolsMenu({
               className="shrink-0 data-[state=checked]:bg-blue-600"
               data-testid="switch-volume-ema-overlay"
             />
+          </div>
+
+          <div className="flex items-center justify-between py-1.5 px-1">
+            <div className="min-w-0 mr-3">
+              <div className="text-sm font-medium text-slate-100 leading-tight">
+                Auto Trendlines
+              </div>
+              <div className="text-xs text-slate-400 leading-tight">
+                Macro / mid / LTF wick lines (settings per tier)
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <Switch
+                checked={autoTrendlineEnabled}
+                onCheckedChange={onToggleAutoTrendline}
+                className="shrink-0 data-[state=checked]:bg-blue-600"
+                data-testid="switch-auto-trendlines"
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
+                title="Auto Trendline Settings"
+                onClick={() => {
+                  setOpen(false);
+                  onOpenAutoTrendlineSettings();
+                }}
+                data-testid="btn-auto-trendline-settings"
+              >
+                <Settings className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
 
           <div className="flex items-center justify-between py-1.5 px-1">

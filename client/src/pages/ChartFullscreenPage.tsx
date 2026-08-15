@@ -59,6 +59,8 @@ import { usePDZoneSettings } from '@/hooks/usePDZoneSettings';
 import { usePDZoneDetection } from '@/hooks/usePDZoneDetection';
 import { useAutoFibSettings } from '@/hooks/useAutoFibSettings';
 import { useAutoFibDetection } from '@/hooks/useAutoFibDetection';
+import { useAutoTrendlineSettings } from '@/hooks/useAutoTrendlineSettings';
+import { useAutoTrendlineDetection } from '@/hooks/useAutoTrendlineDetection';
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
 import { calculateEMA } from '@/lib/indicators';
 import { useMultiTimeframeDivergenceScanner } from '@/hooks/useMultiTimeframeDivergenceScanner';
@@ -255,6 +257,7 @@ export function ChartFullscreenPage({
 
   const [highLowEnabled, setHighLowEnabled] = useState(false);
   const [volumeEmaEnabled, setVolumeEmaEnabled] = useState(false);
+  const [showAutoTrendlineModal, setShowAutoTrendlineModal] = useState(false);
   const [divergenceScannerEnabled, setDivergenceScannerEnabled] = useState(false);
   const [selectedDivergencePoint, setSelectedDivergencePoint] = useState<DivergencePoint | null>(null);
   const [showDivergenceSettings, setShowDivergenceSettings] = useState(false);
@@ -748,6 +751,13 @@ export function ChartFullscreenPage({
   const autoFibSettings = useAutoFibSettings();
   const autoFibVisibleRange = useVisibleRange(chartRef.current, chartReady);
   const autoFibResult = useAutoFibDetection(effectiveCandles, autoFibVisibleRange, autoFibSettings.settings);
+
+  // Hooks - Auto Trendlines (macro / mid / LTF)
+  const autoTrendlineSettings = useAutoTrendlineSettings();
+  const autoTrendlineResult = useAutoTrendlineDetection(
+    effectiveCandles as Array<{ time: number; open: number; high: number; low: number; close: number; volume?: number }>,
+    autoTrendlineSettings.settings,
+  );
 
   // Hooks - SuperTrend
   const superTrendSettings = useSuperTrendSettings();
@@ -2159,6 +2169,7 @@ export function ChartFullscreenPage({
 
     setDivergenceScannerEnabled(false);
     setVolumeEmaEnabled(false);
+    autoTrendlineSettings.updateSettings({ enabled: false });
     fvgSettings.updateSetting('enabled', false);
     obSettings.updateSetting('enabled', false);
     breakerSettings.updateSetting('enabled', false);
@@ -2191,6 +2202,7 @@ export function ChartFullscreenPage({
     liquiditySettings,
     pdZoneSettings,
     autoFibSettings,
+    autoTrendlineSettings,
     superTrendSettings,
     vpSettings,
     lhSettings,
@@ -2932,6 +2944,9 @@ export function ChartFullscreenPage({
           onToggleVolume={(enabled) => oscillatorPanel.toggleDockedOscillator('volume', enabled)}
           volumeEmaEnabled={volumeEmaEnabled}
           onToggleVolumeEma={setVolumeEmaEnabled}
+          autoTrendlineEnabled={autoTrendlineSettings.settings.enabled}
+          onToggleAutoTrendline={(enabled) => autoTrendlineSettings.updateSettings({ enabled })}
+          onOpenAutoTrendlineSettings={() => setShowAutoTrendlineModal(true)}
           liquidityHeatmapEnabled={lhSettings.settings.enabled}
           onToggleLiquidityHeatmap={(enabled) => lhSettings.updateSettings({ enabled })}
           onOpenLiquidityHeatmapSettings={() => setShowLHModal(true)}
@@ -3057,6 +3072,13 @@ export function ChartFullscreenPage({
           superTrendSettings={superTrendSettings.settings}
           highLowEnabled={highLowEnabled}
           volumeEmaEnabled={volumeEmaEnabled}
+          autoTrendlineSettings={autoTrendlineSettings.settings}
+          autoTrendlineResult={autoTrendlineResult}
+          showAutoTrendlineModal={showAutoTrendlineModal}
+          onCloseAutoTrendlineModal={() => setShowAutoTrendlineModal(false)}
+          onAutoTrendlineSettingsChange={autoTrendlineSettings.updateSettings}
+          onAutoTrendlineTierChange={autoTrendlineSettings.updateTier}
+          onAutoTrendlineReset={autoTrendlineSettings.resetToDefaults}
           divergenceScannerEnabled={divergenceScannerEnabled}
           filteredDivergencePoints={filteredDivergencePoints}
           onSelectDivergencePoint={setSelectedDivergencePoint}

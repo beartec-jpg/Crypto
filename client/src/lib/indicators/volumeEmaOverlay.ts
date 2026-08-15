@@ -1,38 +1,67 @@
 /**
  * Volume EMA Overlay (v1)
  *
- * Maps per-candle volume relative to its EMA onto the price scale:
- *   r      = volume / EMA(volume, period)
- *   logR   = clamp(log2(r), ±clampSigmas)
- *   offset = EMA(logR * k * ATR, smoothPeriod)   // smooths jagged vol noise
- *   plot   = mid + offset                        // mid = (high+low)/2
+ * Maps per-candle volume relative to its EMA onto the price scale, signed
+ * by buy/sell pressure (candle close vs open):
  *
- * At normal volume the line sits at candle mid; sustained volume spikes
- * push it above the body, dry volume pulls it below.
+ *   r        = volume / EMA(volume, period)
+ *   magnitude = clamp(max(0, log2(r)), 0, clampSigmas)
+ *               // only elevated volume pulls away from mid;
+ *               // low / average volume → 0 → tracks mid
+ *   sign     = +1 buy pressure (close ≥ open), −1 sell pressure
+ *   rawOff   = sign * magnitude * k * ATR
+ *   offset   = EMA(rawOff, smoothPeriod)
+ *   plot     = mid + offset
+ *
+ * So 2× buy sits ~1 ATR above mid, 4× buy ~2 ATR above, 2× sell below mid,
+ * and quiet volume eases the line back to the candle middle.
+ *
+ * Spike markers fire when raw ratio >= spikeRatio (default 2×):
+ *   buy → green triangle under the bar
+ *   sell → red triangle above the bar
  */
 
 export interface VolumeEmaCandle {
   time: number;
+  open?: number;
   high: number;
   low: number;
   close: number;
   volume: number;
 }
 
-export type VolumeEmaRegime = 'elevated' | 'dry' | 'neutral';
+export type VolumeEmaRegime = 'buy' | 'sell' | 'neutral';
+
+export type VolumeEmaSpikeDirection = 'buy' | 'sell';
+
+export interface VolumeEmaSpike {
+  time: number;
+  direction: VolumeEmaSpikeDirection;
+  /** vol / EMA(vol) at the spike bar */
+  ratio: number;
+  /** Price level for the marker (offset clear of the candle body/wick) */
+  markerPrice: number;
+}
 
 export interface VolumeEmaPoint {
   time: number;
   value: number;
   /** Volume / EMA(vol). 1 = at average. */
   ratio: number;
-  /** Clamped log2(ratio) before offset smoothing. */
+  /**
+   * Signed elevated log contribution used before offset smoothing:
+   * sign * clamp(max(0, log2(ratio)), 0, clampSigmas).
+   * 0 when volume is at or below average.
+   */
   logRatio: number;
   /** Smoothed price offset from mid (what is actually plotted). */
   offset: number;
   mid: number;
   atr: number;
+  /** Pressure regime from the smoothed offset. */
   regime: VolumeEmaRegime;
+  /** Set when raw ratio meets the spike threshold. */
+  spike: VolumeEmaSpikeDirection | null;
 }
 
 export interface VolumeEmaOverlayOptions {
@@ -42,13 +71,22 @@ export interface VolumeEmaOverlayOptions {
   atrPeriod?: number;
   /** Amplitude multiplier (S = k * ATR). Default 1. */
   k?: number;
-  /** Clamp log2(ratio) to ±this many "sigmas". Default 4. */
+  /** Clamp elevated log2(ratio) to this many "sigmas". Default 4. */
   clampSigmas?: number;
   /**
    * EMA period applied to the raw price offset so the path is not jagged.
    * 1 = no extra smoothing. Default 5.
    */
   smoothPeriod?: number;
+  /**
+   * Raw vol/EMA ratio that triggers a spike triangle. Default 2.
+   */
+  spikeRatio?: number;
+  /**
+   * How far past the wick to place spike triangles, in ATR multiples.
+   * Default 0.85 so markers sit clear of the candle.
+   */
+  spikeOffsetAtr?: number;
 }
 
 export const DEFAULT_VOLUME_EMA_OPTIONS = {
@@ -57,6 +95,8 @@ export const DEFAULT_VOLUME_EMA_OPTIONS = {
   k: 1,
   clampSigmas: 4,
   smoothPeriod: 5,
+  spikeRatio: 2,
+  spikeOffsetAtr: 0.85,
 } as const;
 
 function emaSeries(values: number[], period: number): (number | null)[] {
@@ -77,9 +117,7 @@ function emaSeries(values: number[], period: number): (number | null)[] {
 }
 
 /**
- * EMA over a sparse series (nulls = not ready). Output stays null until
- * `period` consecutive finite samples have been seen from the first finite value.
- * For streaming indicator points we smooth only the dense raw-offset sequence.
+ * Dense EMA with expanding-mean warm-up so early bars still emit values.
  */
 function emaDense(values: number[], period: number): number[] {
   if (values.length === 0) return [];
@@ -87,7 +125,6 @@ function emaDense(values: number[], period: number): number[] {
 
   const out: number[] = [];
   if (values.length < period) {
-    // Short seed: cumulative mean so we still emit from bar 0
     let sum = 0;
     for (let i = 0; i < values.length; i++) {
       sum += values[i];
@@ -100,7 +137,6 @@ function emaDense(values: number[], period: number): number[] {
   for (let i = 0; i < period; i++) sum += values[i];
   let prev = sum / period;
   for (let i = 0; i < period - 1; i++) {
-    // Warm-up: expanding mean so early bars aren't dropped
     let s = 0;
     for (let j = 0; j <= i; j++) s += values[j];
     out.push(s / (i + 1));
@@ -141,9 +177,50 @@ function atrSeries(candles: VolumeEmaCandle[], period: number): (number | null)[
 }
 
 function regimeFromOffset(offset: number, eps = 1e-9): VolumeEmaRegime {
-  if (offset > eps) return 'elevated';
-  if (offset < -eps) return 'dry';
+  if (offset > eps) return 'buy';
+  if (offset < -eps) return 'sell';
   return 'neutral';
+}
+
+/** Bullish close → buy pressure; bearish → sell pressure. */
+export function pressureDirection(candle: VolumeEmaCandle): VolumeEmaSpikeDirection {
+  const open = Number.isFinite(candle.open) ? (candle.open as number) : candle.close;
+  return candle.close >= open ? 'buy' : 'sell';
+}
+
+/**
+ * Elevated-only magnitude from volume ratio.
+ * r ≤ 1 → 0 (track mid). r = 2 → 1, r = 4 → 2, clamped at clampSigmas.
+ */
+export function elevatedLogMagnitude(ratio: number, clampSigmas: number): number {
+  if (!(ratio > 1) || !Number.isFinite(ratio)) return 0;
+  const logR = Math.log2(ratio);
+  if (!(logR > 0)) return 0;
+  return Math.min(clampSigmas, logR);
+}
+
+/**
+ * Marker price clear of the candle: below low for buy, above high for sell.
+ */
+export function spikeMarkerPrice(
+  candle: VolumeEmaCandle,
+  atr: number,
+  direction: VolumeEmaSpikeDirection,
+  offsetAtr: number,
+): number {
+  const range = Math.max(candle.high - candle.low, 0);
+  // Prefer ATR-based pad; also clear at least half the bar range
+  const pad = Math.max(atr * offsetAtr, range * 0.55, atr * 0.35);
+  return direction === 'buy' ? candle.low - pad : candle.high + pad;
+}
+
+/**
+ * Format the side-axis / legend reading, e.g. "Vol EMA 1.42×".
+ */
+export function formatVolumeEmaLabel(ratio: number | null | undefined): string {
+  if (ratio == null || !Number.isFinite(ratio)) return 'Vol EMA';
+  if (ratio >= 10) return `Vol EMA ${ratio.toFixed(1)}×`;
+  return `Vol EMA ${ratio.toFixed(2)}×`;
 }
 
 /**
@@ -159,8 +236,11 @@ export function calculateVolumeEmaOverlay(
   const k = options.k ?? DEFAULT_VOLUME_EMA_OPTIONS.k;
   const clampSigmas = options.clampSigmas ?? DEFAULT_VOLUME_EMA_OPTIONS.clampSigmas;
   const smoothPeriod = options.smoothPeriod ?? DEFAULT_VOLUME_EMA_OPTIONS.smoothPeriod;
+  const spikeRatio = options.spikeRatio ?? DEFAULT_VOLUME_EMA_OPTIONS.spikeRatio;
 
-  if (!candles.length || k <= 0 || clampSigmas <= 0 || smoothPeriod < 1) return [];
+  if (!candles.length || k <= 0 || clampSigmas <= 0 || smoothPeriod < 1 || spikeRatio <= 0) {
+    return [];
+  }
 
   const volumes = candles.map((c) => (Number.isFinite(c.volume) && c.volume > 0 ? c.volume : 0));
   const volEma = emaSeries(volumes, volumeEmaPeriod);
@@ -173,6 +253,7 @@ export function calculateVolumeEmaOverlay(
     ratio: number;
     logRatio: number;
     rawOffset: number;
+    candle: VolumeEmaCandle;
   };
 
   const raw: Raw[] = [];
@@ -186,8 +267,11 @@ export function calculateVolumeEmaOverlay(
     const c = candles[i];
     const vol = volumes[i];
     const ratio = Math.max(vol, Number.EPSILON) / emaVol;
-    const rawLog = Math.log2(ratio);
-    const logRatio = Math.max(-clampSigmas, Math.min(clampSigmas, rawLog));
+    const magnitude = elevatedLogMagnitude(ratio, clampSigmas);
+    const direction = pressureDirection(c);
+    const sign = direction === 'buy' ? 1 : -1;
+    // Signed elevated contribution: low vol → 0 (mid); high buy up / high sell down
+    const logRatio = sign * magnitude;
     const mid = (c.high + c.low) / 2;
     const rawOffset = logRatio * k * atrVal;
 
@@ -200,6 +284,7 @@ export function calculateVolumeEmaOverlay(
       ratio,
       logRatio,
       rawOffset,
+      candle: c,
     });
   }
 
@@ -217,6 +302,9 @@ export function calculateVolumeEmaOverlay(
     const value = r.mid + offset;
     if (!Number.isFinite(value)) continue;
 
+    const spike: VolumeEmaSpikeDirection | null =
+      r.ratio >= spikeRatio ? pressureDirection(r.candle) : null;
+
     points.push({
       time: r.time,
       value,
@@ -226,8 +314,39 @@ export function calculateVolumeEmaOverlay(
       mid: r.mid,
       atr: r.atr,
       regime: regimeFromOffset(offset),
+      spike,
     });
   }
 
   return points;
+}
+
+/**
+ * Build spike markers from overlay points + source candles.
+ * Marker prices are offset away from wicks so they do not cover the candle.
+ */
+export function buildVolumeEmaSpikes(
+  candles: VolumeEmaCandle[],
+  points: VolumeEmaPoint[],
+  options: VolumeEmaOverlayOptions = {},
+): VolumeEmaSpike[] {
+  const offsetAtr = options.spikeOffsetAtr ?? DEFAULT_VOLUME_EMA_OPTIONS.spikeOffsetAtr;
+  const byTime = new Map(candles.map((c) => [c.time, c]));
+  const spikes: VolumeEmaSpike[] = [];
+
+  for (const p of points) {
+    if (!p.spike) continue;
+    const c = byTime.get(p.time);
+    if (!c) continue;
+    const markerPrice = spikeMarkerPrice(c, p.atr, p.spike, offsetAtr);
+    if (!Number.isFinite(markerPrice)) continue;
+    spikes.push({
+      time: p.time,
+      direction: p.spike,
+      ratio: p.ratio,
+      markerPrice,
+    });
+  }
+
+  return spikes;
 }
