@@ -29,17 +29,7 @@ export function IndicatorsSection({
 
   return (
     <>
-      {/* Multi-pattern / GDS — always visible; inactive until watchlist has tickers */}
-      <GenuineDemandScorePanel
-        candles={live ? candles : []}
-        cvdData={live ? cvdData : []}
-        externalMetrics={live ? externalMetrics : undefined}
-        symbol={symbol}
-        showPatternBacktest={showPatternBacktest && live}
-        isActive={live && candles.length > 0}
-      />
-
-      {/* Oscillators — only when watchlist has symbols and user selected some */}
+      {/* Oscillators first, then multi-pattern underneath */}
       {live && candles.length > 0 && (activeOscillators?.length ?? 0) > 0 && (
         <div className="mt-2.5 bg-slate-900 border border-slate-700 rounded-lg p-4">
           <OscillatorsPanel
@@ -58,6 +48,17 @@ export function IndicatorsSection({
           </p>
         </div>
       )}
+
+      <div className="mt-2.5">
+        <GenuineDemandScorePanel
+          candles={live ? candles : []}
+          cvdData={live ? cvdData : []}
+          externalMetrics={live ? externalMetrics : undefined}
+          symbol={symbol}
+          showPatternBacktest={showPatternBacktest && live}
+          isActive={live && candles.length > 0}
+        />
+      </div>
     </>
   );
 }
