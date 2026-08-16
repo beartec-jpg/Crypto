@@ -241,7 +241,7 @@ export function ToolsMenu({
                 Volume EMA
               </div>
               <div className="text-xs text-slate-400 leading-tight">
-                Buy pressure above mid, sell below; quiet vol returns to mid
+                Net buy flow above mid, net sell below; balanced flow returns to mid
               </div>
             </div>
             <div className="flex items-center gap-1">
