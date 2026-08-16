@@ -60,6 +60,28 @@ describe('signedVolume', () => {
     expect(signedVolume(bull)).toBeGreaterThan(0);
     expect(signedVolume(bear)).toBeLessThan(0);
   });
+
+  it('softens dojis via bodyWeightFloor and ignores body when floor is 1', () => {
+    const doji: VolumeEmaCandle = {
+      time: 1,
+      open: 10,
+      high: 12,
+      low: 8,
+      close: 10.1,
+      volume: 1000,
+    };
+    const full: VolumeEmaCandle = {
+      time: 2,
+      open: 10,
+      high: 12,
+      low: 8,
+      close: 12,
+      volume: 1000,
+    };
+    expect(Math.abs(signedVolume(doji, 0.35))).toBeLessThan(Math.abs(signedVolume(full, 0.35)));
+    expect(signedVolume(doji, 1)).toBeCloseTo(1000, 8);
+    expect(signedVolume(full, 1)).toBeCloseTo(1000, 8);
+  });
 });
 
 describe('rollingSma', () => {
@@ -138,12 +160,61 @@ describe('calculateVolumeEmaOverlay (delta + lookback)', () => {
     expect(pathJitter(long)).toBeLessThan(pathJitter(short));
   });
 
-  it('accepts legacy smoothPeriod as lookback alias', () => {
-    const candles = makeCandles(80, { volFn: () => 2000, biasFn: () => 'bull' });
-    const a = calculateVolumeEmaOverlay(candles, { lookback: 12 });
-    const b = calculateVolumeEmaOverlay(candles, { smoothPeriod: 12 });
-    expect(a.length).toBe(b.length);
-    expect(a[a.length - 1].value).toBeCloseTo(b[b.length - 1].value, 8);
+  it('smoothPeriod > 1 damps the plotted offset vs unsmoothed', () => {
+    const candles = makeCandles(120, {
+      volFn: () => 3000,
+      biasFn: (i) => (i % 2 === 0 ? 'bull' : 'bear'),
+    });
+    const raw = calculateVolumeEmaOverlay(candles, { lookback: 3, smoothPeriod: 1, k: 1.25 });
+    const smoothed = calculateVolumeEmaOverlay(candles, { lookback: 3, smoothPeriod: 8, k: 1.25 });
+
+    const pathJitter = (pts: typeof raw) => {
+      let s = 0;
+      for (let i = 1; i < pts.length; i++) {
+        s += Math.abs(pts[i].value - pts[i - 1].value);
+      }
+      return s;
+    };
+
+    expect(smoothed.length).toBe(raw.length);
+    expect(pathJitter(smoothed)).toBeLessThan(pathJitter(raw));
+  });
+
+  it('wick path places elevated buy above the high', () => {
+    const candles = makeCandles(80, {
+      volFn: (i) => (i === 70 ? 50_000 : 1000),
+      biasFn: () => 'bull',
+    });
+    const result = calculateVolumeEmaOverlay(candles, {
+      pathMode: 'wick',
+      k: 2,
+      wickClearAtr: 0.9,
+      clampSigmas: 4,
+      smoothPeriod: 1,
+      enforceWickClear: false,
+    });
+    const spike = result.find((p) => p.time === candles[70].time);
+    expect(spike).toBeTruthy();
+    expect(spike!.value).toBeGreaterThan(candles[70].high);
+    expect(spike!.regime).toBe('buy');
+  });
+
+  it('enforceWickClear keeps a smoothed wick path past the elevated bar', () => {
+    const candles = makeCandles(80, {
+      volFn: (i) => (i === 70 ? 50_000 : 1000),
+      biasFn: () => 'bull',
+    });
+    const clamped = calculateVolumeEmaOverlay(candles, {
+      pathMode: 'wick',
+      k: 1,
+      wickClearAtr: 0.5,
+      clampSigmas: 4,
+      smoothPeriod: 8,
+      enforceWickClear: true,
+    });
+    const spike = clamped.find((p) => p.time === candles[70].time);
+    expect(spike).toBeTruthy();
+    expect(spike!.value).toBeGreaterThanOrEqual(candles[70].high);
   });
 
   it('flags spikes on absolute volume while path stays delta-based', () => {
@@ -171,12 +242,16 @@ describe('calculateVolumeEmaOverlay (delta + lookback)', () => {
     expect(DEFAULT_VOLUME_EMA_OPTIONS).toEqual({
       volumeEmaPeriod: 5,
       atrPeriod: 10,
-      k: 2.7,
-      wickClearAtr: 2,
+      k: 6,
+      wickClearAtr: 4,
+      enforceWickClear: false,
       clampSigmas: 5.5,
       lookback: 10,
-      spikeRatio: 3,
-      spikeOffsetAtr: 3,
+      smoothPeriod: 1,
+      bodyWeightFloor: 0.35,
+      pathMode: 'delta',
+      spikeRatio: 2,
+      spikeOffsetAtr: 5,
     });
   });
 });

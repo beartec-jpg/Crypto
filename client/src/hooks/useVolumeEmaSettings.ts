@@ -1,18 +1,21 @@
 import { useState, useCallback } from 'react';
 import {
   DEFAULT_VOLUME_EMA_SETTINGS,
+  LOCKED_VOLUME_EMA_MATH,
   type VolumeEmaSettings,
 } from '@/types/volumeEma';
 
 /**
  * Bump this when locked defaults change so every client reloads the tuned set.
- * v4 = lookback 10 (was 52), rest of lock-in unchanged.
+ * v6 = enabled off, opacity 85, k 6, bias 4, spike 2 / pad 5; hidden knobs locked.
  */
-const STORAGE_KEY = 'volume-ema-settings-v4';
+const STORAGE_KEY = 'volume-ema-settings-v6';
 const LEGACY_STORAGE_KEYS = [
   'volume-ema-settings',
   'volume-ema-settings-v2',
   'volume-ema-settings-v3',
+  'volume-ema-settings-v4',
+  'volume-ema-settings-v5',
 ];
 
 function loadSettings(): VolumeEmaSettings {
@@ -27,19 +30,12 @@ function loadSettings(): VolumeEmaSettings {
 
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      const parsed = JSON.parse(stored) as Partial<VolumeEmaSettings> & {
-        smoothPeriod?: number;
-      };
-      const lookback =
-        parsed.lookback ??
-        parsed.smoothPeriod ??
-        DEFAULT_VOLUME_EMA_SETTINGS.lookback;
-      const merged: VolumeEmaSettings = {
+      const parsed = JSON.parse(stored) as Partial<VolumeEmaSettings>;
+      return {
         ...DEFAULT_VOLUME_EMA_SETTINGS,
         ...parsed,
-        lookback,
+        ...LOCKED_VOLUME_EMA_MATH,
       };
-      return merged;
     }
   } catch {
     /* ignore */
@@ -73,7 +69,7 @@ export function useVolumeEmaSettings() {
 
   const updateSettings = useCallback((partial: Partial<VolumeEmaSettings>) => {
     setSettingsState((prev) => {
-      const next = { ...prev, ...partial };
+      const next = { ...prev, ...partial, ...LOCKED_VOLUME_EMA_MATH };
       saveSettings(next);
       return next;
     });

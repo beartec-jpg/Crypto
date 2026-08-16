@@ -1,18 +1,22 @@
 /**
- * Volume EMA / Delta overlay
+ * Volume EMA / Delta overlay — two path modes (Tools lab)
  *
- * Path (smooth — does NOT flip candle-to-candle):
- *   signedVol  = +volume on bullish bar, −volume on bearish (close vs open)
- *   deltaAvg   = SMA(signedVol, lookback)   // longer lookback = smoother
- *   volAvg     = SMA(volume, lookback)        // same window for scale
+ * delta (default):
+ *   signedVol  = ±volume × body-weight  (doji-softened)
+ *   deltaAvg   = SMA(signedVol, lookback)
+ *   volAvg     = SMA(volume, lookback)
  *   strength   = clamp(deltaAvg / volAvg, ±clampSigmas)
- *   offset     = strength * k * ATR  ± soft wick bias
+ *   offset     = strength * k * ATR  ± soft wickClearAtr bias
  *   plot       = mid + offset
  *
- * Lookback is the main smoothness control:
- *   2–3  → very reactive (swings hard)
- *   10–14 → medium
- *   20–40 → much smoother (averages over more candles)
+ * wick:
+ *   magnitude  = clamp(max(0, log2(vol / EMA(vol))), 0, clampSigmas)
+ *   pad        = (wickClearAtr + magnitude * k) * ATR
+ *   buy  → high + pad · sell → low − pad · quiet → mid
+ *
+ * Optional:
+ *   smoothPeriod > 1  → double-EMA the offset
+ *   enforceWickClear  → re-clamp elevated bars past this candle's wick
  *
  * Spike markers (separate): total vol / EMA(vol) ≥ spikeRatio → triangle.
  */
@@ -61,34 +65,32 @@ export interface VolumeEmaPoint {
   delta?: number;
 }
 
+export type VolumeEmaPathMode = 'delta' | 'wick';
+
 export interface VolumeEmaOverlayOptions {
-  /** EMA period for total volume baseline. Default 20. */
+  /** EMA period for total volume baseline. */
   volumeEmaPeriod?: number;
-  /** ATR period for pad scale. Default 14. */
+  /** ATR period for pad scale. */
   atrPeriod?: number;
-  /**
-   * How far strength pushes the path (offset = strength * k * ATR).
-   * Default 1.25.
-   */
+  /** How far strength pushes the path (× ATR). */
   k?: number;
-  /**
-   * Extra ATR bias away from mid when |delta strength| is high
-   * (soft, continuous — not a per-candle wick hard clamp). Default 0.35.
-   */
+  /** Extra ATR clearance / strong-flow bias. */
   wickClearAtr?: number;
-  /** Clamp |delta strength| (avg-volume units). Default 3. */
+  /** Force path past this candle's wick when elevated (wick mode or optional delta). */
+  enforceWickClear?: boolean;
+  /** Clamp |delta strength| or log2(ratio). */
   clampSigmas?: number;
-  /**
-   * Lookback length in candles for the rolling average of signed volume.
-   * Primary smoothness control: 2–3 whippy, 20+ smooth. Default 20.
-   * `smoothPeriod` is a legacy alias for lookback.
-   */
+  /** Rolling window for net signed volume (delta mode). */
   lookback?: number;
-  /** @deprecated Use lookback. */
+  /** Double-EMA on plotted offset. 1 = off. */
   smoothPeriod?: number;
-  /** Raw vol/EMA ratio that triggers a spike triangle. Default 2. */
+  /** Doji softening floor on signed volume (0–1). */
+  bodyWeightFloor?: number;
+  /** 'delta' = net flow around mid. 'wick' = buy above high / sell below low. */
+  pathMode?: VolumeEmaPathMode;
+  /** Raw vol/EMA ratio that triggers a spike triangle. */
   spikeRatio?: number;
-  /** Spike marker pad past wick, in ATR. Default 0.85. */
+  /** Spike marker pad past wick, in ATR. */
   spikeOffsetAtr?: number;
 }
 
@@ -96,12 +98,16 @@ export interface VolumeEmaOverlayOptions {
 export const DEFAULT_VOLUME_EMA_OPTIONS = {
   volumeEmaPeriod: 5,
   atrPeriod: 10,
-  k: 2.7,
-  wickClearAtr: 2,
+  k: 6,
+  wickClearAtr: 4,
+  enforceWickClear: false,
   clampSigmas: 5.5,
   lookback: 10,
-  spikeRatio: 3,
-  spikeOffsetAtr: 3,
+  smoothPeriod: 1,
+  bodyWeightFloor: 0.35,
+  pathMode: 'delta' as VolumeEmaPathMode,
+  spikeRatio: 2,
+  spikeOffsetAtr: 5,
 } as const;
 
 /**
@@ -214,16 +220,35 @@ export function pressureDirection(candle: VolumeEmaCandle): VolumeEmaSpikeDirect
  * Per-bar signed volume (delta contribution).
  * Body weight softens dojis so weak closes don't yank the path as hard.
  */
-export function signedVolume(candle: VolumeEmaCandle): number {
+export function signedVolume(candle: VolumeEmaCandle, bodyWeightFloor = 0.35): number {
   const vol = Number.isFinite(candle.volume) && candle.volume > 0 ? candle.volume : 0;
   if (vol <= 0) return 0;
   const open = Number.isFinite(candle.open) ? (candle.open as number) : candle.close;
   const range = Math.max(candle.high - candle.low, 0);
   const body = Math.abs(candle.close - open);
-  // 0.35 floor so even small bodies contribute; full body ≈ 1
-  const weight = range > 0 ? Math.min(1, Math.max(0.35, body / range)) : 1;
+  const floor = Math.min(1, Math.max(0, bodyWeightFloor));
+  const weight = range > 0 ? Math.min(1, Math.max(floor, body / range)) : 1;
   const sign = candle.close >= open ? 1 : -1;
   return sign * vol * weight;
+}
+
+/**
+ * Wick-anchor raw offset from mid:
+ * buy → (high - mid) + pad, sell → (low - mid) - pad, quiet → 0.
+ */
+export function rawOffsetFromMid(
+  candle: VolumeEmaCandle,
+  magnitude: number,
+  direction: VolumeEmaSpikeDirection,
+  atr: number,
+  k: number,
+  wickClearAtr: number,
+): number {
+  const mid = (candle.high + candle.low) / 2;
+  if (!(magnitude > 0) || !(atr > 0)) return 0;
+  const pad = padBeyondWick(magnitude, atr, k, wickClearAtr);
+  if (direction === 'buy') return candle.high - mid + pad;
+  return candle.low - mid - pad;
 }
 
 /** Soft 0..1 curve for |strength| (0 at 0, →1 as |s| grows). */
@@ -300,16 +325,12 @@ export function calculateVolumeEmaOverlay(
   const atrPeriod = options.atrPeriod ?? DEFAULT_VOLUME_EMA_OPTIONS.atrPeriod;
   const k = options.k ?? DEFAULT_VOLUME_EMA_OPTIONS.k;
   const wickClearAtr = options.wickClearAtr ?? DEFAULT_VOLUME_EMA_OPTIONS.wickClearAtr;
+  const enforceWickClear = options.enforceWickClear ?? DEFAULT_VOLUME_EMA_OPTIONS.enforceWickClear;
   const clampSigmas = options.clampSigmas ?? DEFAULT_VOLUME_EMA_OPTIONS.clampSigmas;
-  // lookback = primary smoothness (legacy smoothPeriod still accepted)
-  const lookback = Math.max(
-    1,
-    Math.floor(
-      options.lookback ??
-        options.smoothPeriod ??
-        DEFAULT_VOLUME_EMA_OPTIONS.lookback,
-    ),
-  );
+  const lookback = Math.max(1, Math.floor(options.lookback ?? DEFAULT_VOLUME_EMA_OPTIONS.lookback));
+  const smoothPeriod = Math.max(1, Math.floor(options.smoothPeriod ?? DEFAULT_VOLUME_EMA_OPTIONS.smoothPeriod));
+  const bodyWeightFloor = options.bodyWeightFloor ?? DEFAULT_VOLUME_EMA_OPTIONS.bodyWeightFloor;
+  const pathMode = options.pathMode ?? DEFAULT_VOLUME_EMA_OPTIONS.pathMode;
   const spikeRatio = options.spikeRatio ?? DEFAULT_VOLUME_EMA_OPTIONS.spikeRatio;
 
   if (
@@ -324,60 +345,121 @@ export function calculateVolumeEmaOverlay(
   }
 
   const volumes = candles.map((c) => (Number.isFinite(c.volume) && c.volume > 0 ? c.volume : 0));
-  const signed = candles.map((c) => signedVolume(c));
-  // Spike ratio still uses a stable volume EMA baseline
+  const signed = candles.map((c) => signedVolume(c, bodyWeightFloor));
   const volEma = emaSeries(volumes, volumeEmaPeriod);
   const atr = atrSeries(candles, atrPeriod);
-
-  // Rolling SMA over lookback: 2–3 = whippy, 20–40 = much smoother
   const deltaAvg = rollingSma(signed, lookback);
   const volAvg = rollingSma(volumes, lookback);
 
-  const points: VolumeEmaPoint[] = [];
+  type Raw = {
+    time: number;
+    mid: number;
+    atr: number;
+    ratio: number;
+    logRatio: number;
+    rawOffset: number;
+    candle: VolumeEmaCandle;
+    magnitude: number;
+    direction: VolumeEmaSpikeDirection;
+    delta: number;
+  };
+
+  const raw: Raw[] = [];
 
   for (let i = 0; i < candles.length; i++) {
     const emaVol = volEma[i];
     const atrVal = atr[i];
-    const avgVol = volAvg[i];
     if (emaVol == null || atrVal == null) continue;
-    if (!(emaVol > 0) || !(atrVal > 0) || !(avgVol > 0)) continue;
+    if (!(emaVol > 0) || !(atrVal > 0)) continue;
 
     const c = candles[i];
     const vol = volumes[i];
     const ratio = Math.max(vol, Number.EPSILON) / emaVol;
     const mid = (c.high + c.low) / 2;
+    const direction = pressureDirection(c);
+    const avgVol = volAvg[i];
     const d = deltaAvg[i];
 
-    // strength in units of lookback-avg volume: +1 ≈ net +1× avg vol of buy
-    let strength = d / avgVol;
-    if (!Number.isFinite(strength)) strength = 0;
-    strength = Math.max(-clampSigmas, Math.min(clampSigmas, strength));
+    let rawOffset = 0;
+    let logRatio = 0;
+    let magnitude = 0;
 
-    // Continuous offset around mid (no buy/sell hard flip)
-    let offset = strength * k * atrVal;
-    // Soft extra push when flow is strong (still continuous)
-    const bias = wickClearAtr * atrVal * softStrength(strength);
-    if (strength > 0) offset += bias;
-    else if (strength < 0) offset -= bias;
+    if (pathMode === 'wick') {
+      magnitude = elevatedLogMagnitude(ratio, clampSigmas);
+      logRatio = (direction === 'buy' ? 1 : -1) * magnitude;
+      rawOffset = rawOffsetFromMid(c, magnitude, direction, atrVal, k, wickClearAtr);
+    } else {
+      if (!(avgVol > 0)) continue;
+      let strength = d / avgVol;
+      if (!Number.isFinite(strength)) strength = 0;
+      strength = Math.max(-clampSigmas, Math.min(clampSigmas, strength));
+      logRatio = strength;
+      magnitude = Math.abs(strength);
+      rawOffset = strength * k * atrVal;
+      const bias = wickClearAtr * atrVal * softStrength(strength);
+      if (strength > 0) rawOffset += bias;
+      else if (strength < 0) rawOffset -= bias;
+    }
 
-    const value = mid + offset;
-    if (!Number.isFinite(value)) continue;
+    if (!Number.isFinite(rawOffset) || !Number.isFinite(mid)) continue;
 
-    const direction = pressureDirection(c);
-    const spike: VolumeEmaSpikeDirection | null =
-      ratio >= spikeRatio ? direction : null;
-
-    points.push({
+    raw.push({
       time: c.time,
-      value,
-      ratio,
-      logRatio: strength,
-      offset,
       mid,
       atr: atrVal,
-      regime: regimeFromOffset(offset),
-      spike,
+      ratio,
+      logRatio,
+      rawOffset,
+      candle: c,
+      magnitude,
+      direction,
       delta: d,
+    });
+  }
+
+  if (raw.length === 0) return [];
+
+  let offsets = raw.map((r) => r.rawOffset);
+  if (smoothPeriod > 1) {
+    offsets = emaDense(emaDense(offsets, smoothPeriod), smoothPeriod);
+  }
+
+  const points: VolumeEmaPoint[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const r = raw[i];
+    let offset = offsets[i];
+    let value = r.mid + offset;
+
+    if (enforceWickClear && r.magnitude > 0) {
+      const pad = padBeyondWick(r.magnitude, r.atr, k, wickClearAtr);
+      if (r.direction === 'buy') {
+        const floor = r.candle.high + pad;
+        if (value < floor) {
+          value = floor;
+          offset = value - r.mid;
+        }
+      } else {
+        const ceiling = r.candle.low - pad;
+        if (value > ceiling) {
+          value = ceiling;
+          offset = value - r.mid;
+        }
+      }
+    }
+
+    if (!Number.isFinite(value)) continue;
+
+    points.push({
+      time: r.time,
+      value,
+      ratio: r.ratio,
+      logRatio: r.logRatio,
+      offset,
+      mid: r.mid,
+      atr: r.atr,
+      regime: regimeFromOffset(offset),
+      spike: r.ratio >= spikeRatio ? r.direction : null,
+      delta: r.delta,
     });
   }
 

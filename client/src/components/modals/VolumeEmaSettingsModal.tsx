@@ -101,7 +101,7 @@ export function VolumeEmaSettingsModal({
           </Button>
         </DialogHeader>
 
-        <div className="p-4 space-y-3 max-h-[75vh] overflow-y-auto">
+        <div className="p-4 space-y-3 max-h-[80vh] overflow-y-auto">
           <div className="flex items-center justify-between py-1">
             <div>
               <div className="text-sm font-medium text-slate-100">Enable</div>
@@ -136,7 +136,7 @@ export function VolumeEmaSettingsModal({
               <div className="flex items-center justify-between gap-2">
                 <Label className="text-xs text-slate-300">Opacity</Label>
                 <span className="text-xs text-slate-400 tabular-nums">
-                  {Math.round(settings.opacity ?? 70)}%
+                  {Math.round(settings.opacity ?? 85)}%
                 </span>
               </div>
               <input
@@ -144,7 +144,7 @@ export function VolumeEmaSettingsModal({
                 min={5}
                 max={100}
                 step={1}
-                value={settings.opacity ?? 70}
+                value={settings.opacity ?? 85}
                 onChange={(e) =>
                   onSettingsChange({ opacity: Math.round(parseFloat(e.target.value)) })
                 }
@@ -236,7 +236,6 @@ export function VolumeEmaSettingsModal({
               </div>
             </div>
 
-            {/* Advanced math — hidden by default, still fully adjustable */}
             <div className="border-t border-slate-700 pt-2">
               <button
                 type="button"
@@ -249,19 +248,14 @@ export function VolumeEmaSettingsModal({
                 ) : (
                   <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                 )}
-                Advanced math
+                Advanced
                 <span className="ml-1 font-normal normal-case tracking-normal text-slate-500">
-                  (lookback, k, periods…)
+                  (lookback, strength, spikes…)
                 </span>
               </button>
 
               {showAdvanced && (
                 <div className="mt-2 space-y-3 pb-1">
-                  <p className="text-[10px] text-slate-500 leading-snug">
-                    Defaults are locked from your live tune. Change only if you want to
-                    experiment further — Reset restores the locked defaults.
-                  </p>
-
                   <NumRow
                     label="Lookback (candles)"
                     hint="2–3 = reactive · 10 = default · 40+ = very smooth"
@@ -280,7 +274,7 @@ export function VolumeEmaSettingsModal({
                     hint="How far net flow moves the path (× ATR)"
                     value={settings.k}
                     min={0.1}
-                    max={6}
+                    max={8}
                     step={0.05}
                     onChange={(k) => onSettingsChange({ k })}
                     testId="input-volume-ema-k"
@@ -291,44 +285,10 @@ export function VolumeEmaSettingsModal({
                     hint="Soft extra push when |delta| is large"
                     value={settings.wickClearAtr}
                     min={0}
-                    max={4}
+                    max={6}
                     step={0.05}
                     onChange={(wickClearAtr) => onSettingsChange({ wickClearAtr })}
                     testId="input-volume-ema-wick-clear"
-                  />
-
-                  <NumRow
-                    label="Volume EMA period"
-                    hint="Baseline average volume (strength scale + spike ×)"
-                    value={settings.volumeEmaPeriod}
-                    min={5}
-                    max={100}
-                    step={1}
-                    onChange={(volumeEmaPeriod) =>
-                      onSettingsChange({ volumeEmaPeriod: Math.round(volumeEmaPeriod) })
-                    }
-                  />
-
-                  <NumRow
-                    label="ATR period"
-                    hint="Price scale for path offset"
-                    value={settings.atrPeriod}
-                    min={5}
-                    max={50}
-                    step={1}
-                    onChange={(atrPeriod) =>
-                      onSettingsChange({ atrPeriod: Math.round(atrPeriod) })
-                    }
-                  />
-
-                  <NumRow
-                    label="Clamp |delta / avgVol|"
-                    hint="Cap net-flow strength"
-                    value={settings.clampSigmas}
-                    min={0.5}
-                    max={8}
-                    step={0.5}
-                    onChange={(clampSigmas) => onSettingsChange({ clampSigmas })}
                   />
 
                   <NumRow
@@ -339,6 +299,7 @@ export function VolumeEmaSettingsModal({
                     max={5}
                     step={0.1}
                     onChange={(spikeRatio) => onSettingsChange({ spikeRatio })}
+                    testId="input-volume-ema-spike-ratio"
                   />
 
                   <NumRow
@@ -346,9 +307,10 @@ export function VolumeEmaSettingsModal({
                     hint="How far triangles sit past the wick"
                     value={settings.spikeOffsetAtr}
                     min={0.2}
-                    max={5}
+                    max={6}
                     step={0.05}
                     onChange={(spikeOffsetAtr) => onSettingsChange({ spikeOffsetAtr })}
+                    testId="input-volume-ema-spike-pad"
                   />
                 </div>
               )}
