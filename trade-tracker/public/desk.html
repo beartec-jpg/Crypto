@@ -141,7 +141,7 @@
     .muted { color: var(--muted); font-size: .8rem; }
     .analysis-stack {
       border-top: 1px solid var(--line); background: #0a101c;
-      display: grid; grid-template-rows: 1fr 1fr; max-height: 280px; min-height: 0;
+      display: grid; grid-template-rows: 1fr 1fr; max-height: 340px; min-height: 0;
     }
     .analysis-box {
       padding: .55rem .75rem; overflow: auto; min-height: 0;
@@ -160,10 +160,15 @@
     .analysis-box .t .chip {
       font-size: .62rem; text-transform: none; letter-spacing: 0;
       padding: .1rem .35rem; border-radius: 999px; background: #1a2438; color: #b6c4de;
+      max-width: 72%; white-space: normal; line-height: 1.25; text-align: right;
     }
     .analysis-box .t .chip.on { color: #93c5fd; border: 1px solid #2563eb; background: #0f2744; }
     .analysis-box .body { line-height: 1.4; }
     .analysis-box .meta-line { font-size: .68rem; color: var(--muted); margin-bottom: .25rem; }
+    .analysis-box .setup-line {
+      font-size: .74rem; font-weight: 650; margin: .15rem 0 .28rem;
+      font-variant-numeric: tabular-nums;
+    }
     .tool-call {
       border: 1px solid var(--line); border-radius: 10px; padding: .55rem .65rem;
       background: var(--card); margin-bottom: .45rem; cursor: pointer;
@@ -1491,6 +1496,7 @@
       const last = data[data.length - 1];
       state.lastPrice = last.close;
       $('priceTag').textContent = `${normSym(sym)} ${fmt(last.close)} · ${tf}`;
+      if (state.dash) renderAnalysisBoxes(state.dash);
       // Two frames: wait for layout + scale before measuring / attaching boxes
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -1595,6 +1601,60 @@
       return null;
     }
 
+    function zoneLabelFromTrade(t) {
+      const signals = Array.isArray(t?.confluenceSignals) ? t.confluenceSignals : [];
+      const zoneish = /ob|fvg|demand|supply|val|vah|poc|range|liq|sweep/i;
+      return signals.find((s) => zoneish.test(String(s))) || signals[0] || '';
+    }
+
+    function wherePriceSits(zone, lastPx) {
+      const z = String(zone || '').trim();
+      if (!z) return '';
+      const m = z.match(/(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)/);
+      if (m && Number.isFinite(lastPx)) {
+        const lo = Math.min(Number(m[1]), Number(m[2]));
+        const hi = Math.max(Number(m[1]), Number(m[2]));
+        if (lastPx >= lo && lastPx <= hi) return 'in ' + z;
+        if (lastPx > hi) return 'above ' + z;
+        return 'below ' + z;
+      }
+      return 'in ' + z;
+    }
+
+    function analysisLocationPill(bot, run, trade) {
+      const lastPx = Number(state.lastPrice);
+      const zone = trade ? zoneLabelFromTrade(trade) : '';
+      const seated = wherePriceSits(zone, lastPx);
+      if (seated) return seated;
+      const ins = run?.insights || {};
+      const ltf = ins[bot.ltf] || {};
+      const htf = ins[bot.htf] || {};
+      const bits = [];
+      if (ltf.bias) bits.push(`${bot.ltf} ${String(ltf.bias).toLowerCase()}`);
+      if (htf.bias) bits.push(`${bot.htf} ${String(htf.bias).toLowerCase()}`);
+      return bits.join(' · ') || bot.label || `${bot.htf}/${bot.ltf}`;
+    }
+
+    function setupLevelsHtml(t) {
+      if (!t) return '';
+      const dir = String(t.direction || '').toUpperCase();
+      const dirCls = dir === 'SHORT' ? 'dir-SHORT' : 'dir-LONG';
+      const tps = Array.isArray(t.targets) ? t.targets : [];
+      const rr = t._rr != null && Number.isFinite(Number(t._rr))
+        ? Number(t._rr).toFixed(2) + 'R'
+        : (t.riskRewardRatio != null ? Number(t.riskRewardRatio).toFixed(2) + 'R' : '');
+      return (
+        `<div class="setup-line">` +
+        `<span class="${dirCls}">${esc(dir || '—')}</span> ` +
+        `${fmt(t.entry)} · SL ${fmt(t.stopLoss)}` +
+        (tps[0] != null ? ` · TP1 ${fmt(tps[0])}` : '') +
+        (tps[1] != null ? ` · TP2 ${fmt(tps[1])}` : '') +
+        (t.grade ? ` · ${esc(t.grade)}` : '') +
+        (rr ? ` · ${esc(rr)}` : '') +
+        `</div>`
+      );
+    }
+
     function fillAnalysisCard(el, bot, run) {
       if (!el) return;
       const title = el.querySelector('.t');
@@ -1603,20 +1663,23 @@
       const selected = bot.id === state.botId;
       el.classList.toggle('active-bot', selected);
       const label = botTabLabel(bot);
-      title.innerHTML = `${esc(label)} bot <span class="chip ${selected ? 'on' : ''}">${esc(bot.label || `${bot.htf}/${bot.ltf}`)}${selected ? ' · viewing' : ''}</span>`;
+      const trades = Array.isArray(run?.best_trades) ? run.best_trades : [];
+      const loc = run ? analysisLocationPill(bot, run, trades[0]) : (bot.label || `${bot.htf}/${bot.ltf}`);
+      title.innerHTML = `${esc(label)} bot <span class="chip ${selected ? 'on' : ''}">${esc(loc)}</span>`;
 
       if (!run) {
         body.className = 'body muted';
         body.textContent = 'No analysis yet for this bot.';
         return;
       }
-      const trades = Array.isArray(run.best_trades) ? run.best_trades.length : 0;
       const overall = (run.insights && run.insights.overallSummary) || '';
       const nTools = Array.isArray(run.tool_trace) ? run.tool_trace.length : 0;
       const err = run.error;
+      const levels = trades.map(setupLevelsHtml).join('');
       body.className = 'body';
       body.innerHTML =
-        `<div class="meta-line">${esc(run.model || '—')} · ${ago(run.started_at)} · ${trades} setup(s) · ${nTools} tools</div>` +
+        `<div class="meta-line">${esc(run.model || '—')} · ${ago(run.started_at)} · ${trades.length} setup(s) · ${nTools} tools</div>` +
+        levels +
         `<div>${esc(overall || err || 'OK')}</div>`;
     }
 
