@@ -82,6 +82,7 @@
     .stat .k { font-size: .65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
     .stat .v { font-size: 1.05rem; font-weight: 700; margin-top: .1rem; font-variant-numeric: tabular-nums; }
     .stat .s { font-size: .68rem; color: var(--muted); margin-top: .1rem; }
+    .stat .v .scr { color: var(--muted); }
     .pos { color: var(--ok); } .neg { color: var(--bad); }
     .chart-bar {
       display: flex; gap: .5rem; align-items: center; justify-content: space-between;
@@ -1557,12 +1558,20 @@
       const inTrade = (bs.entry_hit || 0) + (bs.tp1_hit || 0);
       const watching = (bs.pending || 0) + (bs.entry_armed || 0);
       const bookTotal = tr.activeSetups ?? inTrade + watching;
+      const w = tr.wins || 0;
+      const l = tr.losses || 0;
+      const s = tr.scratches || 0;
+      const closedN = tr.closedTrades ?? w + l + s;
       $('stats').innerHTML = [
         ['In trade', inTrade, 'filled · open position'],
         ['Watching', watching, 'pending / armed'],
         ['Book', bookTotal, 'scalp only'],
-        ['Closed', tr.closedTrades ?? 0, `${tr.wins||0}W / ${tr.losses||0}L`],
-        ['Win rate', pct(tr.winRate), 'net ' + fmtR(net)],
+        [
+          'Closed',
+          `<span class="pos">${w}W</span> / <span class="neg">${l}L</span> / <span class="scr">${s}S</span>`,
+          `${closedN} trade${closedN === 1 ? '' : 's'}`,
+        ],
+        ['Win rate', pct(tr.winRate), 'excl. scratches · net ' + fmtR(net)],
         ['Bots', (bot.bots || state.bots || []).length || 1, botTabLabel(currentBot()) + ' · ' + (currentBot().label || '')],
       ].map(([k,v,s,cls]) => `<div class="stat"><div class="k">${k}</div><div class="v ${cls||''}">${v}</div><div class="s">${s||''}</div></div>`).join('');
 

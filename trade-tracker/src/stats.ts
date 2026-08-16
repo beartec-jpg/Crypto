@@ -65,6 +65,7 @@ export function computePerformance(trades: ClosedTradePoint[]): PerformanceStats
   const wins = sorted.filter((t) => t.realizedR > 0.05).length;
   const losses = sorted.filter((t) => t.realizedR < -0.05).length;
   const scratches = sorted.length - wins - losses;
+  const decided = wins + losses;
 
   const grossProfitR = rs.filter((r) => r > 0).reduce((a, b) => a + b, 0);
   const grossLossR = Math.abs(rs.filter((r) => r < 0).reduce((a, b) => a + b, 0));
@@ -114,7 +115,8 @@ export function computePerformance(trades: ClosedTradePoint[]): PerformanceStats
     wins,
     losses,
     scratches,
-    winRate: sorted.length ? wins / sorted.length : null,
+    // Scratches are 0R — not a win, not a loss. Keep them out of win rate.
+    winRate: decided ? wins / decided : null,
     grossProfitR: round(grossProfitR, 4),
     grossLossR: round(grossLossR, 4),
     netR: round(netR, 4),
