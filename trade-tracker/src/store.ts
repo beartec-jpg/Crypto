@@ -8,6 +8,7 @@ import {
 import {
   colorForEvent,
   postDiscordWebhook,
+  listWeeklyDiscordDestinations,
   resolveWebhookForSymbol,
   type DiscordEmbed,
 } from './discord.js';
@@ -230,7 +231,7 @@ export async function listTrades(
 export async function getClosedPoints(
   pool: pg.Pool,
   since?: Date,
-  opts?: { source?: string; sources?: string[] },
+  opts?: { source?: string; sources?: string[]; symbols?: string[] },
 ): Promise<ClosedTradePoint[]> {
   const params: unknown[] = [];
   let sql = `SELECT realized_r, closed_at, outcome, symbol, grade, direction, source
@@ -247,6 +248,11 @@ export async function getClosedPoints(
     params.push(sources);
     sql += ` AND source = ANY($${params.length}::text[])`;
   }
+  const symbols = opts?.symbols?.map((s) => String(s).toUpperCase()).filter(Boolean);
+  if (symbols?.length) {
+    params.push(symbols);
+    sql += ` AND symbol = ANY($${params.length}::text[])`;
+  }
   sql += ' ORDER BY closed_at ASC';
   const r = await pool.query(sql, params);
   return r.rows.map((row) => ({
@@ -262,10 +268,19 @@ export async function getClosedPoints(
 export async function getPerformance(
   pool: pg.Pool,
   since?: Date,
-  opts?: { source?: string; sources?: string[] },
+  opts?: { source?: string; sources?: string[]; symbols?: string[] },
 ) {
   const points = await getClosedPoints(pool, since, opts);
   return computePerformance(points);
+}
+
+function weeklyDeskSources(): string[] {
+  const raw = (process.env.DISCORD_WEEKLY_SOURCES || 'discord_desk').trim();
+  const list = raw
+    .split(/[,\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return list.length ? list : ['discord_desk'];
 }
 
 async function insertEvent(
@@ -656,57 +671,84 @@ export async function processAllActive(
   return { checked: active.length, events };
 }
 
-export async function buildWeeklyReport(pool: pg.Pool) {
+export async function buildWeeklyReport(
+  pool: pg.Pool,
+  opts?: { sources?: string[]; symbols?: string[] },
+) {
   const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000);
-  const week = await getPerformance(pool, weekAgo);
-  const all = await getPerformance(pool);
+  const filter = {
+    sources: opts?.sources || weeklyDeskSources(),
+    symbols: opts?.symbols,
+  };
+  const week = await getPerformance(pool, weekAgo, filter);
+  const all = await getPerformance(pool, undefined, filter);
   return { week, all, weekAgo, now: new Date() };
 }
 
 export async function postWeeklyReport(
   pool: pg.Pool,
-  webhookUrl: string | undefined,
+  webhookUrl?: string,
 ): Promise<{ ok: boolean; stats: Awaited<ReturnType<typeof buildWeeklyReport>> }> {
-  const stats = await buildWeeklyReport(pool);
-  const fieldsWeek = formatStatsEmbedFields(stats.week);
-  const fieldsAll = formatStatsEmbedFields(stats.all);
+  const sources = weeklyDeskSources();
+  const dests = listWeeklyDiscordDestinations();
+  if (webhookUrl && !dests.some((d) => d.webhookUrl === webhookUrl)) {
+    dests.push({ label: 'desk', symbols: [], webhookUrl });
+  }
 
-  const embeds: DiscordEmbed[] = [
-    {
-      title: '📊 AI desk — weekly performance',
-      description: `Closed trades from ${stats.weekAgo.toISOString().slice(0, 10)} → ${stats.now.toISOString().slice(0, 10)} (UTC)`,
-      color: 0xa855f7,
-      fields: fieldsWeek,
-      footer: { text: 'Not financial advice · Paper levels / AI ideas only' },
-      timestamp: stats.now.toISOString(),
-    },
-    {
-      title: '📈 AI desk — all-time',
-      color: 0x38bdf8,
-      fields: fieldsAll,
-      footer: { text: 'Sharpe/Sortino are per-trade and noisy on small samples' },
-      timestamp: stats.now.toISOString(),
-    },
-  ];
+  const overview = await buildWeeklyReport(pool, { sources });
+  if (!dests.length) {
+    console.log(
+      '[weekly] no Discord webhook configured (need DISCORD_WEBHOOK_URL_BTC / _XRP or DISCORD_WEBHOOK_URL)',
+    );
+    await pool.query(
+      `INSERT INTO tracker_weekly_reports (period_start, period_end, stats, discord_ok)
+       VALUES ($1,$2,$3,$4)`,
+      [overview.weekAgo.toISOString(), overview.now.toISOString(), JSON.stringify(overview), false],
+    );
+    return { ok: false, stats: overview };
+  }
 
-  let discordOk = false;
-  if (webhookUrl) {
+  let anyOk = false;
+  for (const dest of dests) {
+    const stats = dest.symbols.length
+      ? await buildWeeklyReport(pool, { sources, symbols: dest.symbols })
+      : overview;
+    const tag = dest.label === 'desk' ? 'AI desk' : `${dest.label} desk`;
+    const embeds: DiscordEmbed[] = [
+      {
+        title: `📊 ${tag} — weekly performance`,
+        description: `Closed Discord-bot trades ${stats.weekAgo.toISOString().slice(0, 10)} → ${stats.now.toISOString().slice(0, 10)} (UTC)`,
+        color: 0xa855f7,
+        fields: formatStatsEmbedFields(stats.week),
+        footer: { text: 'Not financial advice · Paper levels / AI ideas only' },
+        timestamp: stats.now.toISOString(),
+      },
+      {
+        title: `📈 ${tag} — all-time`,
+        color: 0x38bdf8,
+        fields: formatStatsEmbedFields(stats.all),
+        footer: { text: 'Sharpe/Sortino are per-trade and noisy on small samples' },
+        timestamp: stats.now.toISOString(),
+      },
+    ];
     const res = await postDiscordWebhook({
-      webhookUrl,
-      content: '**Sunday desk recap** — AI tracked trade performance',
+      webhookUrl: dest.webhookUrl,
+      content: `**Sunday ${dest.label} recap** — Discord bot performance`,
       embeds,
     });
-    discordOk = res.ok;
-    if (!res.ok) console.error('[weekly] discord failed', res.status, res.body.slice(0, 200));
-  } else {
-    console.log('[weekly] no webhook; report computed only', JSON.stringify({ week: stats.week, all: stats.all }).slice(0, 500));
+    if (res.ok) {
+      anyOk = true;
+      console.log(`[weekly] posted ${dest.label} recap`);
+    } else {
+      console.error(`[weekly] discord ${dest.label} failed`, res.status, res.body.slice(0, 200));
+    }
   }
 
   await pool.query(
     `INSERT INTO tracker_weekly_reports (period_start, period_end, stats, discord_ok)
      VALUES ($1,$2,$3,$4)`,
-    [stats.weekAgo.toISOString(), stats.now.toISOString(), JSON.stringify(stats), discordOk],
+    [overview.weekAgo.toISOString(), overview.now.toISOString(), JSON.stringify(overview), anyOk],
   );
 
-  return { ok: discordOk || !webhookUrl, stats };
+  return { ok: anyOk, stats: overview };
 }

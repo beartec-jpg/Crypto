@@ -11,6 +11,33 @@ export type DiscordEmbed = {
  * Resolve Discord webhook for a symbol.
  * Prefer DISCORD_WEBHOOK_URL_BTC / _XRP (or _BTCUSDT / _XRPUSDT), else shared DISCORD_WEBHOOK_URL.
  */
+/**
+ * Unique HTF Discord destinations for the Sunday recap.
+ * Uses BTC / XRP channel hooks first; falls back to shared DISCORD_WEBHOOK_URL.
+ */
+export function listWeeklyDiscordDestinations(): Array<{
+  label: string;
+  symbols: string[];
+  webhookUrl: string;
+}> {
+  const seen = new Set<string>();
+  const out: Array<{ label: string; symbols: string[]; webhookUrl: string }> = [];
+  const add = (label: string, symbols: string[]) => {
+    const url = resolveWebhookForSymbol(symbols[0]);
+    if (!url || seen.has(url)) return;
+    seen.add(url);
+    out.push({ label, symbols, webhookUrl: url });
+  };
+  add('BTC', ['BTCUSDT', 'BTCUSD']);
+  add('XRP', ['XRPUSDT', 'XRPUSD']);
+  const shared = (process.env.DISCORD_WEBHOOK_URL || '').trim();
+  if (shared && !seen.has(shared)) {
+    seen.add(shared);
+    out.push({ label: 'desk', symbols: [], webhookUrl: shared });
+  }
+  return out;
+}
+
 export function resolveWebhookForSymbol(symbol?: string | null): string | undefined {
   const raw = String(symbol || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   const base = raw.replace(/USDT$/i, '').replace(/USD$/i, '') || '';

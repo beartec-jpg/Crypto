@@ -54,7 +54,7 @@ async function maybeWeekly(pool: ReturnType<typeof getPool>) {
   if (key === lastWeeklyKey) return;
   lastWeeklyKey = key;
   console.log('[weekly] posting Sunday report…');
-  await postWeeklyReport(pool, process.env.DISCORD_WEBHOOK_URL || undefined);
+  await postWeeklyReport(pool);
 }
 
 async function main() {
