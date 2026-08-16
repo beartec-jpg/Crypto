@@ -62,13 +62,43 @@ async function main() {
   await processTradeAtPrice(pool, row, 99);
   row = (await pool.query(`SELECT * FROM tracker_trades WHERE id=$1`, [bad.id])).rows[0];
   assert.equal(row.status, 'entry_armed');
-  // Fall through to SL without reclaim
+  // Fall through the posted hint SL — that is the sweep, stay armed
   ev = await processTradeAtPrice(pool, row, 90);
-  assert.ok(ev.some((e) => e.type === 'entry_invalid'));
+  assert.ok(!ev.some((e) => e.type === 'entry_invalid'), 'hint SL must not kill the idea');
   row = (await pool.query(`SELECT * FROM tracker_trades WHERE id=$1`, [bad.id])).rows[0];
+  assert.equal(row.status, 'entry_armed');
+  console.log('C PASS wick through hint SL → still armed (sweep)');
+
+  // Reclaim after sweep → OPEN with SL at the wick
+  ev = await processTradeAtPrice(pool, row, 100.5, undefined, { high: 100.5, low: 90 });
+  assert.ok(ev.some((e) => e.type === 'entry_hit'));
+  row = (await pool.query(`SELECT * FROM tracker_trades WHERE id=$1`, [bad.id])).rows[0];
+  assert.equal(row.status, 'entry_hit');
+  const sweepSl = parseFloat(row.original_stop);
+  assert.ok(sweepSl < 90.1, `sweep SL should sit at/under 90, got ${sweepSl}`);
+  console.log('C2 PASS reclaim after sweep → OPEN SL', sweepSl);
+
+  // Thesis-dead: sweep way beyond 3× hint risk without reclaim
+  const dead = await createTrade(pool, {
+    userId: USER,
+    source: 'sim',
+    symbol: 'DEADUSDT',
+    direction: 'LONG',
+    grade: 'B',
+    entry: 100,
+    stopLoss: 90,
+    targets: [120, 130],
+    entryConfirmType: 'reclaim',
+    entryConfirmLevel: 100,
+  });
+  await processTradeAtPrice(pool, dead, 99);
+  row = (await pool.query(`SELECT * FROM tracker_trades WHERE id=$1`, [dead.id])).rows[0];
+  ev = await processTradeAtPrice(pool, row, 60);
+  assert.ok(ev.some((e) => e.type === 'entry_invalid'));
+  row = (await pool.query(`SELECT * FROM tracker_trades WHERE id=$1`, [dead.id])).rows[0];
   assert.equal(row.status, 'entry_invalid');
   assert.equal(parseFloat(row.realized_r), 0);
-  console.log('C PASS straight-through → entry_invalid 0R (not a loss trade)');
+  console.log('C3 PASS oversized sweep → entry_invalid 0R');
 
   // Touch mode still opens immediately
   const touch = await createTrade(pool, {

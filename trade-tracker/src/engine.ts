@@ -5,7 +5,9 @@
  *  - touch: open as soon as price tags entry (legacy)
  *  - reclaim (default for AI): arm on first touch of entry, only OPEN after
  *    price reclaims entryConfirmLevel (e.g. LONG: hit zone then trade back above).
- *    If original SL tags while armed → entry_invalid (not a real trade / 0R).
+ *    Posted SL is a hint only. A wick through the zone is the sweep — stay armed,
+ *    then on reclaim OPEN with SL = sweep extreme. Invalid only if the sweep
+ *    runs too far (thesis dead) or TP prints before we ever confirm.
  *
  * After open:
  *  - Optional stop_lift before TP1
@@ -33,6 +35,7 @@ export type EngineEventType =
   | 'entry_armed'
   | 'entry_hit'
   | 'entry_invalid'
+  | 'sweep_update'
   | 'stop_lift'
   | 'tp1_hit'
   | 'stop_to_be'
@@ -65,6 +68,8 @@ export interface EngineTrade {
   status: TradeStatus;
   outcome: Outcome;
   realizedR: number;
+  /** Running wick extreme while armed (LONG = lowest low, SHORT = highest high). */
+  sweepExtreme?: number | null;
 }
 
 export interface EngineEvent {
@@ -83,6 +88,9 @@ export interface EngineEvent {
   outcome: Outcome;
   closed: boolean;
   tpHitLevel?: number;
+  /** On confirm: lock original stop to the sweep extreme. */
+  newOriginalStop?: number;
+  newSweepExtreme?: number;
 }
 
 export const TP1_SIZE = 0.5;
@@ -130,6 +138,40 @@ function hitEntryConfirm(direction: Direction, price: number, level: number): bo
 function isBetterStop(direction: Direction, candidate: number, current: number): boolean {
   return direction === 'LONG' ? candidate > current : candidate < current;
 }
+/** Hint SL is display/RR only. Sweep may run this far past entry before thesis is dead. */
+function sweepInvalidDepth(trade: EngineTrade): number {
+  const hint = Math.abs(trade.entry - trade.originalStop);
+  const pct = Math.abs(trade.entry) * 0.0035;
+  const fromHint = Number.isFinite(hint) && hint > 0 ? hint * 3 : 0;
+  return Math.max(fromHint, pct, Math.abs(trade.entry) * 0.0002);
+}
+
+function mergeSweep(
+  dir: Direction,
+  prev: number | null | undefined,
+  barExtreme: number,
+): number {
+  if (prev == null || !Number.isFinite(prev)) return barExtreme;
+  return dir === 'LONG' ? Math.min(prev, barExtreme) : Math.max(prev, barExtreme);
+}
+
+function sweepDepth(dir: Direction, entry: number, extreme: number): number {
+  return dir === 'LONG' ? entry - extreme : extreme - entry;
+}
+
+function paddedSweepStop(dir: Direction, entry: number, sweep: number): number {
+  const depth = Math.abs(entry - sweep);
+  const pad = Math.max(depth * 0.05, Math.abs(entry) * 0.00005);
+  return dir === 'LONG' ? sweep - pad : sweep + pad;
+}
+
+function stopFromSweep(trade: EngineTrade, sweep: number | null | undefined): number {
+  if (sweep == null || !Number.isFinite(sweep)) return trade.originalStop;
+  const depth = sweepDepth(trade.direction, trade.entry, sweep);
+  if (!(depth > 0)) return trade.originalStop;
+  return paddedSweepStop(trade.direction, trade.entry, sweep);
+}
+
 function nearEntry(stop: number, entry: number): boolean {
   const riskRef = Math.max(Math.abs(entry) * 1e-6, 1e-8);
   return Math.abs(stop - entry) <= riskRef * 100 || Math.abs(stop - entry) / Math.abs(entry || 1) < 0.0005;
@@ -205,42 +247,67 @@ export function evaluateTick(
       ? Math.min(extremes.low, price)
       : price;
 
-  // Use wick extremes for zone/stop tests (last price alone misses 15s spikes)
+  // Use wick extremes for zone tests (last price alone misses 15s spikes)
   const taggedEntry =
     dir === 'LONG' ? lo <= state.entry : hi >= state.entry;
-  const taggedStop =
-    dir === 'LONG' ? lo <= state.originalStop : hi >= state.originalStop;
   const taggedConfirm =
     dir === 'LONG' ? hi >= confirmLevel : lo <= confirmLevel;
+  const barSweep = dir === 'LONG' ? lo : hi;
+  const runningSweep = taggedEntry || state.status === 'entry_armed'
+    ? mergeSweep(dir, state.sweepExtreme, barSweep)
+    : state.sweepExtreme ?? null;
+  const cap = sweepInvalidDepth(state);
+  const sweepFailed =
+    runningSweep != null &&
+    Number.isFinite(runningSweep) &&
+    sweepDepth(dir, state.entry, runningSweep) > cap;
+
+  const openOnSweep = (msg: string): EngineEvent[] => {
+    const sl = stopFromSweep(state, runningSweep);
+    return [
+      baseEvent(
+        {
+          type: 'entry_hit',
+          price,
+          sizeFraction: 1,
+          rDelta: 0,
+          realizedRAfter: 0,
+          message: msg,
+          newStatus: 'entry_hit',
+          newRemainingSize: 1,
+          newCurrentStop: sl,
+          newOriginalStop: sl,
+          newSweepExtreme: runningSweep ?? undefined,
+          newStopToBe: false,
+          newStopLifted: false,
+          outcome: null,
+          closed: false,
+        },
+        state,
+      ),
+    ];
+  };
+
+  const invalidSweep = (msg: string): EngineEvent[] => [
+    baseEvent(
+      {
+        type: 'entry_invalid',
+        price,
+        sizeFraction: 0,
+        rDelta: 0,
+        realizedRAfter: 0,
+        message: msg,
+        newStatus: 'entry_invalid',
+        newRemainingSize: 0,
+        outcome: null,
+        closed: true,
+      },
+      state,
+    ),
+  ];
 
   // --- pending: wait for first touch of entry zone ---
   if (state.status === 'pending') {
-    // Dead idea: stop already traded through WITHOUT a fill (don't sit forever)
-    // LONG: price wicked through SL below; SHORT: price ripped through SL above
-    const stopAlreadyBroken =
-      dir === 'LONG' ? lo <= state.originalStop : hi >= state.originalStop;
-    if (stopAlreadyBroken) {
-      return [
-        baseEvent(
-          {
-            type: 'entry_invalid',
-            price,
-            sizeFraction: 0,
-            rDelta: 0,
-            realizedRAfter: 0,
-            message:
-              `🚫 Entry INVALID ${state.symbol} ${dir}: still pending but price already through SL ` +
-              `${fmt(state.originalStop)} (lo ${fmt(lo)} / hi ${fmt(hi)}) · idea dead · no position`,
-            newStatus: 'entry_invalid',
-            newRemainingSize: 0,
-            outcome: null,
-            closed: true,
-          },
-          state,
-        ),
-      ];
-    }
-
     // Dead idea: targets already printed before we ever entered (missed move)
     const tps = state.targets.filter((t) => Number.isFinite(t) && t > 0);
     if (tps.length) {
@@ -248,26 +315,19 @@ export function evaluateTick(
       const targetsAlreadyHit =
         dir === 'LONG' ? hi >= nearestTp : lo <= nearestTp;
       if (targetsAlreadyHit) {
-        return [
-          baseEvent(
-            {
-              type: 'entry_invalid',
-              price,
-              sizeFraction: 0,
-              rDelta: 0,
-              realizedRAfter: 0,
-              message:
-                `🚫 Entry INVALID ${state.symbol} ${dir}: still pending but TP zone already traded ` +
-                `(tp ${fmt(nearestTp)}, lo ${fmt(lo)} / hi ${fmt(hi)}) · missed move · no position`,
-              newStatus: 'entry_invalid',
-              newRemainingSize: 0,
-              outcome: null,
-              closed: true,
-            },
-            state,
-          ),
-        ];
+        return invalidSweep(
+          `🚫 Entry INVALID ${state.symbol} ${dir}: still pending but TP zone already traded ` +
+            `(tp ${fmt(nearestTp)}, lo ${fmt(lo)} / hi ${fmt(hi)}) · missed move · no position`,
+        );
       }
+    }
+
+    // Gapped clean through the zone and way beyond a sweep — thesis dead
+    if (!taggedEntry && sweepFailed) {
+      return invalidSweep(
+        `🚫 Entry INVALID ${state.symbol} ${dir}: price already blew past the zone ` +
+          `(sweep ${fmt(runningSweep!)} vs cap ${fmt(cap)} from ${fmt(state.entry)}) · no position`,
+      );
     }
 
     if (!taggedEntry && !hitEntry(dir, price, state.entry)) return [];
@@ -295,61 +355,37 @@ export function evaluateTick(
       ];
     }
 
-    // Same bar: swept into zone (and not stopped) then reclaimed confirm → open now
-    // e.g. LONG: low ≤ entry, high ≥ confirm, low > originalStop
-    if (taggedEntry && taggedConfirm && !taggedStop) {
-      return [
-        baseEvent(
-          {
-            type: 'entry_hit',
-            price,
-            sizeFraction: 1,
-            rDelta: 0,
-            realizedRAfter: 0,
-            message:
-              `🎯 Entry CONFIRMED ${state.symbol} ${dir} @ ${fmt(price)} · ` +
-              `zone sweep + reclaim of ${fmt(confirmLevel)} in-bar (lo ${fmt(lo)} / hi ${fmt(hi)}) · NOW OPEN`,
-            newStatus: 'entry_hit',
-            newRemainingSize: 1,
-            newStopToBe: false,
-            newStopLifted: false,
-            outcome: null,
-            closed: false,
-          },
-          state,
-        ),
-      ];
+    // Same bar: tagged zone, maybe swept the posted SL, then reclaimed → OPEN with wick SL
+    if (taggedEntry && taggedConfirm) {
+      if (sweepFailed) {
+        return invalidSweep(
+          `🚫 Entry INVALID ${state.symbol} ${dir}: in-bar sweep ${fmt(runningSweep!)} ` +
+            `exceeded thesis cap ${fmt(cap)} · no position`,
+        );
+      }
+      const sl = stopFromSweep(state, runningSweep);
+      return openOnSweep(
+        `🎯 Entry CONFIRMED ${state.symbol} ${dir} @ ${fmt(price)} · ` +
+          `zone sweep ${fmt(runningSweep!)} + reclaim of ${fmt(confirmLevel)} ` +
+          `(lo ${fmt(lo)} / hi ${fmt(hi)}) · SL ${fmt(sl)} · NOW OPEN`,
+      );
     }
 
-    // Same bar: tagged zone then ran to SL without holding reclaim → invalid
-    if (taggedEntry && taggedStop) {
-      return [
-        baseEvent(
-          {
-            type: 'entry_invalid',
-            price,
-            sizeFraction: 0,
-            rDelta: 0,
-            realizedRAfter: 0,
-            message:
-              `🚫 Entry INVALID ${state.symbol} ${dir}: wick tagged zone then SL ` +
-              `${fmt(state.originalStop)} (lo ${fmt(lo)} / hi ${fmt(hi)}) without held reclaim · no position`,
-            newStatus: 'entry_invalid',
-            newRemainingSize: 0,
-            outcome: null,
-            closed: true,
-          },
-          state,
-        ),
-      ];
+    if (sweepFailed) {
+      return invalidSweep(
+        `🚫 Entry INVALID ${state.symbol} ${dir}: sweep ${fmt(runningSweep!)} ` +
+          `exceeded thesis cap ${fmt(cap)} without reclaim · no position`,
+      );
     }
 
-    // Reclaim: arm only — do not open yet
+    // Reclaim: arm only — posted SL does NOT kill the idea
+    const cand = stopFromSweep(state, runningSweep);
     const msg =
       `📍 Zone tagged ${state.symbol} ${dir} @ ${fmt(price)} · waiting confirm: ` +
       (dir === 'LONG'
         ? `trade back above ${fmt(confirmLevel)}`
         : `trade back below ${fmt(confirmLevel)}`) +
+      ` · SL will be the sweep extreme (now ${fmt(cand)})` +
       (state.entryConfirmRationale ? ` (${state.entryConfirmRationale})` : '');
     return [
       baseEvent(
@@ -362,6 +398,8 @@ export function evaluateTick(
           message: msg,
           newStatus: 'entry_armed',
           newRemainingSize: 1,
+          newCurrentStop: cand,
+          newSweepExtreme: runningSweep ?? undefined,
           newStopToBe: false,
           newStopLifted: false,
           outcome: null,
@@ -372,47 +410,51 @@ export function evaluateTick(
     ];
   }
 
-  // --- entry_armed: need reclaim, or invalidate if SL tags first ---
+  // --- entry_armed: wait for reclaim; posted SL is not invalidation ---
   if (state.status === 'entry_armed') {
-    // Straight-through: hit original stop before reclaim → not a real trade
-    if (taggedStop || hitStop(dir, price, state.originalStop)) {
+    if (sweepFailed && !taggedConfirm) {
+      return invalidSweep(
+        `🚫 Entry INVALID ${state.symbol} ${dir}: sweep ${fmt(runningSweep!)} ` +
+          `exceeded thesis cap ${fmt(cap)} without reclaim of ${fmt(confirmLevel)} · no position counted`,
+      );
+    }
+
+    if (taggedConfirm || hitEntryConfirm(dir, price, confirmLevel)) {
+      if (sweepFailed) {
+        return invalidSweep(
+          `🚫 Entry INVALID ${state.symbol} ${dir}: reclaim printed but sweep ${fmt(runningSweep!)} ` +
+            `already exceeded thesis cap ${fmt(cap)} · no position`,
+        );
+      }
+      const sl = stopFromSweep(state, runningSweep);
+      return openOnSweep(
+        `🎯 Entry CONFIRMED ${state.symbol} ${dir} @ ${fmt(price)} · ` +
+          `reclaimed ${fmt(confirmLevel)} after sweep ${fmt(runningSweep ?? state.entry)} · SL ${fmt(sl)} · NOW OPEN`,
+      );
+    }
+
+    const cand = stopFromSweep(state, runningSweep);
+    const improved =
+      runningSweep != null &&
+      (state.sweepExtreme == null ||
+        (dir === 'LONG'
+          ? runningSweep < state.sweepExtreme
+          : runningSweep > state.sweepExtreme));
+    if (improved) {
       return [
         baseEvent(
           {
-            type: 'entry_invalid',
+            type: 'sweep_update',
             price,
             sizeFraction: 0,
             rDelta: 0,
             realizedRAfter: 0,
             message:
-              `🚫 Entry INVALID ${state.symbol} ${dir}: price tagged zone then went through to SL ` +
-              `${fmt(state.originalStop)} without reclaim of ${fmt(confirmLevel)} · no position counted`,
-            newStatus: 'entry_invalid',
-            newRemainingSize: 0,
-            outcome: null,
-            closed: true,
-          },
-          state,
-        ),
-      ];
-    }
-
-    if (taggedConfirm || hitEntryConfirm(dir, price, confirmLevel)) {
-      return [
-        baseEvent(
-          {
-            type: 'entry_hit',
-            price,
-            sizeFraction: 1,
-            rDelta: 0,
-            realizedRAfter: 0,
-            message:
-              `🎯 Entry CONFIRMED ${state.symbol} ${dir} @ ${fmt(price)} · ` +
-              `reclaimed ${fmt(confirmLevel)} after zone touch · NOW OPEN`,
-            newStatus: 'entry_hit',
-            newRemainingSize: 1,
-            newStopToBe: false,
-            newStopLifted: false,
+              `Sweep extended ${state.symbol} ${dir} → ${fmt(runningSweep!)} · candidate SL ${fmt(cand)}`,
+            newStatus: 'entry_armed',
+            newCurrentStop: cand,
+            newSweepExtreme: runningSweep ?? undefined,
+            newRemainingSize: state.remainingSize,
             outcome: null,
             closed: false,
           },
@@ -640,5 +682,25 @@ export function rowToEngine(row: Record<string, unknown>): EngineTrade {
     status: String(row.status) as TradeStatus,
     outcome: (row.outcome as Outcome) ?? null,
     realizedR: parseFloat(String(row.realized_r ?? row.realizedR ?? 0)),
+    sweepExtreme: readSweepExtreme(row),
   };
+}
+
+function readSweepExtreme(row: Record<string, unknown>): number | null {
+  const meta = row.meta;
+  const obj =
+    meta && typeof meta === 'object'
+      ? (meta as Record<string, unknown>)
+      : typeof meta === 'string'
+        ? (() => {
+            try {
+              return JSON.parse(meta) as Record<string, unknown>;
+            } catch {
+              return null;
+            }
+          })()
+        : null;
+  const raw = obj?.sweepExtreme;
+  const n = raw != null ? parseFloat(String(raw)) : NaN;
+  return Number.isFinite(n) ? n : null;
 }

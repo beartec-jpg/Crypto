@@ -153,7 +153,12 @@ export async function executeExchangeEvent(
   if (!cfg.configured) return;
 
   // No exchange action for arming / invalid (never opened)
-  if (ev.type === 'entry_armed' || ev.type === 'entry_invalid' || ev.type === 'stop_to_be') {
+  if (
+    ev.type === 'entry_armed' ||
+    ev.type === 'entry_invalid' ||
+    ev.type === 'stop_to_be' ||
+    ev.type === 'sweep_update'
+  ) {
     return;
   }
 

@@ -80,6 +80,8 @@ export function colorForEvent(type: string): number {
       return 0x38bdf8;
     case 'entry_invalid':
       return 0x64748b;
+    case 'sweep_update':
+      return 0x64748b;
     case 'stop_lift':
       return 0xf59e0b; // amber — action required
     case 'tp1_hit':

@@ -972,8 +972,11 @@ For EVERY setup listed above with an id, decide keep or cancel against CURRENT s
    - entryConfirmType: usually "reclaim" (preferred). Use "touch" only for rare market-order style plans.
    - entryConfirmLevel: after the entry zone is tagged, price must reclaim this level before the trade is OPEN (LONG: trade back above this price; SHORT: trade back below). Often equal to entry, or slightly past entry (e.g. close above wick high of the zone / break of the micro-swing that formed the entry).
    - entryConfirmRationale: technique-specific rule in plain language (e.g. "tag FVG then close back above zone high", "sweep liquidity then reclaim prior low").
-   - If price tags entry and then hits stop without reclaim → setup is INVALID (no trade), not a stop-loss loss.
-8. STOP LOSS: behind the invalidation structure for the selected TRADE HORIZON (see above) — not automatically the nearest LTF wick. Below structural low for LONGs, above structural high for SHORTs. No arbitrary ATR padding.
+   - A wick through the entry zone is the sweep, not a cancel. Stay pending/armed until reclaim.
+   - On reclaim the live SL becomes the sweep extreme (e.g. LONG entry 60200, sweep 60100, reclaim >60200 → open, SL 60100).
+   - stopLoss in JSON is a HINT for R:R / thesis cap only — do not treat it as "cancel if tagged before entry".
+   - Invalid only if the sweep runs far beyond that hint (thesis dead) or the target already printed before confirm.
+8. STOP LOSS: publish a structural hint behind the zone for planning. The tracker replaces it with the actual sweep wick on confirm. Below structural low for LONGs, above structural high for SHORTs. No arbitrary ATR padding.
 ${buildTargetsRule(higherTimeframe, lowerTimeframe)}
 10. STOP LIFT (MANDATORY on every trade): AFTER confirmed open and BEFORE TP1, pick a structural proof level — then move the stop. Fields: stopLiftTrigger + stopLiftTo + stopLiftRationale.
    - stopLiftTrigger: between confirmed entry and TP1 (LONG above entry; SHORT below entry).
@@ -1537,8 +1540,11 @@ ${fmtTF(lowerTimeframe, lowerData)}
    - entryConfirmType: usually "reclaim" (preferred). Use "touch" only for rare market-order style plans.
    - entryConfirmLevel: after the entry zone is tagged, price must reclaim this level before the trade is OPEN (LONG: trade back above this price; SHORT: trade back below). Often equal to entry, or slightly past entry (e.g. close above wick high of the zone / break of the micro-swing that formed the entry).
    - entryConfirmRationale: technique-specific rule in plain language (e.g. "tag FVG then close back above zone high", "sweep liquidity then reclaim prior low").
-   - If price tags entry and then hits stop without reclaim → setup is INVALID (no trade), not a stop-loss loss.
-8. STOP LOSS: behind the invalidation structure for the selected TRADE HORIZON (see above) — not automatically the nearest LTF wick. Below structural low for LONGs, above structural high for SHORTs. No arbitrary ATR padding.
+   - A wick through the entry zone is the sweep, not a cancel. Stay pending/armed until reclaim.
+   - On reclaim the live SL becomes the sweep extreme (e.g. LONG entry 60200, sweep 60100, reclaim >60200 → open, SL 60100).
+   - stopLoss in JSON is a HINT for R:R / thesis cap only — do not treat it as "cancel if tagged before entry".
+   - Invalid only if the sweep runs far beyond that hint (thesis dead) or the target already printed before confirm.
+8. STOP LOSS: publish a structural hint behind the zone for planning. The tracker replaces it with the actual sweep wick on confirm. Below structural low for LONGs, above structural high for SHORTs. No arbitrary ATR padding.
 9. TARGETS: level-to-level at the horizon's scale. TP1 nearest valid opposing level for this horizon; TP2 next major level. On swing/position prefer ${higherTimeframe} levels. Min R/R is measured to TP1 (not TP2).
 10. STOP LIFT (MANDATORY on every trade): AFTER confirmed open and BEFORE TP1, pick a structural proof level — then move the stop. Fields: stopLiftTrigger + stopLiftTo + stopLiftRationale.
    - stopLiftTrigger: between confirmed entry and TP1 (LONG above entry; SHORT below entry).

@@ -329,6 +329,14 @@ async function applyEvent(pool: pg.Pool, tradeId: string, ev: EngineEvent): Prom
   if (ev.type === 'entry_hit') {
     sets.push(`entry_hit_at = NOW()`);
   }
+  if (ev.newOriginalStop != null && Number.isFinite(ev.newOriginalStop)) {
+    sets.push(`original_stop = $${i++}`);
+    params.push(ev.newOriginalStop);
+  }
+  if (ev.newSweepExtreme != null && Number.isFinite(ev.newSweepExtreme)) {
+    sets.push(`meta = COALESCE(meta, '{}'::jsonb) || $${i++}::jsonb`);
+    params.push(JSON.stringify({ sweepExtreme: ev.newSweepExtreme }));
+  }
   if (ev.type === 'stop_lift') {
     sets.push(`stop_lift_at = NOW()`);
   }
@@ -446,7 +454,7 @@ export async function notifyEvent(
     return;
   }
   // skip pure stop_to_be if we already sent tp1 (avoid spam) — still send tp1 which mentions BE
-  if (ev.type === 'stop_to_be') return;
+  if (ev.type === 'stop_to_be' || ev.type === 'sweep_update') return;
 
   const titleType =
     ev.type === 'entry_armed'
@@ -495,8 +503,8 @@ export async function notifyEvent(
         inline: false,
       },
       {
-        name: 'Invalid if',
-        value: `Hits SL ${fmtPx(trade.originalStop)} before reclaim → no trade counted`,
+        name: 'Stop',
+        value: `Sweep extreme on confirm (candidate ${fmtPx(ev.newCurrentStop)}). Posted ${fmtPx(trade.originalStop)} is a hint only.`,
         inline: false,
       },
       {
@@ -507,7 +515,7 @@ export async function notifyEvent(
     ];
   } else if (ev.type === 'entry_invalid') {
     embed.fields = [
-      { name: 'What happened', value: 'Zone tagged then price blew through without reclaim', inline: false },
+      { name: 'What happened', value: 'Sweep ran too far past the zone (thesis dead) or the move already completed before confirm', inline: false },
       { name: 'Result', value: '**No position** · 0R · not a win/loss trade', inline: false },
     ];
   } else if (ev.type === 'entry_hit') {
@@ -518,14 +526,14 @@ export async function notifyEvent(
       trade.entryConfirmLevel != null ? trade.entryConfirmLevel : trade.entry;
     embed.fields = [
       { name: 'Entry', value: fmtPx(trade.entry), inline: true },
-      { name: 'Stop loss', value: fmtPx(trade.originalStop), inline: true },
+      { name: 'Stop loss', value: fmtPx(ev.newOriginalStop ?? ev.newCurrentStop ?? trade.originalStop), inline: true },
       { name: 'Confirmed @', value: fmtPx(ev.price), inline: true },
       {
         name: 'Entry rule',
         value:
           trade.entryConfirmType === 'touch'
             ? 'Touch entry'
-            : `Reclaim ${fmtPx(conf)} after zone touch` +
+            : `Reclaim ${fmtPx(conf)} after zone sweep` +
               (trade.entryConfirmRationale ? ` · ${trade.entryConfirmRationale}` : ''),
         inline: false,
       },
@@ -647,6 +655,8 @@ export async function processTradeAtPrice(
       stopLifted: ev.newStopLifted,
       realizedR: ev.realizedRAfter,
       outcome: ev.outcome,
+      originalStop: ev.newOriginalStop ?? working.originalStop,
+      sweepExtreme: ev.newSweepExtreme ?? working.sweepExtreme,
     };
   }
   return events;
