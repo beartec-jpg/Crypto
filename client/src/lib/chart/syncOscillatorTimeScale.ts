@@ -18,6 +18,8 @@ export type MainChartVisibleRange =
   | {
       time: TimeVisibleRange | null;
       logical: LogicalVisibleRange | null;
+      /** candlesKey (`symbol_tf`) this range was read from — skip apply if it does not match. */
+      key?: string;
     }
   | TimeVisibleRange
   | null
@@ -41,8 +43,18 @@ function isLegacyTimeRange(range: MainChartVisibleRange): range is TimeVisibleRa
 export function applyMainChartVisibleRange(
   chart: IChartApi | null | undefined,
   range: MainChartVisibleRange,
+  expectKey?: string,
 ): boolean {
   if (!chart || !range) return false;
+
+  if (
+    expectKey &&
+    !isLegacyTimeRange(range) &&
+    typeof (range as { key?: string }).key === 'string' &&
+    (range as { key?: string }).key !== expectKey
+  ) {
+    return false;
+  }
 
   try {
     const ts = chart.timeScale();
@@ -87,17 +99,21 @@ export function applyMainChartVisibleRange(
 }
 
 /** Read both time + logical ranges from the main chart. */
-export function readMainChartVisibleRange(chart: IChartApi | null | undefined): {
+export function readMainChartVisibleRange(
+  chart: IChartApi | null | undefined,
+  key?: string,
+): {
   time: TimeVisibleRange | null;
   logical: LogicalVisibleRange | null;
+  key?: string;
 } {
-  if (!chart) return { time: null, logical: null };
+  if (!chart) return { time: null, logical: null, key };
   try {
     const ts = chart.timeScale();
     const time = (ts.getVisibleRange?.() as TimeVisibleRange | null) ?? null;
     const logical = (ts.getVisibleLogicalRange?.() as LogicalVisibleRange | null) ?? null;
-    return { time, logical };
+    return { time, logical, key };
   } catch {
-    return { time: null, logical: null };
+    return { time: null, logical: null, key };
   }
 }

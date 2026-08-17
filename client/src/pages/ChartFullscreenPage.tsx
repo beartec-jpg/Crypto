@@ -450,40 +450,7 @@ export function ChartFullscreenPage({
     mobileNavHeight: 0, // No mobile nav in fullscreen mode
   });
 
-  // Subscribe to main chart visible range for oscillator sync (time + logical).
-  // Logical range is required so bottom panes track empty space past the last
-  // candle when the user pans price bars left.
-  // Also increment chartViewVersion on pan/zoom to repaint the SVG wave click overlay.
   const [mainChartVisibleRange, setMainChartVisibleRange] = useState<any>(null);
-  useEffect(() => {
-    if (!chartRef.current) return;
-    const handleVisibleRangeChange = () => {
-      try {
-        const range = readMainChartVisibleRange(chartRef.current);
-        if (range.time || range.logical) setMainChartVisibleRange(range);
-        setChartViewVersion(v => v + 1);
-      } catch (err) {
-        // A throw here would propagate into lightweight-charts' internal event
-        // dispatch and can wedge the time scale, disabling further pan/zoom.
-        console.error('[Chart] visible range handler error:', err);
-      }
-    };
-    // Seed once so docked oscillators sync on first paint
-    handleVisibleRangeChange();
-    const ts = chartRef.current.timeScale();
-    ts.subscribeVisibleTimeRangeChange(handleVisibleRangeChange);
-    // Logical range fires when right-margin / bar-shift changes (pan left past last candle)
-    ts.subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
-    return () => {
-      try {
-        const scale = chartRef.current?.timeScale();
-        scale?.unsubscribeVisibleTimeRangeChange(handleVisibleRangeChange);
-        scale?.unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
-      } catch {
-        /* disposed */
-      }
-    };
-  }, [chartRef.current]);
 
   // Hooks - Data fetching
   const { candles, candlesKey, isLoading, error } = useCandleData({
@@ -505,6 +472,44 @@ export function ChartFullscreenPage({
     const prefix = `${symbol}_`;
     return candlesKey.startsWith(prefix) ? candlesKey.slice(prefix.length) : timeframe;
   }, [candlesKey, symbol, timeframe]);
+
+  // Subscribe to main chart visible range for oscillator sync (time + logical).
+  // Tag every snapshot with candlesKey so a leftover 15m range cannot be applied
+  // to 1h oscillator data (that shoved the panes left after TF switches).
+  useEffect(() => {
+    if (!chartRef.current) return;
+    const handleVisibleRangeChange = () => {
+      try {
+        const range = readMainChartVisibleRange(chartRef.current, candlesKey);
+        if (range.time || range.logical) setMainChartVisibleRange(range);
+        setChartViewVersion(v => v + 1);
+      } catch (err) {
+        // A throw here would propagate into lightweight-charts' internal event
+        // dispatch and can wedge the time scale, disabling further pan/zoom.
+        console.error('[Chart] visible range handler error:', err);
+      }
+    };
+    handleVisibleRangeChange();
+    const ts = chartRef.current.timeScale();
+    ts.subscribeVisibleTimeRangeChange(handleVisibleRangeChange);
+    ts.subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+    return () => {
+      try {
+        const scale = chartRef.current?.timeScale();
+        scale?.unsubscribeVisibleTimeRangeChange(handleVisibleRangeChange);
+        scale?.unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+      } catch {
+        /* disposed */
+      }
+    };
+  }, [chartRef.current, candlesKey, chartReady]);
+
+  const syncedOscillatorRange = useMemo(() => {
+    if (!mainChartVisibleRange) return null;
+    const key = (mainChartVisibleRange as { key?: string }).key;
+    if (key && key !== candlesKey) return null;
+    return mainChartVisibleRange;
+  }, [mainChartVisibleRange, candlesKey]);
 
   const {
     externalMetrics: gdsExternalMetrics,
@@ -3221,7 +3226,7 @@ export function ChartFullscreenPage({
         onCycleMode={oscillatorPanel.cycleMode}
         totalPercentage={oscillatorPanel.totalPercentage}
         perOscillatorPercentage={oscillatorPanel.perOscillatorPercentage}
-          mainChartVisibleRange={mainChartVisibleRange}
+          mainChartVisibleRange={syncedOscillatorRange}
           smartMoneyPanelData={smartMoneyPanelData}
           smcTrendEnginePanelData={smcTrendEnginePanelData}
         />

@@ -87,7 +87,7 @@ export function WaddahExplosionPanel({
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, [histogramData, explosionData, onChartCreated, syncWithMainChart, mainChartVisibleRange]);
+  }, [histogramData, explosionData, onChartCreated, syncWithMainChart]);
 
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {

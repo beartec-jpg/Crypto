@@ -83,7 +83,7 @@ export function OBVPanel({
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, [data, onChartCreated, mainChartVisibleRange, syncWithMainChart]);
+  }, [data, onChartCreated, syncWithMainChart]);
 
   // Sync time axis with main chart when visible range changes
   useEffect(() => {

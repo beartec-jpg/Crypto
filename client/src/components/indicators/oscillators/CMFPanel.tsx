@@ -85,7 +85,7 @@ export function CMFPanel({
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, [data, onChartCreated, syncWithMainChart, mainChartVisibleRange]);
+  }, [data, onChartCreated, syncWithMainChart]);
 
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {

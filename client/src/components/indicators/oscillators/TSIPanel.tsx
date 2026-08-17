@@ -93,7 +93,7 @@ export function TSIPanel({
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, [tsiData, signalData, onChartCreated, syncWithMainChart, mainChartVisibleRange]);
+  }, [tsiData, signalData, onChartCreated, syncWithMainChart]);
 
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {

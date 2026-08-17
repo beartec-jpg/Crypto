@@ -104,7 +104,7 @@ export function MFIPanel({
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, [data, candles, period, onChartCreated, mainChartVisibleRange]);
+  }, [data, candles, period, onChartCreated]);
 
   // Sync time axis with main chart when visible range changes
   useEffect(() => {

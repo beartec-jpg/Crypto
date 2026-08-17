@@ -93,7 +93,7 @@ export function KlingerPanel({
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, [klingerData, signalData, onChartCreated, syncWithMainChart, mainChartVisibleRange]);
+  }, [klingerData, signalData, onChartCreated, syncWithMainChart]);
 
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {

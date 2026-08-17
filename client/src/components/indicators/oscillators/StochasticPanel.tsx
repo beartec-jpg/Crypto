@@ -90,7 +90,7 @@ export function StochasticPanel({
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, [data, candles, period, onChartCreated, mainChartVisibleRange]);
+  }, [data, candles, period, onChartCreated]);
 
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {
