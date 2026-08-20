@@ -47,7 +47,8 @@ export function buildDeskToolDefinitions(ltf: string, htf: string) {
       type: 'function',
       function: {
         name: 'getSmcStructures',
-        description: 'FVGs, order blocks, BOS/CHoCH, swing highs/lows for a timeframe.',
+        description:
+          'FVGs/OBs with originSwing (structural stop = pivot that created the displacement), width, atrMultiple, mitigated flag, BOS/CHoCH, swings. Ignore 1-tick gaps. Default SL is originSwing, not the FVG edge.',
         parameters: {
           type: 'object',
           properties: { tf: { type: 'string', enum: tfEnum } },

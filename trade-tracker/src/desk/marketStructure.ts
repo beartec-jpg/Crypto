@@ -81,7 +81,7 @@ function macdHist(bars: Bar[]): number {
   return e12 - e26;
 }
 
-function atr(bars: Bar[], period = 14): number {
+export function atr(bars: Bar[], period = 14): number {
   if (bars.length < 2) return 0;
   const trs: number[] = [];
   for (let i = 1; i < bars.length; i++) {
@@ -140,36 +140,124 @@ function volumeProfile(bars: Bar[]): { poc: number; vah: number; val: number } {
   return { poc, val: lo + L * step, vah: lo + (R + 1) * step };
 }
 
-function detectFvgs(bars: Bar[]): { bullish: Array<{ low: number; high: number }>; bearish: Array<{ low: number; high: number }> } {
-  const bullish: Array<{ low: number; high: number }> = [];
-  const bearish: Array<{ low: number; high: number }> = [];
-  const recent = bars.slice(-80);
-  for (let i = 2; i < recent.length; i++) {
-    const a = recent[i - 2];
-    const c = recent[i];
-    if (c.low > a.high) bullish.push({ low: a.high, high: c.low });
-    if (c.high < a.low) bearish.push({ low: c.high, high: a.low });
-  }
-  return { bullish: bullish.slice(-8), bearish: bearish.slice(-8) };
+/** SMC zone with the pivot that created it (the structural stop). */
+export interface SmcZone {
+  low: number;
+  high: number;
+  /** Pivot that printed the displacement — default SL. */
+  originSwing: number;
+  /** Impulse candle extreme (FVG middle candle / OB candle). */
+  impulseExtreme: number;
+  width: number;
+  atrMultiple: number;
+  mitigated: boolean;
+  suggestedStop: number;
 }
 
-function detectObs(bars: Bar[]): { bullish: Array<{ low: number; high: number }>; bearish: Array<{ low: number; high: number }> } {
-  const bullish: Array<{ low: number; high: number }> = [];
-  const bearish: Array<{ low: number; high: number }> = [];
+function roundZone(z: SmcZone): SmcZone {
+  const n = (v: number) => Number(v.toFixed(6));
+  return {
+    low: n(z.low),
+    high: n(z.high),
+    originSwing: n(z.originSwing),
+    impulseExtreme: n(z.impulseExtreme),
+    width: n(z.width),
+    atrMultiple: Number(z.atrMultiple.toFixed(3)),
+    mitigated: z.mitigated,
+    suggestedStop: n(z.suggestedStop),
+  };
+}
+
+function pickZones(zones: SmcZone[], keep: number): SmcZone[] {
+  const ranked = [...zones].sort((a, b) => {
+    if (a.mitigated !== b.mitigated) return a.mitigated ? 1 : -1;
+    return b.atrMultiple - a.atrMultiple;
+  });
+  return ranked.slice(0, keep).map(roundZone);
+}
+
+function detectFvgs(bars: Bar[], atrVal: number, price: number): { bullish: SmcZone[]; bearish: SmcZone[] } {
+  const bullish: SmcZone[] = [];
+  const bearish: SmcZone[] = [];
+  const recent = bars.slice(-80);
+  const minWidth = atrVal > 0 ? atrVal * 0.25 : 0;
+  for (let i = 2; i < recent.length; i++) {
+    const a = recent[i - 2];
+    const impulse = recent[i - 1];
+    const c = recent[i];
+    if (c.low > a.high) {
+      const width = c.low - a.high;
+      if (width < minWidth) continue;
+      const originSwing = Math.min(a.low, impulse.low);
+      bullish.push({
+        low: a.high,
+        high: c.low,
+        originSwing,
+        impulseExtreme: impulse.low,
+        width,
+        atrMultiple: atrVal > 0 ? width / atrVal : 0,
+        mitigated: price < a.high,
+        suggestedStop: originSwing,
+      });
+    }
+    if (c.high < a.low) {
+      const width = a.low - c.high;
+      if (width < minWidth) continue;
+      const originSwing = Math.max(a.high, impulse.high);
+      bearish.push({
+        low: c.high,
+        high: a.low,
+        originSwing,
+        impulseExtreme: impulse.high,
+        width,
+        atrMultiple: atrVal > 0 ? width / atrVal : 0,
+        mitigated: price > a.low,
+        suggestedStop: originSwing,
+      });
+    }
+  }
+  return { bullish: pickZones(bullish, 8), bearish: pickZones(bearish, 8) };
+}
+
+function detectObs(bars: Bar[], atrVal: number, price: number): { bullish: SmcZone[]; bearish: SmcZone[] } {
+  const bullish: SmcZone[] = [];
+  const bearish: SmcZone[] = [];
   const recent = bars.slice(-60);
+  const minRange = atrVal > 0 ? atrVal * 0.35 : 0;
   for (let i = 1; i < recent.length - 1; i++) {
     const b = recent[i];
     const body = Math.abs(b.close - b.open);
     const range = b.high - b.low || 1e-9;
     if (body / range < 0.35) continue;
+    if (range < minRange) continue;
     if (b.close > b.open && recent[i + 1].close > b.high) {
-      bullish.push({ low: b.low, high: Math.max(b.open, b.close) });
+      const originSwing = b.low;
+      bullish.push({
+        low: b.low,
+        high: Math.max(b.open, b.close),
+        originSwing,
+        impulseExtreme: b.low,
+        width: range,
+        atrMultiple: atrVal > 0 ? range / atrVal : 0,
+        mitigated: price < b.low,
+        suggestedStop: originSwing,
+      });
     }
     if (b.close < b.open && recent[i + 1].close < b.low) {
-      bearish.push({ low: Math.min(b.open, b.close), high: b.high });
+      const originSwing = b.high;
+      bearish.push({
+        low: Math.min(b.open, b.close),
+        high: b.high,
+        originSwing,
+        impulseExtreme: b.high,
+        width: range,
+        atrMultiple: atrVal > 0 ? range / atrVal : 0,
+        mitigated: price > b.high,
+        suggestedStop: originSwing,
+      });
     }
   }
-  return { bullish: bullish.slice(-6), bearish: bearish.slice(-6) };
+  return { bullish: pickZones(bullish, 6), bearish: pickZones(bearish, 6) };
 }
 
 function swings(bars: Bar[], lookback = 3): { highs: number[]; lows: number[] } {
@@ -184,8 +272,8 @@ function swings(bars: Bar[], lookback = 3): { highs: number[]; lows: number[] } 
   return { highs: highs.slice(-6), lows: lows.slice(-6) };
 }
 
-function bosChoch(bars: Bar[]): { bos: string; choch: string } {
-  const s = swings(bars, 3);
+function bosChoch(bars: Bar[], lookback = 3): { bos: string; choch: string } {
+  const s = swings(bars, lookback);
   const price = bars[bars.length - 1]?.close || 0;
   let bos = 'none';
   let choch = 'none';
@@ -229,26 +317,28 @@ export function indicatorsPayload(bars: Bar[], tf: string) {
 }
 
 export function smcPayload(bars: Bar[], tf: string) {
-  const fvg = detectFvgs(bars);
-  const ob = detectObs(bars);
-  const sw = swings(bars);
-  const bc = bosChoch(bars);
   const price = bars[bars.length - 1]?.close ?? 0;
-  const fmt = (z: { low: number; high: number }) => ({
-    low: Number(z.low.toFixed(6)),
-    high: Number(z.high.toFixed(6)),
-  });
+  const atrVal = atr(bars);
+  const swingLookback = tf === '5m' || tf === '3m' || tf === '1m' ? 5 : 3;
+  const fvg = detectFvgs(bars, atrVal, price);
+  const ob = detectObs(bars, atrVal, price);
+  const sw = swings(bars, swingLookback);
+  const bc = bosChoch(bars, swingLookback);
   return {
     timeframe: tf,
     price,
+    atr: Number(atrVal.toFixed(6)),
+    minStopAtrMultiple: 0.5,
+    stopNote:
+      'Default SL = originSwing (pivot that created the FVG/OB). Do not park SL a tick beyond the gap. Skip if suggestedStop is closer than 0.5×ATR.',
     bos: bc.bos,
     choch: bc.choch,
     swingHighs: sw.highs.map((n) => Number(n.toFixed(6))),
     swingLows: sw.lows.map((n) => Number(n.toFixed(6))),
-    bullishFVGs: fvg.bullish.map(fmt),
-    bearishFVGs: fvg.bearish.map(fmt),
-    bullishOBs: ob.bullish.map(fmt),
-    bearishOBs: ob.bearish.map(fmt),
+    bullishFVGs: fvg.bullish,
+    bearishFVGs: fvg.bearish,
+    bullishOBs: ob.bullish,
+    bearishOBs: ob.bearish,
   };
 }
 

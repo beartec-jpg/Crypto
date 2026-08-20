@@ -408,7 +408,8 @@ export function createServer(pool: pg.Pool) {
       }
 
       if (req.method === 'POST' && (path === '/api/desk/run' || path === '/desk/run')) {
-        const result = await forceDeskRun(pool);
+        const botId = url.searchParams.get('bot') || undefined;
+        const result = await forceDeskRun(pool, botId);
         return json(res, result.ok ? 200 : 409, result);
       }
 

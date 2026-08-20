@@ -4,7 +4,7 @@
 
 import type pg from 'pg';
 import { createTrade, cancelTrades, listTrades } from '../store.js';
-import { fetchBars } from './marketStructure.js';
+import { atr, fetchBars } from './marketStructure.js';
 import { buildDeskToolDefinitions, createDeskToolExecutor } from './tools.js';
 import { extractTextContent, runXaiToolLoop } from './xaiToolLoop.js';
 
@@ -86,6 +86,8 @@ export function loadDeskBots(): DeskConfig[] {
       continue;
     }
     const ms = Number(intervalMs || 21_600_000);
+    const ltfTf = ltf.toLowerCase();
+    const isScalpTf = ltfTf === '5m' || ltfTf === '3m' || ltfTf === '1m';
     bots.push({
       ...shared,
       id,
@@ -95,7 +97,9 @@ export function loadDeskBots(): DeskConfig[] {
         .map((s) => s.trim().toUpperCase())
         .filter(Boolean),
       htf: htf.toLowerCase(),
-      ltf: ltf.toLowerCase(),
+      ltf: ltfTf,
+      // 5m: one idea at a time — spray of overlapping FVG ticks is what bled the book
+      maxSetups: isScalpTf ? Math.min(shared.maxSetups, 1) : shared.maxSetups,
       intervalMs: Number.isFinite(ms) && ms >= 60_000 ? ms : 21_600_000,
       label: `${htf}/${ltf}`,
     });
@@ -327,10 +331,16 @@ RULES:
 - Use tools for ALL factual levels. Do NOT invent prices not present in tool results.
 - Call at least one tool on ${cfg.htf} and one on ${cfg.ltf} before final answer.
 - Prefer tools: ${preferred}. Also use getInstitutional when positioning matters.
-- ENTRY must be at a concrete zone (FVG/OB/level), never blind market mid-range.
-- entryConfirmType usually "reclaim" with entryConfirmLevel (LONG reclaim above; SHORT below).
+- ENTRY must be at a concrete unmitigated FVG/OB (use zone.low/high). Never blind market mid-range. Ignore mitigated=true and atrMultiple < 0.3 gaps.
+- entryConfirmType usually "reclaim" with entryConfirmLevel (LONG reclaim above FVG high; SHORT below FVG low).
+- STOPS ARE SMC PIVOTS, NOT ATR AND NOT A TICK BEYOND THE GAP:
+  - After a BOS that leaves a FVG, if price retraces into that FVG: enter from the FVG.
+  - Default stopLoss = that zone's originSwing (the pivot / impulse low that CREATED the FVG), from getSmcStructures.suggestedStop.
+  - Aggressive FVG-edge stop only if zone.width ≥ 0.3× LTF ATR — still a small buffer; a wick through the gap is a sweep, not invalidation.
+  - If originSwing is closer to entry than 0.5× LTF ATR, SKIP — that is noise, not structure. ATR is a veto, not the stop level.
+- ${cfg.ltf} CHoCH must agree with the trade (LONG only if ${cfg.ltf} CHoCH is bullish or BOS bullish; SHORT only if bearish). Do not buy a dip while ${cfg.ltf} CHoCH is bearish.
 - stopLiftTrigger + stopLiftTo mandatory before TP1.
-- Min R:R to TP1 ≥ ${cfg.minRr}. Min confluence signals ≥ ${cfg.minConfluence}.
+- Min R:R to TP1 ≥ ${cfg.minRr} measured from the originSwing stop (not a tight FVG-edge stop). Min confluence signals ≥ ${cfg.minConfluence}.
 - OPEN BOOK: return openTradeReviews keep|cancel ONLY for ids listed (this bot only). Prefer cancel if stale/invalid.
 - Return at most ${cfg.maxSetups} bestTrades. Empty array OK if no quality setup.
 - Do NOT return two trades that are the same idea (same direction with entries within ~0.15% or overlapping stop zones). Pick the single best zone.
@@ -398,6 +408,10 @@ Return JSON:
       return u.startsWith('A') || u === 'B' || u.startsWith('B');
     };
 
+    const atrLtf = atr(ltfBars);
+    const minStopAtrMult = Number(process.env.DESK_MIN_STOP_ATR || 0.5);
+    const minRisk = atrLtf > 0 ? atrLtf * minStopAtrMult : Math.abs(price) * 0.002;
+
     const scored = rawTrades
       .map((t: any) => {
         const entry = num(t.entry);
@@ -414,7 +428,21 @@ Return JSON:
           tp1 > 0 &&
           ((dir === 'LONG' && sl < entry && tp1 > entry) ||
             (dir === 'SHORT' && sl > entry && tp1 < entry));
-        return { ...t, direction: dir, entry, stopLoss: sl, _rr: rr, _conf: conf, _ok: pricesOk };
+        const stopWideEnough = risk >= minRisk;
+        if (pricesOk && !stopWideEnough) {
+          console.log(
+            `[desk] ${symbol}: reject tight SL entry=${entry} sl=${sl} risk=${risk.toFixed(6)} < 0.5×ATR ${minRisk.toFixed(6)}`,
+          );
+        }
+        return {
+          ...t,
+          direction: dir,
+          entry,
+          stopLoss: sl,
+          _rr: rr,
+          _conf: conf,
+          _ok: pricesOk && stopWideEnough,
+        };
       })
       .filter(
         (t: any) =>
