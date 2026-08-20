@@ -229,6 +229,24 @@ export function ChartFullscreenPage({
   // Core state
   const [symbol, setSymbol] = useState(initialSymbol);
   const [timeframe, setTimeframe] = useState(initialTimeframe);
+
+  // Keep the URL + local last-view in sync so refresh stays on BTC/1D (not the ticker
+  // you originally opened the chart with).
+  useEffect(() => {
+    try {
+      localStorage.setItem('chartLastView', JSON.stringify({ symbol, timeframe }));
+    } catch {
+      /* ignore quota */
+    }
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('symbol') === symbol && url.searchParams.get('timeframe') === timeframe) {
+      return;
+    }
+    url.searchParams.set('symbol', symbol);
+    url.searchParams.set('timeframe', timeframe);
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  }, [symbol, timeframe]);
   const [activeTool, setActiveTool] = useState<ChartDrawingTool>(null);
   const [freeDrawMode, setFreeDrawMode] = useState<FreeDrawMode>('line_assisted');
   const freeDrawModeRef = useRef<FreeDrawMode>('line_assisted');
@@ -257,6 +275,8 @@ export function ChartFullscreenPage({
   const [selectedWavePatternType, setSelectedWavePatternType] = useState('impulse');
 
   const [highLowEnabled, setHighLowEnabled] = useState(false);
+  // Force indicator overlays (High/Low) to re-bind after the chart instance exists
+  const [chartEpoch, setChartEpoch] = useState(0);
   const [showVolumeEmaModal, setShowVolumeEmaModal] = useState(false);
   const [showAutoTrendlineModal, setShowAutoTrendlineModal] = useState(false);
   const [divergenceScannerEnabled, setDivergenceScannerEnabled] = useState(false);
@@ -459,6 +479,14 @@ export function ChartFullscreenPage({
     enabled: chartReady,
     refreshInterval: 30000,
   });
+
+  useEffect(() => {
+    if (!chartReady || !highLowEnabled) return;
+    const id = window.requestAnimationFrame(() => {
+      if (chartRef.current && candleSeriesRef.current) setChartEpoch((n) => n + 1);
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [chartReady, highLowEnabled, candles.length, symbol, timeframe, chartRef, candleSeriesRef]);
 
   // The timeframe that the currently-held `candles` array actually belongs to.
   // `timeframe` (the selected value) updates immediately on a dropdown change, but the
@@ -1856,16 +1884,16 @@ export function ChartFullscreenPage({
 
   const pauseChartPanZoom = useCallback(() => {
     const chart = chartRef.current;
-    if (!chart || chartPanZoomRestoreRef.current) return;
-
-    const opts = chart.options() as any;
-    chartPanZoomRestoreRef.current = {
-      // Default to true so that if lightweight-charts returns undefined for an
-      // option that was never explicitly set, we still re-enable scroll/scale.
-      handleScroll: opts.handleScroll ?? true,
-      handleScale: opts.handleScale ?? true,
-    };
-
+    if (!chart) return;
+    if (!chartPanZoomRestoreRef.current) {
+      const opts = chart.options() as any;
+      chartPanZoomRestoreRef.current = {
+        // Default to true so that if lightweight-charts returns undefined for an
+        // option that was never explicitly set, we still re-enable scroll/scale.
+        handleScroll: opts.handleScroll ?? true,
+        handleScale: opts.handleScale ?? true,
+      };
+    }
     chart.applyOptions({
       handleScroll: false,
       handleScale: false,
@@ -1874,12 +1902,14 @@ export function ChartFullscreenPage({
 
   const resumeChartPanZoom = useCallback(() => {
     const chart = chartRef.current;
+    if (!chart) {
+      chartPanZoomRestoreRef.current = null;
+      return;
+    }
     const restore = chartPanZoomRestoreRef.current;
-    if (!chart || !restore) return;
-
     chart.applyOptions({
-      handleScroll: restore.handleScroll,
-      handleScale: restore.handleScale,
+      handleScroll: restore?.handleScroll ?? true,
+      handleScale: restore?.handleScale ?? true,
     });
     chartPanZoomRestoreRef.current = null;
   }, [chartRef]);
@@ -2426,8 +2456,11 @@ export function ChartFullscreenPage({
       rawPx.push(getLocalXY(clientX, clientY));
     };
 
-    const onEnd = () => {
-      if (!isDrawing) return;
+    const finishStroke = () => {
+      if (!isDrawing) {
+        resumeChartPanZoom();
+        return;
+      }
       isDrawing = false;
       resumeChartPanZoom();
 
@@ -2490,38 +2523,36 @@ export function ChartFullscreenPage({
       toast({ title: 'Drawing Saved', description: 'Free draw added to chart' });
     };
 
-    const onMouseDown = (e: MouseEvent) => { onStart(e.clientX, e.clientY); };
-    const onMouseMove = (e: MouseEvent) => { onMove(e.clientX, e.clientY); };
-    const onMouseUp = () => { onEnd(); };
-    const onTouchStart = (e: TouchEvent) => {
-      const t = e.touches[0];
-      if (t) { e.preventDefault(); onStart(t.clientX, t.clientY); }
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      e.preventDefault();
+      try { container.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      onStart(e.clientX, e.clientY);
     };
-    const onTouchMove = (e: TouchEvent) => {
-      const t = e.touches[0];
-      if (t) { e.preventDefault(); onMove(t.clientX, t.clientY); }
+    const onPointerMove = (e: PointerEvent) => { onMove(e.clientX, e.clientY); };
+    const onPointerUp = (e: PointerEvent) => {
+      try { container.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+      finishStroke();
     };
-    const onTouchEnd = () => { onEnd(); };
+    const onPointerCancel = () => {
+      isDrawing = false;
+      resumeChartPanZoom();
+    };
 
-    container.addEventListener('mousedown', onMouseDown);
-    container.addEventListener('touchstart', onTouchStart, { passive: false });
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('touchmove', onTouchMove, { passive: false });
-    window.addEventListener('mouseup', onMouseUp);
-    window.addEventListener('touchend', onTouchEnd);
+    container.addEventListener('pointerdown', onPointerDown);
+    container.addEventListener('pointermove', onPointerMove);
+    container.addEventListener('pointerup', onPointerUp);
+    container.addEventListener('pointercancel', onPointerCancel);
+    window.addEventListener('blur', onPointerCancel);
 
     return () => {
-      container.removeEventListener('mousedown', onMouseDown);
-      container.removeEventListener('touchstart', onTouchStart);
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('touchmove', onTouchMove);
-      window.removeEventListener('mouseup', onMouseUp);
-      window.removeEventListener('touchend', onTouchEnd);
-      // If the effect tears down mid-stroke (e.g. tool switched away), unlock pan/zoom.
-      if (isDrawing) {
-        isDrawing = false;
-        resumeChartPanZoom();
-      }
+      container.removeEventListener('pointerdown', onPointerDown);
+      container.removeEventListener('pointermove', onPointerMove);
+      container.removeEventListener('pointerup', onPointerUp);
+      container.removeEventListener('pointercancel', onPointerCancel);
+      window.removeEventListener('blur', onPointerCancel);
+      isDrawing = false;
+      resumeChartPanZoom();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   // The effect uses refs (chartRef, candleSeriesRef, freeDrawModeRef) and stable
@@ -3086,6 +3117,7 @@ export function ChartFullscreenPage({
           superTrendData={superTrendData}
           superTrendSettings={superTrendSettings.settings}
           highLowEnabled={highLowEnabled}
+          chartEpoch={chartEpoch}
           volumeEmaEnabled={volumeEmaSettings.settings.enabled}
           volumeEmaSettings={volumeEmaSettings.settings}
           showVolumeEmaModal={showVolumeEmaModal}

@@ -1,92 +1,106 @@
 import { useEffect, useRef } from 'react';
-import type { IChartApi, ISeriesApi } from 'lightweight-charts';
+import type { IChartApi, ISeriesApi, IPriceLine } from 'lightweight-charts';
 
 interface HighLowRendererProps {
-  chart: IChartApi;
-  candleSeries: ISeriesApi<'Candlestick'>;
-  candles: any[]; // { time: number; open: number; high: number; low: number; close: number; }[]
+  chart: IChartApi | null;
+  candleSeries: ISeriesApi<'Candlestick'> | null;
+  candles: Array<{ time: number; high: number; low: number; close: number }>;
   enabled: boolean;
 }
 
+function candleTime(c: { time: number }): number {
+  const t = Number(c.time);
+  // Chart data is unix seconds; vis range can be seconds or ms
+  return t > 1e12 ? t / 1000 : t;
+}
+
 export function HighLowRenderer({ chart, candleSeries, candles, enabled }: HighLowRendererProps) {
-  const highLowRef = useRef<{ highLine: any; lowLine: any; highLabel: any; lowLabel: any } | null>(null);
+  const linesRef = useRef<{ high: IPriceLine; low: IPriceLine } | null>(null);
 
   useEffect(() => {
-    if (!enabled || !chart || candles.length === 0) {
-      // Clean up using series.removePriceLine (v5 API)
-      if (highLowRef.current && candleSeries) {
-        const { highLine, lowLine } = highLowRef.current;
-        try { if (highLine) candleSeries.removePriceLine(highLine); } catch (e) { /* ignore */ }
-        try { if (lowLine) candleSeries.removePriceLine(lowLine); } catch (e) { /* ignore */ }
-        highLowRef.current = null;
+    const removeLines = () => {
+      if (!linesRef.current || !candleSeries) {
+        linesRef.current = null;
+        return;
       }
+      try { candleSeries.removePriceLine(linesRef.current.high); } catch { /* ignore */ }
+      try { candleSeries.removePriceLine(linesRef.current.low); } catch { /* ignore */ }
+      linesRef.current = null;
+    };
+
+    if (!enabled || !chart || !candleSeries || candles.length === 0) {
+      removeLines();
       return;
     }
 
     const timeScale = chart.timeScale();
-    const removeLines = () => {
-      if (highLowRef.current) {
-        const { highLine, lowLine } = highLowRef.current;
-        try { if (highLine) candleSeries.removePriceLine(highLine); } catch (e) { /* ignore */ }
-        try { if (lowLine) candleSeries.removePriceLine(lowLine); } catch (e) { /* ignore */ }
-        highLowRef.current = null;
-      }
-    };
 
-    const handleVisibleRangeChange = () => {
-      const visibleLogicalRange = timeScale.getVisibleLogicalRange();
-      if (!visibleLogicalRange || candles.length === 0) return;
+    const syncLines = () => {
+      const visible = timeScale.getVisibleRange();
+      if (!visible) return;
 
-      const firstVisibleBar = Math.max(0, Math.floor(visibleLogicalRange.from));
-      const lastVisibleBar = Math.min(candles.length - 1, Math.ceil(visibleLogicalRange.to) - 1);
+      const from = Number(visible.from);
+      const to = Number(visible.to);
+      const fromSec = from > 1e12 ? from / 1000 : from;
+      const toSec = to > 1e12 ? to / 1000 : to;
 
-      if (firstVisibleBar > lastVisibleBar) return;
+      const visibleCandles = candles.filter((c) => {
+        const t = candleTime(c);
+        return t >= fromSec && t <= toSec;
+      });
+      const slice = visibleCandles.length ? visibleCandles : candles;
+      const visibleHigh = Math.max(...slice.map((c) => c.high));
+      const visibleLow = Math.min(...slice.map((c) => c.low));
+      if (!Number.isFinite(visibleHigh) || !Number.isFinite(visibleLow)) return;
 
-      const visibleCandles = candles.slice(firstVisibleBar, lastVisibleBar + 1);
-      const visibleHigh = Math.max(...visibleCandles.map(c => c.high));
-      const visibleLow = Math.min(...visibleCandles.map(c => c.low));
       const currentPrice = candles[candles.length - 1]?.close || 0;
-
       const highPct = currentPrice > 0 ? ((visibleHigh - currentPrice) / currentPrice * 100).toFixed(2) : '0.00';
       const lowPct = currentPrice > 0 ? ((visibleLow - currentPrice) / currentPrice * 100).toFixed(2) : '0.00';
 
-      // Remove old lines before creating new ones
-      removeLines();
-
-      // High line & label
-      const highLine = candleSeries.createPriceLine({
+      const highOpts = {
         price: visibleHigh,
-        color: 'rgba(255, 152, 0, 0.8)',
-        lineWidth: 2,
-        lineStyle: 2,
-        title: `High: $${visibleHigh.toFixed(4)} (+${highPct}%)`,
-        axisLabelColor: 'rgba(255, 152, 0, 0.9)',
-      });
-
-      // Low line & label
-      const lowLine = candleSeries.createPriceLine({
+        color: 'rgba(255, 152, 0, 0.85)',
+        lineWidth: 2 as const,
+        lineStyle: 2 as const,
+        axisLabelVisible: true,
+        title: `High ${visibleHigh.toFixed(4)} (+${highPct}%)`,
+      };
+      const lowOpts = {
         price: visibleLow,
-        color: 'rgba(0, 230, 118, 0.8)',
-        lineWidth: 2,
-        lineStyle: 2,
-        title: `Low: $${visibleLow.toFixed(4)} (${lowPct}%)`,
-        axisLabelColor: 'rgba(0, 230, 118, 0.9)',
-      });
+        color: 'rgba(0, 230, 118, 0.85)',
+        lineWidth: 2 as const,
+        lineStyle: 2 as const,
+        axisLabelVisible: true,
+        title: `Low ${visibleLow.toFixed(4)} (${lowPct}%)`,
+      };
 
-      highLowRef.current = { highLine, lowLine, highLabel: null, lowLabel: null };
+      if (linesRef.current) {
+        try {
+          linesRef.current.high.applyOptions(highOpts);
+          linesRef.current.low.applyOptions(lowOpts);
+          return;
+        } catch {
+          removeLines();
+        }
+      }
+
+      try {
+        const high = candleSeries.createPriceLine(highOpts);
+        const low = candleSeries.createPriceLine(lowOpts);
+        linesRef.current = { high, low };
+      } catch (e) {
+        console.warn('[HighLow] failed to create price lines', e);
+      }
     };
 
-    // Initial
-    handleVisibleRangeChange();
-
-    // Subscribe to visible range changes so lines update on scroll/zoom
-    timeScale.subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+    syncLines();
+    timeScale.subscribeVisibleLogicalRangeChange(syncLines);
 
     return () => {
-      timeScale.unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+      timeScale.unsubscribeVisibleLogicalRangeChange(syncLines);
       removeLines();
     };
   }, [chart, candleSeries, candles, enabled]);
 
-  return null; // Renders via chart price lines
+  return null;
 }

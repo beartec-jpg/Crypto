@@ -55,11 +55,15 @@ export function ColorPicker({ color, onChange, className = '' }: ColorPickerProp
       />
       {isOpen && (
         <>
-          <div 
-            className="fixed inset-0 z-40" 
+          {/* Must sit above Radix Dialog (z-50) so swatch clicks hit the palette, not the dismiss overlay */}
+          <div
+            className="fixed inset-0 z-[200]"
             onClick={() => setIsOpen(false)}
           />
-          <div className="absolute z-50 bg-slate-800 border border-slate-600 rounded-lg p-3 grid grid-cols-6 gap-2 left-0 mt-1 shadow-xl min-w-[168px]">
+          <div
+            className="absolute z-[210] bg-slate-800 border border-slate-600 rounded-lg p-3 grid grid-cols-6 gap-2 left-0 mt-1 shadow-xl min-w-[168px]"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
             <div className="col-span-6 text-[10px] text-slate-400 mb-0.5 font-mono truncate">
               {safeColor}
             </div>

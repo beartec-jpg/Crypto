@@ -49,6 +49,9 @@ export function DrawingSettingsPanel({
         return <TrendFibSettings drawing={drawing} onUpdate={onUpdate} />;
       case 'elliott_wave':
         return <ElliottWaveSettings drawing={drawing} onUpdate={onUpdate} />;
+      case 'free_draw':
+      case 'number_label':
+        return <TrendlineSettings drawing={drawing} onUpdate={onUpdate} />;
       default:
         return <div className="p-4 text-gray-400 text-sm text-center">Settings not available for this tool</div>;
     }

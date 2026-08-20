@@ -4,10 +4,17 @@ import { ChartFullscreenPage } from './ChartFullscreenPage';
 export default function ChartPage() {
   const [, navigate] = useLocation();
   
-  // Parse URL parameters
+  // Parse URL parameters; fall back to last chart view so a refresh of /chart
+  // without query params does not dump the user on a default ticker.
   const params = new URLSearchParams(window.location.search);
-  const symbol = params.get('symbol') || 'XRPUSDT';
-  const timeframe = params.get('timeframe') || '1h';
+  let saved: { symbol?: string; timeframe?: string } = {};
+  try {
+    saved = JSON.parse(localStorage.getItem('chartLastView') || '{}') || {};
+  } catch {
+    saved = {};
+  }
+  const symbol = params.get('symbol') || saved.symbol || 'BTCUSDT';
+  const timeframe = params.get('timeframe') || saved.timeframe || '1h';
   
   // Get watchlist from localStorage (empty for new users — no pre-seeded majors)
   let watchlistTickers: string[];

@@ -54,20 +54,34 @@ export function useFullscreenDrawingActions({
     if (!selectedId) return;
 
     const drawing = drawings.find(item => item.id === selectedId);
-    // Prevent editing drawings that belong to a higher timeframe
-    if (drawing?.timeframe && drawing.timeframe !== currentTimeframe) return;
+    // Prevent editing drawings that belong to a higher timeframe (normalize 1D/1d)
+    if (
+      drawing?.timeframe &&
+      currentTimeframe &&
+      drawing.timeframe.toLowerCase() !== currentTimeframe.toLowerCase()
+    ) {
+      return;
+    }
+
+    const stylePatch = {
+      ...updates.style,
+      // Manual color pick is an explicit override of auto-color
+      ...(updates.style?.color || updates.style?.levelColors || updates.style?.boundaryColors
+        ? { autoColor: false }
+        : {}),
+    };
 
     setDrawings(previous => previous.map(item => (
       item.id === selectedId
-        ? { ...item, style: { ...item.style, ...updates.style } }
+        ? { ...item, style: { ...item.style, ...stylePatch } }
         : item
     )));
 
     if (drawing?.type === 'elliott_wave') {
-      authenticatedApiRequest('PATCH', `/api/crypto/elliott-wave/labels/${selectedId}`, { metadata: updates.style })
+      authenticatedApiRequest('PATCH', `/api/crypto/elliott-wave/labels/${selectedId}`, { metadata: stylePatch })
         .catch(error => console.warn('[EW] Failed to update wave style:', error));
     } else {
-      drawingsPersistence.updateDrawing({ id: selectedId, updates: { style: updates.style } });
+      drawingsPersistence.updateDrawing({ id: selectedId, updates: { style: stylePatch } });
     }
   }, [selectedDrawingId, drawings, currentTimeframe, setDrawings, drawingsPersistence]);
 

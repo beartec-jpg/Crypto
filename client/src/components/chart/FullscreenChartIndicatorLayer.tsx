@@ -91,6 +91,8 @@ interface FullscreenChartIndicatorLayerProps {
   superTrendSettings: any;
 
   highLowEnabled: boolean;
+  /** Increments when the live chart instance is ready so High/Low can bind. */
+  chartEpoch?: number;
   volumeEmaEnabled: boolean;
   volumeEmaSettings: VolumeEmaSettings;
   showVolumeEmaModal: boolean;
@@ -166,6 +168,7 @@ export function FullscreenChartIndicatorLayer({
   superTrendData,
   superTrendSettings,
   highLowEnabled,
+  chartEpoch = 0,
   volumeEmaEnabled,
   volumeEmaSettings,
   showVolumeEmaModal,
@@ -336,6 +339,7 @@ export function FullscreenChartIndicatorLayer({
       />
 
       <HighLowRenderer
+        key={`high-low-${chartEpoch}`}
         chart={chart}
         candleSeries={candleSeries}
         candles={candles}
