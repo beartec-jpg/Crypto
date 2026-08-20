@@ -4,7 +4,7 @@
 
 import type pg from 'pg';
 import { createTrade, cancelTrades, listTrades } from '../store.js';
-import { atr, fetchBars } from './marketStructure.js';
+import { atr, fetchBars, smcPayload } from './marketStructure.js';
 import { buildDeskToolDefinitions, createDeskToolExecutor } from './tools.js';
 import { extractTextContent, runXaiToolLoop } from './xaiToolLoop.js';
 
@@ -26,11 +26,23 @@ export interface DeskConfig {
   apiKey: string;
   /** Human label for prompts / meta */
   label: string;
+  /** Reject setups whose SL is closer than this × LTF ATR. */
+  minStopAtrMultiple: number;
+  /** When true, shorts need HTF CHoCH bearish and longs need HTF CHoCH bullish. */
+  requireHtfAlign: boolean;
 }
 
 function sharedDeskFields(): Pick<
   DeskConfig,
-  'enabled' | 'mode' | 'minRr' | 'minConfluence' | 'maxSetups' | 'maxToolIters' | 'apiKey'
+  | 'enabled'
+  | 'mode'
+  | 'minRr'
+  | 'minConfluence'
+  | 'maxSetups'
+  | 'maxToolIters'
+  | 'apiKey'
+  | 'minStopAtrMultiple'
+  | 'requireHtfAlign'
 > {
   return {
     enabled: String(process.env.DESK_ENABLED || '0') === '1',
@@ -40,6 +52,8 @@ function sharedDeskFields(): Pick<
     maxSetups: Number(process.env.DESK_MAX_SETUPS_PER_RUN || 2),
     maxToolIters: Number(process.env.DESK_MAX_TOOL_ITERS || 8),
     apiKey: (process.env.XAI_API_KEY || '').trim(),
+    minStopAtrMultiple: Number(process.env.DESK_MIN_STOP_ATR || 0.5),
+    requireHtfAlign: false,
   };
 }
 
@@ -87,7 +101,9 @@ export function loadDeskBots(): DeskConfig[] {
     }
     const ms = Number(intervalMs || 21_600_000);
     const ltfTf = ltf.toLowerCase();
+    const htfTf = htf.toLowerCase();
     const isScalpTf = ltfTf === '5m' || ltfTf === '3m' || ltfTf === '1m';
+    const isStructBot = id.includes('struct') || htfTf === '4h';
     bots.push({
       ...shared,
       id,
@@ -96,10 +112,13 @@ export function loadDeskBots(): DeskConfig[] {
         .split('+')
         .map((s) => s.trim().toUpperCase())
         .filter(Boolean),
-      htf: htf.toLowerCase(),
+      htf: htfTf,
       ltf: ltfTf,
-      // 5m: one idea at a time — spray of overlapping FVG ticks is what bled the book
-      maxSetups: isScalpTf ? Math.min(shared.maxSetups, 1) : shared.maxSetups,
+      // One idea at a time — overlapping FVG ticks / long+short hedges bled the book
+      maxSetups: isScalpTf || isStructBot ? 1 : shared.maxSetups,
+      // 15m winning longs were ~0.17–0.27%; 0.4×ATR keeps those, kills tick stops
+      minStopAtrMultiple: isStructBot ? 0.4 : isScalpTf ? 0.5 : shared.minStopAtrMultiple,
+      requireHtfAlign: isStructBot,
       intervalMs: Number.isFinite(ms) && ms >= 60_000 ? ms : 21_600_000,
       label: `${htf}/${ltf}`,
     });
@@ -205,6 +224,7 @@ async function insertRun(
   pool: pg.Pool,
   row: {
     symbol: string;
+    botId?: string | null;
     model: string | null;
     toolTrace: unknown;
     bestTrades: unknown;
@@ -215,12 +235,14 @@ async function insertRun(
     startedAt: Date;
   },
 ): Promise<void> {
+  const botId = row.botId || null;
   await pool.query(
     `INSERT INTO desk_analysis_runs
-      (symbol, started_at, finished_at, model, tool_trace, best_trades, open_reviews, tokens, insights, error)
-     VALUES ($1,$2,NOW(),$3,$4::jsonb,$5::jsonb,$6::jsonb,$7::jsonb,$8::jsonb,$9)`,
+      (symbol, bot_id, started_at, finished_at, model, tool_trace, best_trades, open_reviews, tokens, insights, error)
+     VALUES ($1,$2,$3,NOW(),$4,$5::jsonb,$6::jsonb,$7::jsonb,$8::jsonb,$9::jsonb,$10)`,
     [
       row.symbol,
+      botId,
       row.startedAt.toISOString(),
       row.model,
       JSON.stringify(row.toolTrace ?? []),
@@ -231,17 +253,19 @@ async function insertRun(
       row.error,
     ],
   );
-  // Keep only the latest run + one previous per symbol (dashboard "previous analysis")
+  // Keep latest + previous per symbol+bot so 4h and 1h/5m don't overwrite each other
   await pool.query(
     `DELETE FROM desk_analysis_runs
      WHERE symbol = $1
+       AND COALESCE(bot_id, '') = COALESCE($2, '')
        AND id NOT IN (
          SELECT id FROM desk_analysis_runs
          WHERE symbol = $1
+           AND COALESCE(bot_id, '') = COALESCE($2, '')
          ORDER BY started_at DESC
          LIMIT 2
        )`,
-    [row.symbol],
+    [row.symbol, botId],
   );
 }
 
@@ -263,6 +287,7 @@ export async function runSymbolAnalysis(
     };
     await insertRun(pool, {
       symbol,
+      botId: cfg.id,
       model: null,
       toolTrace: [],
       bestTrades: [],
@@ -337,8 +362,13 @@ RULES:
   - After a BOS that leaves a FVG, if price retraces into that FVG: enter from the FVG.
   - Default stopLoss = that zone's originSwing (the pivot / impulse low that CREATED the FVG), from getSmcStructures.suggestedStop.
   - Aggressive FVG-edge stop only if zone.width ≥ 0.3× LTF ATR — still a small buffer; a wick through the gap is a sweep, not invalidation.
-  - If originSwing is closer to entry than 0.5× LTF ATR, SKIP — that is noise, not structure. ATR is a veto, not the stop level.
-- ${cfg.ltf} CHoCH must agree with the trade (LONG only if ${cfg.ltf} CHoCH is bullish or BOS bullish; SHORT only if bearish). Do not buy a dip while ${cfg.ltf} CHoCH is bearish.
+  - If originSwing is closer to entry than ${cfg.minStopAtrMultiple}× LTF ATR, SKIP — that is noise, not structure. ATR is a veto, not the stop level.
+- ${cfg.ltf} CHoCH must agree with the trade (LONG only if ${cfg.ltf} CHoCH is bullish or BOS bullish; SHORT only if bearish). Do not buy a dip while ${cfg.ltf} CHoCH is bearish.${
+      cfg.requireHtfAlign
+        ? `
+- HTF ALIGNMENT (mandatory for this bot): LONG only if ${cfg.htf} CHoCH/BOS is bullish. SHORT only if ${cfg.htf} CHoCH/BOS is bearish. Do not short a bullish ${cfg.htf}. If ${cfg.htf} is NEUTRAL, return no trade. One direction only.`
+        : ''
+    }
 - stopLiftTrigger + stopLiftTo mandatory before TP1.
 - Min R:R to TP1 ≥ ${cfg.minRr} measured from the originSwing stop (not a tight FVG-edge stop). Min confluence signals ≥ ${cfg.minConfluence}.
 - OPEN BOOK: return openTradeReviews keep|cancel ONLY for ids listed (this bot only). Prefer cancel if stale/invalid.
@@ -409,8 +439,15 @@ Return JSON:
     };
 
     const atrLtf = atr(ltfBars);
-    const minStopAtrMult = Number(process.env.DESK_MIN_STOP_ATR || 0.5);
+    const minStopAtrMult = cfg.minStopAtrMultiple;
     const minRisk = atrLtf > 0 ? atrLtf * minStopAtrMult : Math.abs(price) * 0.002;
+    const htfSmc = smcPayload(htfBars, cfg.htf);
+    const htfBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' =
+      htfSmc.choch === 'bullish' || (htfSmc.bos === 'bullish' && htfSmc.choch !== 'bearish')
+        ? 'BULLISH'
+        : htfSmc.choch === 'bearish' || (htfSmc.bos === 'bearish' && htfSmc.choch !== 'bullish')
+          ? 'BEARISH'
+          : 'NEUTRAL';
 
     const scored = rawTrades
       .map((t: any) => {
@@ -429,9 +466,18 @@ Return JSON:
           ((dir === 'LONG' && sl < entry && tp1 > entry) ||
             (dir === 'SHORT' && sl > entry && tp1 < entry));
         const stopWideEnough = risk >= minRisk;
+        const htfOk =
+          !cfg.requireHtfAlign ||
+          (dir === 'LONG' && htfBias === 'BULLISH') ||
+          (dir === 'SHORT' && htfBias === 'BEARISH');
         if (pricesOk && !stopWideEnough) {
           console.log(
-            `[desk] ${symbol}: reject tight SL entry=${entry} sl=${sl} risk=${risk.toFixed(6)} < 0.5×ATR ${minRisk.toFixed(6)}`,
+            `[desk:${cfg.id}] ${symbol}: reject tight SL entry=${entry} sl=${sl} risk=${risk.toFixed(6)} < ${minStopAtrMult}×ATR ${minRisk.toFixed(6)}`,
+          );
+        }
+        if (pricesOk && !htfOk) {
+          console.log(
+            `[desk:${cfg.id}] ${symbol}: reject ${dir} vs HTF ${htfBias} (${cfg.htf} choch=${htfSmc.choch} bos=${htfSmc.bos})`,
           );
         }
         return {
@@ -441,7 +487,7 @@ Return JSON:
           stopLoss: sl,
           _rr: rr,
           _conf: conf,
-          _ok: pricesOk && stopWideEnough,
+          _ok: pricesOk && stopWideEnough && htfOk,
         };
       })
       .filter(
@@ -548,6 +594,7 @@ Return JSON:
     };
     await insertRun(pool, {
       symbol,
+      botId: cfg.id,
       model: loop.model,
       toolTrace: loop.toolTrace,
       bestTrades: gated,
@@ -582,12 +629,13 @@ Return JSON:
     console.error(`[desk] analysis failed ${symbol}:`, error);
     await insertRun(pool, {
       symbol,
+      botId: cfg.id,
       model: null,
       toolTrace: [],
       bestTrades: [],
       openReviews: [],
       tokens: {},
-      insights: null,
+      insights: { _deskBot: cfg.id },
       error,
       startedAt,
     }).catch(() => {});

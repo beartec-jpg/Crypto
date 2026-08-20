@@ -103,8 +103,16 @@ function stoch(bars: Bar[], kPeriod = 14): { k: number; d: number } {
   return { k, d: k };
 }
 
-function volumeProfile(bars: Bar[]): { poc: number; vah: number; val: number } {
-  const recent = bars.slice(-100);
+function vpLookback(tf?: string): number {
+  if (tf === '4h') return 24; // ~4 days — 100 bars is stale after an expansion
+  if (tf === '1h') return 48;
+  if (tf === '15m') return 48;
+  if (tf === '5m' || tf === '3m' || tf === '1m') return 40;
+  return 100;
+}
+
+function volumeProfile(bars: Bar[], tf?: string): { poc: number; vah: number; val: number } {
+  const recent = bars.slice(-vpLookback(tf));
   if (!recent.length) return { poc: 0, vah: 0, val: 0 };
   const lo = Math.min(...recent.map((b) => b.low));
   const hi = Math.max(...recent.map((b) => b.high));
@@ -343,7 +351,7 @@ export function smcPayload(bars: Bar[], tf: string) {
 }
 
 export function volumeProfilePayload(bars: Bar[], tf: string) {
-  const vp = volumeProfile(bars);
+  const vp = volumeProfile(bars, tf);
   const last = bars[bars.length - 1];
   return {
     timeframe: tf,
@@ -351,6 +359,7 @@ export function volumeProfilePayload(bars: Bar[], tf: string) {
     poc: Number(vp.poc.toFixed(6)),
     vah: Number(vp.vah.toFixed(6)),
     val: Number(vp.val.toFixed(6)),
+    barsUsed: vpLookback(tf),
   };
 }
 

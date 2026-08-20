@@ -118,6 +118,10 @@ CREATE TABLE IF NOT EXISTS desk_analysis_runs (
 );
 
 ALTER TABLE desk_analysis_runs ADD COLUMN IF NOT EXISTS insights JSONB;
+ALTER TABLE desk_analysis_runs ADD COLUMN IF NOT EXISTS bot_id TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_desk_analysis_runs_symbol
   ON desk_analysis_runs (symbol, started_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_desk_analysis_runs_bot
+  ON desk_analysis_runs (symbol, bot_id, started_at DESC);

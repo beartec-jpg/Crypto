@@ -50,15 +50,21 @@ export function getDeskSchedulerStatus() {
   };
 }
 
-async function recentlyAnalysed(pool: pg.Pool, symbols: string[], withinMin: number): Promise<boolean> {
+async function recentlyAnalysed(
+  pool: pg.Pool,
+  symbols: string[],
+  withinMin: number,
+  botId?: string,
+): Promise<boolean> {
   if (!symbols.length) return false;
   try {
     const r = await pool.query(
       `SELECT 1 FROM desk_analysis_runs
        WHERE symbol = ANY($1::text[])
          AND created_at > NOW() - ($2::int * INTERVAL '1 minute')
+         AND ($3::text IS NULL OR bot_id = $3 OR (bot_id IS NULL AND COALESCE(insights->>'_deskBot','') = $3))
        LIMIT 1`,
-      [symbols, Math.max(1, Math.floor(withinMin))],
+      [symbols, Math.max(1, Math.floor(withinMin)), botId || null],
     );
     return (r.rowCount ?? 0) > 0;
   } catch {
@@ -117,7 +123,7 @@ export function startDeskScheduler(pool: pg.Pool): void {
     if (runOnBoot) {
       rt.bootTimer = setTimeout(() => {
         void (async () => {
-          const recent = await recentlyAnalysed(pool, cfg.symbols, skipIfRecentMin);
+          const recent = await recentlyAnalysed(pool, cfg.symbols, skipIfRecentMin, cfg.id);
           if (recent) {
             console.log(
               `[desk:${cfg.id}] skip boot run — analysis within last ${skipIfRecentMin}m (avoids flip on restart)`,

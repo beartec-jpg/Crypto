@@ -270,9 +270,11 @@ export function createServer(pool: pg.Pool) {
           DELETE FROM desk_analysis_runs a
           WHERE a.ctid IN (
             SELECT ctid FROM (
-              SELECT ctid, row_number() OVER (PARTITION BY symbol ORDER BY started_at DESC) AS rn
+              SELECT ctid, row_number() OVER (
+                PARTITION BY symbol, COALESCE(bot_id, '') ORDER BY started_at DESC
+              ) AS rn
               FROM desk_analysis_runs
-            ) x WHERE rn > 4
+            ) x WHERE rn > 2
           )`);
 
         return json(res, 200, {
