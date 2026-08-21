@@ -207,9 +207,9 @@ export function useElliottWave(): UseElliottWaveResult {
         }));
       }
       if (n === 5) {
-        // After point 4: trend-based extension for wave 5 from point 4, measured against wave 2→3
-        return calcTrendBasedExtension(p[2], p[3], p[4], [0.618, 1.0]).map(l => ({
-          ...l, label: `Ext ${(l.ratio * 100).toFixed(1)}%`, color: '#22c55e',
+        // After point 4: W5 = 61.8/100/161.8% of W1 (0→1), projected from W4 — same at every degree
+        return calcTrendBasedExtension(p[0], p[1], p[4], [0.618, 1.0, 1.618]).map(l => ({
+          ...l, label: `W5 ${(l.ratio * 100).toFixed(0)}% W1`, color: '#22c55e',
         }));
       }
       return [];
@@ -286,12 +286,11 @@ export function useElliottWave(): UseElliottWaveResult {
             color: '#22c55e',
           }));
         }
-        const totalLength = w1Length + w3Length;
         const w5Ratios = [0.618, 1.0, 1.618];
         return w5Ratios.map(ratio => ({
           ratio,
-          price: p[4] + direction * totalLength * ratio,
-          label: `W5 ${(ratio * 100).toFixed(0)}%`,
+          price: p[4] + direction * w1Length * ratio,
+          label: `W5 ${(ratio * 100).toFixed(0)}% W1`,
           isRetrace: false,
           color: '#22c55e',
         }));

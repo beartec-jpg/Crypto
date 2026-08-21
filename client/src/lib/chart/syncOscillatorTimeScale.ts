@@ -36,9 +36,20 @@ function isLegacyTimeRange(range: MainChartVisibleRange): range is TimeVisibleRa
   );
 }
 
+function logicalLooksSane(logical: LogicalVisibleRange): boolean {
+  if (!Number.isFinite(logical.from) || !Number.isFinite(logical.to)) return false;
+  if (logical.to <= logical.from) return false;
+  // Leftover range from a denser TF (e.g. 15m 2800–3000 on a 500-bar 1h pane)
+  // shoves the oscillator into empty space / the far left.
+  if (logical.from > 20_000 || logical.to > 50_000) return false;
+  if (logical.to - logical.from < 2) return false;
+  return true;
+}
+
 /**
  * Apply the main chart viewport to an oscillator chart.
- * Returns true if a range was applied.
+ * Prefer **time** range so panes stay aligned when bar counts differ
+ * (RSI warmup, missing whitespace). Logical is a fallback only.
  */
 export function applyMainChartVisibleRange(
   chart: IChartApi | null | undefined,
@@ -69,23 +80,18 @@ export function applyMainChartVisibleRange(
       logical: LogicalVisibleRange | null;
     };
 
-    if (
-      packed.logical &&
-      Number.isFinite(packed.logical.from) &&
-      Number.isFinite(packed.logical.to) &&
-      packed.logical.to > packed.logical.from
-    ) {
-      try {
-        ts.setVisibleLogicalRange(packed.logical);
-        return true;
-      } catch {
-        // fall through to time range
-      }
-    }
-
     if (packed.time?.from != null && packed.time?.to != null) {
       try {
         ts.setVisibleRange(packed.time);
+        return true;
+      } catch {
+        // fall through to logical
+      }
+    }
+
+    if (packed.logical && logicalLooksSane(packed.logical)) {
+      try {
+        ts.setVisibleLogicalRange(packed.logical);
         return true;
       } catch {
         return false;

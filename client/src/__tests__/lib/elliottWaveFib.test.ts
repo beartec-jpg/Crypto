@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   calcExtensionLevels,
   calcTrendBasedExtension,
+  scoreWave5,
+  measureWave5Percent,
 } from '@/lib/elliottWave/fibCalculator';
 import {
   getPredictiveTargets,
@@ -176,5 +178,21 @@ describe('getInProgressPredictiveLevels corrective n===3', () => {
     expect(l).toBeDefined();
     // A length = 0.50, direction = down (-1), project from B end 1.75
     expect(l.price).toBeCloseTo(1.75 - 0.50 * 1.0, 5);
+  });
+});
+
+describe('measured W5 vs W1 (every degree)', () => {
+  // W0=1.00, W1=1.20 (len 0.20), W2=1.08, W3=1.403, W4=1.28, W5=1.48 (len 0.20 = 100% of W1)
+  it('equals 100% of W1, not ~50% of W0→W3 net', () => {
+    const pct = measureWave5Percent(1.00, 1.20, 1.08, 1.403, 1.28, 1.48, 'impulse');
+    expect(pct).toBeCloseTo(100, 5);
+    const scored = scoreWave5(1.00, 1.20, 1.08, 1.403, 1.28, 1.48);
+    expect(scored.ratio).toBeCloseTo(1.0, 5);
+  });
+
+  it('diagonals measure W5 against W3', () => {
+    const pct = measureWave5Percent(1.00, 1.20, 1.08, 1.30, 1.22, 1.34, 'ending_diagonal');
+    // W5=0.12, W3=0.22 → ~54.5%
+    expect(pct).toBeCloseTo((0.12 / 0.22) * 100, 5);
   });
 });

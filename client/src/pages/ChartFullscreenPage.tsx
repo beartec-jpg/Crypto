@@ -505,10 +505,18 @@ export function ChartFullscreenPage({
   // Tag every snapshot with candlesKey so a leftover 15m range cannot be applied
   // to 1h oscillator data (that shoved the panes left after TF switches).
   useEffect(() => {
+    setMainChartVisibleRange(null);
     if (!chartRef.current) return;
     const handleVisibleRangeChange = () => {
       try {
+        const currentKey = `${symbol}_${timeframe}`;
+        // Don't tag a leftover 15m viewport with the new 1h candlesKey — that
+        // is what jammed oscillator panes to the far left after TF switches.
+        if (candlesKey !== currentKey) return;
         const range = readMainChartVisibleRange(chartRef.current, candlesKey);
+        if (range.logical && candles.length > 0 && range.logical.from > candles.length + 200) {
+          return;
+        }
         if (range.time || range.logical) setMainChartVisibleRange(range);
         setChartViewVersion(v => v + 1);
       } catch (err) {
@@ -530,7 +538,7 @@ export function ChartFullscreenPage({
         /* disposed */
       }
     };
-  }, [chartRef.current, candlesKey, chartReady]);
+  }, [chartRef.current, candlesKey, chartReady, symbol, timeframe, candles.length]);
 
   const syncedOscillatorRange = useMemo(() => {
     if (!mainChartVisibleRange) return null;

@@ -208,23 +208,49 @@ export function scoreWave4(w2: number, w3: number, w4: number): WaveFibResult {
 }
 
 /**
- * Score Wave 5 extension relative to Wave 1+3 combined.
+ * Score Wave 5 as a multiple of Wave 1 (same at every degree).
+ * Frost/Prechter: W5 is commonly 61.8%, 100% (equal to W1), or 161.8% of W1.
+ * (W0→W3 net is not used — a W5 that equals W1 would wrongly print ~50%.)
  */
 export function scoreWave5(w0: number, w1: number, w2: number, w3: number, w4: number, w5: number): WaveFibResult {
   const wave1Len = Math.abs(w1 - w0);
-  const wave3Len = Math.abs(w3 - w2);
-  const combined = wave1Len + wave3Len;
-  if (combined === 0) return { wave: 'Wave 5', ratio: 0, idealRatio: 1.0, quality: 'poor', description: 'Zero combined W1+W3' };
+  if (wave1Len === 0) return { wave: 'Wave 5', ratio: 0, idealRatio: 1.0, quality: 'poor', description: 'W1 has zero length' };
   const wave5Len = Math.abs(w5 - w4);
-  const ratio = wave5Len / combined;
+  const ratio = wave5Len / wave1Len;
   const { quality, idealRatio } = rateQuality(ratio, FIB_RULES.wave5);
   return {
     wave: 'Wave 5',
     ratio,
     idealRatio,
     quality,
-    description: `W5 is ${(ratio * 100).toFixed(1)}% of W1+W3 (ideal: ${(idealRatio * 100).toFixed(1)}%)`,
+    description: `W5 is ${(ratio * 100).toFixed(1)}% of W1 (ideal: ${(idealRatio * 100).toFixed(1)}%)`,
   };
+}
+
+export function isDiagonalPatternType(patternType?: string | null): boolean {
+  const t = (patternType || '').toLowerCase();
+  return t === 'diagonal' || t === 'leading_diagonal' || t === 'ending_diagonal';
+}
+
+/** Live measured % for W5: vs W1 on impulse, vs W3 on diagonals. */
+export function measureWave5Percent(
+  p0: number,
+  p1: number,
+  p2: number,
+  p3: number,
+  p4: number,
+  p5: number,
+  patternType?: string | null,
+): number | null {
+  const w5 = Math.abs(p5 - p4);
+  if (isDiagonalPatternType(patternType)) {
+    const w3 = Math.abs(p3 - p2);
+    if (w3 <= 0) return null;
+    return (w5 / w3) * 100;
+  }
+  const w1 = Math.abs(p1 - p0);
+  if (w1 <= 0) return null;
+  return (w5 / w1) * 100;
 }
 
 /**

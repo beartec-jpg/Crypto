@@ -5690,8 +5690,6 @@ const aiAnalyze = useMutation({
     const ratios = new Map<string, string>();
     if (points.length < 3) return ratios;
 
-    const isDiagonal = patternTypeForCalc === 'diagonal';
-
     // Wave 2/B retracement of Wave 1/A
     const p0 = points[0], p1 = points[1], p2 = points[2];
     const wave1Range = Math.abs(p1.price - p0.price);
@@ -5722,27 +5720,33 @@ const aiAnalyze = useMutation({
       }
     }
 
-    // Wave 5 extension - measured as % of W0→W3 distance, projected from W4
-    // Common targets: 61.8% (if W3 extended), 100%, 161.8% (extended W5)
-    // For DIAGONALS: measure against Wave 3 for comparison
+    // Wave 5: % of W1 at every degree (impulse). Diagonals: % of W3.
+    // Do NOT use W0→W3 net — a W5 that equals W1 would print ~50%.
     if (points.length >= 6) {
       const p3 = points[3], p4 = points[4], p5 = points[5];
       const wave5Range = Math.abs(p5.price - p4.price);
-      
-      if (isDiagonal) {
-        // Diagonal: Wave 5 as % of Wave 3 (contracting diagonals have W5 < W3)
+      const isDiag =
+        patternTypeForCalc === 'diagonal' ||
+        patternTypeForCalc === 'leading_diagonal' ||
+        patternTypeForCalc === 'ending_diagonal';
+
+      if (isDiag) {
         const wave3Range = Math.abs(p3.price - p2.price);
         if (wave3Range > 0) {
           const extension = (wave5Range / wave3Range) * 100;
-          ratios.set(p5.label, `${extension.toFixed(0)}%`);
+          const text = `${extension.toFixed(0)}%`;
+          ratios.set(p5.label, text);
+          ratios.set('5', text);
+          ratios.set('v', text);
+          ratios.set('V', text);
         }
-      } else {
-        // Impulse: Wave 5 as % of W0→W3 distance (start to Wave 3 end)
-        const w0ToW3Distance = Math.abs(p3.price - p0.price);
-        if (w0ToW3Distance > 0) {
-          const extension = (wave5Range / w0ToW3Distance) * 100;
-          ratios.set(p5.label, `${extension.toFixed(0)}%`);
-        }
+      } else if (wave1Range > 0) {
+        const extension = (wave5Range / wave1Range) * 100;
+        const text = `${extension.toFixed(0)}%`;
+        ratios.set(p5.label, text);
+        ratios.set('5', text);
+        ratios.set('v', text);
+        ratios.set('V', text);
       }
     }
 
@@ -5903,7 +5907,10 @@ const aiAnalyze = useMutation({
             labelText = `${point.label} (${point.fibLabel})`;
           } else {
             // Calculate and show percentage for waves after wave 1 (B, C, 2, 3, 4, 5)
-            const fibRatio = fibRatios.get(point.label);
+            const fibRatio =
+              fibRatios.get(point.label) ||
+              fibRatios.get(point.label.split('/')[0]) ||
+              fibRatios.get(String(pointIdx));
             if (fibRatio) {
               labelText = `${point.label} (${fibRatio})`;
             }
@@ -5952,7 +5959,9 @@ const aiAnalyze = useMutation({
         labelText = `${point.label} (${point.fibLabel})`;
       } else {
         // Calculate and show percentage for waves after wave 1
-        const fibRatio = currentFibRatios.get(point.label);
+        const fibRatio =
+          currentFibRatios.get(point.label) ||
+          currentFibRatios.get(point.label.split('/')[0]);
         if (fibRatio) {
           labelText = `${point.label} (${fibRatio})`;
         }
@@ -6912,20 +6921,17 @@ const aiAnalyze = useMutation({
         });
       }
 
-      // Project Wave 5 targets (extension from Wave 4)
-      // Uses distance from W0 to W3, projected from W4 end
+      // Project Wave 5 from W4 using W1 length (same at every degree).
+      // 61.8% / 100% / 161.8% of W1 — not W0→W3 net.
       if (pointsToUse.length >= 5) {
-        const p3 = pointsToUse[3];
         const p4 = pointsToUse[4];
-        // Measure W0→W3 distance (entire impulse move before W4 retracement)
-        const w0ToW3Distance = Math.abs(p3.price - p0.price);
         const w5Extensions = [0.618, 1.0, 1.618];
         w5Extensions.forEach(ext => {
           const fibPrice = isUptrend 
-            ? p4.price + (w0ToW3Distance * ext)
-            : p4.price - (w0ToW3Distance * ext);
+            ? p4.price + (wave1Range * ext)
+            : p4.price - (wave1Range * ext);
           
-          const label = `W5 ${(ext * 100).toFixed(0)}%`;
+          const label = `W5 ${(ext * 100).toFixed(0)}% W1`;
           const line = candleSeries.createPriceLine({
             price: fibPrice,
             color: '#FF6B6B',
