@@ -40,12 +40,12 @@ export const generateFutureWhitespace = (lastCandleTime: number, interval: strin
 };
 
 /**
- * Get recommended future bar count based on timeframe.
- * Smaller timeframes benefit from more future whitespace for drawing tools,
- * while larger timeframes need far fewer future bars to avoid excessive blank space.
+ * Future bars included in the initial viewport.
+ * Extra bars from getFutureBarCount() sit off-screen to the right so you can
+ * pan into them without the first load zooming out across months of empty axis.
  */
-export const getFutureBarCount = (interval: string): number => {
-  const futureCounts: Record<string, number> = {
+export const getInitialVisibleFutureBarCount = (interval: string): number => {
+  const visibleCounts: Record<string, number> = {
     '1m': 500,
     '3m': 500,
     '5m': 500,
@@ -53,7 +53,7 @@ export const getFutureBarCount = (interval: string): number => {
     '30m': 300,
     '1h': 500,
     '2h': 300,
-    '4h': 200,
+    '4h': 200, // ~2 months on screen at 4h (200 bars + rightOffset)
     '6h': 200,
     '8h': 150,
     '12h': 120,
@@ -62,7 +62,33 @@ export const getFutureBarCount = (interval: string): number => {
     '1w': 104,
     '1M': 36,
   };
-  return futureCounts[interval] ?? 300; // fallback for unrecognized timeframes
+  return visibleCounts[interval] ?? 300;
+};
+
+/**
+ * Total future whitespace bars on the time axis, including off-screen space.
+ * 1h–12h target ~6 months so Elliott Wave projections can be drawn well past
+ * the last candle (4h: 1080 bars × 4h ≈ 180 days).
+ */
+export const getFutureBarCount = (interval: string): number => {
+  const futureCounts: Record<string, number> = {
+    '1m': 500,
+    '3m': 500,
+    '5m': 500,
+    '15m': 400,
+    '30m': 300,
+    '1h': 4320, // ~6 months
+    '2h': 2160, // ~6 months
+    '4h': 1080, // ~6 months
+    '6h': 720,  // ~6 months
+    '8h': 540,  // ~6 months
+    '12h': 360, // ~6 months
+    '1d': 365,
+    '3d': 200,
+    '1w': 104,
+    '1M': 36,
+  };
+  return futureCounts[interval] ?? 300;
 };
 
 /**

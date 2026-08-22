@@ -6,6 +6,7 @@ import { formatPriceDynamic } from '@/lib/chart/priceUtils';
 interface FutureWhitespaceConfig {
   enabled: boolean;
   getFutureBarCount: (interval: string) => number;
+  getInitialVisibleFutureBarCount?: (interval: string) => number;
   generateFutureWhitespace: (lastTime: number, interval: string, count: number) => { time: number }[];
 }
 
@@ -128,11 +129,14 @@ export const ChartContainer = forwardRef<HTMLDivElement, ChartContainerProps>(fu
 
       // Prepare chart data with optional future whitespace
       let chartData = data;
+      let initialVisibleFuture = 0;
       if (futureWhitespace?.enabled && data.length > 0) {
         const lastCandle = data[data.length - 1];
         const futureCount = futureWhitespace.getFutureBarCount(interval);
         const futureBars = futureWhitespace.generateFutureWhitespace(lastCandle.time as number, interval, futureCount);
         chartData = [...data, ...futureBars] as any;
+        initialVisibleFuture = futureWhitespace.getInitialVisibleFutureBarCount?.(interval)
+          ?? Math.min(futureCount, 200);
         console.log('Added', futureCount, 'future whitespace bars');
       }
 
@@ -140,11 +144,15 @@ export const ChartContainer = forwardRef<HTMLDivElement, ChartContainerProps>(fu
       chartRef.current = chart;
       candleSeriesRef.current = candleSeries;
 
-      // Fit content then add right-side bar spacing for future drawing area
-      chart.timeScale().fitContent();
-      // Add significant whitespace on the right to show future area (half chart at zoom out)
+      // Show historical candles plus the usual ~2 months of future on 4h.
+      // Remaining future bars stay on the series so you can pan further right.
+      chart.timeScale().setVisibleLogicalRange({
+        from: 0,
+        to: data.length + initialVisibleFuture,
+      });
+      // Extra empty bars after the last series point (off-screen until you pan to the end)
       chart.timeScale().applyOptions({
-        rightOffset: 150, // Show ~half the chart as future whitespace
+        rightOffset: 150,
       });
       console.log('Chart created successfully');
 

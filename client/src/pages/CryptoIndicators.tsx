@@ -238,6 +238,7 @@ import type {
 import { 
   generateFutureWhitespace, 
   getFutureBarCount,
+  getInitialVisibleFutureBarCount,
   getTableRowLimit,
   generateRangeValues,
   FUTURE_BAR_COUNT,
@@ -1067,8 +1068,9 @@ const handleAIMarketReview = () => {
   const futureWhitespaceConfig = useMemo(() => ({
     enabled: true,
     getFutureBarCount,
+    getInitialVisibleFutureBarCount,
     generateFutureWhitespace
-  }), [getFutureBarCount, generateFutureWhitespace]);
+  }), [getFutureBarCount, getInitialVisibleFutureBarCount, generateFutureWhitespace]);
   
   // Handler for oscillator toggles with tier restrictions
   const handleOscillatorToggle = (

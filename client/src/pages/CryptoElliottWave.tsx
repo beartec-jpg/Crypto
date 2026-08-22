@@ -2588,7 +2588,7 @@ interface GrokWaveAnalysis {
 }
 
 import { incrementTickerClick, getFavorites } from '@/lib/tickerUtils';
-import { getFutureBarCount } from '@/lib/chart/timeUtils';
+import { getFutureBarCount, getInitialVisibleFutureBarCount } from '@/lib/chart/timeUtils';
 import { FavoritesOnlySelector } from '@/components/TickerSelector';
 const TIMEFRAMES = [
   { label: '1 Month', value: '1M' },
@@ -3994,8 +3994,10 @@ const aiAnalyze = useMutation({
     const secondLastCandle = candles.length >= 2 ? candles[candles.length - 2] : candles[0];
     const candleInterval = lastCandle.time - secondLastCandle.time || 60;
     
-    // Extend chart data with virtual future candles to match Indicators page (for drawing tools)
+    // Extend chart data with virtual future candles so drawings can land past the last bar.
+    // 4h gets ~6 months of dated axis; only ~2 months are in the initial viewport.
     const futureBarCount = getFutureBarCount(timeframeRef.current);
+    const initialVisibleFuture = getInitialVisibleFutureBarCount(timeframeRef.current);
     for (let i = 1; i <= futureBarCount; i++) {
       const futureTime = lastCandle.time + (candleInterval * i);
       chartData.push({
@@ -4049,9 +4051,13 @@ const aiAnalyze = useMutation({
     });
 
     candleSeries.setData(chartData);
-    
-    // Fit content to show all candles
-    chart.timeScale().fitContent();
+
+    // Keep the initial zoom similar to before (historical + ~2 months on 4h).
+    // Extra future dates are on the series — pan right to project further.
+    chart.timeScale().setVisibleLogicalRange({
+      from: 0,
+      to: candles.length + initialVisibleFuture,
+    });
 
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
