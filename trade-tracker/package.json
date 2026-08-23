@@ -10,6 +10,7 @@
     "dev": "tsx src/index.ts",
     "migrate": "tsx src/migrate.ts",
     "e2e": "tsx test/e2e-sim.ts",
+    "test:engine": "tsx test/engine-origin-stop.ts",
     "weekly": "tsx src/weekly-once.ts"
   },
   "engines": {

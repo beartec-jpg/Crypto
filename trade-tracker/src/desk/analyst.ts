@@ -4,7 +4,7 @@
 
 import type pg from 'pg';
 import { createTrade, cancelTrades, listTrades } from '../store.js';
-import { atr, fetchBars, smcPayload } from './marketStructure.js';
+import { atr, fetchBars, smcPayload, type SmcZone } from './marketStructure.js';
 import { buildDeskToolDefinitions, createDeskToolExecutor } from './tools.js';
 import { extractTextContent, runXaiToolLoop } from './xaiToolLoop.js';
 
@@ -168,6 +168,42 @@ function parseJson(text: string): any {
 function num(v: unknown): number {
   const n = parseFloat(String(v ?? '').replace(/[^0-9.-]/g, ''));
   return Number.isFinite(n) ? n : 0;
+}
+
+function zonesForDirection(smc: ReturnType<typeof smcPayload>, dir: 'LONG' | 'SHORT'): SmcZone[] {
+  return dir === 'LONG'
+    ? [...(smc.bullishFVGs || []), ...(smc.bullishOBs || [])]
+    : [...(smc.bearishFVGs || []), ...(smc.bearishOBs || [])];
+}
+
+/** Snap SL out to the FVG/OB origin pivot that owns this entry. Never tighten. */
+function snapStopToOrigin(
+  dir: 'LONG' | 'SHORT',
+  entry: number,
+  modelSl: number,
+  zones: SmcZone[],
+): { stop: number; snapped: boolean; origin: number | null } {
+  const tol = Math.max(Math.abs(entry) * 0.003, 1e-8);
+  const hits = zones.filter(
+    (z) => !z.mitigated && z.originSwing > 0 && entry >= z.low - tol && entry <= z.high + tol,
+  );
+  hits.sort((a, b) => {
+    const edgeA = dir === 'LONG' ? a.high : a.low;
+    const edgeB = dir === 'LONG' ? b.high : b.low;
+    return Math.abs(edgeA - entry) - Math.abs(edgeB - entry);
+  });
+  const origin = hits[0]?.suggestedStop || hits[0]?.originSwing || null;
+  if (origin == null || !Number.isFinite(origin)) {
+    return { stop: modelSl, snapped: false, origin: null };
+  }
+  if (dir === 'LONG' && !(origin < entry)) {
+    return { stop: modelSl, snapped: false, origin };
+  }
+  if (dir === 'SHORT' && !(origin > entry)) {
+    return { stop: modelSl, snapped: false, origin };
+  }
+  const stop = dir === 'LONG' ? Math.min(modelSl, origin) : Math.max(modelSl, origin);
+  return { stop, snapped: stop !== modelSl, origin };
 }
 
 const GRADE_RANK: Record<string, number> = {
@@ -440,8 +476,13 @@ Return JSON:
 
     const atrLtf = atr(ltfBars);
     const minStopAtrMult = cfg.minStopAtrMultiple;
-    const minRisk = atrLtf > 0 ? atrLtf * minStopAtrMult : Math.abs(price) * 0.002;
+    // ATR veto plus a 0.15% floor so quiet 5m ATR cannot bless a tick stop.
+    const minRisk = Math.max(
+      atrLtf > 0 ? atrLtf * minStopAtrMult : 0,
+      Math.abs(price) * 0.0015,
+    );
     const htfSmc = smcPayload(htfBars, cfg.htf);
+    const ltfSmc = smcPayload(ltfBars, cfg.ltf);
     const htfBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' =
       htfSmc.choch === 'bullish' || (htfSmc.bos === 'bullish' && htfSmc.choch !== 'bearish')
         ? 'BULLISH'
@@ -452,9 +493,16 @@ Return JSON:
     const scored = rawTrades
       .map((t: any) => {
         const entry = num(t.entry);
-        const sl = num(t.stopLoss);
+        const modelSl = num(t.stopLoss);
         const tp1 = num(Array.isArray(t.targets) ? t.targets[0] : t.tp1);
         const dir = String(t.direction || '').toUpperCase() === 'SHORT' ? 'SHORT' : 'LONG';
+        const snap = snapStopToOrigin(dir, entry, modelSl, zonesForDirection(ltfSmc, dir));
+        const sl = snap.stop;
+        if (snap.snapped) {
+          console.log(
+            `[desk:${cfg.id}] ${symbol}: snap SL ${modelSl} → origin ${sl} (entry ${entry})`,
+          );
+        }
         const risk = Math.abs(entry - sl);
         const reward = Math.abs(tp1 - entry);
         const rr = risk > 0 ? reward / risk : 0;
@@ -472,7 +520,7 @@ Return JSON:
           (dir === 'SHORT' && htfBias === 'BEARISH');
         if (pricesOk && !stopWideEnough) {
           console.log(
-            `[desk:${cfg.id}] ${symbol}: reject tight SL entry=${entry} sl=${sl} risk=${risk.toFixed(6)} < ${minStopAtrMult}×ATR ${minRisk.toFixed(6)}`,
+            `[desk:${cfg.id}] ${symbol}: reject tight SL entry=${entry} sl=${sl} risk=${risk.toFixed(6)} < ${minStopAtrMult}×ATR/floor ${minRisk.toFixed(6)}`,
           );
         }
         if (pricesOk && !htfOk) {

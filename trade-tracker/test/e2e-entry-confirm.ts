@@ -62,23 +62,26 @@ async function main() {
   await processTradeAtPrice(pool, row, 99);
   row = (await pool.query(`SELECT * FROM tracker_trades WHERE id=$1`, [bad.id])).rows[0];
   assert.equal(row.status, 'entry_armed');
-  // Fall through the posted hint SL — that is the sweep, stay armed
-  ev = await processTradeAtPrice(pool, row, 90);
-  assert.ok(!ev.some((e) => e.type === 'entry_invalid'), 'hint SL must not kill the idea');
+  // Wick into the zone (not through origin 90) — stay armed
+  ev = await processTradeAtPrice(pool, row, 95);
+  assert.ok(!ev.some((e) => e.type === 'entry_invalid'), 'FVG wick must not kill the idea');
   row = (await pool.query(`SELECT * FROM tracker_trades WHERE id=$1`, [bad.id])).rows[0];
   assert.equal(row.status, 'entry_armed');
-  console.log('C PASS wick through hint SL → still armed (sweep)');
+  assert.equal(parseFloat(row.original_stop), 90);
+  console.log('C PASS wick into zone → still armed (origin SL stays 90)');
 
-  // Reclaim after sweep → OPEN with SL at the wick
-  ev = await processTradeAtPrice(pool, row, 100.5, undefined, { high: 100.5, low: 90 });
+  // Reclaim after sweep → OPEN with origin SL, not the wick
+  ev = await processTradeAtPrice(pool, row, 100.5, undefined, { high: 100.5, low: 95 });
   assert.ok(ev.some((e) => e.type === 'entry_hit'));
   row = (await pool.query(`SELECT * FROM tracker_trades WHERE id=$1`, [bad.id])).rows[0];
   assert.equal(row.status, 'entry_hit');
-  const sweepSl = parseFloat(row.original_stop);
-  assert.ok(sweepSl < 90.1, `sweep SL should sit at/under 90, got ${sweepSl}`);
-  console.log('C2 PASS reclaim after sweep → OPEN SL', sweepSl);
+  const originSl = parseFloat(row.original_stop);
+  const liveSl = parseFloat(row.current_stop);
+  assert.equal(originSl, 90, `origin SL must stay 90, got ${originSl}`);
+  assert.equal(liveSl, 90, `live SL must stay origin 90, got ${liveSl}`);
+  console.log('C2 PASS reclaim after sweep → OPEN origin SL', originSl);
 
-  // Thesis-dead: sweep way beyond 3× hint risk without reclaim
+  // Thesis-dead: sweep takes out the origin pivot without reclaim
   const dead = await createTrade(pool, {
     userId: USER,
     source: 'sim',

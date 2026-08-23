@@ -504,7 +504,7 @@ export async function notifyEvent(
       },
       {
         name: 'Stop',
-        value: `Sweep extreme on confirm (candidate ${fmtPx(ev.newCurrentStop)}). Posted ${fmtPx(trade.originalStop)} is a hint only.`,
+        value: `Origin pivot ${fmtPx(trade.originalStop)} (structural SL / R). Sweep wick is confirm only.`,
         inline: false,
       },
       {

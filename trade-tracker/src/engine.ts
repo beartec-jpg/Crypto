@@ -5,9 +5,10 @@
  *  - touch: open as soon as price tags entry (legacy)
  *  - reclaim (default for AI): arm on first touch of entry, only OPEN after
  *    price reclaims entryConfirmLevel (e.g. LONG: hit zone then trade back above).
- *    Posted SL is a hint only. A wick through the zone is the sweep — stay armed,
- *    then on reclaim OPEN with SL = sweep extreme. Invalid only if the sweep
- *    runs too far (thesis dead) or TP prints before we ever confirm.
+ *    A wick through the FVG/OB is the sweep — stay armed. The posted SL is the
+ *    origin pivot (structural invalidation) and the R unit. On reclaim we OPEN
+ *    with that origin SL, never the sweep wick. Invalid only if the sweep takes
+ *    out the origin pivot or TP prints before we ever confirm.
  *
  * After open:
  *  - Optional stop_lift before TP1
@@ -88,7 +89,7 @@ export interface EngineEvent {
   outcome: Outcome;
   closed: boolean;
   tpHitLevel?: number;
-  /** On confirm: lock original stop to the sweep extreme. */
+  /** Rarely used — origin SL stays original_stop. Kept so store can still persist an explicit rewrite. */
   newOriginalStop?: number;
   newSweepExtreme?: number;
 }
@@ -138,12 +139,13 @@ function hitEntryConfirm(direction: Direction, price: number, level: number): bo
 function isBetterStop(direction: Direction, candidate: number, current: number): boolean {
   return direction === 'LONG' ? candidate > current : candidate < current;
 }
-/** Hint SL is display/RR only. Sweep may run this far past entry before thesis is dead. */
+/** Thesis dies only if the origin pivot (posted SL) is taken, plus a tiny pad. */
 function sweepInvalidDepth(trade: EngineTrade): number {
-  const hint = Math.abs(trade.entry - trade.originalStop);
-  const pct = Math.abs(trade.entry) * 0.0035;
-  const fromHint = Number.isFinite(hint) && hint > 0 ? hint * 3 : 0;
-  return Math.max(fromHint, pct, Math.abs(trade.entry) * 0.0002);
+  const originRisk = Math.abs(trade.entry - trade.originalStop);
+  if (Number.isFinite(originRisk) && originRisk > 0) {
+    return originRisk + Math.max(originRisk * 0.02, Math.abs(trade.entry) * 0.00005);
+  }
+  return Math.abs(trade.entry) * 0.0035;
 }
 
 function mergeSweep(
@@ -159,17 +161,9 @@ function sweepDepth(dir: Direction, entry: number, extreme: number): number {
   return dir === 'LONG' ? entry - extreme : extreme - entry;
 }
 
-function paddedSweepStop(dir: Direction, entry: number, sweep: number): number {
-  const depth = Math.abs(entry - sweep);
-  const pad = Math.max(depth * 0.05, Math.abs(entry) * 0.00005);
-  return dir === 'LONG' ? sweep - pad : sweep + pad;
-}
-
-function stopFromSweep(trade: EngineTrade, sweep: number | null | undefined): number {
-  if (sweep == null || !Number.isFinite(sweep)) return trade.originalStop;
-  const depth = sweepDepth(trade.direction, trade.entry, sweep);
-  if (!(depth > 0)) return trade.originalStop;
-  return paddedSweepStop(trade.direction, trade.entry, sweep);
+/** Posted origin SL is the live stop and the R denominator. Sweep wick is confirm-only. */
+function originStop(trade: EngineTrade): number {
+  return trade.originalStop;
 }
 
 function nearEntry(stop: number, entry: number): boolean {
@@ -262,8 +256,8 @@ export function evaluateTick(
     Number.isFinite(runningSweep) &&
     sweepDepth(dir, state.entry, runningSweep) > cap;
 
-  const openOnSweep = (msg: string): EngineEvent[] => {
-    const sl = stopFromSweep(state, runningSweep);
+  const openOnConfirm = (msg: string): EngineEvent[] => {
+    const sl = originStop(state);
     return [
       baseEvent(
         {
@@ -276,7 +270,6 @@ export function evaluateTick(
           newStatus: 'entry_hit',
           newRemainingSize: 1,
           newCurrentStop: sl,
-          newOriginalStop: sl,
           newSweepExtreme: runningSweep ?? undefined,
           newStopToBe: false,
           newStopLifted: false,
@@ -326,7 +319,7 @@ export function evaluateTick(
     if (!taggedEntry && sweepFailed) {
       return invalidSweep(
         `🚫 Entry INVALID ${state.symbol} ${dir}: price already blew past the zone ` +
-          `(sweep ${fmt(runningSweep!)} vs cap ${fmt(cap)} from ${fmt(state.entry)}) · no position`,
+          `(sweep ${fmt(runningSweep!)} took out origin SL ${fmt(state.originalStop)}) · no position`,
       );
     }
 
@@ -355,37 +348,38 @@ export function evaluateTick(
       ];
     }
 
-    // Same bar: tagged zone, maybe swept the posted SL, then reclaimed → OPEN with wick SL
+    // Same bar: tagged zone, maybe swept into the FVG, then reclaimed → OPEN with origin SL
     if (taggedEntry && taggedConfirm) {
       if (sweepFailed) {
         return invalidSweep(
           `🚫 Entry INVALID ${state.symbol} ${dir}: in-bar sweep ${fmt(runningSweep!)} ` +
-            `exceeded thesis cap ${fmt(cap)} · no position`,
+            `took out origin SL ${fmt(state.originalStop)} · no position`,
         );
       }
-      const sl = stopFromSweep(state, runningSweep);
-      return openOnSweep(
+      const sl = originStop(state);
+      return openOnConfirm(
         `🎯 Entry CONFIRMED ${state.symbol} ${dir} @ ${fmt(price)} · ` +
           `zone sweep ${fmt(runningSweep!)} + reclaim of ${fmt(confirmLevel)} ` +
-          `(lo ${fmt(lo)} / hi ${fmt(hi)}) · SL ${fmt(sl)} · NOW OPEN`,
+          `(lo ${fmt(lo)} / hi ${fmt(hi)}) · origin SL ${fmt(sl)} · NOW OPEN`,
       );
     }
 
     if (sweepFailed) {
       return invalidSweep(
         `🚫 Entry INVALID ${state.symbol} ${dir}: sweep ${fmt(runningSweep!)} ` +
-          `exceeded thesis cap ${fmt(cap)} without reclaim · no position`,
+          `took out origin SL ${fmt(state.originalStop)} without reclaim · no position`,
       );
     }
 
-    // Reclaim: arm only — posted SL does NOT kill the idea
-    const cand = stopFromSweep(state, runningSweep);
+    // Reclaim: arm only — FVG wick is the sweep. Origin SL stays on the book.
+    const sl = originStop(state);
     const msg =
       `📍 Zone tagged ${state.symbol} ${dir} @ ${fmt(price)} · waiting confirm: ` +
       (dir === 'LONG'
         ? `trade back above ${fmt(confirmLevel)}`
         : `trade back below ${fmt(confirmLevel)}`) +
-      ` · SL will be the sweep extreme (now ${fmt(cand)})` +
+      ` · origin SL ${fmt(sl)}` +
+      (runningSweep != null ? ` · sweep wick ${fmt(runningSweep)}` : '') +
       (state.entryConfirmRationale ? ` (${state.entryConfirmRationale})` : '');
     return [
       baseEvent(
@@ -398,7 +392,7 @@ export function evaluateTick(
           message: msg,
           newStatus: 'entry_armed',
           newRemainingSize: 1,
-          newCurrentStop: cand,
+          newCurrentStop: sl,
           newSweepExtreme: runningSweep ?? undefined,
           newStopToBe: false,
           newStopLifted: false,
@@ -415,7 +409,7 @@ export function evaluateTick(
     if (sweepFailed && !taggedConfirm) {
       return invalidSweep(
         `🚫 Entry INVALID ${state.symbol} ${dir}: sweep ${fmt(runningSweep!)} ` +
-          `exceeded thesis cap ${fmt(cap)} without reclaim of ${fmt(confirmLevel)} · no position counted`,
+          `took out origin SL ${fmt(state.originalStop)} without reclaim of ${fmt(confirmLevel)} · no position counted`,
       );
     }
 
@@ -423,17 +417,17 @@ export function evaluateTick(
       if (sweepFailed) {
         return invalidSweep(
           `🚫 Entry INVALID ${state.symbol} ${dir}: reclaim printed but sweep ${fmt(runningSweep!)} ` +
-            `already exceeded thesis cap ${fmt(cap)} · no position`,
+            `already took out origin SL ${fmt(state.originalStop)} · no position`,
         );
       }
-      const sl = stopFromSweep(state, runningSweep);
-      return openOnSweep(
+      const sl = originStop(state);
+      return openOnConfirm(
         `🎯 Entry CONFIRMED ${state.symbol} ${dir} @ ${fmt(price)} · ` +
-          `reclaimed ${fmt(confirmLevel)} after sweep ${fmt(runningSweep ?? state.entry)} · SL ${fmt(sl)} · NOW OPEN`,
+          `reclaimed ${fmt(confirmLevel)} after sweep ${fmt(runningSweep ?? state.entry)} · origin SL ${fmt(sl)} · NOW OPEN`,
       );
     }
 
-    const cand = stopFromSweep(state, runningSweep);
+    const sl = originStop(state);
     const improved =
       runningSweep != null &&
       (state.sweepExtreme == null ||
@@ -450,9 +444,9 @@ export function evaluateTick(
             rDelta: 0,
             realizedRAfter: 0,
             message:
-              `Sweep extended ${state.symbol} ${dir} → ${fmt(runningSweep!)} · candidate SL ${fmt(cand)}`,
+              `Sweep extended ${state.symbol} ${dir} → ${fmt(runningSweep!)} · origin SL stays ${fmt(sl)}`,
             newStatus: 'entry_armed',
-            newCurrentStop: cand,
+            newCurrentStop: sl,
             newSweepExtreme: runningSweep ?? undefined,
             newRemainingSize: state.remainingSize,
             outcome: null,
