@@ -208,7 +208,7 @@ CREATE TABLE IF NOT EXISTS paper_account (
   peak NUMERIC(16, 4) NOT NULL,
   risk_pct NUMERIC(8, 6) NOT NULL DEFAULT 0.0075,
   max_leverage NUMERIC(6, 2) NOT NULL DEFAULT 2,
-  max_margin_frac NUMERIC(8, 4) NOT NULL DEFAULT 0.15,
+  max_margin_frac NUMERIC(8, 4) NOT NULL DEFAULT 0.20,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

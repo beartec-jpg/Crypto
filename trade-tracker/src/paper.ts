@@ -56,7 +56,7 @@ export function loadPaperConfig(): PaperConfig {
     starting: Math.max(100, Number(process.env.PAPER_STARTING_EQUITY || 1000) || 1000),
     riskPct: clamp(Number(process.env.PAPER_RISK_PCT || 0.0075) || 0.0075, 0.001, 0.03),
     maxLeverage: clamp(Number(process.env.PAPER_MAX_LEVERAGE || 2) || 2, 1, 5),
-    maxMarginFrac: clamp(Number(process.env.PAPER_MAX_MARGIN_FRAC || 0.15) || 0.15, 0.05, 0.4),
+    maxMarginFrac: clamp(Number(process.env.PAPER_MAX_MARGIN_FRAC || 0.2) || 0.2, 0.05, 0.4),
     maxOpenRiskPct: clamp(Number(process.env.PAPER_MAX_OPEN_RISK_PCT || 0.02) || 0.02, 0.005, 0.08),
     haltDrawdownPct: clamp(Number(process.env.PAPER_HALT_DD_PCT || 0.25) || 0.25, 0.1, 0.6),
     sources,
