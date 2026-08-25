@@ -188,12 +188,26 @@ export function createServer(pool: pg.Pool) {
             htf: dcfg.htf,
             barsByTf,
             openBook,
+            pool,
           });
           const t0 = Date.now();
           const data = await exec(name, { tf, n });
           return json(res, 200, { name, symbol, tf, ms: Date.now() - t0, data });
         } catch (e: any) {
           return json(res, 502, { error: e?.message || 'tool failed', name, symbol, tf });
+        }
+      }
+
+      if (req.method === 'GET' && (path === '/api/desk/structure' || path === '/desk/structure')) {
+        const symbol = (url.searchParams.get('symbol') || 'XRPUSDT').toUpperCase();
+        const tf = (url.searchParams.get('tf') || '15m').toLowerCase();
+        try {
+          const { readSmcSnapshot } = await import('./desk/smc/snapshot.js');
+          const snap = await readSmcSnapshot(pool, symbol, tf);
+          if (!snap) return json(res, 404, { error: 'no live state yet', symbol, tf });
+          return json(res, 200, snap);
+        } catch (e: any) {
+          return json(res, 500, { error: e?.message || 'structure read failed' });
         }
       }
 

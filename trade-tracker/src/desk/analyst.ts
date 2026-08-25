@@ -7,6 +7,7 @@ import { createTrade, cancelTrades, listTrades } from '../store.js';
 import { atr, fetchBars, smcPayload, type SmcZone } from './marketStructure.js';
 import { buildDeskToolDefinitions, createDeskToolExecutor } from './tools.js';
 import { extractTextContent, runXaiToolLoop } from './xaiToolLoop.js';
+import { readSmcSnapshot, zonesFromSnapshot } from './smc/snapshot.js';
 
 export interface DeskConfig {
   enabled: boolean;
@@ -369,6 +370,7 @@ export async function runSymbolAnalysis(
       htf: cfg.htf,
       barsByTf: { [cfg.ltf]: ltfBars, [cfg.htf]: htfBars },
       openBook,
+      pool,
     });
 
     const preferred =
@@ -390,6 +392,7 @@ Mode: ${cfg.mode}.
 
 RULES:
 - Use tools for ALL factual levels. Do NOT invent prices not present in tool results.
+- getSmcStructures is a LIVE maintained map (stable zone `id`, tests, mitigated). Prefer unmitigated zones; use getZoneHistory(id) if you need lifecycle.
 - Call at least one tool on ${cfg.htf} and one on ${cfg.ltf} before final answer.
 - Prefer tools: ${preferred}. Also use getInstitutional when positioning matters.
 - ENTRY must be at a concrete unmitigated FVG/OB (use zone.low/high). Never blind market mid-range. Ignore mitigated=true and atrMultiple < 0.3 gaps.
@@ -483,10 +486,20 @@ Return JSON:
     );
     const htfSmc = smcPayload(htfBars, cfg.htf);
     const ltfSmc = smcPayload(ltfBars, cfg.ltf);
+    let liveLtf: Awaited<ReturnType<typeof readSmcSnapshot>> = null;
+    let liveHtf: Awaited<ReturnType<typeof readSmcSnapshot>> = null;
+    try {
+      liveLtf = await readSmcSnapshot(pool, symbol, cfg.ltf);
+      liveHtf = await readSmcSnapshot(pool, symbol, cfg.htf);
+    } catch (e: any) {
+      console.warn(`[desk:${cfg.id}] live SMC snapshot unavailable:`, e?.message || e);
+    }
+    const htfCho = liveHtf?.choch || htfSmc.choch;
+    const htfBos = liveHtf?.bos || htfSmc.bos;
     const htfBias: 'BULLISH' | 'BEARISH' | 'NEUTRAL' =
-      htfSmc.choch === 'bullish' || (htfSmc.bos === 'bullish' && htfSmc.choch !== 'bearish')
+      htfCho === 'bullish' || (htfBos === 'bullish' && htfCho !== 'bearish')
         ? 'BULLISH'
-        : htfSmc.choch === 'bearish' || (htfSmc.bos === 'bearish' && htfSmc.choch !== 'bullish')
+        : htfCho === 'bearish' || (htfBos === 'bearish' && htfCho !== 'bullish')
           ? 'BEARISH'
           : 'NEUTRAL';
 
@@ -496,7 +509,13 @@ Return JSON:
         const modelSl = num(t.stopLoss);
         const tp1 = num(Array.isArray(t.targets) ? t.targets[0] : t.tp1);
         const dir = String(t.direction || '').toUpperCase() === 'SHORT' ? 'SHORT' : 'LONG';
-        const snap = snapStopToOrigin(dir, entry, modelSl, zonesForDirection(ltfSmc, dir));
+        const liveZones = liveLtf ? zonesFromSnapshot(liveLtf, dir) : [];
+        const snap = snapStopToOrigin(
+          dir,
+          entry,
+          modelSl,
+          (liveZones.length ? liveZones : zonesForDirection(ltfSmc, dir)) as SmcZone[],
+        );
         const sl = snap.stop;
         if (snap.snapped) {
           console.log(
@@ -525,7 +544,7 @@ Return JSON:
         }
         if (pricesOk && !htfOk) {
           console.log(
-            `[desk:${cfg.id}] ${symbol}: reject ${dir} vs HTF ${htfBias} (${cfg.htf} choch=${htfSmc.choch} bos=${htfSmc.bos})`,
+            `[desk:${cfg.id}] ${symbol}: reject ${dir} vs HTF ${htfBias} (${cfg.htf} choch=${htfCho} bos=${htfBos})`,
           );
         }
         return {
@@ -639,6 +658,15 @@ Return JSON:
       _deskBot: cfg.id,
       _htf: cfg.htf,
       _ltf: cfg.ltf,
+      _smcSource: liveLtf ? 'live_state' : 'on_the_fly',
+      _smc: {
+        ltf: liveLtf
+          ? { bos: liveLtf.bos, choch: liveLtf.choch, lastBarTime: liveLtf.lastBarTime, asOf: liveLtf.asOf }
+          : null,
+        htf: liveHtf
+          ? { bos: liveHtf.bos, choch: liveHtf.choch, lastBarTime: liveHtf.lastBarTime, asOf: liveHtf.asOf }
+          : null,
+      },
     };
     await insertRun(pool, {
       symbol,

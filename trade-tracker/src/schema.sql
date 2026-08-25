@@ -125,3 +125,75 @@ CREATE INDEX IF NOT EXISTS idx_desk_analysis_runs_symbol
 
 CREATE INDEX IF NOT EXISTS idx_desk_analysis_runs_bot
   ON desk_analysis_runs (symbol, bot_id, started_at DESC);
+
+-- Persistent SMC map (structure engine). Grok is read-only.
+CREATE TABLE IF NOT EXISTS smc_zones (
+  id TEXT PRIMARY KEY,
+  symbol TEXT NOT NULL,
+  timeframe TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  direction TEXT NOT NULL,
+  low NUMERIC(24, 8) NOT NULL,
+  high NUMERIC(24, 8) NOT NULL,
+  origin_swing NUMERIC(24, 8) NOT NULL,
+  impulse_extreme NUMERIC(24, 8) NOT NULL,
+  width NUMERIC(24, 8) NOT NULL,
+  atr_multiple NUMERIC(12, 4) NOT NULL,
+  suggested_stop NUMERIC(24, 8) NOT NULL,
+  created_at_bar BIGINT NOT NULL,
+  mitigated BOOLEAN NOT NULL DEFAULT FALSE,
+  mitigated_at_bar BIGINT,
+  tests INT NOT NULL DEFAULT 0,
+  last_tested_at_bar BIGINT,
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_smc_zones_tf ON smc_zones (symbol, timeframe, mitigated, created_at_bar DESC);
+
+CREATE TABLE IF NOT EXISTS smc_swings (
+  id TEXT PRIMARY KEY,
+  symbol TEXT NOT NULL,
+  timeframe TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  price NUMERIC(24, 8) NOT NULL,
+  bar_time BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_smc_swings_tf ON smc_swings (symbol, timeframe, bar_time);
+
+CREATE TABLE IF NOT EXISTS smc_events (
+  id TEXT PRIMARY KEY,
+  symbol TEXT NOT NULL,
+  timeframe TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  direction TEXT NOT NULL,
+  price NUMERIC(24, 8) NOT NULL,
+  bar_time BIGINT NOT NULL,
+  broken_swing NUMERIC(24, 8),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_smc_events_tf ON smc_events (symbol, timeframe, bar_time DESC);
+
+CREATE TABLE IF NOT EXISTS smc_volume_levels (
+  symbol TEXT NOT NULL,
+  timeframe TEXT NOT NULL,
+  poc NUMERIC(24, 8),
+  vah NUMERIC(24, 8),
+  val NUMERIC(24, 8),
+  bars_used INT,
+  as_of_bar BIGINT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (symbol, timeframe)
+);
+
+CREATE TABLE IF NOT EXISTS smc_tf_state (
+  symbol TEXT NOT NULL,
+  timeframe TEXT NOT NULL,
+  last_bar_time BIGINT,
+  last_price NUMERIC(24, 8),
+  atr NUMERIC(24, 8),
+  bos TEXT,
+  choch TEXT,
+  engine_version INT NOT NULL DEFAULT 1,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (symbol, timeframe)
+);

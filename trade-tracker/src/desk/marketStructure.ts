@@ -3,6 +3,15 @@
  * Binance klines + indicators / SMC slices for tool payloads.
  */
 
+import {
+  bosChochState,
+  detectFvgZones,
+  detectObZones,
+  detectSwingPoints,
+  swingLookbackForTf,
+  zoneMitigatedByClose,
+} from './smc/detect.js';
+
 export interface Bar {
   time: number;
   open: number;
@@ -176,122 +185,32 @@ function roundZone(z: SmcZone): SmcZone {
   };
 }
 
-function pickZones(zones: SmcZone[], keep: number): SmcZone[] {
-  const ranked = [...zones].sort((a, b) => {
-    if (a.mitigated !== b.mitigated) return a.mitigated ? 1 : -1;
-    return b.atrMultiple - a.atrMultiple;
-  });
-  return ranked.slice(0, keep).map(roundZone);
-}
-
-function detectFvgs(bars: Bar[], atrVal: number, price: number): { bullish: SmcZone[]; bearish: SmcZone[] } {
-  const bullish: SmcZone[] = [];
-  const bearish: SmcZone[] = [];
-  const recent = bars.slice(-80);
-  const minWidth = atrVal > 0 ? atrVal * 0.25 : 0;
-  for (let i = 2; i < recent.length; i++) {
-    const a = recent[i - 2];
-    const impulse = recent[i - 1];
-    const c = recent[i];
-    if (c.low > a.high) {
-      const width = c.low - a.high;
-      if (width < minWidth) continue;
-      const originSwing = Math.min(a.low, impulse.low);
-      bullish.push({
-        low: a.high,
-        high: c.low,
-        originSwing,
-        impulseExtreme: impulse.low,
-        width,
-        atrMultiple: atrVal > 0 ? width / atrVal : 0,
-        mitigated: price < a.high,
-        suggestedStop: originSwing,
-      });
-    }
-    if (c.high < a.low) {
-      const width = a.low - c.high;
-      if (width < minWidth) continue;
-      const originSwing = Math.max(a.high, impulse.high);
-      bearish.push({
-        low: c.high,
-        high: a.low,
-        originSwing,
-        impulseExtreme: impulse.high,
-        width,
-        atrMultiple: atrVal > 0 ? width / atrVal : 0,
-        mitigated: price > a.low,
-        suggestedStop: originSwing,
-      });
-    }
-  }
-  return { bullish: pickZones(bullish, 8), bearish: pickZones(bearish, 8) };
-}
-
-function detectObs(bars: Bar[], atrVal: number, price: number): { bullish: SmcZone[]; bearish: SmcZone[] } {
-  const bullish: SmcZone[] = [];
-  const bearish: SmcZone[] = [];
-  const recent = bars.slice(-60);
-  const minRange = atrVal > 0 ? atrVal * 0.35 : 0;
-  for (let i = 1; i < recent.length - 1; i++) {
-    const b = recent[i];
-    const body = Math.abs(b.close - b.open);
-    const range = b.high - b.low || 1e-9;
-    if (body / range < 0.35) continue;
-    if (range < minRange) continue;
-    if (b.close > b.open && recent[i + 1].close > b.high) {
-      const originSwing = b.low;
-      bullish.push({
-        low: b.low,
-        high: Math.max(b.open, b.close),
-        originSwing,
-        impulseExtreme: b.low,
-        width: range,
-        atrMultiple: atrVal > 0 ? range / atrVal : 0,
-        mitigated: price < b.low,
-        suggestedStop: originSwing,
-      });
-    }
-    if (b.close < b.open && recent[i + 1].close < b.low) {
-      const originSwing = b.high;
-      bearish.push({
-        low: Math.min(b.open, b.close),
-        high: b.high,
-        originSwing,
-        impulseExtreme: b.high,
-        width: range,
-        atrMultiple: atrVal > 0 ? range / atrVal : 0,
-        mitigated: price > b.high,
-        suggestedStop: originSwing,
-      });
-    }
-  }
-  return { bullish: pickZones(bullish, 6), bearish: pickZones(bearish, 6) };
-}
-
-function swings(bars: Bar[], lookback = 3): { highs: number[]; lows: number[] } {
-  const recent = bars.slice(-80);
-  const highs: number[] = [];
-  const lows: number[] = [];
-  for (let i = lookback; i < recent.length - lookback; i++) {
-    const w = recent.slice(i - lookback, i + lookback + 1);
-    if (recent[i].high === Math.max(...w.map((b) => b.high))) highs.push(recent[i].high);
-    if (recent[i].low === Math.min(...w.map((b) => b.low))) lows.push(recent[i].low);
-  }
-  return { highs: highs.slice(-6), lows: lows.slice(-6) };
-}
-
-function bosChoch(bars: Bar[], lookback = 3): { bos: string; choch: string } {
-  const s = swings(bars, lookback);
-  const price = bars[bars.length - 1]?.close || 0;
-  let bos = 'none';
-  let choch = 'none';
-  const lastHigh = s.highs[s.highs.length - 1];
-  const lastLow = s.lows[s.lows.length - 1];
-  if (lastHigh && price > lastHigh) bos = 'bullish';
-  if (lastLow && price < lastLow) bos = 'bearish';
-  if (s.highs.length >= 2 && s.highs[s.highs.length - 1] < s.highs[s.highs.length - 2]) choch = 'bearish';
-  if (s.lows.length >= 2 && s.lows[s.lows.length - 1] > s.lows[s.lows.length - 2]) choch = 'bullish';
-  return { bos, choch };
+function toToolZones(
+  raw: ReturnType<typeof detectFvgZones>,
+  price: number,
+  keep: number,
+): { bullish: SmcZone[]; bearish: SmcZone[] } {
+  const asSmc = (z: (typeof raw)[0]): SmcZone =>
+    roundZone({
+      low: z.low,
+      high: z.high,
+      originSwing: z.originSwing,
+      impulseExtreme: z.impulseExtreme,
+      width: z.width,
+      atrMultiple: z.atrMultiple,
+      suggestedStop: z.suggestedStop,
+      mitigated: zoneMitigatedByClose(z.direction, z.low, z.high, price),
+    });
+  const bullish = raw.filter((z) => z.direction === 'bullish').map(asSmc);
+  const bearish = raw.filter((z) => z.direction === 'bearish').map(asSmc);
+  const rank = (xs: SmcZone[]) =>
+    [...xs]
+      .sort((a, b) => {
+        if (a.mitigated !== b.mitigated) return a.mitigated ? 1 : -1;
+        return b.atrMultiple - a.atrMultiple;
+      })
+      .slice(0, keep);
+  return { bullish: rank(bullish), bearish: rank(bearish) };
 }
 
 export function priceContext(bars: Bar[], tf: string) {
@@ -327,11 +246,13 @@ export function indicatorsPayload(bars: Bar[], tf: string) {
 export function smcPayload(bars: Bar[], tf: string) {
   const price = bars[bars.length - 1]?.close ?? 0;
   const atrVal = atr(bars);
-  const swingLookback = tf === '5m' || tf === '3m' || tf === '1m' ? 5 : 3;
-  const fvg = detectFvgs(bars, atrVal, price);
-  const ob = detectObs(bars, atrVal, price);
-  const sw = swings(bars, swingLookback);
-  const bc = bosChoch(bars, swingLookback);
+  const swingLookback = swingLookbackForTf(tf);
+  const fvg = toToolZones(detectFvgZones(bars.slice(-80), atrVal), price, 8);
+  const ob = toToolZones(detectObZones(bars.slice(-60), atrVal), price, 6);
+  const points = detectSwingPoints(bars.slice(-80), swingLookback);
+  const highs = points.filter((p) => p.kind === 'high').map((p) => p.price).slice(-6);
+  const lows = points.filter((p) => p.kind === 'low').map((p) => p.price).slice(-6);
+  const bc = bosChochState(bars, swingLookback);
   return {
     timeframe: tf,
     price,
@@ -341,8 +262,8 @@ export function smcPayload(bars: Bar[], tf: string) {
       'Default SL = originSwing (pivot that created the FVG/OB). Do not park SL a tick beyond the gap. Skip if suggestedStop is closer than 0.5×ATR.',
     bos: bc.bos,
     choch: bc.choch,
-    swingHighs: sw.highs.map((n) => Number(n.toFixed(6))),
-    swingLows: sw.lows.map((n) => Number(n.toFixed(6))),
+    swingHighs: highs.map((n) => Number(n.toFixed(6))),
+    swingLows: lows.map((n) => Number(n.toFixed(6))),
     bullishFVGs: fvg.bullish,
     bearishFVGs: fvg.bearish,
     bullishOBs: ob.bullish,

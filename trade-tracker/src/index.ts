@@ -99,6 +99,13 @@ async function main() {
     console.warn('[desk] failed to start scheduler', err);
   }
 
+  try {
+    const { startStructureEngine } = await import('./desk/smc/engine.js');
+    startStructureEngine(pool);
+  } catch (err: unknown) {
+    console.warn('[smc] failed to start structure engine', err);
+  }
+
   console.log(`[tracker] poll every ${POLL_MS}ms; weekly DOW=${WEEKLY_DOW} hourUTC=${WEEKLY_HOUR_UTC}`);
   console.log(`[tracker] next weekly in ~${Math.round(msUntilNextWeekly() / 3600000)}h`);
   console.log(`[tracker] dashboard http://0.0.0.0:${PORT}/`);
@@ -127,6 +134,12 @@ async function main() {
     try {
       const { stopDeskScheduler } = await import('./desk/scheduler.js');
       stopDeskScheduler();
+    } catch {
+      /* ignore */
+    }
+    try {
+      const { stopStructureEngine } = await import('./desk/smc/engine.js');
+      stopStructureEngine();
     } catch {
       /* ignore */
     }
