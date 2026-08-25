@@ -392,7 +392,7 @@ Mode: ${cfg.mode}.
 
 RULES:
 - Use tools for ALL factual levels. Do NOT invent prices not present in tool results.
-- getSmcStructures is a LIVE maintained map (stable zone `id`, tests, mitigated). Prefer unmitigated zones; use getZoneHistory(id) if you need lifecycle.
+- getSmcStructures is a LIVE maintained map (stable zone id, tests, mitigated). Prefer unmitigated zones; use getZoneHistory(id) if you need lifecycle.
 - Call at least one tool on ${cfg.htf} and one on ${cfg.ltf} before final answer.
 - Prefer tools: ${preferred}. Also use getInstitutional when positioning matters.
 - ENTRY must be at a concrete unmitigated FVG/OB (use zone.low/high). Never blind market mid-range. Ignore mitigated=true and atrMultiple < 0.3 gaps.
