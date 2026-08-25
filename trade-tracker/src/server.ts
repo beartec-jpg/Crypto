@@ -25,6 +25,7 @@ import {
   finalizeSize,
 } from './blofin.js';
 import { describeSizingExample } from './execution.js';
+import { getPaperDashboard, updatePaperSettings } from './paper.js';
 import { deskTradeSources, loadDeskBots, loadDeskConfig } from './desk/analyst.js';
 import { forceDeskRun, getDeskSchedulerStatus } from './desk/scheduler.js';
 import { fetchBars } from './desk/marketStructure.js';
@@ -332,7 +333,32 @@ export function createServer(pool: pg.Pool) {
           previousAnalysis: previous,
           analysisBySymbol,
           analysisByBot,
+          paper: await getPaperDashboard(pool).catch((e: Error) => ({ error: e.message })),
         });
+      }
+
+      if (req.method === 'GET' && (path === '/api/desk/paper' || path === '/desk/paper')) {
+        try {
+          return json(res, 200, await getPaperDashboard(pool));
+        } catch (e: any) {
+          return json(res, 500, { error: e?.message || 'paper failed' });
+        }
+      }
+
+      if (req.method === 'POST' && (path === '/api/desk/paper/settings' || path === '/desk/paper/settings')) {
+        const raw = await readBody(req);
+        let body: Record<string, unknown> = {};
+        try {
+          body = raw ? JSON.parse(raw) : {};
+        } catch {
+          return json(res, 400, { error: 'invalid json' });
+        }
+        const acct = await updatePaperSettings(pool, {
+          riskPct: body.riskPct != null ? Number(body.riskPct) : undefined,
+          maxLeverage: body.maxLeverage != null ? Number(body.maxLeverage) : undefined,
+          maxMarginFrac: body.maxMarginFrac != null ? Number(body.maxMarginFrac) : undefined,
+        });
+        return json(res, 200, { ok: true, account: acct });
       }
 
       if (req.method === 'GET' && (path === '/api/desk/runs' || path === '/desk/runs')) {

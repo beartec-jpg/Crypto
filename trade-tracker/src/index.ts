@@ -14,16 +14,24 @@ async function pollOnce(pool: ReturnType<typeof getPool>) {
   const webhook =
     resolveWebhookForSymbol('BTCUSDT') || process.env.DISCORD_WEBHOOK_URL || undefined;
   const active = await listTrades(pool, { activeOnly: true, limit: 500 });
-  if (!active.length) {
-    return { checked: 0, events: 0 };
-  }
-  const symbols = active.map((r) => String(r.symbol));
+  const symbols = [...new Set(['XRPUSDT', ...active.map((r) => String(r.symbol))])];
   const prices = await fetchPrices(symbols);
   const map = new Map(prices.map((p) => [p.symbol, p.price]));
   const extremes = new Map(
     prices.map((p) => [p.symbol, { high: p.high, low: p.low }] as const),
   );
-  return processAllActive(pool, map, webhook, extremes);
+  let result = { checked: 0, events: 0 };
+  if (active.length) {
+    result = await processAllActive(pool, map, webhook, extremes);
+  } else {
+    try {
+      const { markPaperToMarket } = await import('./paper.js');
+      await markPaperToMarket(pool, map);
+    } catch {
+      /* ignore */
+    }
+  }
+  return result;
 }
 
 function msUntilNextWeekly(): number {
@@ -104,6 +112,18 @@ async function main() {
     startStructureEngine(pool);
   } catch (err: unknown) {
     console.warn('[smc] failed to start structure engine', err);
+  }
+
+  try {
+    const { ensurePaperAccount, loadPaperConfig } = await import('./paper.js');
+    const acct = await ensurePaperAccount(pool);
+    const pc = loadPaperConfig();
+    console.log(
+      `[paper] $${acct.starting} risk=${(acct.riskPct * 100).toFixed(2)}% lev≤${acct.maxLeverage}x margin≤${(acct.maxMarginFrac * 100).toFixed(0)}% equity=$${acct.equity.toFixed(2)}`,
+    );
+    console.log(`[paper] sources=${pc.sources.join(',')}`);
+  } catch (err: unknown) {
+    console.warn('[paper] failed to init account', err);
   }
 
   console.log(`[tracker] poll every ${POLL_MS}ms; weekly DOW=${WEEKLY_DOW} hourUTC=${WEEKLY_HOUR_UTC}`);

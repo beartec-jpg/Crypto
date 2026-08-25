@@ -70,7 +70,7 @@
     @media (max-width: 1100px) {
       .layout { grid-template-columns: 1fr; grid-template-rows: minmax(360px, 50vh) 1fr; }
     }
-    .main { display: grid; grid-template-rows: auto auto 1fr auto auto; min-height: 0; border-right: 1px solid var(--line); }
+    .main { display: grid; grid-template-rows: auto auto auto 1fr auto auto; min-height: 0; border-right: 1px solid var(--line); }
     .stats {
       display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .5rem;
       padding: .65rem .85rem; border-bottom: 1px solid var(--line); background: var(--panel);
@@ -84,6 +84,20 @@
     .stat .s { font-size: .68rem; color: var(--muted); margin-top: .1rem; }
     .stat .v .scr { color: var(--muted); }
     .pos { color: var(--ok); } .neg { color: var(--bad); }
+    .account-strip {
+      display: grid; grid-template-columns: 300px 1fr; min-height: 168px; max-height: 210px;
+      border-bottom: 1px solid var(--line); background: var(--panel);
+    }
+    @media (max-width: 900px) { .account-strip { grid-template-columns: 1fr; max-height: none; } }
+    .account-meta { padding: .55rem .75rem; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: .35rem; }
+    .account-meta h2 { margin: 0; font-size: .78rem; font-weight: 650; }
+    .eq-big { font-size: 1.35rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+    .account-meta select {
+      background: #0a101c; color: var(--txt); border: 1px solid var(--line);
+      border-radius: 7px; padding: .25rem .4rem; font-size: .72rem;
+    }
+    .account-meta .rules { font-size: .68rem; color: var(--muted); line-height: 1.35; }
+    #equityChart { width: 100%; height: 100%; min-height: 168px; }
     .chart-bar {
       display: flex; gap: .5rem; align-items: center; justify-content: space-between;
       padding: .45rem .85rem; border-bottom: 1px solid var(--line); background: #0a101c;
@@ -233,6 +247,7 @@
         <span id="deskBadge" class="badge">…</span>
         <span id="blofinBadge" class="badge">…</span>
         <span id="runBadge" class="badge">…</span>
+        <span id="paperBadge" class="badge on">PAPER $1k</span>
       </div>
     </div>
     <div class="row">
@@ -245,6 +260,35 @@
   <div class="layout">
     <section class="main">
       <div class="stats" id="stats"></div>
+
+      <div class="account-strip">
+        <div class="account-meta">
+          <h2>Paper account</h2>
+          <div class="eq-big" id="paperEquity">$1,000.00</div>
+          <div class="rules" id="paperPnl">PnL — · DD —</div>
+          <div class="row">
+            <label class="rules">Risk
+              <select id="paperRisk">
+                <option value="0.0025">0.25%</option>
+                <option value="0.005">0.50%</option>
+                <option value="0.0075" selected>0.75%</option>
+                <option value="0.01">1.00%</option>
+                <option value="0.015">1.50%</option>
+              </select>
+            </label>
+            <label class="rules">Lev
+              <select id="paperLev">
+                <option value="1">1x</option>
+                <option value="2" selected>2x</option>
+                <option value="3">3x</option>
+              </select>
+            </label>
+            <button id="paperSave" type="button">Apply</button>
+          </div>
+          <div class="rules" id="paperRules">Risk 0.75% of equity to origin stop · 2x · max 15% margin</div>
+        </div>
+        <div id="equityChart"></div>
+      </div>
 
       <div class="chart-bar">
         <div class="tabs" id="botTabs"></div>
@@ -325,6 +369,9 @@
       tools: [],
       chart: null,
       series: null,
+      eqChart: null,
+      eqEquity: null,
+      eqPrice: null,
       lines: [],
       toolLines: [], // chart lines from tool results (SMC/VP)
       candles: [], // chart series (includes ghost future bars)
@@ -401,6 +448,92 @@
       if (n == null || !Number.isFinite(Number(n))) return '—';
       const x = Number(n);
       return (x > 0 ? '+' : '') + x.toFixed(2) + 'R';
+    }
+    function fmtUsd(n) {
+      const x = Number(n);
+      if (!Number.isFinite(x)) return '—';
+      return (x < 0 ? '-$' : '$') + Math.abs(x).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function ensureEquityChart() {
+      if (state.eqChart) return;
+      const el = $('equityChart');
+      if (!el || !window.LightweightCharts) return;
+      state.eqChart = LightweightCharts.createChart(el, {
+        layout: { background: { color: '#080d18' }, textColor: '#8b9bb8' },
+        grid: { vertLines: { color: '#1c2740' }, horzLines: { color: '#1c2740' } },
+        rightPriceScale: { borderColor: '#1c2740' },
+        leftPriceScale: { visible: true, borderColor: '#1c2740' },
+        timeScale: { borderColor: '#1c2740', timeVisible: true, secondsVisible: false },
+        crosshair: { mode: 0 },
+        width: el.clientWidth,
+        height: el.clientHeight || 168,
+      });
+      state.eqEquity = state.eqChart.addLineSeries({
+        color: '#4da3ff',
+        lineWidth: 2,
+        priceScaleId: 'right',
+        title: 'Equity',
+      });
+      state.eqPrice = state.eqChart.addLineSeries({
+        color: '#f5c542',
+        lineWidth: 1,
+        priceScaleId: 'left',
+        title: 'XRP',
+      });
+      new ResizeObserver(() => {
+        if (!state.eqChart) return;
+        state.eqChart.applyOptions({ width: el.clientWidth, height: el.clientHeight || 168 });
+      }).observe(el);
+    }
+    function renderPaper(p) {
+      if (!p || p.error || !p.account) return;
+      const a = p.account;
+      const elEq = $('paperEquity');
+      if (elEq) {
+        elEq.textContent = fmtUsd(a.equity);
+        elEq.className = 'eq-big ' + (a.pnl >= 0 ? 'pos' : 'neg');
+      }
+      const pnlEl = $('paperPnl');
+      if (pnlEl) {
+        const pctn = (a.pnlPct * 100).toFixed(2);
+        pnlEl.innerHTML = `${a.pnl >= 0 ? '+' : ''}${fmtUsd(a.pnl)} (${pctn}%) · DD ${(a.drawdownPct * 100).toFixed(1)}% · cash ${fmtUsd(a.cash)}`;
+      }
+      const rules = $('paperRules');
+      if (rules && p.rules) {
+        rules.textContent = `${p.rules.riskPerTrade} · ${p.rules.leverage} · ${p.rules.maxMargin}`;
+      }
+      const riskSel = $('paperRisk');
+      const levSel = $('paperLev');
+      if (riskSel && !riskSel._lock) riskSel.value = String(a.riskPct);
+      if (levSel && !levSel._lock) levSel.value = String(Number(a.maxLeverage));
+      const badge = $('paperBadge');
+      if (badge) badge.textContent = 'PAPER ' + fmtUsd(a.equity);
+      ensureEquityChart();
+      const curve = Array.isArray(p.equityCurve) ? p.equityCurve : [];
+      if (state.eqEquity && curve.length) {
+        const eq = curve.filter((c) => c.t && Number.isFinite(c.equity)).map((c) => ({ time: c.t, value: Number(c.equity) }));
+        const px = curve.filter((c) => c.t && c.xrp != null && Number.isFinite(Number(c.xrp))).map((c) => ({ time: c.t, value: Number(c.xrp) }));
+        if (eq.length === 1) eq.push({ time: eq[0].time + 60, value: eq[0].value });
+        state.eqEquity.setData(eq);
+        if (state.eqPrice) state.eqPrice.setData(px);
+        state.eqChart.timeScale().fitContent();
+      }
+    }
+    async function savePaperSettings() {
+      const body = {
+        riskPct: Number($('paperRisk').value),
+        maxLeverage: Number($('paperLev').value),
+      };
+      const r = await fetch('/api/desk/paper/settings', {
+        method: 'POST',
+        headers: { ...headers(true), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        $('paperRules').textContent = 'Could not save settings (API key?)';
+        return;
+      }
+      await softRefresh();
     }
     function pct(n) {
       if (n == null || !Number.isFinite(Number(n))) return '—';
@@ -1582,6 +1715,7 @@
       ].map(([k,v,s,cls]) => `<div class="stat"><div class="k">${k}</div><div class="v ${cls||''}">${v}</div><div class="s">${s||''}</div></div>`).join('');
 
       renderAnalysisBoxes(d);
+      renderPaper(d.paper);
     }
 
     function analysisRunForBotId(botId, d) {
@@ -1839,6 +1973,7 @@
     }
 
     $('refreshBtn').onclick = () => hardRefresh();
+    $('paperSave').onclick = () => savePaperSettings();
     $('runBtn').onclick = async () => {
       $('runBtn').disabled = true;
       $('runBadge').textContent = 'ANALYSING';

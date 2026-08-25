@@ -14,6 +14,7 @@ import {
 } from './discord.js';
 import { computePerformance, formatStatsEmbedFields, type ClosedTradePoint } from './stats.js';
 import { executeExchangeEvent } from './execution.js';
+import { applyPaperEvent, markPaperToMarket } from './paper.js';
 
 export interface CreateTradeInput {
   userId?: string;
@@ -632,6 +633,12 @@ export async function processTradeAtPrice(
   let rowMeta = { ...row };
   for (const ev of events) {
     await applyEvent(pool, working.id, ev);
+    try {
+      await applyPaperEvent(pool, working, ev);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[paper] event failed', working.symbol, ev.type, msg);
+    }
     // Live/dry-run exchange side effects (entry open, TP partials, SL, close)
     try {
       await executeExchangeEvent(pool, rowMeta, working, ev);
@@ -677,6 +684,11 @@ export async function processAllActive(
     const ex = extremes?.get(sym);
     const evs = await processTradeAtPrice(pool, row, price, webhookUrl, ex);
     events += evs.length;
+  }
+  try {
+    await markPaperToMarket(pool, prices);
+  } catch (err: unknown) {
+    console.warn('[paper] mtm', err instanceof Error ? err.message : err);
   }
   return { checked: active.length, events };
 }
