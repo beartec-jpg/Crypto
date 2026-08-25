@@ -70,7 +70,7 @@
     @media (max-width: 1100px) {
       .layout { grid-template-columns: 1fr; grid-template-rows: minmax(360px, 50vh) 1fr; }
     }
-    .main { display: grid; grid-template-rows: auto auto auto 1fr auto auto; min-height: 0; border-right: 1px solid var(--line); }
+    .main { display: grid; grid-template-rows: auto 260px auto minmax(220px, 1fr) minmax(90px, auto) minmax(80px, 160px); min-height: 0; border-right: 1px solid var(--line); }
     .stats {
       display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .5rem;
       padding: .65rem .85rem; border-bottom: 1px solid var(--line); background: var(--panel);
@@ -85,19 +85,23 @@
     .stat .v .scr { color: var(--muted); }
     .pos { color: var(--ok); } .neg { color: var(--bad); }
     .account-strip {
-      display: grid; grid-template-columns: 300px 1fr; min-height: 168px; max-height: 210px;
-      border-bottom: 1px solid var(--line); background: var(--panel);
+      display: grid; grid-template-columns: 280px 1fr; height: 260px; min-height: 260px;
+      border-bottom: 1px solid var(--line); background: var(--panel); overflow: hidden;
     }
-    @media (max-width: 900px) { .account-strip { grid-template-columns: 1fr; max-height: none; } }
-    .account-meta { padding: .55rem .75rem; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: .35rem; }
+    @media (max-width: 900px) {
+      .main { grid-template-rows: auto auto auto minmax(220px, 1fr) minmax(90px, auto) minmax(80px, 140px); }
+      .account-strip { grid-template-columns: 1fr; height: auto; min-height: 0; }
+      #equityChart { height: 200px; min-height: 200px; }
+    }
+    .account-meta { padding: .65rem .8rem; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: .4rem; min-width: 0; overflow: auto; }
     .account-meta h2 { margin: 0; font-size: .78rem; font-weight: 650; }
-    .eq-big { font-size: 1.35rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+    .eq-big { font-size: 1.45rem; font-weight: 750; font-variant-numeric: tabular-nums; }
     .account-meta select {
       background: #0a101c; color: var(--txt); border: 1px solid var(--line);
       border-radius: 7px; padding: .25rem .4rem; font-size: .72rem;
     }
     .account-meta .rules { font-size: .68rem; color: var(--muted); line-height: 1.35; }
-    #equityChart { width: 100%; height: 100%; min-height: 168px; }
+    #equityChart { position: relative; width: 100%; height: 260px; min-height: 260px; background: #080d18; }
     .chart-bar {
       display: flex; gap: .5rem; align-items: center; justify-content: space-between;
       padding: .45rem .85rem; border-bottom: 1px solid var(--line); background: #0a101c;
@@ -454,25 +458,36 @@
       if (!Number.isFinite(x)) return '—';
       return (x < 0 ? '-$' : '$') + Math.abs(x).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
+    function equityChartSize(el) {
+      const w = Math.max(el.clientWidth || el.parentElement?.clientWidth || 640, 200);
+      const h = Math.max(el.clientHeight || 260, 200);
+      return { width: w, height: h };
+    }
     function ensureEquityChart() {
-      if (state.eqChart) return;
       const el = $('equityChart');
       if (!el || !window.LightweightCharts) return;
+      const sz = equityChartSize(el);
+      if (state.eqChart) {
+        state.eqChart.applyOptions(sz);
+        return;
+      }
       state.eqChart = LightweightCharts.createChart(el, {
         layout: { background: { color: '#080d18' }, textColor: '#8b9bb8' },
         grid: { vertLines: { color: '#1c2740' }, horzLines: { color: '#1c2740' } },
-        rightPriceScale: { borderColor: '#1c2740' },
-        leftPriceScale: { visible: true, borderColor: '#1c2740' },
+        rightPriceScale: { borderColor: '#1c2740', scaleMargins: { top: 0.12, bottom: 0.08 } },
+        leftPriceScale: { visible: true, borderColor: '#1c2740', scaleMargins: { top: 0.12, bottom: 0.08 } },
         timeScale: { borderColor: '#1c2740', timeVisible: true, secondsVisible: false },
         crosshair: { mode: 0 },
-        width: el.clientWidth,
-        height: el.clientHeight || 168,
+        handleScroll: true,
+        handleScale: true,
+        width: sz.width,
+        height: sz.height,
       });
       state.eqEquity = state.eqChart.addLineSeries({
         color: '#4da3ff',
         lineWidth: 2,
         priceScaleId: 'right',
-        title: 'Equity',
+        title: 'Equity $',
       });
       state.eqPrice = state.eqChart.addLineSeries({
         color: '#f5c542',
@@ -482,7 +497,7 @@
       });
       new ResizeObserver(() => {
         if (!state.eqChart) return;
-        state.eqChart.applyOptions({ width: el.clientWidth, height: el.clientHeight || 168 });
+        state.eqChart.applyOptions(equityChartSize(el));
       }).observe(el);
     }
     function renderPaper(p) {
@@ -513,10 +528,17 @@
       if (state.eqEquity && curve.length) {
         const eq = curve.filter((c) => c.t && Number.isFinite(c.equity)).map((c) => ({ time: c.t, value: Number(c.equity) }));
         const px = curve.filter((c) => c.t && c.xrp != null && Number.isFinite(Number(c.xrp))).map((c) => ({ time: c.t, value: Number(c.xrp) }));
-        if (eq.length === 1) eq.push({ time: eq[0].time + 60, value: eq[0].value });
+        if (eq.length === 1) {
+          eq.push({ time: eq[0].time + 3600, value: eq[0].value });
+        }
         state.eqEquity.setData(eq);
         if (state.eqPrice) state.eqPrice.setData(px);
-        state.eqChart.timeScale().fitContent();
+        requestAnimationFrame(() => {
+          if (!state.eqChart) return;
+          const el = $('equityChart');
+          if (el) state.eqChart.applyOptions(equityChartSize(el));
+          state.eqChart.timeScale().fitContent();
+        });
       }
     }
     async function savePaperSettings() {
