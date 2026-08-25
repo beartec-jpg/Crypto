@@ -71,7 +71,8 @@
       .layout { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(220px, 40vh); }
     }
     .main {
-      display: flex; flex-direction: column; min-height: 0; height: 100%; overflow: hidden;
+      display: flex; flex-direction: column; min-height: 0; height: 100%;
+      overflow-x: hidden; overflow-y: auto;
       border-right: 1px solid var(--line);
     }
     .stats {
@@ -118,16 +119,16 @@
       border-radius: 7px; padding: .32rem .55rem; font-size: .78rem; font-weight: 650; cursor: pointer;
     }
     .tab:hover { color: var(--txt); background: #121a2b; }
-    #chartWrap { position: relative; flex: 1 1 auto; min-height: 180px; background: #080d18; }
-    #chart { position: relative; width: 100%; height: 100%; min-height: 180px; }
+    #chartWrap { position: relative; flex: 0 0 auto; height: 42vh; min-height: 320px; overflow: hidden; background: #080d18; }
+    #chart { position: relative; width: 100%; height: 100%; }
     .legend {
-      position: absolute; top: 10px; left: 12px; z-index: 30;
+      position: absolute; top: 10px; left: 12px; z-index: 2;
       font-size: .75rem; color: var(--muted); pointer-events: none;
       background: rgba(8,13,24,.65); padding: .35rem .55rem; border-radius: 6px;
     }
     .tools-strip {
       flex: 0 0 auto; border-top: 1px solid var(--line); background: var(--panel);
-      display: grid; grid-template-rows: auto 1fr; max-height: 120px; min-height: 72px;
+      display: grid; grid-template-rows: auto minmax(48px, 90px);
     }
     .tools-head {
       display: flex; gap: .4rem; flex-wrap: wrap; align-items: center;
@@ -210,8 +211,9 @@
     .tool-call.open .tool-preview { display: block; }
     .active-strip {
       flex: 0 0 auto;
+      position: relative; z-index: 1;
       border-top: 1px solid var(--line); background: #0a101c;
-      max-height: 120px; overflow: auto; padding: .55rem .75rem;
+      padding: .55rem .75rem;
     }
     .active-strip .head {
       display: flex; justify-content: space-between; align-items: center;
