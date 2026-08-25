@@ -20,20 +20,22 @@
       --acc: #4da3ff;
       --long: #3dd68c;
       --short: #f07178;
-      --hdr: 52px;
+      --hdr: 64px;
     }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; overflow: hidden; }
     body {
       font-family: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
       background: var(--bg); color: var(--txt);
-      display: grid; grid-template-rows: var(--hdr) 1fr;
+      display: grid; grid-template-rows: auto 1fr;
     }
     header {
       display: flex; align-items: center; justify-content: space-between; gap: .75rem;
-      padding: 0 1rem; border-bottom: 1px solid var(--line); background: #0a101c;
+      flex-wrap: wrap; min-height: var(--hdr);
+      padding: .55rem 1rem; border-bottom: 1px solid var(--line); background: #0a101c;
+      flex: 0 0 auto;
     }
-    .brand { display: flex; align-items: center; gap: .65rem; min-width: 0; }
+    .brand { display: flex; align-items: center; gap: .65rem; min-width: 0; flex-wrap: wrap; }
     .logo {
       width: 28px; height: 28px; border-radius: 8px;
       background: linear-gradient(135deg, #1d4ed8, #0ea5e9);
