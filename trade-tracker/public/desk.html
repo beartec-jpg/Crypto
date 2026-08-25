@@ -23,7 +23,7 @@
       --hdr: 52px;
     }
     * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; }
+    html, body { height: 100%; margin: 0; overflow: hidden; }
     body {
       font-family: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
       background: var(--bg); color: var(--txt);
@@ -65,13 +65,17 @@
       border-radius: 8px; padding: .38rem .55rem; font-size: .78rem;
     }
     .layout {
-      display: grid; grid-template-columns: 1fr 360px; min-height: 0; height: 100%;
+      display: grid; grid-template-columns: minmax(0, 1fr) 360px; min-height: 0; height: 100%;
     }
     @media (max-width: 1100px) {
-      .layout { grid-template-columns: 1fr; grid-template-rows: minmax(360px, 50vh) 1fr; }
+      .layout { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(220px, 40vh); }
     }
-    .main { display: grid; grid-template-rows: auto 260px auto minmax(220px, 1fr) minmax(90px, auto) minmax(80px, 160px); min-height: 0; border-right: 1px solid var(--line); }
+    .main {
+      display: flex; flex-direction: column; min-height: 0; height: 100%; overflow: hidden;
+      border-right: 1px solid var(--line);
+    }
     .stats {
+      flex: 0 0 auto;
       display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .5rem;
       padding: .65rem .85rem; border-bottom: 1px solid var(--line); background: var(--panel);
     }
@@ -85,24 +89,26 @@
     .stat .v .scr { color: var(--muted); }
     .pos { color: var(--ok); } .neg { color: var(--bad); }
     .account-strip {
-      display: grid; grid-template-columns: 280px 1fr; height: 260px; min-height: 260px;
-      border-bottom: 1px solid var(--line); background: var(--panel); overflow: hidden;
+      flex: 0 0 220px; display: grid; grid-template-columns: 260px minmax(0, 1fr);
+      height: 220px; min-height: 220px; max-height: 220px;
+      border-bottom: 1px solid var(--line); background: var(--panel);
     }
-    @media (max-width: 900px) {
-      .main { grid-template-rows: auto auto auto minmax(220px, 1fr) minmax(90px, auto) minmax(80px, 140px); }
-      .account-strip { grid-template-columns: 1fr; height: auto; min-height: 0; }
-      #equityChart { height: 200px; min-height: 200px; }
-    }
-    .account-meta { padding: .65rem .8rem; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: .4rem; min-width: 0; overflow: auto; }
+    .account-meta { padding: .55rem .75rem; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: .3rem; min-width: 0; overflow: auto; }
     .account-meta h2 { margin: 0; font-size: .78rem; font-weight: 650; }
-    .eq-big { font-size: 1.45rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+    .eq-big { font-size: 1.35rem; font-weight: 750; font-variant-numeric: tabular-nums; }
     .account-meta select {
       background: #0a101c; color: var(--txt); border: 1px solid var(--line);
       border-radius: 7px; padding: .25rem .4rem; font-size: .72rem;
     }
     .account-meta .rules { font-size: .68rem; color: var(--muted); line-height: 1.35; }
-    #equityChart { position: relative; width: 100%; height: 260px; min-height: 260px; background: #080d18; }
+    #equityChart { position: relative; min-width: 0; width: 100%; height: 220px; background: #080d18; }
+    #eqLegend {
+      position: absolute; top: 8px; left: 10px; z-index: 4;
+      font-size: .68rem; color: var(--muted);
+      background: rgba(8,13,24,.7); padding: .2rem .4rem; border-radius: 4px; pointer-events: none;
+    }
     .chart-bar {
+      flex: 0 0 auto;
       display: flex; gap: .5rem; align-items: center; justify-content: space-between;
       padding: .45rem .85rem; border-bottom: 1px solid var(--line); background: #0a101c;
     }
@@ -112,16 +118,16 @@
       border-radius: 7px; padding: .32rem .55rem; font-size: .78rem; font-weight: 650; cursor: pointer;
     }
     .tab:hover { color: var(--txt); background: #121a2b; }
-    #chartWrap { position: relative; min-height: 0; background: #080d18; }
-    #chart { position: relative; width: 100%; height: 100%; min-height: 320px; }
+    #chartWrap { position: relative; flex: 1 1 auto; min-height: 180px; background: #080d18; }
+    #chart { position: relative; width: 100%; height: 100%; min-height: 180px; }
     .legend {
       position: absolute; top: 10px; left: 12px; z-index: 30;
       font-size: .75rem; color: var(--muted); pointer-events: none;
       background: rgba(8,13,24,.65); padding: .35rem .55rem; border-radius: 6px;
     }
     .tools-strip {
-      border-top: 1px solid var(--line); background: var(--panel);
-      display: grid; grid-template-rows: auto 1fr; min-height: 160px; max-height: 240px;
+      flex: 0 0 auto; border-top: 1px solid var(--line); background: var(--panel);
+      display: grid; grid-template-rows: auto 1fr; max-height: 120px; min-height: 72px;
     }
     .tools-head {
       display: flex; gap: .4rem; flex-wrap: wrap; align-items: center;
@@ -203,8 +209,9 @@
     }
     .tool-call.open .tool-preview { display: block; }
     .active-strip {
+      flex: 0 0 auto;
       border-top: 1px solid var(--line); background: #0a101c;
-      max-height: 220px; overflow: auto; padding: .55rem .75rem;
+      max-height: 120px; overflow: auto; padding: .55rem .75rem;
     }
     .active-strip .head {
       display: flex; justify-content: space-between; align-items: center;
@@ -291,7 +298,9 @@
           </div>
           <div class="rules" id="paperRules">Risk 0.75% of equity to origin stop · 2x · max 15% margin</div>
         </div>
-        <div id="equityChart"></div>
+        <div id="equityChart">
+          <div id="eqLegend">Equity $ (blue) · XRP (gold)</div>
+        </div>
       </div>
 
       <div class="chart-bar">
@@ -459,14 +468,18 @@
       return (x < 0 ? '-$' : '$') + Math.abs(x).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
     function equityChartSize(el) {
-      const w = Math.max(el.clientWidth || el.parentElement?.clientWidth || 640, 200);
-      const h = Math.max(el.clientHeight || 260, 200);
+      const w = Math.max(el.clientWidth || el.parentElement?.clientWidth || 480, 240);
+      const h = 220;
       return { width: w, height: h };
     }
     function ensureEquityChart() {
       const el = $('equityChart');
       if (!el || !window.LightweightCharts) return;
       const sz = equityChartSize(el);
+      if (sz.width < 80) {
+        setTimeout(() => ensureEquityChart(), 120);
+        return;
+      }
       if (state.eqChart) {
         state.eqChart.applyOptions(sz);
         return;
@@ -525,12 +538,18 @@
       if (badge) badge.textContent = 'PAPER ' + fmtUsd(a.equity);
       ensureEquityChart();
       const curve = Array.isArray(p.equityCurve) ? p.equityCurve : [];
-      if (state.eqEquity && curve.length) {
-        const eq = curve.filter((c) => c.t && Number.isFinite(c.equity)).map((c) => ({ time: c.t, value: Number(c.equity) }));
-        const px = curve.filter((c) => c.t && c.xrp != null && Number.isFinite(Number(c.xrp))).map((c) => ({ time: c.t, value: Number(c.xrp) }));
-        if (eq.length === 1) {
-          eq.push({ time: eq[0].time + 3600, value: eq[0].value });
-        }
+      const now = Math.floor(Date.now() / 1000);
+      let eq = curve.filter((c) => c.t && Number.isFinite(c.equity)).map((c) => ({ time: c.t, value: Number(c.equity) }));
+      const px = curve.filter((c) => c.t && c.xrp != null && Number.isFinite(Number(c.xrp))).map((c) => ({ time: c.t, value: Number(c.xrp) }));
+      if (!eq.length) {
+        eq = [
+          { time: now - 3600, value: Number(a.equity) },
+          { time: now, value: Number(a.equity) },
+        ];
+      } else if (eq.length === 1) {
+        eq.push({ time: eq[0].time + 3600, value: eq[0].value });
+      }
+      if (state.eqEquity) {
         state.eqEquity.setData(eq);
         if (state.eqPrice) state.eqPrice.setData(px);
         requestAnimationFrame(() => {
@@ -539,6 +558,8 @@
           if (el) state.eqChart.applyOptions(equityChartSize(el));
           state.eqChart.timeScale().fitContent();
         });
+      } else {
+        setTimeout(() => renderPaper(p), 200);
       }
     }
     async function savePaperSettings() {
