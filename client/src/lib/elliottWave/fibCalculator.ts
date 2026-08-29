@@ -232,6 +232,67 @@ export function isDiagonalPatternType(patternType?: string | null): boolean {
   return t === 'diagonal' || t === 'leading_diagonal' || t === 'ending_diagonal';
 }
 
+/** True when W1-based 161.8% projection from W4 still fails to exceed W3. */
+export function w1ProjectionsFailToClearW3(
+  w0: number,
+  w1: number,
+  w3: number,
+  w4: number,
+): boolean {
+  const w1Len = Math.abs(w1 - w0);
+  if (w1Len <= 0) return false;
+  const direction = w1 > w0 ? 1 : -1;
+  const maxW1Target = w4 + direction * w1Len * 1.618;
+  return direction > 0 ? maxW1Target <= w3 : maxW1Target >= w3;
+}
+
+/**
+ * W5 projection targets after W4 is placed.
+ * Impulse: trend-based W1 from W4 (61.8/100/161.8%). When W1 is shallow vs an
+ * extended W3, W1-only targets may not clear W3 — add W3-based levels too.
+ * Diagonals: W3-length projections from W4 (contracting vs expanding).
+ */
+export function calcW5ProjectionLevels(
+  w0: number,
+  w1: number,
+  w2: number,
+  w3: number,
+  w4: number,
+  patternType?: string | null,
+  w1Ratios: number[] = [0.618, 1.0, 1.618],
+): FibLevel[] {
+  const w1Len = Math.abs(w1 - w0);
+  const w3Len = Math.abs(w3 - w2);
+  const direction = w1 > w0 ? 1 : -1;
+
+  if (isDiagonalPatternType(patternType)) {
+    const isExpandingDiag = w3Len > w1Len;
+    const w5Ratios = isExpandingDiag ? [1.0, 1.272, 1.618] : [0.618, 0.786, 1.0];
+    return w5Ratios.map(ratio => ({
+      ratio,
+      price: w4 + direction * w3Len * ratio,
+      label: `W5 ${(ratio * 100).toFixed(0)}% W3`,
+      isRetrace: false,
+    }));
+  }
+
+  const levels = calcTrendBasedExtension(w0, w1, w4, w1Ratios).map(l => ({
+    ...l,
+    label: `W5 ${(l.ratio * 100).toFixed(0)}% W1`,
+  }));
+
+  if (w1ProjectionsFailToClearW3(w0, w1, w3, w4)) {
+    const w3Levels = calcTrendBasedExtension(w2, w3, w4, [0.618, 1.0]).map(l => ({
+      ...l,
+      label: `W5 ${(l.ratio * 100).toFixed(0)}% W3`,
+      color: '#f97316',
+    }));
+    return [...levels, ...w3Levels];
+  }
+
+  return levels;
+}
+
 /** Live measured % for W5: vs W1 on impulse, vs W3 on diagonals. */
 export function measureWave5Percent(
   p0: number,

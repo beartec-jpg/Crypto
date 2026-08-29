@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
   calcExtensionLevels,
   calcTrendBasedExtension,
+  calcW5ProjectionLevels,
   scoreWave5,
   measureWave5Percent,
+  w1ProjectionsFailToClearW3,
 } from '@/lib/elliottWave/fibCalculator';
 import {
   getPredictiveTargets,
@@ -178,6 +180,27 @@ describe('getInProgressPredictiveLevels corrective n===3', () => {
     expect(l).toBeDefined();
     // A length = 0.50, direction = down (-1), project from B end 1.75
     expect(l.price).toBeCloseTo(1.75 - 0.50 * 1.0, 5);
+  });
+});
+
+describe('calcW5ProjectionLevels', () => {
+  it('uses trend-based W1 from W4 for normal impulse', () => {
+    // W0=100, W1=120 (len 20), W2=108, W3=150 (len 42), W4=130
+    const levels = calcW5ProjectionLevels(100, 120, 108, 150, 130);
+    const w1Target = levels.find(l => l.ratio === 1.0 && l.label.includes('W1'));
+    expect(w1Target).toBeDefined();
+    expect(w1Target!.price).toBeCloseTo(150, 5); // 130 + 20
+  });
+
+  it('adds W3-based targets when shallow W1 + extended W3 cannot clear W3 peak', () => {
+    // W1 len=5, W3 peak=160, W4=145 — max W1 161.8% = 153.09 < 160
+    const levels = calcW5ProjectionLevels(100, 105, 102, 160, 145);
+    expect(w1ProjectionsFailToClearW3(100, 105, 160, 145)).toBe(true);
+    const w3Target = levels.find(l => l.label.includes('W3') && l.ratio === 1.0);
+    expect(w3Target).toBeDefined();
+    // W3 len=58, projected from W4
+    expect(w3Target!.price).toBeCloseTo(203, 5);
+    expect(w3Target!.price).toBeGreaterThan(160);
   });
 });
 

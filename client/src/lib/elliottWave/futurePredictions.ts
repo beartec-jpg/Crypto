@@ -1,4 +1,4 @@
-import { calcRetracementLevels, type FibLevel } from '@/lib/elliottWave/fibCalculator';
+import { calcRetracementLevels, calcW5ProjectionLevels, type FibLevel } from '@/lib/elliottWave/fibCalculator';
 
 const getCanonicalWavePosition = (label: string): string | null => {
   const pos1 = ['1', '(1)', 'I', '(I)', 'i', '(i)'];
@@ -62,15 +62,28 @@ export const calculateFuturePredictions = (
   }
 
   if (canonicalPos === '4') {
-    const refLen = Math.abs(endPrice - startPrice);
+    if (points.length >= 5) {
+      return calcW5ProjectionLevels(
+        points[0].price,
+        points[1].price,
+        points[2].price,
+        points[3].price,
+        points[4].price,
+        waveType,
+      ).map(level => ({
+        ...level,
+        ...lineRange,
+      }));
+    }
+    const w1Len = Math.abs((points[1]?.price ?? endPrice) - (points[0]?.price ?? startPrice));
     const direction = endPrice < startPrice ? 1 : -1;
     const w5Ratios = ['leading_diagonal', 'ending_diagonal'].includes(waveType)
       ? [0.618, 1.0]
       : [0.618, 1.0, 1.618];
     return w5Ratios.map(ratio => ({
       ratio,
-      price: endPrice + direction * refLen * ratio,
-      label: `W5 ${(ratio * 100).toFixed(1)}%`,
+      price: endPrice + direction * w1Len * ratio,
+      label: `W5 ${(ratio * 100).toFixed(1)}% W1`,
       isRetrace: false,
       color: '#22c55e',
       ...lineRange,

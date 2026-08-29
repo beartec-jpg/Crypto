@@ -17,7 +17,7 @@ import {
   scoreWaveB,
   scoreWaveC,
   calcRetracementLevels,
-  calcExtensionLevels,
+  calcW5ProjectionLevels,
   type FibLevel,
   type WaveFibResult,
 } from './fibCalculator';
@@ -277,12 +277,7 @@ export function detectPattern(
         scoreWave4(p[2], p[3], p[4]),
       ];
 
-      // W5 extension levels from W4
-      const w1Len = Math.abs(p[1] - p[0]);
-      const extLevels = calcExtensionLevels(p[3], p[4]).map(lvl => ({
-        ...lvl,
-        price: p[4] + (isUptrend ? 1 : -1) * w1Len * lvl.ratio,
-      }));
+      const extLevels = calcW5ProjectionLevels(p[0], p[1], p[2], p[3], p[4]);
 
       return {
         ...base,

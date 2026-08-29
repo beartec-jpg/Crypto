@@ -15,7 +15,7 @@
  *   After X complete   → Y targets: 1.0, 1.272, 1.618 of W
  */
 
-import { calcRetracementLevels, calcTrendBasedExtension, type FibLevel } from './fibCalculator';
+import { calcRetracementLevels, calcTrendBasedExtension, calcW5ProjectionLevels, type FibLevel } from './fibCalculator';
 import type { WaveType } from '@/types/drawing';
 
 export type { FibLevel };
@@ -27,12 +27,14 @@ export type { FibLevel };
  * @param points         All placed points for the completed wave [start, ..., end]
  * @param priorW1Points  Points of Wave 1 (needed for W3/W4/W5 calculations). Optional.
  * @param priorAPoints   Points of Wave A (needed for B/C calculations). Optional.
+ * @param impulsePoints  Full impulse anchors W0–W4 when projecting W5 after W4. Optional.
  */
 export function getPredictiveTargets(
   completedWave: WaveType,
   points: { time: number; price: number }[],
   priorW1Points?: { time: number; price: number }[],
   priorAPoints?: { time: number; price: number }[],
+  impulsePoints?: { time: number; price: number }[],
 ): FibLevel[] {
   if (points.length < 2) return [];
 
@@ -74,6 +76,15 @@ export function getPredictiveTargets(
     }
 
     case 'W4': {
+      if (impulsePoints && impulsePoints.length >= 5) {
+        return calcW5ProjectionLevels(
+          impulsePoints[0].price,
+          impulsePoints[1].price,
+          impulsePoints[2].price,
+          impulsePoints[3].price,
+          impulsePoints[4].price,
+        );
+      }
       // After W4: show W5 targets (0.618, 1.0, 1.618 of W1 length from W4 end)
       const w1Points = priorW1Points;
       if (w1Points && w1Points.length >= 2) {
@@ -186,8 +197,13 @@ export function getInProgressPredictiveLevels(
       return calcRetracementLevels(points[2].price, p1, [0.236, 0.382, 0.5]);
     }
     if (n === 5) {
-      // After sub-wave 4: project sub-wave 1 length from sub-wave 4 end
-      return calcTrendBasedExtension(p0, points[1].price, p1, [0.618, 1.0, 1.618]);
+      return calcW5ProjectionLevels(
+        p0,
+        points[1].price,
+        points[2].price,
+        points[3].price,
+        p1,
+      );
     }
   }
 

@@ -15,6 +15,7 @@ import { useState, useCallback, useMemo } from 'react';
 import {
   calcRetracementLevels,
   calcTrendBasedExtension,
+  calcW5ProjectionLevels,
   type FibLevel,
 } from '@/lib/elliottWave/fibCalculator';
 
@@ -207,9 +208,8 @@ export function useElliottWave(): UseElliottWaveResult {
         }));
       }
       if (n === 5) {
-        // After point 4: W5 = 61.8/100/161.8% of W1 (0→1), projected from W4 — same at every degree
-        return calcTrendBasedExtension(p[0], p[1], p[4], [0.618, 1.0, 1.618]).map(l => ({
-          ...l, label: `W5 ${(l.ratio * 100).toFixed(0)}% W1`, color: '#22c55e',
+        return calcW5ProjectionLevels(p[0], p[1], p[2], p[3], p[4]).map(l => ({
+          ...l, color: '#22c55e',
         }));
       }
       return [];
@@ -266,34 +266,10 @@ export function useElliottWave(): UseElliottWaveResult {
         return [...w4Levels, invalidation];
       }
       if (n === 5) {
-        // After W4: project W5 trend-based extension
-        // Diagonals: use W3 length as base, with targets adjusted for contracting vs expanding type
-        // Standard impulse: use W1+W3 combined length
-        const w1Length = Math.abs(p[1] - p[0]);
-        const w3Length = Math.abs(p[3] - p[2]);
-        const direction = p[1] > p[0] ? 1 : -1;
-        if (isDiagonal) {
-          // Determine diagonal type: expanding if W3 > W1, contracting if W3 < W1
-          const isExpandingDiag = w3Length > w1Length;
-          // Contracting: W5 must be < W3 → targets 61.8–100% of W3
-          // Expanding:   W5 must be > W3 → targets 100–161.8% of W3
-          const w5Ratios = isExpandingDiag ? [1.0, 1.272, 1.618] : [0.618, 0.786, 1.0];
-          return w5Ratios.map(ratio => ({
-            ratio,
-            price: p[4] + direction * w3Length * ratio,
-            label: `W5 ${(ratio * 100).toFixed(0)}%`,
-            isRetrace: false,
-            color: '#22c55e',
-          }));
-        }
-        const w5Ratios = [0.618, 1.0, 1.618];
-        return w5Ratios.map(ratio => ({
-          ratio,
-          price: p[4] + direction * w1Length * ratio,
-          label: `W5 ${(ratio * 100).toFixed(0)}% W1`,
-          isRetrace: false,
-          color: '#22c55e',
-        }));
+        return calcW5ProjectionLevels(
+          p[0], p[1], p[2], p[3], p[4],
+          currentPatternType,
+        ).map(l => ({ ...l, color: '#22c55e' }));
       }
     } else if (isCorrection) {
       if (n === 2) {

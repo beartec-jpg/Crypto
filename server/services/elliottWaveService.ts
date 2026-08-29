@@ -362,9 +362,8 @@ export function validateImpulseWave(points: WavePoint[]): ValidationResult {
     quality: wave4Score.quality,
   });
 
-  // Wave 5: Extension relative to combined W1+W3 length
-  const combinedW1W3 = wave1Length + wave3Length;
-  const wave5Ratio = wave5Length / combinedW1W3;
+  // Wave 5: measured as multiple of Wave 1 (Frost/Prechter equality rule)
+  const wave5Ratio = wave5Length / wave1Length;
   const wave5Score = scoreWave(wave5Ratio, 'wave5');
   fibonacciRatios.push({
     wave: 'Wave 5',
