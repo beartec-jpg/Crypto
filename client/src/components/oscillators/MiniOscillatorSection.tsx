@@ -1,8 +1,10 @@
-import { useRef, useState, type PointerEvent } from 'react';
+import { useRef, useState, type PointerEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
 import type { ScoringInput } from '@/lib/tradingSystemScoring';
 import type { SystemEvaluation } from '@/types/systemScoring';
 import type { SMCTrendEnginePanelData } from '@/components/trading/SMCTrendEngine/types';
+import { TOP_TOOLBAR_HEIGHT } from '@/lib/constants/layout';
 
 const VOLUME_UP_COLOR = '#26a69a';
 
@@ -112,6 +114,7 @@ function getKlingerStatus(klinger: number, signal: number): { label: string; val
 }
 
 const DRAG_THRESHOLD_PX = 6;
+const MINI_CHIP_MIN_Y = TOP_TOOLBAR_HEIGHT;
 
 interface MiniChipProps {
   id: string;
@@ -120,6 +123,28 @@ interface MiniChipProps {
   color: string;
   zone: string;
   onCycle: (id: string) => void;
+}
+
+function MiniChipContent({ label, value, color, zone }: Pick<MiniChipProps, 'label' | 'value' | 'color' | 'zone'>) {
+  return (
+    <>
+      <div className="text-[10px] text-slate-400 truncate">{label}</div>
+      <div className={`text-xs font-medium ${color}`}>{value}</div>
+      <div className={`text-[10px] ${color}`}>{zone}</div>
+    </>
+  );
+}
+
+function clampMiniChipPosition(
+  x: number,
+  y: number,
+  chipW: number,
+  chipH: number,
+): { x: number; y: number } {
+  return {
+    x: Math.max(0, Math.min(window.innerWidth - chipW, x)),
+    y: Math.max(MINI_CHIP_MIN_Y, Math.min(window.innerHeight - chipH, y)),
+  };
 }
 
 function DraggableMiniChip({ id, label, value, color, zone, onCycle }: MiniChipProps) {
@@ -159,14 +184,18 @@ function DraggableMiniChip({ id, label, value, color, zone, onCycle }: MiniChipP
     const dy = e.clientY - drag.startY;
     if (!drag.dragging && Math.hypot(dx, dy) > DRAG_THRESHOLD_PX) {
       drag.dragging = true;
+      // Snap to viewport coords on first drag frame so fixed positioning doesn't jump.
+      if (!position && chipRef.current) {
+        const rect = chipRef.current.getBoundingClientRect();
+        drag.origX = rect.left;
+        drag.origY = rect.top;
+      }
     }
     if (!drag.dragging) return;
 
     const chipW = chipRef.current?.offsetWidth ?? 64;
     const chipH = chipRef.current?.offsetHeight ?? 52;
-    const x = Math.max(0, Math.min(window.innerWidth - chipW, drag.origX + dx));
-    const y = Math.max(0, Math.min(window.innerHeight - chipH, drag.origY + dy));
-    setPosition({ x, y });
+    setPosition(clampMiniChipPosition(drag.origX + dx, drag.origY + dy, chipW, chipH));
   };
 
   const handlePointerUp = (e: PointerEvent<HTMLDivElement>) => {
@@ -180,7 +209,10 @@ function DraggableMiniChip({ id, label, value, color, zone, onCycle }: MiniChipP
     }
   };
 
-  return (
+  const chipClassName =
+    'bg-slate-800/90 backdrop-blur-sm rounded px-2 py-1.5 cursor-grab active:cursor-grabbing hover:bg-slate-700/90 transition-colors min-w-[56px] select-none touch-none pointer-events-auto';
+
+  const chipNode: ReactNode = (
     <div
       ref={chipRef}
       onPointerDown={handlePointerDown}
@@ -188,14 +220,27 @@ function DraggableMiniChip({ id, label, value, color, zone, onCycle }: MiniChipP
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
       title="Drag to move · click to cycle"
-      className="bg-slate-800/90 backdrop-blur-sm rounded px-2 py-1.5 cursor-grab active:cursor-grabbing hover:bg-slate-700/90 transition-colors min-w-[56px] select-none touch-none"
-      style={position ? { position: 'fixed', left: position.x, top: position.y, zIndex: 40 } : undefined}
+      className={chipClassName}
+      style={
+        position
+          ? { position: 'fixed', left: position.x, top: position.y, zIndex: 50 }
+          : undefined
+      }
     >
-      <div className="text-[10px] text-slate-400 truncate">{label}</div>
-      <div className={`text-xs font-medium ${color}`}>{value}</div>
-      <div className={`text-[10px] ${color}`}>{zone}</div>
+      <MiniChipContent label={label} value={value} color={color} zone={zone} />
     </div>
   );
+
+  if (position && typeof document !== 'undefined') {
+    return (
+      <>
+        <div className="min-w-[56px] min-h-[52px] invisible pointer-events-none" aria-hidden />
+        {createPortal(chipNode, document.body)}
+      </>
+    );
+  }
+
+  return chipNode;
 }
 
 export function MiniOscillatorSection({
@@ -336,7 +381,7 @@ export function MiniOscillatorSection({
   }
 
   return (
-    <div className="absolute left-2 top-1/2 -translate-y-1/2 z-30 flex flex-col gap-2">
+    <div className="absolute left-2 inset-y-0 z-30 flex flex-col justify-center gap-2 pointer-events-none">
       {newMiniItems.map(({ id, label, value, color, zone }) => (
         <DraggableMiniChip
           key={id}
