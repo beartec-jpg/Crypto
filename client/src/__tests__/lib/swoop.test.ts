@@ -4,6 +4,7 @@ import {
   expectedSlopeBand,
   isShallowerThanExpected,
   logSlope,
+  structureLowerHighs,
   trailingLowerHighs,
   type SwoopCandle,
 } from '@/lib/indicators/swoop';
@@ -94,10 +95,26 @@ describe('trailingLowerHighs', () => {
 
   it('returns empty when last highs are not lower', () => {
     const highs = [
-      { index: 0, time: 0, price: 10 },
-      { index: 5, time: 5, price: 11 },
+      { index: 0, time: 0, price: 1.403 },
+      { index: 5, time: 5, price: 1.433 },
     ];
     expect(trailingLowerHighs(highs, 2)).toEqual([]);
+  });
+});
+
+describe('structureLowerHighs', () => {
+  it('keeps the envelope from the major top when a late bounce prints a higher high', () => {
+    const highs = [
+      { index: 10, time: 10, price: 1.7 },
+      { index: 40, time: 40, price: 1.55 },
+      { index: 80, time: 80, price: 1.47 },
+      { index: 110, time: 110, price: 1.403 },
+      { index: 140, time: 140, price: 1.433 },
+    ];
+    const run = structureLowerHighs(highs, 2, { lastIndex: 160, lookbackBars: 200 });
+    expect(run.length).toBeGreaterThanOrEqual(3);
+    expect(run[0].price).toBe(1.7);
+    expect(run.some((p) => p.price === 1.433)).toBe(false);
   });
 });
 
@@ -117,6 +134,7 @@ describe('detectSwoop', () => {
       enabled: true,
       swingLength: 3,
       minLowerHighs: 2,
+      minPivotPct: 0,
       showFan: true,
     });
     expect(result.armed).toBe(true);

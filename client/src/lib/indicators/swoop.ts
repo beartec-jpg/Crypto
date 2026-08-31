@@ -19,6 +19,13 @@ export type SwoopCandle = Pick<CandleData, 'time' | 'open' | 'high' | 'low' | 'c
   volume?: number;
 };
 
+interface SwingLike {
+  time: number;
+  value: number;
+  type: 'high' | 'low';
+  index: number;
+}
+
 const EMPTY: SwoopResult = {
   state: 'idle',
   armed: false,
@@ -100,6 +107,43 @@ function stateLabel(state: SwoopState, compression: number | null): string {
   return 'Idle';
 }
 
+function fmtPx(n: number): string {
+  if (n >= 100) return n.toFixed(2);
+  if (n >= 1) return n.toFixed(3);
+  return n.toFixed(5);
+}
+
+/**
+ * Merge same-type fractals that sit on top of each other (within a few bars)
+ * and drop reversals smaller than minPivotPct. Distinct structure highs a
+ * dozen bars apart are kept even if no trough was confirmed between them.
+ */
+export function collapseSwings(swings: SwingLike[], minPivotPct = 0): SwingLike[] {
+  if (swings.length === 0) return [];
+  const alt: SwingLike[] = [];
+  const threshold = minPivotPct / 100;
+  const clusterBars = 8;
+
+  for (const s of swings) {
+    if (alt.length === 0) {
+      alt.push(s);
+      continue;
+    }
+    const last = alt[alt.length - 1];
+    if (s.type === last.type && s.index - last.index <= clusterBars) {
+      const moreExtreme = s.type === 'high' ? s.value >= last.value : s.value <= last.value;
+      if (moreExtreme) alt[alt.length - 1] = s;
+      continue;
+    }
+    if (s.type !== last.type && threshold > 0) {
+      const change = Math.abs(s.value - last.value) / Math.max(last.value, 1e-12);
+      if (change < threshold) continue;
+    }
+    alt.push(s);
+  }
+  return alt;
+}
+
 export function trailingLowerHighs(highs: SwoopPoint[], minCount: number): SwoopPoint[] {
   if (highs.length < minCount) return [];
   const run: SwoopPoint[] = [highs[highs.length - 1]];
@@ -120,15 +164,64 @@ export function trailingLowerLows(lows: SwoopPoint[], minCount = 2): SwoopPoint[
   return run.length >= minCount ? run : lows.slice(-2);
 }
 
+/**
+ * From the highest swing in the lookback, walk forward and keep every lower
+ * high. A later bounce that prints a slightly higher high (XRP 1.433 vs 1.403
+ * after the 1.70 spike) is skipped instead of disarming the envelope.
+ */
+export function structureLowerHighs(
+  highs: SwoopPoint[],
+  minCount: number,
+  options: { minPivotPct?: number; lastIndex?: number; lookbackBars?: number } = {},
+): SwoopPoint[] {
+  const minPct = (options.minPivotPct ?? 0) / 100;
+  const lastIndex = options.lastIndex ?? (highs.length ? highs[highs.length - 1].index : 0);
+  const lookback = options.lookbackBars ?? 500;
+  const pool = highs.filter((h) => lastIndex - h.index <= lookback);
+  const use = pool.length >= minCount ? pool : highs;
+  if (use.length < minCount) return [];
+
+  let peak = 0;
+  for (let i = 1; i < use.length; i++) {
+    if (use[i].price > use[peak].price) peak = i;
+  }
+
+  const seq: SwoopPoint[] = [use[peak]];
+  for (let i = peak + 1; i < use.length; i++) {
+    const h = use[i];
+    const last = seq[seq.length - 1];
+    if (h.price >= last.price) continue;
+    if (minPct > 0 && (last.price - h.price) / last.price < minPct) continue;
+    seq.push(h);
+  }
+  return seq.length >= minCount ? seq : [];
+}
+
 export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DEFAULT_SWOOP_SETTINGS): SwoopResult {
   if (!settings.enabled || !candles || candles.length < settings.swingLength * 2 + 4) return EMPTY;
-  const swings = calculateSwings(candles as CandleData[], settings.swingLength);
+  const minPivotPct = settings.minPivotPct ?? 0;
+  const raw = calculateSwings(candles as CandleData[], settings.swingLength);
+  const swings = collapseSwings(raw, minPivotPct);
   const highs: SwoopPoint[] = swings.filter((s) => s.type === 'high').map((s) => toPoint(s.index, s.time, s.value));
   const lows: SwoopPoint[] = swings.filter((s) => s.type === 'low').map((s) => toPoint(s.index, s.time, s.value));
-  const lhRun = trailingLowerHighs(highs, settings.minLowerHighs);
-  if (lhRun.length < settings.minLowerHighs) return { ...EMPTY, highs, lows, label: 'Idle · need 2 lower highs' };
-  const llRun = trailingLowerLows(lows, 2);
   const lastIdx = candles.length - 1;
+  const lhRun = structureLowerHighs(highs, settings.minLowerHighs, {
+    minPivotPct,
+    lastIndex: lastIdx,
+    lookbackBars: Math.max(500, settings.swingLength * 40),
+  });
+  if (lhRun.length < settings.minLowerHighs) {
+    const a = highs.length >= 2 ? highs[highs.length - 2] : null;
+    const b = highs.length >= 1 ? highs[highs.length - 1] : null;
+    let reason = `Idle · need ${settings.minLowerHighs} lower highs`;
+    if (a && b && b.price >= a.price) {
+      reason = `Idle · last high not lower (${fmtPx(b.price)} ≥ ${fmtPx(a.price)})`;
+    } else if (highs.length < settings.minLowerHighs) {
+      reason = `Idle · need ${settings.minLowerHighs} lower highs`;
+    }
+    return { ...EMPTY, highs, lows, label: reason };
+  }
+  const llRun = trailingLowerLows(lows, 2);
   const lastCandle = candles[lastIdx];
   const topSegments = buildSegments(lhRun);
   const bottomSegments = buildSegments(llRun);

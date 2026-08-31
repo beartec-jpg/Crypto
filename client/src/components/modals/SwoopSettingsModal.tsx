@@ -44,8 +44,9 @@ export function SwoopSettingsModal({
 
         <div className="p-4 space-y-3">
           <p className="text-[11px] text-slate-400 leading-snug">
-            Arms after two lower highs, tracks pivot-gap slopes, and projects the next
+            Arms from the major swing top, tracks pivot-gap slopes, and projects the next
             angle band so flattening / compression shows before the next pivot confirms.
+            Use a larger pivot length on 1h+ charts so a 20% spike isn't drowned in 5-bar chop.
           </p>
 
           <div className="flex items-center justify-between">
@@ -72,9 +73,24 @@ export function SwoopSettingsModal({
               onChange={(e) => onSettingsChange({ swingLength: Number(e.target.value) })}
               className="bg-slate-800 text-slate-100 text-xs px-2 py-1 rounded border border-slate-600"
             >
-              {[3, 4, 5, 6, 8, 10].map((n) => (
+              {[5, 8, 12, 16, 20, 24, 32, 48].map((n) => (
                 <option key={n} value={n}>
                   {n} bars
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-xs text-slate-300">Min pivot size</Label>
+            <select
+              value={settings.minPivotPct ?? 1}
+              onChange={(e) => onSettingsChange({ minPivotPct: Number(e.target.value) })}
+              className="bg-slate-800 text-slate-100 text-xs px-2 py-1 rounded border border-slate-600"
+            >
+              {[0, 0.5, 1, 1.5, 2, 3].map((n) => (
+                <option key={n} value={n}>
+                  {n === 0 ? 'Off' : `${n}%`}
                 </option>
               ))}
             </select>

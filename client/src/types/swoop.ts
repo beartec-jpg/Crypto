@@ -10,6 +10,8 @@ export interface SwoopSettings {
   enabled: boolean;
   swingLength: number;
   minLowerHighs: number;
+  /** Ignore reversals smaller than this percent so large spikes aren't drowned in 5-bar chop. */
+  minPivotPct: number;
   showFan: boolean;
   showHud: boolean;
   topColor: string;
@@ -22,8 +24,9 @@ export interface SwoopSettings {
 
 export const DEFAULT_SWOOP_SETTINGS: SwoopSettings = {
   enabled: false,
-  swingLength: 5,
+  swingLength: 12,
   minLowerHighs: 2,
+  minPivotPct: 1,
   showFan: true,
   showHud: true,
   topColor: '#f87171',
