@@ -22,7 +22,7 @@ import { AutoTrendlineSettingsModal } from '@/components/modals/AutoTrendlineSet
 import { SwoopRenderer } from '@/components/indicators/SwoopRenderer';
 import { SwoopHud } from '@/components/indicators/SwoopHud';
 import { SwoopSettingsModal } from '@/components/modals/SwoopSettingsModal';
-import type { SwoopResult, SwoopSettings } from '@/types/swoop';
+import { DEFAULT_SWOOP_SETTINGS, type SwoopResult, type SwoopSettings } from '@/types/swoop';
 import { DivergenceRenderer } from '@/components/divergence/DivergenceRenderer';
 import type { AutoTrendlineResult, AutoTrendlineSettings, AutoTrendlineTierId, AutoTrendlineTierSettings } from '@/types/autoTrendline';
 import type { VolumeEmaSettings } from '@/types/volumeEma';
@@ -31,6 +31,12 @@ import { DivergenceSettingsModal } from '@/components/divergence/DivergenceSetti
 import { getConditionWeights } from '@/lib/conditionWeights';
 import type { LiquidityHeatmapDebugInfo } from '@/hooks/useLiquidityHeatmapData';
 import type { PredictedLiquidityPoint, LiquidationZone } from '@/hooks/useLiquidityPivotAnalysis';
+
+const IDLE_SWOOP: SwoopResult = {
+  state: 'idle', armed: false, highs: [], lows: [], topSegments: [], bottomSegments: [],
+  liveTopSlope: null, liveBottomSlope: null, expectedTopBand: null, expectedBottomBand: null,
+  gap: null, armGap: null, compression: null, prevGapBars: 0, projectBars: 0, fan: [], drawSegments: [], label: 'Idle',
+};
 
 interface FullscreenChartIndicatorLayerProps {
   chart: any;
@@ -102,11 +108,11 @@ interface FullscreenChartIndicatorLayerProps {
   onAutoTrendlineSettingsChange: (updates: Partial<AutoTrendlineSettings>) => void;
   onAutoTrendlineTierChange: (tier: AutoTrendlineTierId, updates: Partial<AutoTrendlineTierSettings>) => void;
   onAutoTrendlineReset?: () => void;
-  swoopSettings: SwoopSettings;
-  swoopResult: SwoopResult;
-  showSwoopModal: boolean;
-  onCloseSwoopModal: () => void;
-  onSwoopSettingsChange: (updates: Partial<SwoopSettings>) => void;
+  swoopSettings?: SwoopSettings;
+  swoopResult?: SwoopResult;
+  showSwoopModal?: boolean;
+  onCloseSwoopModal?: () => void;
+  onSwoopSettingsChange?: (updates: Partial<SwoopSettings>) => void;
   onSwoopReset?: () => void;
   divergenceScannerEnabled: boolean;
   filteredDivergencePoints: any[];
@@ -130,7 +136,8 @@ export function FullscreenChartIndicatorLayer(props: FullscreenChartIndicatorLay
     liquidityPivotAnalysis, superTrendData, superTrendSettings, highLowEnabled, chartEpoch = 0,
     volumeEmaEnabled, volumeEmaSettings, showVolumeEmaModal, onCloseVolumeEmaModal, onVolumeEmaSettingsChange, onVolumeEmaReset,
     autoTrendlineSettings, autoTrendlineResult, showAutoTrendlineModal, onCloseAutoTrendlineModal, onAutoTrendlineSettingsChange, onAutoTrendlineTierChange, onAutoTrendlineReset,
-    swoopSettings, swoopResult, showSwoopModal, onCloseSwoopModal, onSwoopSettingsChange, onSwoopReset,
+    swoopSettings = DEFAULT_SWOOP_SETTINGS, swoopResult = IDLE_SWOOP, showSwoopModal = false,
+    onCloseSwoopModal = () => {}, onSwoopSettingsChange = () => {}, onSwoopReset,
     divergenceScannerEnabled, filteredDivergencePoints, onSelectDivergencePoint, selectedDivergencePoint, onCloseDivergencePoint,
     showDivergenceSettings, onCloseDivergenceSettings, divergenceSettings, onDivergenceSettingsChange,
   } = props;
@@ -139,7 +146,6 @@ export function FullscreenChartIndicatorLayer(props: FullscreenChartIndicatorLay
   const vpPosition: 'left' | 'right' = vpSettings?.position === 'right' ? 'right' : 'left';
   const lhPosition: 'left' | 'right' = lhSettings?.position === 'left' ? 'left' : 'right';
   const shouldShareSidebar = vpEnabled && lhEnabled && vpPosition === lhPosition;
-  const vpRenderSide: 'left' | 'right' = vpPosition;
   const lhRenderSide: 'left' | 'right' = lhPosition;
   const sharedSidebarWidth = typeof vpSettings?.width === 'number' ? vpSettings.width : 22;
   return (
