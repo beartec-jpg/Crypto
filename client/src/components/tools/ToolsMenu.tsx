@@ -16,16 +16,17 @@ interface ToolsMenuProps {
   vpEnabled: boolean;
   onToggleVolumeProfile: (enabled: boolean) => void;
   onOpenVolumeProfileSettings: () => void;
-  /** Per-candle volume histogram (bottom pane) — not Volume Profile */
   volumeEnabled: boolean;
   onToggleVolume: (enabled: boolean) => void;
-  /** Volume relative to EMA, plotted on price scale around candle mid */
   volumeEmaEnabled: boolean;
   onToggleVolumeEma: (enabled: boolean) => void;
   onOpenVolumeEmaSettings: () => void;
   autoTrendlineEnabled: boolean;
   onToggleAutoTrendline: (enabled: boolean) => void;
   onOpenAutoTrendlineSettings: () => void;
+  swoopEnabled: boolean;
+  onToggleSwoop: (enabled: boolean) => void;
+  onOpenSwoopSettings: () => void;
   liquidityHeatmapEnabled: boolean;
   onToggleLiquidityHeatmap: (enabled: boolean) => void;
   onOpenLiquidityHeatmapSettings: () => void;
@@ -57,6 +58,9 @@ export function ToolsMenu({
   autoTrendlineEnabled,
   onToggleAutoTrendline,
   onOpenAutoTrendlineSettings,
+  swoopEnabled,
+  onToggleSwoop,
+  onOpenSwoopSettings,
   liquidityHeatmapEnabled,
   onToggleLiquidityHeatmap,
   onOpenLiquidityHeatmapSettings,
@@ -78,6 +82,7 @@ export function ToolsMenu({
     volumeEnabled ||
     volumeEmaEnabled ||
     autoTrendlineEnabled ||
+    swoopEnabled ||
     liquidityHeatmapEnabled ||
     gdsMiniBadgeEnabled ||
     rewindEnabled;
@@ -109,61 +114,28 @@ export function ToolsMenu({
       >
         <div className="flex items-center justify-between px-3 py-2 border-b border-slate-700 bg-slate-800">
           <span className="text-xs font-semibold text-slate-300">Tools</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setOpen(false)}
-            className="h-5 w-5 p-0 text-slate-400 hover:text-white hover:bg-slate-700"
-          >
+          <Button variant="ghost" size="sm" onClick={() => setOpen(false)} className="h-5 w-5 p-0 text-slate-400 hover:text-white hover:bg-slate-700">
             <X className="h-3.5 w-3.5" />
           </Button>
         </div>
         <div className="p-2">
-          <div className="text-xs text-slate-400 font-medium uppercase tracking-wide px-1 mb-1">
-            Tools
-          </div>
+          <div className="text-xs text-slate-400 font-medium uppercase tracking-wide px-1 mb-1">Tools</div>
           <div className="flex items-center justify-between py-1.5 px-1">
             <div className="min-w-0 mr-3">
-              <div className="text-sm font-medium text-slate-100 leading-tight">
-                High/Low
-              </div>
-              <div className="text-xs text-slate-400 leading-tight">
-                Visible range high and low levels
-              </div>
+              <div className="text-sm font-medium text-slate-100 leading-tight">High/Low</div>
+              <div className="text-xs text-slate-400 leading-tight">Visible range high and low levels</div>
             </div>
-            <Switch
-              checked={highLowEnabled}
-              onCheckedChange={onToggleHighLow}
-              className="shrink-0 data-[state=checked]:bg-blue-600"
-            />
+            <Switch checked={highLowEnabled} onCheckedChange={onToggleHighLow} className="shrink-0 data-[state=checked]:bg-blue-600" />
           </div>
-
           <div className="flex items-center justify-between py-1.5 px-1">
             <div className="min-w-0 mr-3">
-              <div className="text-sm font-medium text-slate-100 leading-tight">
-                Divergence Scanner
-              </div>
-              <div className="text-xs text-slate-400 leading-tight">
-                Scan all 7 oscillators
-              </div>
+              <div className="text-sm font-medium text-slate-100 leading-tight">Divergence Scanner</div>
+              <div className="text-xs text-slate-400 leading-tight">Scan all 7 oscillators</div>
             </div>
             <div className="flex items-center gap-1">
-              <Switch
-                checked={divergenceScannerEnabled}
-                onCheckedChange={onToggleDivergenceScanner}
-                className="shrink-0 data-[state=checked]:bg-blue-600"
-              />
+              <Switch checked={divergenceScannerEnabled} onCheckedChange={onToggleDivergenceScanner} className="shrink-0 data-[state=checked]:bg-blue-600" />
               {onOpenDivergenceSettings && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
-                  title="Divergence Settings"
-                  onClick={() => {
-                    setOpen(false);
-                    onOpenDivergenceSettings();
-                  }}
-                >
+                <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700" title="Divergence Settings" onClick={() => { setOpen(false); onOpenDivergenceSettings(); }}>
                   <Settings className="h-3.5 w-3.5" />
                 </Button>
               )}
@@ -171,223 +143,100 @@ export function ToolsMenu({
           </div>
           <div className="flex items-center justify-between py-1.5 px-1">
             <div className="min-w-0 mr-3">
-              <div className="text-sm font-medium text-slate-100 leading-tight">
-                HTF Bias
-              </div>
-              <div className="text-xs text-slate-400 leading-tight">
-                Multi-timeframe bias panel
-              </div>
+              <div className="text-sm font-medium text-slate-100 leading-tight">HTF Bias</div>
+              <div className="text-xs text-slate-400 leading-tight">Multi-timeframe bias panel</div>
             </div>
-            <Switch
-              checked={htfBiasEnabled}
-              onCheckedChange={() => onToggleHtfBias()}
-              className="shrink-0 data-[state=checked]:bg-blue-600"
-            />
+            <Switch checked={htfBiasEnabled} onCheckedChange={() => onToggleHtfBias()} className="shrink-0 data-[state=checked]:bg-blue-600" />
           </div>
-
           <div className="flex items-center justify-between py-1.5 px-1">
             <div className="min-w-0 mr-3">
-              <div className="text-sm font-medium text-slate-100 leading-tight">
-                Volume Profile
-              </div>
-              <div className="text-xs text-slate-400 leading-tight">
-                Horizontal volume by price (POC/VAH/VAL)
-              </div>
+              <div className="text-sm font-medium text-slate-100 leading-tight">Volume Profile</div>
+              <div className="text-xs text-slate-400 leading-tight">Horizontal volume by price (POC/VAH/VAL)</div>
             </div>
             <div className="flex items-center gap-1">
-              <Switch
-                checked={vpEnabled}
-                onCheckedChange={onToggleVolumeProfile}
-                className="shrink-0 data-[state=checked]:bg-blue-600"
-              />
-              {
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
-                  title="Volume Profile Settings"
-                  onClick={() => {
-                    setOpen(false);
-                    onOpenVolumeProfileSettings();
-                  }}
-                  data-testid="btn-volume-profile-settings"
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                </Button>
-              }
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between py-1.5 px-1">
-            <div className="min-w-0 mr-3">
-              <div className="text-sm font-medium text-slate-100 leading-tight">
-                Volume
-              </div>
-              <div className="text-xs text-slate-400 leading-tight">
-                Per-candle volume bars under the chart
-              </div>
-            </div>
-            <Switch
-              checked={volumeEnabled}
-              onCheckedChange={onToggleVolume}
-              className="shrink-0 data-[state=checked]:bg-blue-600"
-              data-testid="switch-volume-indicator"
-            />
-          </div>
-
-          <div className="flex items-center justify-between py-1.5 px-1">
-            <div className="min-w-0 mr-3">
-              <div className="text-sm font-medium text-slate-100 leading-tight">
-                Volume EMA
-              </div>
-              <div className="text-xs text-slate-400 leading-tight">
-                Net buy flow above mid, net sell below; balanced flow returns to mid
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              <Switch
-                checked={volumeEmaEnabled}
-                onCheckedChange={onToggleVolumeEma}
-                className="shrink-0 data-[state=checked]:bg-blue-600"
-                data-testid="switch-volume-ema-overlay"
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
-                title="Volume EMA Settings"
-                onClick={() => {
-                  setOpen(false);
-                  onOpenVolumeEmaSettings();
-                }}
-                data-testid="btn-volume-ema-settings"
-              >
+              <Switch checked={vpEnabled} onCheckedChange={onToggleVolumeProfile} className="shrink-0 data-[state=checked]:bg-blue-600" />
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700" title="Volume Profile Settings" onClick={() => { setOpen(false); onOpenVolumeProfileSettings(); }} data-testid="btn-volume-profile-settings">
                 <Settings className="h-3.5 w-3.5" />
               </Button>
             </div>
           </div>
-
           <div className="flex items-center justify-between py-1.5 px-1">
             <div className="min-w-0 mr-3">
-              <div className="text-sm font-medium text-slate-100 leading-tight">
-                Auto Trendlines
-              </div>
-              <div className="text-xs text-slate-400 leading-tight">
-                Macro / mid / LTF wick lines (settings per tier)
-              </div>
+              <div className="text-sm font-medium text-slate-100 leading-tight">Volume</div>
+              <div className="text-xs text-slate-400 leading-tight">Per-candle volume bars under the chart</div>
+            </div>
+            <Switch checked={volumeEnabled} onCheckedChange={onToggleVolume} className="shrink-0 data-[state=checked]:bg-blue-600" data-testid="switch-volume-indicator" />
+          </div>
+          <div className="flex items-center justify-between py-1.5 px-1">
+            <div className="min-w-0 mr-3">
+              <div className="text-sm font-medium text-slate-100 leading-tight">Volume EMA</div>
+              <div className="text-xs text-slate-400 leading-tight">Net buy flow above mid, net sell below; balanced flow returns to mid</div>
             </div>
             <div className="flex items-center gap-1">
-              <Switch
-                checked={autoTrendlineEnabled}
-                onCheckedChange={onToggleAutoTrendline}
-                className="shrink-0 data-[state=checked]:bg-blue-600"
-                data-testid="switch-auto-trendlines"
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
-                title="Auto Trendline Settings"
-                onClick={() => {
-                  setOpen(false);
-                  onOpenAutoTrendlineSettings();
-                }}
-                data-testid="btn-auto-trendline-settings"
-              >
+              <Switch checked={volumeEmaEnabled} onCheckedChange={onToggleVolumeEma} className="shrink-0 data-[state=checked]:bg-blue-600" data-testid="switch-volume-ema-overlay" />
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700" title="Volume EMA Settings" onClick={() => { setOpen(false); onOpenVolumeEmaSettings(); }} data-testid="btn-volume-ema-settings">
                 <Settings className="h-3.5 w-3.5" />
               </Button>
             </div>
           </div>
-
           <div className="flex items-center justify-between py-1.5 px-1">
             <div className="min-w-0 mr-3">
-              <div className="text-sm font-medium text-slate-100 leading-tight">
-                Predictive Liquidation
-              </div>
-              <div className="text-xs text-slate-400 leading-tight">
-                Profile bars with bullish and bearish zones
-              </div>
+              <div className="text-sm font-medium text-slate-100 leading-tight">Auto Trendlines</div>
+              <div className="text-xs text-slate-400 leading-tight">Macro / mid / LTF wick lines (settings per tier)</div>
             </div>
             <div className="flex items-center gap-1">
-              <Switch
-                checked={liquidityHeatmapEnabled}
-                onCheckedChange={onToggleLiquidityHeatmap}
-                className="shrink-0 data-[state=checked]:bg-blue-600"
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
-                title="Liquidity Heatmap Settings"
-                onClick={() => {
-                  setOpen(false);
-                  onOpenLiquidityHeatmapSettings();
-                }}
-                data-testid="btn-liquidity-heatmap-settings"
-              >
+              <Switch checked={autoTrendlineEnabled} onCheckedChange={onToggleAutoTrendline} className="shrink-0 data-[state=checked]:bg-blue-600" data-testid="switch-auto-trendlines" />
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700" title="Auto Trendline Settings" onClick={() => { setOpen(false); onOpenAutoTrendlineSettings(); }} data-testid="btn-auto-trendline-settings">
                 <Settings className="h-3.5 w-3.5" />
               </Button>
             </div>
           </div>
-
           <div className="flex items-center justify-between py-1.5 px-1">
             <div className="min-w-0 mr-3">
-              <div className="text-sm font-medium text-slate-100 leading-tight">
-                GDS Mini Badge
-              </div>
-              <div className="text-xs text-slate-400 leading-tight">
-                Show Genuine Demand Score on chart
-              </div>
-            </div>
-            <Switch
-              checked={gdsMiniBadgeEnabled}
-              onCheckedChange={onToggleGdsMiniBadge}
-              className="shrink-0 data-[state=checked]:bg-blue-600"
-            />
-          </div>
-
-          <div className="flex items-center justify-between py-1.5 px-1">
-            <div className="min-w-0 mr-3">
-              <div className="text-sm font-medium text-slate-100 leading-tight">
-                Chart Rewind
-              </div>
-              <div className="text-xs text-slate-400 leading-tight">
-                Historical playback mode
-              </div>
+              <div className="text-sm font-medium text-slate-100 leading-tight">Swoop</div>
+              <div className="text-xs text-slate-400 leading-tight">Pivot-slope envelope + forecast fan</div>
             </div>
             <div className="flex items-center gap-1">
-              <Switch
-                checked={rewindEnabled}
-                onCheckedChange={onToggleRewind}
-                className="shrink-0 data-[state=checked]:bg-blue-600"
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700"
-                title="Chart Rewind Settings"
-                onClick={() => {
-                  setOpen(false);
-                  onOpenRewindSettings();
-                }}
-                data-testid="btn-rewind-settings"
-              >
+              <Switch checked={swoopEnabled} onCheckedChange={onToggleSwoop} className="shrink-0 data-[state=checked]:bg-blue-600" data-testid="switch-swoop-tool" />
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700" title="Swoop Settings" onClick={() => { setOpen(false); onOpenSwoopSettings(); }} data-testid="btn-swoop-settings">
                 <Settings className="h-3.5 w-3.5" />
               </Button>
             </div>
           </div>
-
+          <div className="flex items-center justify-between py-1.5 px-1">
+            <div className="min-w-0 mr-3">
+              <div className="text-sm font-medium text-slate-100 leading-tight">Predictive Liquidation</div>
+              <div className="text-xs text-slate-400 leading-tight">Profile bars with bullish and bearish zones</div>
+            </div>
+            <div className="flex items-center gap-1">
+              <Switch checked={liquidityHeatmapEnabled} onCheckedChange={onToggleLiquidityHeatmap} className="shrink-0 data-[state=checked]:bg-blue-600" />
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700" title="Liquidity Heatmap Settings" onClick={() => { setOpen(false); onOpenLiquidityHeatmapSettings(); }} data-testid="btn-liquidity-heatmap-settings">
+                <Settings className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between py-1.5 px-1">
+            <div className="min-w-0 mr-3">
+              <div className="text-sm font-medium text-slate-100 leading-tight">GDS Mini Badge</div>
+              <div className="text-xs text-slate-400 leading-tight">Show Genuine Demand Score on chart</div>
+            </div>
+            <Switch checked={gdsMiniBadgeEnabled} onCheckedChange={onToggleGdsMiniBadge} className="shrink-0 data-[state=checked]:bg-blue-600" />
+          </div>
+          <div className="flex items-center justify-between py-1.5 px-1">
+            <div className="min-w-0 mr-3">
+              <div className="text-sm font-medium text-slate-100 leading-tight">Chart Rewind</div>
+              <div className="text-xs text-slate-400 leading-tight">Historical playback mode</div>
+            </div>
+            <div className="flex items-center gap-1">
+              <Switch checked={rewindEnabled} onCheckedChange={onToggleRewind} className="shrink-0 data-[state=checked]:bg-blue-600" />
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-white hover:bg-slate-700" title="Chart Rewind Settings" onClick={() => { setOpen(false); onOpenRewindSettings(); }} data-testid="btn-rewind-settings">
+                <Settings className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
           {onOpenTrade && (
             <div className="pt-1 border-t border-slate-700 mt-1">
-              <Button
-                variant="ghost"
-                className="w-full justify-start px-1 py-1.5 text-sm font-medium text-slate-100 hover:bg-slate-800 hover:text-white"
-                onClick={() => {
-                  setOpen(false);
-                  onOpenTrade();
-                }}
-                data-testid="btn-open-trade"
-              >
+              <Button variant="ghost" className="w-full justify-start px-1 py-1.5 text-sm font-medium text-slate-100 hover:bg-slate-800 hover:text-white" onClick={() => { setOpen(false); onOpenTrade(); }} data-testid="btn-open-trade">
                 Trade
                 <span className="ml-2 text-xs text-slate-400">Open / manage trades</span>
               </Button>
