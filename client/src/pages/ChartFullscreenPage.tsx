@@ -60,6 +60,8 @@ import { useAutoFibSettings } from '@/hooks/useAutoFibSettings';
 import { useAutoFibDetection } from '@/hooks/useAutoFibDetection';
 import { useAutoTrendlineSettings } from '@/hooks/useAutoTrendlineSettings';
 import { useAutoTrendlineDetection } from '@/hooks/useAutoTrendlineDetection';
+import { useSwoopSettings } from '@/hooks/useSwoopSettings';
+import { useSwoopDetection } from '@/hooks/useSwoopDetection';
 import { useVolumeEmaSettings } from '@/hooks/useVolumeEmaSettings';
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
 import { calculateEMA } from '@/lib/indicators';
@@ -279,6 +281,7 @@ export function ChartFullscreenPage({
   const [chartEpoch, setChartEpoch] = useState(0);
   const [showVolumeEmaModal, setShowVolumeEmaModal] = useState(false);
   const [showAutoTrendlineModal, setShowAutoTrendlineModal] = useState(false);
+  const [showSwoopModal, setShowSwoopModal] = useState(false);
   const [divergenceScannerEnabled, setDivergenceScannerEnabled] = useState(false);
   const [selectedDivergencePoint, setSelectedDivergencePoint] = useState<DivergencePoint | null>(null);
   const [showDivergenceSettings, setShowDivergenceSettings] = useState(false);
@@ -803,6 +806,11 @@ export function ChartFullscreenPage({
   const autoTrendlineResult = useAutoTrendlineDetection(
     effectiveCandles as Array<{ time: number; open: number; high: number; low: number; close: number; volume?: number }>,
     autoTrendlineSettings.settings,
+  );
+  const swoopSettings = useSwoopSettings();
+  const swoopResult = useSwoopDetection(
+    effectiveCandles as Array<{ time: number; open: number; high: number; low: number; close: number; volume?: number }>,
+    swoopSettings.settings,
   );
 
   // Hooks - Volume EMA overlay (display settings)
@@ -2221,6 +2229,7 @@ export function ChartFullscreenPage({
     setDivergenceScannerEnabled(false);
     volumeEmaSettings.updateSettings({ enabled: false });
     autoTrendlineSettings.updateSettings({ enabled: false });
+    swoopSettings.updateSettings({ enabled: false });
     fvgSettings.updateSetting('enabled', false);
     obSettings.updateSetting('enabled', false);
     breakerSettings.updateSetting('enabled', false);
@@ -2254,6 +2263,7 @@ export function ChartFullscreenPage({
     pdZoneSettings,
     autoFibSettings,
     autoTrendlineSettings,
+    swoopSettings,
     volumeEmaSettings,
     superTrendSettings,
     vpSettings,
@@ -3001,6 +3011,9 @@ export function ChartFullscreenPage({
           autoTrendlineEnabled={autoTrendlineSettings.settings.enabled}
           onToggleAutoTrendline={(enabled) => autoTrendlineSettings.updateSettings({ enabled })}
           onOpenAutoTrendlineSettings={() => setShowAutoTrendlineModal(true)}
+          swoopEnabled={swoopSettings.settings.enabled}
+          onToggleSwoop={(enabled) => swoopSettings.updateSettings({ enabled })}
+          onOpenSwoopSettings={() => setShowSwoopModal(true)}
           liquidityHeatmapEnabled={lhSettings.settings.enabled}
           onToggleLiquidityHeatmap={(enabled) => lhSettings.updateSettings({ enabled })}
           onOpenLiquidityHeatmapSettings={() => setShowLHModal(true)}
@@ -3139,6 +3152,12 @@ export function ChartFullscreenPage({
           onAutoTrendlineSettingsChange={autoTrendlineSettings.updateSettings}
           onAutoTrendlineTierChange={autoTrendlineSettings.updateTier}
           onAutoTrendlineReset={autoTrendlineSettings.resetToDefaults}
+          swoopSettings={swoopSettings.settings}
+          swoopResult={swoopResult}
+          showSwoopModal={showSwoopModal}
+          onCloseSwoopModal={() => setShowSwoopModal(false)}
+          onSwoopSettingsChange={swoopSettings.updateSettings}
+          onSwoopReset={swoopSettings.resetToDefaults}
           divergenceScannerEnabled={divergenceScannerEnabled}
           filteredDivergencePoints={filteredDivergencePoints}
           onSelectDivergencePoint={setSelectedDivergencePoint}
