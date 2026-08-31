@@ -82,9 +82,9 @@ interface FullscreenChartActionToolbarProps {
   autoTrendlineEnabled: boolean;
   onToggleAutoTrendline: (enabled: boolean) => void;
   onOpenAutoTrendlineSettings: () => void;
-  swoopEnabled: boolean;
-  onToggleSwoop: (enabled: boolean) => void;
-  onOpenSwoopSettings: () => void;
+  swoopEnabled?: boolean;
+  onToggleSwoop?: (enabled: boolean) => void;
+  onOpenSwoopSettings?: () => void;
   liquidityHeatmapEnabled: boolean;
   onToggleLiquidityHeatmap: (enabled: boolean) => void;
   onOpenLiquidityHeatmapSettings: () => void;
@@ -117,7 +117,7 @@ export function FullscreenChartActionToolbar(props: FullscreenChartActionToolbar
     vpEnabled, onToggleVolumeProfile, onOpenVolumeProfileSettings, volumeEnabled, onToggleVolume,
     volumeEmaEnabled, onToggleVolumeEma, onOpenVolumeEmaSettings,
     autoTrendlineEnabled, onToggleAutoTrendline, onOpenAutoTrendlineSettings,
-    swoopEnabled, onToggleSwoop, onOpenSwoopSettings,
+    swoopEnabled = false, onToggleSwoop = () => {}, onOpenSwoopSettings = () => {},
     liquidityHeatmapEnabled, onToggleLiquidityHeatmap, onOpenLiquidityHeatmapSettings,
     gdsMiniBadgeEnabled, onToggleGdsMiniBadge, rewindEnabled, onToggleRewind, onOpenRewindSettings, onOpenTrade,
     activeSystem, onActivateSystem, onDeactivateSystem, confluenceSnapshot, onToggleFloatingMonitor,
