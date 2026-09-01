@@ -180,9 +180,9 @@ export function AutoTrendlineSettingsModal({
           </div>
 
           <p className="text-[11px] text-slate-500 leading-relaxed">
-            Each consecutive same-structure pivot is connected (LH1–LH2, LH2–LH3, HL1–HL2, …).
-            The last two legs’ length and angle project a fan: straight continuation, equal-angle,
-            and extra steepening or flattening.
+            Consecutive same-structure pivots are connected (LH1–LH2, LH2–LH3, …).
+            From the last pivot: a dashed ray at the last line’s angle, and a dotted fan
+            edge from the measured angle-change (or % acceleration across three legs).
           </p>
 
           {TIER_META.map(({ id, title, blurb }) => (

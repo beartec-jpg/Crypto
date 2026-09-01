@@ -19,9 +19,8 @@ function applyDash(ctx: CanvasRenderingContext2D, style: AutoTrendlineSegment['l
 }
 
 function roleAlpha(role: AutoTrendlineSegment['role'] | undefined): number {
-  if (role === 'continuation') return 0.82;
-  if (role === 'equal_angle') return 0.55;
-  if (role === 'estimated') return 0.38;
+  if (role === 'continuation') return 0.85;
+  if (role === 'acceleration') return 0.5;
   return 1;
 }
 
