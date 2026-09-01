@@ -258,5 +258,13 @@ describe('detectSwoop', () => {
     expect(result.liveTopSlope!).toBeLessThan(0);
     expect(['armed', 'slowing', 'compressing', 'release']).toContain(result.state);
     expect(result.topSegments.length).toBe(result.highs.length - 1);
+    const lastSeg = result.topSegments[result.topSegments.length - 1];
+    const base = result.fan.find((r) => r.kind === 'mid' && r.side === 'top');
+    expect(base).toBeDefined();
+    expect(base!.startPrice).toBe(lastSeg.end.price);
+    expect(base!.startTime).toBe(lastSeg.end.time);
+    const drawnSlope = (base!.endPrice - base!.startPrice) / result.projectBars;
+    expect(drawnSlope).toBeCloseTo(lastSeg.slope, 10);
+    expect(result.projectBars).toBeGreaterThanOrEqual(lastSeg.lengthBars);
   });
 });

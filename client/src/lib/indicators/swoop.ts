@@ -9,8 +9,8 @@
  * Trend lines are drawn between each consecutive lower high (H1→H2, H2→H3, …)
  * and each consecutive lower low (L1→L2, L2→L3, …). Projection from the last
  * pivot is two rays only:
- *   - base: same angle as the last confirmed pivot line
- *   - fan: last angle + measured Δ (or % change of the Δs when 3 legs exist)
+ *   - base: same linear angle (Δprice/Δbars) as the last confirmed pivot line
+ *   - fan: that angle + measured Δ (or % change of the Δs when 3 legs exist)
  * Flattening is clamped so a descending line cannot reverse up through price.
  */
 import type { CandleData } from '@/types/chart.types';
@@ -64,6 +64,12 @@ const EMPTY: SwoopResult = {
 export function logSlope(p1: number, p2: number, bars: number): number {
   if (bars <= 0 || p1 <= 0 || p2 <= 0 || !Number.isFinite(p1) || !Number.isFinite(p2)) return 0;
   return (Math.log(p2) - Math.log(p1)) / bars;
+}
+
+/** Chart angle of a pivot gap: Δprice / Δbars. This is what the dashed base copies. */
+export function linearSlope(p1: number, p2: number, bars: number): number {
+  if (bars <= 0 || !Number.isFinite(p1) || !Number.isFinite(p2)) return 0;
+  return (p2 - p1) / bars;
 }
 
 /**
@@ -123,13 +129,13 @@ function buildSegments(points: SwoopPoint[]): SwoopSegment[] {
     const end = points[i];
     const lengthBars = end.index - start.index;
     if (lengthBars <= 0) continue;
-    segs.push({ start, end, slope: logSlope(start.price, end.price, lengthBars), lengthBars });
+    segs.push({ start, end, slope: linearSlope(start.price, end.price, lengthBars), lengthBars });
   }
   return segs;
 }
 
 function linePriceAt(anchor: SwoopPoint, slope: number, index: number): number {
-  return anchor.price * Math.exp(slope * (index - anchor.index));
+  return anchor.price + slope * (index - anchor.index);
 }
 
 function projectTime(candles: SwoopCandle[], fromIndex: number, barsAhead: number): number {
@@ -317,9 +323,10 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
   const prevTop = topSegments[topSegments.length - 2];
   const lastBot = bottomSegments[bottomSegments.length - 1];
   const prevBot = bottomSegments[bottomSegments.length - 2];
-  const projectBars = projectLength(
-    prevTop?.lengthBars ?? prevBot?.lengthBars ?? 0,
-    lastTop?.lengthBars ?? lastBot?.lengthBars ?? settings.swingLength * 3,
+  const lastGapBars = lastTop?.lengthBars ?? lastBot?.lengthBars ?? settings.swingLength * 3;
+  const projectBars = Math.max(
+    lastGapBars,
+    projectLength(prevTop?.lengthBars ?? prevBot?.lengthBars ?? 0, lastGapBars),
   );
   const prevGapBars = lastTop?.lengthBars ?? lastBot?.lengthBars ?? 0;
   const expectedTopBand = topSegments.length >= 2
@@ -354,7 +361,7 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
   }
   const lastCompletedTopSlope = lastTop?.slope ?? null;
   const formingTopSlope = liveHighIndex > lastHigh.index
-    ? logSlope(lastHigh.price, liveHighPrice, liveHighIndex - lastHigh.index)
+    ? linearSlope(lastHigh.price, liveHighPrice, liveHighIndex - lastHigh.index)
     : lastCompletedTopSlope;
   let formingBottomSlope: number | null = null;
   let liveLowPrice = lastLow?.price ?? lastCandle.low;
@@ -367,7 +374,7 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
     }
     if (liveLowIndex === lastLow.index) { liveLowPrice = lastCandle.low; liveLowIndex = lastIdx; }
     formingBottomSlope = liveLowIndex > lastLow.index
-      ? logSlope(lastLow.price, liveLowPrice, liveLowIndex - lastLow.index)
+      ? linearSlope(lastLow.price, liveLowPrice, liveLowIndex - lastLow.index)
       : lastBot?.slope ?? null;
   }
   const liveTopSlope = formingTopSlope;
