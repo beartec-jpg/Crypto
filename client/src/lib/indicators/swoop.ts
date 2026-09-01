@@ -7,12 +7,11 @@
  *   3. minPivotPct is the minimum reversal to confirm the opposite pivot
  *
  * Trend lines are drawn between each consecutive lower high (H1→H2, H2→H3, …)
- * and each consecutive lower low (L1→L2, L2→L3, …). The next-leg projection
- * compares the last two legs' angles and lengths:
- *   - equal angle: continue the last slope
- *   - steepening: fan a steeper descent (last + (last − prev))
- *   - shallowing: fan a flatter angle (last + (last − prev))
- *   - length: lastBars × (lastBars / prevBars)
+ * and each consecutive lower low (L1→L2, L2→L3, …). Projection from the last
+ * pivot is two rays only:
+ *   - base: same angle as the last confirmed pivot line
+ *   - fan: last angle + measured Δ (or % change of the Δs when 3 legs exist)
+ * Flattening is clamped so a descending line cannot reverse up through price.
  */
 import type { CandleData } from '@/types/chart.types';
 import type {
@@ -68,15 +67,29 @@ export function logSlope(p1: number, p2: number, bars: number): number {
 }
 
 /**
- * Next-segment slope band from the last two pivot-to-pivot legs.
- * mid = equal angle (continue last slope).
- * If last is steeper than prev (last < prev): lo = last + (last − prev) — estimated increase of descent.
- * If last is shallower than prev: hi = last + (last − prev) — decreasing angle.
+ * Next-leg slope from confirmed pivot lines.
+ * mid = last leg (base / equal angle).
+ * The other bound is last + predictedΔ, where predictedΔ is the last Δangle,
+ * or lastΔ × (lastΔ / prevΔ) when a third leg exists.
+ * A descending last-leg is never allowed to project above flat.
  */
-export function expectedSlopeBand(prev: number, last: number): SwoopSlopeBand {
-  const delta = last - prev;
-  if (last < prev) return { lo: last + delta, mid: last, hi: last };
-  return { lo: last, mid: last, hi: last + Math.max(delta, 0) };
+export function expectedSlopeBand(prev: number, last: number, beforePrev?: number): SwoopSlopeBand {
+  const dLast = last - prev;
+  let predictedDelta = dLast;
+  if (beforePrev != null && Number.isFinite(beforePrev)) {
+    const dPrev = prev - beforePrev;
+    if (dLast !== 0 && dPrev !== 0 && dLast > 0 === dPrev > 0 && Math.abs(dPrev) > 1e-12) {
+      predictedDelta = dLast * (dLast / dPrev);
+    }
+  }
+  let predicted = last + predictedDelta;
+  if (last < 0) predicted = Math.min(0, predicted);
+  if (last > 0) predicted = Math.max(0, predicted);
+  return {
+    lo: Math.min(last, predicted),
+    mid: last,
+    hi: Math.max(last, predicted),
+  };
 }
 
 export function isShallowerThanExpected(actual: number, band: SwoopSlopeBand, eps = 1e-9): boolean {
@@ -310,10 +323,18 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
   );
   const prevGapBars = lastTop?.lengthBars ?? lastBot?.lengthBars ?? 0;
   const expectedTopBand = topSegments.length >= 2
-    ? expectedSlopeBand(topSegments[topSegments.length - 2].slope, topSegments[topSegments.length - 1].slope)
+    ? expectedSlopeBand(
+        topSegments[topSegments.length - 2].slope,
+        topSegments[topSegments.length - 1].slope,
+        topSegments[topSegments.length - 3]?.slope,
+      )
     : topSegments.length === 1 ? { lo: topSegments[0].slope, mid: topSegments[0].slope, hi: topSegments[0].slope } : null;
   const expectedBottomBand = bottomSegments.length >= 2
-    ? expectedSlopeBand(bottomSegments[bottomSegments.length - 2].slope, bottomSegments[bottomSegments.length - 1].slope)
+    ? expectedSlopeBand(
+        bottomSegments[bottomSegments.length - 2].slope,
+        bottomSegments[bottomSegments.length - 1].slope,
+        bottomSegments[bottomSegments.length - 3]?.slope,
+      )
     : bottomSegments.length === 1 ? { lo: bottomSegments[0].slope, mid: bottomSegments[0].slope, hi: bottomSegments[0].slope } : null;
   let liveHighPrice = lastHigh.price;
   let liveHighIndex = lastHigh.index;
@@ -384,22 +405,28 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
   else if (compressing) state = 'compressing';
   else if (slowing) state = 'slowing';
   const fan: SwoopFanRay[] = [];
-  const pushFan = (anchor: SwoopPoint, band: SwoopSlopeBand) => {
+  const pushFan = (anchor: SwoopPoint, band: SwoopSlopeBand, side: 'top' | 'bottom') => {
+    // LH / LL projection must stay with the descent. A positive last-leg
+    // is not this structure — skip so we never fire a ray up through price.
+    if (band.mid > 1e-12) return;
     const endTime = projectTime(candles, anchor.index, projectBars);
-    const kinds: Array<SwoopFanRay['kind']> = ['lo', 'mid', 'hi'];
-    const slopes = [band.lo, band.mid, band.hi];
-    kinds.forEach((kind, i) => {
+    const pushRay = (kind: SwoopFanRay['kind'], slope: number) => {
       fan.push({
         startTime: anchor.time,
         startPrice: anchor.price,
         endTime,
-        endPrice: linePriceAt(anchor, slopes[i], anchor.index + projectBars),
+        endPrice: linePriceAt(anchor, slope, anchor.index + projectBars),
         kind,
+        side,
       });
-    });
+    };
+    pushRay('mid', band.mid);
+    const edgeKind: SwoopFanRay['kind'] = band.lo < band.mid - 1e-12 ? 'lo' : band.hi > band.mid + 1e-12 ? 'hi' : 'mid';
+    const edgeSlope = edgeKind === 'lo' ? band.lo : edgeKind === 'hi' ? band.hi : band.mid;
+    if (edgeKind !== 'mid') pushRay(edgeKind, edgeSlope);
   };
-  if (settings.showFan && expectedTopBand) pushFan(lastHigh, expectedTopBand);
-  if (settings.showFan && expectedBottomBand && lastLow) pushFan(lastLow, expectedBottomBand);
+  if (settings.showFan && expectedTopBand) pushFan(lastHigh, expectedTopBand, 'top');
+  if (settings.showFan && expectedBottomBand && lastLow) pushFan(lastLow, expectedBottomBand, 'bottom');
   const drawSegments: SwoopDrawSegment[] = [];
   const pushSeg = (start: SwoopPoint, end: { time: number; price: number }, color: string, role: SwoopDrawSegment['role'], style: SwoopDrawSegment['lineStyle'] = settings.lineStyle, width = settings.lineWidth) => {
     drawSegments.push({ startTime: start.time, startPrice: start.price, endTime: end.time, endPrice: end.price, color, lineWidth: width, lineStyle: style, role });
@@ -410,26 +437,24 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
   for (const seg of bottomSegments) {
     pushSeg(seg.start, { time: seg.end.time, price: seg.end.price }, settings.bottomColor, 'bottom');
   }
-  if (liveHighIndex > lastHigh.index) {
-    pushSeg(lastHigh, { time: candles[liveHighIndex].time, price: liveHighPrice }, settings.topColor, 'live-top', 'dashed', Math.max(1, settings.lineWidth));
-  }
-  if (lastLow && liveLowIndex > lastLow.index) {
-    pushSeg(lastLow, { time: candles[liveLowIndex].time, price: liveLowPrice }, settings.bottomColor, 'live-bottom', 'dashed', Math.max(1, settings.lineWidth));
-  }
   if (!settings.showFan && lastTop) {
     const endTime = projectTime(candles, lastHigh.index, projectBars);
     pushSeg(lastHigh, { time: endTime, price: linePriceAt(lastHigh, lastTop.slope, lastHigh.index + projectBars) }, settings.topColor, 'live-top', 'dashed');
   }
   if (settings.showFan) {
     for (const ray of fan) {
+      const isBase = ray.kind === 'mid';
+      const color = isBase
+        ? (ray.side === 'top' ? settings.topColor : settings.bottomColor)
+        : settings.fanColor;
       drawSegments.push({
         startTime: ray.startTime,
         startPrice: ray.startPrice,
         endTime: ray.endTime,
         endPrice: ray.endPrice,
-        color: settings.fanColor,
-        lineWidth: ray.kind === 'mid' ? settings.lineWidth : 1,
-        lineStyle: ray.kind === 'mid' ? 'dashed' : 'dotted',
+        color,
+        lineWidth: isBase ? settings.lineWidth : Math.max(1, settings.lineWidth),
+        lineStyle: isBase ? 'dashed' : 'dotted',
         role: 'fan',
       });
     }

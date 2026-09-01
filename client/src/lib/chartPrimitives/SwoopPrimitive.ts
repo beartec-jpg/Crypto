@@ -55,7 +55,7 @@ class SwoopRenderer implements IPrimitivePaneRenderer {
 
         ctx.beginPath();
         if (seg.role === 'zigzag') ctx.strokeStyle = hexWithAlpha(seg.color, 0.4);
-        else if (seg.role === 'fan') ctx.strokeStyle = hexWithAlpha(seg.color, 0.55);
+        else if (seg.role === 'fan') ctx.strokeStyle = hexWithAlpha(seg.color, seg.lineStyle === 'dashed' ? 0.9 : 0.5);
         else ctx.strokeStyle = seg.color;
         ctx.lineWidth = Math.max(1, seg.lineWidth);
         ctx.lineCap = 'round';

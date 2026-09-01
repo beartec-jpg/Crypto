@@ -75,6 +75,22 @@ describe('expectedSlopeBand', () => {
     expect(band.lo).toBe(-0.001);
     expect(band.hi).toBeGreaterThan(-0.001);
     expect(band.mid).toBe(-0.001);
+    expect(band.hi).toBeLessThanOrEqual(0);
+  });
+
+  it('does not project a descending line up through price', () => {
+    const band = expectedSlopeBand(-0.02, -0.001);
+    expect(band.mid).toBe(-0.001);
+    expect(band.hi).toBeLessThanOrEqual(0);
+    expect(band.lo).toBe(-0.001);
+  });
+
+  it('uses % change of the last two Δs when a third leg exists', () => {
+    // prevPrev=-0.004, prev=-0.003, last=-0.0015 → flattening, slowing
+    const band = expectedSlopeBand(-0.003, -0.0015, -0.004);
+    expect(band.mid).toBe(-0.0015);
+    expect(band.hi).toBeLessThanOrEqual(0);
+    expect(band.hi).toBeGreaterThan(-0.0015);
   });
 });
 
@@ -209,7 +225,13 @@ describe('detectSwoop', () => {
     expect(result.highs[0].price).toBeGreaterThanOrEqual(result.highs[result.highs.length - 1].price);
     expect(result.lows.length).toBeGreaterThanOrEqual(1);
     expect(result.projectBars).toBeGreaterThan(0);
-    expect(result.fan.length).toBeGreaterThanOrEqual(3);
+    expect(result.fan.length).toBeGreaterThanOrEqual(1);
+    expect(result.fan.filter((r) => r.side === 'top').length).toBeLessThanOrEqual(2);
+    expect(result.fan.filter((r) => r.side === 'bottom').length).toBeLessThanOrEqual(2);
+    for (const ray of result.fan) {
+      expect(ray.endPrice).toBeLessThanOrEqual(ray.startPrice + 1e-9);
+    }
+    expect(result.drawSegments.some((s) => s.role === 'live-top' || s.role === 'live-bottom')).toBe(false);
     expect(result.drawSegments.length).toBeGreaterThan(0);
     const tops = result.drawSegments.filter((s) => s.role === 'top');
     const bottoms = result.drawSegments.filter((s) => s.role === 'bottom');

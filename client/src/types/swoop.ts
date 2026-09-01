@@ -63,7 +63,9 @@ export interface SwoopFanRay {
   startPrice: number;
   endTime: number;
   endPrice: number;
+  /** mid = last-leg angle (base). lo/hi = the single acceleration edge. */
   kind: 'lo' | 'mid' | 'hi';
+  side: 'top' | 'bottom';
 }
 
 export interface SwoopDrawSegment {
