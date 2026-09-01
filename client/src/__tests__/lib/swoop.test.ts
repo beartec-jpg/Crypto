@@ -3,6 +3,7 @@ import {
   detectSwoop,
   expectedSlopeBand,
   isShallowerThanExpected,
+  predictNextSlope,
   logSlope,
   collapseSwings,
   structureLowerHighs,
@@ -64,14 +65,14 @@ describe('logSlope', () => {
 
 describe('expectedSlopeBand', () => {
   it('expects same or steeper after a steeper print', () => {
-    const band = expectedSlopeBand(-0.001, -0.002);
+    const band = expectedSlopeBand([-0.001, -0.002]);
     expect(band.hi).toBe(-0.002);
     expect(band.lo).toBeLessThan(-0.002);
     expect(band.mid).toBe(-0.002);
   });
 
   it('expects same or shallower after a shallower print', () => {
-    const band = expectedSlopeBand(-0.003, -0.001);
+    const band = expectedSlopeBand([-0.003, -0.001]);
     expect(band.lo).toBe(-0.001);
     expect(band.hi).toBeGreaterThan(-0.001);
     expect(band.mid).toBe(-0.001);
@@ -79,18 +80,24 @@ describe('expectedSlopeBand', () => {
   });
 
   it('does not project a descending line up through price', () => {
-    const band = expectedSlopeBand(-0.02, -0.001);
+    const band = expectedSlopeBand([-0.02, -0.001]);
     expect(band.mid).toBe(-0.001);
     expect(band.hi).toBeLessThanOrEqual(0);
     expect(band.lo).toBe(-0.001);
   });
 
-  it('uses % change of the last two Δs when a third leg exists', () => {
-    // prevPrev=-0.004, prev=-0.003, last=-0.0015 → flattening, slowing
-    const band = expectedSlopeBand(-0.003, -0.0015, -0.004);
-    expect(band.mid).toBe(-0.0015);
+  it('uses every gap in the run, not only the last two', () => {
+    // Softening Δs: +0.010, +0.008, +0.006, +0.004 → next Δ ≈ +0.002
+    const slopes = [-0.050, -0.040, -0.032, -0.026, -0.022];
+    const predicted = predictNextSlope(slopes);
+    const lastOnly = slopes[4] + (slopes[4] - slopes[3]);
+    expect(predicted).toBeGreaterThan(slopes[4]);
+    expect(predicted).toBeLessThan(lastOnly);
+    expect(predicted).toBeCloseTo(-0.020, 8);
+    const band = expectedSlopeBand(slopes);
+    expect(band.mid).toBe(-0.022);
+    expect(band.hi).toBeCloseTo(predicted, 10);
     expect(band.hi).toBeLessThanOrEqual(0);
-    expect(band.hi).toBeGreaterThan(-0.0015);
   });
 });
 
@@ -107,7 +114,7 @@ describe('projectLength', () => {
 
 describe('isShallowerThanExpected', () => {
   it('flags a live slope above the expected high band', () => {
-    const band = expectedSlopeBand(-0.003, -0.002);
+    const band = expectedSlopeBand([-0.003, -0.002]);
     expect(isShallowerThanExpected(-0.0004, band)).toBe(true);
     expect(isShallowerThanExpected(-0.002, band)).toBe(false);
   });

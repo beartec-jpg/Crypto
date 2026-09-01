@@ -72,23 +72,55 @@ export function linearSlope(p1: number, p2: number, bars: number): number {
   return (p2 - p1) / bars;
 }
 
+/** Ordinary least squares: fit series[k] = a + b*k, return the value at `at`. */
+export function olsAt(series: number[], at: number): number {
+  const n = series.length;
+  if (n === 0) return 0;
+  if (n === 1) return series[0];
+  let sumK = 0;
+  let sumY = 0;
+  let sumKK = 0;
+  let sumKY = 0;
+  for (let k = 0; k < n; k++) {
+    const y = series[k];
+    sumK += k;
+    sumY += y;
+    sumKK += k * k;
+    sumKY += k * y;
+  }
+  const denom = n * sumKK - sumK * sumK;
+  if (Math.abs(denom) < 1e-18) return series[n - 1];
+  const b = (n * sumKY - sumK * sumY) / denom;
+  const a = (sumY - b * sumK) / n;
+  return a + b * at;
+}
+
 /**
- * Next-leg slope from confirmed pivot lines.
- * mid = last leg (base / equal angle).
- * The other bound is last + predictedΔ, where predictedΔ is the last Δangle,
- * or lastΔ × (lastΔ / prevΔ) when a third leg exists.
+ * Next gap angle from the whole structure.
+ * Base case (2 gaps): last + (last − prev).
+ * 3+ gaps: differences of every consecutive pair, fit that Δ series, add the
+ * next Δ to the last gap angle.
+ */
+export function predictNextSlope(slopes: number[]): number {
+  if (slopes.length === 0) return 0;
+  if (slopes.length === 1) return slopes[0];
+  const last = slopes[slopes.length - 1];
+  const deltas: number[] = [];
+  for (let i = 1; i < slopes.length; i++) deltas.push(slopes[i] - slopes[i - 1]);
+  const nextDelta = olsAt(deltas, deltas.length);
+  return last + nextDelta;
+}
+
+/**
+ * mid = last gap (base, same angle).
+ * lo/hi = predicted next gap from every confirmed gap in the run.
  * A descending last-leg is never allowed to project above flat.
  */
-export function expectedSlopeBand(prev: number, last: number, beforePrev?: number): SwoopSlopeBand {
-  const dLast = last - prev;
-  let predictedDelta = dLast;
-  if (beforePrev != null && Number.isFinite(beforePrev)) {
-    const dPrev = prev - beforePrev;
-    if (dLast !== 0 && dPrev !== 0 && dLast > 0 === dPrev > 0 && Math.abs(dPrev) > 1e-12) {
-      predictedDelta = dLast * (dLast / dPrev);
-    }
-  }
-  let predicted = last + predictedDelta;
+export function expectedSlopeBand(slopes: number[]): SwoopSlopeBand {
+  if (slopes.length === 0) return { lo: 0, mid: 0, hi: 0 };
+  const last = slopes[slopes.length - 1];
+  if (slopes.length === 1) return { lo: last, mid: last, hi: last };
+  let predicted = predictNextSlope(slopes);
   if (last < 0) predicted = Math.min(0, predicted);
   if (last > 0) predicted = Math.max(0, predicted);
   return {
@@ -329,20 +361,12 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
     projectLength(prevTop?.lengthBars ?? prevBot?.lengthBars ?? 0, lastGapBars),
   );
   const prevGapBars = lastTop?.lengthBars ?? lastBot?.lengthBars ?? 0;
-  const expectedTopBand = topSegments.length >= 2
-    ? expectedSlopeBand(
-        topSegments[topSegments.length - 2].slope,
-        topSegments[topSegments.length - 1].slope,
-        topSegments[topSegments.length - 3]?.slope,
-      )
-    : topSegments.length === 1 ? { lo: topSegments[0].slope, mid: topSegments[0].slope, hi: topSegments[0].slope } : null;
-  const expectedBottomBand = bottomSegments.length >= 2
-    ? expectedSlopeBand(
-        bottomSegments[bottomSegments.length - 2].slope,
-        bottomSegments[bottomSegments.length - 1].slope,
-        bottomSegments[bottomSegments.length - 3]?.slope,
-      )
-    : bottomSegments.length === 1 ? { lo: bottomSegments[0].slope, mid: bottomSegments[0].slope, hi: bottomSegments[0].slope } : null;
+  const expectedTopBand = topSegments.length >= 1
+    ? expectedSlopeBand(topSegments.map((s) => s.slope))
+    : null;
+  const expectedBottomBand = bottomSegments.length >= 1
+    ? expectedSlopeBand(bottomSegments.map((s) => s.slope))
+    : null;
   let liveHighPrice = lastHigh.price;
   let liveHighIndex = lastHigh.index;
   let lowAfterHighIndex = -1;
