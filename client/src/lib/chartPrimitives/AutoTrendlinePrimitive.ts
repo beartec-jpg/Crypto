@@ -18,13 +18,6 @@ function applyDash(ctx: CanvasRenderingContext2D, style: AutoTrendlineSegment['l
   else ctx.setLineDash([]);
 }
 
-function roleAlpha(role: AutoTrendlineSegment['role'] | undefined): number {
-  if (role === 'continuation') return 0.82;
-  if (role === 'equal_angle') return 0.55;
-  if (role === 'estimated') return 0.38;
-  return 1;
-}
-
 class AutoTrendlineRenderer implements IPrimitivePaneRenderer {
   private _lines: AutoTrendlineSegment[];
   private _series: ISeriesApi<SeriesType> | null;
@@ -64,33 +57,30 @@ class AutoTrendlineRenderer implements IPrimitivePaneRenderer {
 
         let x2 = xTouchEnd;
         let y2 = yTouchEnd;
-        const isProjection = line.role != null && line.role !== 'confirmed';
 
-        if (isProjection && (x2 === null || y2 === null) && this._lastTime != null) {
+        if (line.extendRight && this._lastTime != null) {
+          // Project price along the bar-index model to the latest candle, then
+          // continue that screen slope out to the right edge of the pane.
           const priceAtLast = line.slope * this._lastIndex + line.intercept;
-          x2 = timeScale.timeToCoordinate(this._lastTime as Time);
-          y2 = this._series!.priceToCoordinate(priceAtLast);
-        }
+          const xLast = timeScale.timeToCoordinate(this._lastTime as Time);
+          const yLast = this._series!.priceToCoordinate(priceAtLast);
 
-        if (line.extendRight && isProjection) {
-          // Fan rays: use the projected end as the slope basis when it is on
-          // screen, otherwise the model at the latest candle, then run that
-          // screen slope out to the pane edge.
-          const xRef = x2;
-          const yRef = y2;
-          if (xRef !== null && yRef !== null) {
-            const dx = xRef - x1;
+          if (xLast !== null && yLast !== null) {
+            // Use start → latest as the slope basis so extension tracks the model
+            const dx = xLast - x1;
             if (Math.abs(dx) > 0.5) {
+              const screenSlope = (yLast - y1) / dx;
               x2 = chartWidth;
-              y2 = y1 + ((yRef - y1) / dx) * (chartWidth - x1);
+              y2 = y1 + screenSlope * (chartWidth - x1);
+            } else if (xTouchEnd !== null && yTouchEnd !== null) {
+              x2 = chartWidth;
+              y2 = yTouchEnd;
             }
           }
         }
 
         if (x2 === null || y2 === null) continue;
 
-        ctx.save();
-        ctx.globalAlpha = roleAlpha(line.role);
         ctx.beginPath();
         ctx.strokeStyle = line.color;
         ctx.lineWidth = Math.max(1, line.lineWidth);
@@ -100,7 +90,6 @@ class AutoTrendlineRenderer implements IPrimitivePaneRenderer {
         ctx.lineTo(x2, y2);
         ctx.stroke();
         ctx.setLineDash([]);
-        ctx.restore();
       }
     });
   }

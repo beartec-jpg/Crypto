@@ -27,17 +27,17 @@ const TIER_META: Array<{
   {
     id: 'macro',
     title: 'Macro',
-    blurb: 'Full chart · large wick pivots · LH/HL chains + extension fan',
+    blurb: 'Full chart · large wick pivots · longest high-touch lines',
   },
   {
     id: 'mid',
     title: 'Mid',
-    blurb: 'Middle lookback · balanced pivots · LH/HL chains + fan',
+    blurb: 'Middle lookback · balanced pivots',
   },
   {
     id: 'ltf',
     title: 'LTF',
-    blurb: 'Recent structure · tight pivots · LH/HL chains + fan',
+    blurb: 'Recent structure · tight pivots',
   },
 ];
 
@@ -126,7 +126,7 @@ function TierSection({
         <div className="flex items-center justify-between gap-2 pt-0.5">
           <div>
             <Label className="text-xs text-slate-300">Extend right</Label>
-            <div className="text-[10px] text-slate-500">Run the projection fan to the chart edge</div>
+            <div className="text-[10px] text-slate-500">Project past last touch to chart edge</div>
           </div>
           <Switch
             checked={config.extendRight}
@@ -180,9 +180,8 @@ export function AutoTrendlineSettingsModal({
           </div>
 
           <p className="text-[11px] text-slate-500 leading-relaxed">
-            Each consecutive same-structure pivot is connected (LH1–LH2, LH2–LH3, HL1–HL2, …).
-            The last two legs’ length and angle project a fan: straight continuation, equal-angle,
-            and extra steepening or flattening.
+            Lines are fitted to wick highs (resistance) and wick lows (support), scoring for the
+            most touches and longest clean span — not forced from the first bar on the chart.
           </p>
 
           {TIER_META.map(({ id, title, blurb }) => (
