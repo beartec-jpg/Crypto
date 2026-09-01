@@ -63,13 +63,18 @@ export const DEFAULT_AUTO_TRENDLINE_SETTINGS: AutoTrendlineSettings = {
 
 export type AutoTrendlineKind = 'support' | 'resistance';
 
+/** Confirmed = drawn between two pivots. The rest are forward projections. */
+export type AutoTrendlineRole = 'confirmed' | 'continuation' | 'equal_angle' | 'estimated';
+
+export type AutoTrendlineChainLabel = 'HH' | 'LH' | 'HL' | 'LL';
+
 export interface AutoTrendlineSegment {
   tier: AutoTrendlineTierId;
   kind: AutoTrendlineKind;
-  /** Chart time of first touch (wick). */
+  /** Chart time of first pivot (or projection origin). */
   startTime: number;
   startPrice: number;
-  /** Chart time of last touch (wick). */
+  /** Chart time of last pivot, or projected next-touch time. */
   endTime: number;
   endPrice: number;
   /** Linear model in bar-index space: price = slope * index + intercept */
@@ -82,6 +87,10 @@ export interface AutoTrendlineSegment {
   lineWidth: number;
   lineStyle: AutoTrendlineLineStyle;
   extendRight: boolean;
+  /** confirmed pivot-to-pivot vs fan ray from the last pivot. */
+  role: AutoTrendlineRole;
+  /** Structure label of the chain this segment belongs to. */
+  chainLabel?: AutoTrendlineChainLabel;
 }
 
 export interface AutoTrendlineResult {
