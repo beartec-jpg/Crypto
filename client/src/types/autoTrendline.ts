@@ -63,12 +63,8 @@ export const DEFAULT_AUTO_TRENDLINE_SETTINGS: AutoTrendlineSettings = {
 
 export type AutoTrendlineKind = 'support' | 'resistance';
 
-/**
- * confirmed = drawn between two pivots.
- * continuation = extension at the last pivot-line angle (base).
- * acceleration = fan edge from the measured (or %-change) Δangle of prior legs.
- */
-export type AutoTrendlineRole = 'confirmed' | 'continuation' | 'acceleration';
+/** Confirmed = drawn between two pivots. The rest are forward projections. */
+export type AutoTrendlineRole = 'confirmed' | 'continuation' | 'equal_angle' | 'estimated';
 
 export type AutoTrendlineChainLabel = 'HH' | 'LH' | 'HL' | 'LL';
 

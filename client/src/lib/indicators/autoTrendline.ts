@@ -7,10 +7,10 @@
  *  3. Label consecutive highs HH/LH and lows HL/LL.
  *  4. Draw a trendline between each consecutive pair in a same-label run
  *     (LH1–LH2, LH2–LH3, HL1–HL2, …).
- *  5. Project from the last pivot: one base ray at the last leg’s angle,
- *     and a fan edge whose Δangle is measured from the previous pivot
- *     lines (same Δ if two legs; % change of the Δs if three). Flattening
- *     slows toward flat and is not allowed to reverse through price.
+ *  5. From the last two legs, project a fan: straight continuation of P2–P3,
+ *     equal-angle (apply Δangle again), and an estimated extra steepening
+ *     or flattening depending on whether the last pivot line got steeper
+ *     or started to shallow out.
  */
 
 import type {
@@ -397,92 +397,78 @@ function slopeFromAngle(angle: number): number {
   return Math.tan(clampAngle(angle));
 }
 
-function sameSign(a: number, b: number): boolean {
-  return a === 0 || b === 0 ? false : a > 0 === b > 0;
-}
-
-/** Keep a projected angle on the same side of flat as the last confirmed leg. */
-export function clampProjectedAngle(lastAngle: number, nextAngle: number): number {
-  const a = clampAngle(nextAngle);
-  if (lastAngle < 0) return Math.min(0, a);
-  if (lastAngle > 0) return Math.max(0, a);
-  return 0;
-}
-
-interface Leg {
-  dx: number;
-  dy: number;
-  angle: number;
-  slope: number;
-}
-
-function legsFromPivots(pivots: StructurePivot[]): Leg[] {
-  const legs: Leg[] = [];
-  for (let i = 0; i < pivots.length - 1; i++) {
-    const dx = pivots[i + 1].index - pivots[i].index;
-    const dy = pivots[i + 1].price - pivots[i].price;
-    if (dx <= 0) continue;
-    legs.push({ dx, dy, angle: segmentAngle(dx, dy), slope: dy / dx });
-  }
-  return legs;
+function hypot2(dx: number, dy: number): number {
+  return Math.sqrt(dx * dx + dy * dy);
 }
 
 /**
- * Next-Δangle from the confirmed pivot lines.
- * Two legs → that Δangle (equal change).
- * Three+ legs → last Δ scaled by lastΔ/prevΔ (how fast the angle is changing).
- * Opposite-sign Δs mean the curve flipped (steepening ↔ flattening); use last Δ only.
+ * From three consecutive same-label pivots, project the next leg.
+ * Length of P2–P3 is scaled by the P1–P2 vs P2–P3 length ratio.
+ * Angle of P2–P3 vs P1–P2 decides steepening vs flattening.
  */
-export function predictedDeltaAngle(angles: number[]): number {
-  if (angles.length < 2) return 0;
-  const dLast = angles[angles.length - 1] - angles[angles.length - 2];
-  if (angles.length < 3) return dLast;
-  const dPrev = angles[angles.length - 2] - angles[angles.length - 3];
-  if (!sameSign(dLast, dPrev) || Math.abs(dPrev) < 1e-4) return dLast;
-  return dLast * (dLast / dPrev);
-}
+export function projectExtensionFan(p1: StructurePivot, p2: StructurePivot, p3: StructurePivot): ExtensionRay[] {
+  const dx12 = p2.index - p1.index;
+  const dy12 = p2.price - p1.price;
+  const dx23 = p3.index - p2.index;
+  const dy23 = p3.price - p2.price;
+  if (dx12 <= 0 || dx23 <= 0) return [];
 
-/**
- * Base ray = last pivot-line angle. Fan edge = last angle + predicted Δ
- * from the previous legs. No arbitrary 1.5×/0.5× factor.
- */
-export function projectExtensionFan(pivots: StructurePivot[]): ExtensionRay[] {
-  if (pivots.length < 2) return [];
-  const legs = legsFromPivots(pivots);
-  if (!legs.length) return [];
+  const a1 = segmentAngle(dx12, dy12);
+  const a2 = segmentAngle(dx23, dy23);
+  const dA = a2 - a1;
+  const slope23 = dy23 / dx23;
+  const intercept3 = p3.price - slope23 * p3.index;
 
-  const last = legs[legs.length - 1];
-  const origin = pivots[pivots.length - 1];
-  const intercept = origin.price - last.slope * origin.index;
+  const len12 = hypot2(dx12, dy12);
+  const len23 = hypot2(dx23, dy23);
+  const scale = len12 > 1e-12 ? len23 / len12 : 1;
+  const spanBars = Math.max(2, Math.round(dx23 * Math.max(0.5, Math.min(2, scale))));
 
-  let spanBars = Math.max(2, last.dx);
-  if (legs.length >= 2) {
-    const prev = legs[legs.length - 2];
-    const scale = prev.dx > 0 ? last.dx / prev.dx : 1;
-    spanBars = Math.max(2, Math.round(last.dx * Math.max(0.5, Math.min(2, scale))));
-  }
-
-  const steepening =
-    legs.length >= 2 && Math.abs(last.angle) > Math.abs(legs[legs.length - 2].angle) + 1e-6;
+  const steepening = Math.abs(a2) > Math.abs(a1) + 1e-6;
+  const flattening = Math.abs(a2) < Math.abs(a1) - 1e-6;
 
   const rays: ExtensionRay[] = [
-    { role: 'continuation', slope: last.slope, intercept, spanBars, steepening },
+    { role: 'continuation', slope: slope23, intercept: intercept3, spanBars, steepening },
   ];
 
-  const dA = predictedDeltaAngle(legs.map((l) => l.angle));
   if (Math.abs(dA) < 1e-5) return rays;
 
-  const fanAngle = clampProjectedAngle(last.angle, last.angle + dA);
-  const fanSlope = slopeFromAngle(fanAngle);
-  if (Math.abs(fanSlope - last.slope) < 1e-9) return rays;
-
+  const equalSlope = slopeFromAngle(a2 + dA);
   rays.push({
-    role: 'acceleration',
-    slope: fanSlope,
-    intercept: origin.price - fanSlope * origin.index,
+    role: 'equal_angle',
+    slope: equalSlope,
+    intercept: p3.price - equalSlope * p3.index,
     spanBars,
     steepening,
   });
+
+  if (steepening) {
+    // Extra estimated increase of descent / ascent (1.5× the last Δangle).
+    const estSlope = slopeFromAngle(a2 + 1.5 * dA);
+    if (Math.abs(estSlope - equalSlope) > Math.abs(slope23) * 1e-6 + 1e-12) {
+      rays.push({
+        role: 'estimated',
+        slope: estSlope,
+        intercept: p3.price - estSlope * p3.index,
+        spanBars,
+        steepening: true,
+      });
+    }
+  } else if (flattening) {
+    // Decreasing angle already lives on equal_angle; keep estimated as a
+    // more conservative shallow (0.5× Δangle) so the fan has width.
+    const estSlope = slopeFromAngle(a2 + 0.5 * dA);
+    if (Math.abs(estSlope - slope23) > 1e-12) {
+      rays.push({
+        role: 'estimated',
+        slope: estSlope,
+        intercept: p3.price - estSlope * p3.index,
+        spanBars,
+        steepening: false,
+      });
+    }
+  }
+
   return rays;
 }
 
@@ -532,7 +518,7 @@ function roleStyle(
   }
   return {
     lineStyle: 'dotted',
-    lineWidth: Math.max(1, tierSettings.lineWidth),
+    lineWidth: Math.max(1, tierSettings.lineWidth - (role === 'estimated' ? 1 : 0)),
     extendRight: tierSettings.extendRight,
   };
 }
@@ -661,7 +647,18 @@ export function detectAutoTrendlines(
         continue;
       }
 
-      const rays: ExtensionRay[] = projectExtensionFan(pts.slice(-4));
+      const rays: ExtensionRay[] =
+        pts.length >= 3
+          ? projectExtensionFan(pts[pts.length - 3], lastA, lastB)
+          : [
+              {
+                role: 'continuation',
+                slope: lastSlope,
+                intercept: lastIntercept,
+                spanBars: Math.max(2, lastB.index - lastA.index),
+                steepening: false,
+              },
+            ];
 
       for (const ray of rays) {
         const endIndex = lastB.index + ray.spanBars;

@@ -3,10 +3,8 @@ import {
   candlePiercesLine,
   consecutiveChains,
   convexHullChain,
-  clampProjectedAngle,
   detectAutoTrendlines,
   detectStructurePivots,
-  predictedDeltaAngle,
   projectExtensionFan,
   segmentAngle,
   type AutoTrendlineCandle,
@@ -206,61 +204,32 @@ describe('projectExtensionFan', () => {
     label: 'LH',
   });
 
-  it('steepening lower highs emit base + acceleration from measured Δangle only', () => {
+  it('steepening lower highs emit continuation, equal-angle, and extra descent', () => {
     // P1→P2 slope = -8/50 = -0.16; P2→P3 slope = -16/50 = -0.32 (steeper)
-    const rays = projectExtensionFan([p(0, 120), p(50, 112), p(100, 96)]);
-    expect(rays.map((r) => r.role)).toEqual(['continuation', 'acceleration']);
-    const cont = rays[0];
-    const fan = rays[1];
+    const rays = projectExtensionFan(p(0, 120), p(50, 112), p(100, 96));
+    const roles = rays.map((r) => r.role);
+    expect(roles).toContain('continuation');
+    expect(roles).toContain('equal_angle');
+    expect(roles).toContain('estimated');
+    const cont = rays.find((r) => r.role === 'continuation')!;
+    const eq = rays.find((r) => r.role === 'equal_angle')!;
+    const est = rays.find((r) => r.role === 'estimated')!;
     expect(cont.steepening).toBe(true);
-    expect(fan.slope).toBeLessThan(cont.slope);
-    expect(fan.slope).toBeCloseTo(Math.tan(segmentAngle(50, -16) + (segmentAngle(50, -16) - segmentAngle(50, -8))), 6);
+    expect(eq.slope).toBeLessThan(cont.slope); // more negative
+    expect(est.slope).toBeLessThan(eq.slope);
   });
 
-  it('does not reverse a flattening descent up through price', () => {
-    // P1→P2 slope = -20/50 = -0.4; P2→P3 slope = -4/50 = -0.08
-    // Equal Δ would overshoot to +0.24 (up through candles) — clamp to flat.
-    const rays = projectExtensionFan([p(0, 120), p(50, 100), p(100, 96)]);
+  it('flattening lower highs emit a shallower equal-angle ray', () => {
+    // P1→P2 slope = -20/50 = -0.4; P2→P3 slope = -4/50 = -0.08 (shallower)
+    const rays = projectExtensionFan(p(0, 120), p(50, 100), p(100, 96));
     const cont = rays.find((r) => r.role === 'continuation')!;
-    expect(cont.slope).toBeLessThan(0);
-    const fan = rays.find((r) => r.role === 'acceleration');
-    if (fan) {
-      expect(fan.slope).toBeGreaterThan(cont.slope);
-      expect(fan.slope).toBeLessThanOrEqual(0);
-    }
+    const eq = rays.find((r) => r.role === 'equal_angle')!;
+    expect(cont.steepening).toBe(false);
+    expect(eq.slope).toBeGreaterThan(cont.slope); // less negative
   });
 
-  it('uses % change of Δangles when three legs exist, not an arbitrary factor', () => {
-    const rays = projectExtensionFan([p(0, 100), p(50, 92), p(100, 80), p(150, 62)]);
-    const a1 = segmentAngle(50, -8);
-    const a2 = segmentAngle(50, -12);
-    const a3 = segmentAngle(50, -18);
-    const d1 = a2 - a1;
-    const d2 = a3 - a2;
-    const predicted = d2 * (d2 / d1);
-    const fan = rays.find((r) => r.role === 'acceleration')!;
-    expect(fan.slope).toBeCloseTo(Math.tan(clampProjectedAngle(a3, a3 + predicted)), 6);
-    expect(Math.abs(predictedDeltaAngle([a1, a2, a3]))).toBeCloseTo(Math.abs(predicted), 6);
-  });
-
-  it('slows the curve when three legs are flattening', () => {
-    const a1 = segmentAngle(50, -20);
-    const a2 = segmentAngle(50, -12);
-    const a3 = segmentAngle(50, -6);
-    const d1 = a2 - a1;
-    const d2 = a3 - a2;
-    expect(Math.abs(d2)).toBeLessThan(Math.abs(d1));
-    const predicted = predictedDeltaAngle([a1, a2, a3]);
-    expect(Math.abs(predicted)).toBeLessThan(Math.abs(d2) + 1e-12);
-    const rays = projectExtensionFan([p(0, 100), p(50, 80), p(100, 68), p(150, 62)]);
-    const cont = rays.find((r) => r.role === 'continuation')!;
-    const fan = rays.find((r) => r.role === 'acceleration')!;
-    expect(fan.slope).toBeGreaterThan(cont.slope);
-    expect(fan.slope).toBeLessThanOrEqual(0);
-  });
-
-  it('scales next span from the last two leg bar counts', () => {
-    const rays = projectExtensionFan([p(0, 120), p(40, 110), p(100, 95)]);
+  it('scales next span from the P1–P2 vs P2–P3 length ratio', () => {
+    const rays = projectExtensionFan(p(0, 120), p(40, 110), p(100, 95));
     expect(rays[0].spanBars).toBeGreaterThan(0);
   });
 });
@@ -333,28 +302,26 @@ describe('detectAutoTrendlines', () => {
     const fan = result.lines.filter((l) => l.kind === 'resistance' && l.role !== 'confirmed');
     const roles = new Set(fan.map((l) => l.role));
     expect(roles.has('continuation')).toBe(true);
-    expect(roles.has('acceleration')).toBe(true);
-    expect(fan.every((l) => l.role === 'continuation' || l.role === 'acceleration')).toBe(true);
+    expect(roles.has('equal_angle')).toBe(true);
+    expect(roles.has('estimated')).toBe(true);
     const cont = fan.find((l) => l.role === 'continuation')!;
-    const accel = fan.find((l) => l.role === 'acceleration')!;
-    expect(accel.slope).toBeLessThan(cont.slope);
-    expect(accel.slope).toBeLessThanOrEqual(0);
+    const eq = fan.find((l) => l.role === 'equal_angle')!;
+    const est = fan.find((l) => l.role === 'estimated')!;
+    expect(eq.slope).toBeLessThan(cont.slope);
+    expect(est.slope).toBeLessThan(eq.slope);
     const a1 = segmentAngle(50, -8);
     const a2 = segmentAngle(50, -16);
     expect(Math.abs(a2)).toBeGreaterThan(Math.abs(a1));
   });
 
-  it('projects a shallower fan when the last LH leg flattens', () => {
+  it('projects a shallower equal-angle when the last LH leg flattens', () => {
     const p0: StructurePivot = { index: 0, time: 0, price: 120, type: 'high', label: 'LH' };
     const p1: StructurePivot = { index: 50, time: 50, price: 100, type: 'high', label: 'LH' };
     const p2: StructurePivot = { index: 100, time: 100, price: 96, type: 'high', label: 'LH' };
-    const rays = projectExtensionFan([p0, p1, p2]);
+    const rays = projectExtensionFan(p0, p1, p2);
     const cont = rays.find((r) => r.role === 'continuation')!;
-    const fan = rays.find((r) => r.role === 'acceleration');
-    if (fan) {
-      expect(fan.slope).toBeGreaterThan(cont.slope);
-      expect(fan.slope).toBeLessThanOrEqual(0);
-    }
+    const eq = rays.find((r) => r.role === 'equal_angle')!;
+    expect(eq.slope).toBeGreaterThan(cont.slope);
 
     const candles = makeFlatteningLowerHighs(200);
     const result = detectAutoTrendlines(candles, enabledAll);
