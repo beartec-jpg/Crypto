@@ -74,7 +74,7 @@ export interface SwoopDrawSegment {
   color: string;
   lineWidth: number;
   lineStyle: SwoopLineStyle;
-  role: 'top' | 'bottom' | 'live-top' | 'live-bottom' | 'fan';
+  role: 'top' | 'bottom' | 'live-top' | 'live-bottom' | 'fan' | 'zigzag';
 }
 
 export interface SwoopPivotLabel {

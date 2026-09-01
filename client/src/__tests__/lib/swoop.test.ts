@@ -4,6 +4,7 @@ import {
   expectedSlopeBand,
   isShallowerThanExpected,
   logSlope,
+  collapseSwings,
   structureLowerHighs,
   structureLowerLows,
   trailingLowerHighs,
@@ -82,6 +83,43 @@ describe('isShallowerThanExpected', () => {
   });
 });
 
+describe('collapseSwings (wick zigzag)', () => {
+  it('alternates and keeps the more extreme wick when two highs print with no low between', () => {
+    const swings = [
+      { time: 1, value: 1.70, type: 'high' as const, index: 10 },
+      { time: 2, value: 1.42, type: 'low' as const, index: 20 },
+      { time: 3, value: 1.52, type: 'high' as const, index: 30 },
+      { time: 4, value: 1.55, type: 'high' as const, index: 40 },
+      { time: 5, value: 1.36, type: 'low' as const, index: 50 },
+    ];
+    const zz = collapseSwings(swings);
+    expect(zz.map((s) => s.value)).toEqual([1.7, 1.42, 1.55, 1.36]);
+    expect(zz.map((s) => s.type)).toEqual(['high', 'low', 'high', 'low']);
+  });
+
+  it('keeps the lower wick when two lows print with no high between', () => {
+    const swings = [
+      { time: 1, value: 1.70, type: 'high' as const, index: 10 },
+      { time: 2, value: 1.42, type: 'low' as const, index: 20 },
+      { time: 3, value: 1.38, type: 'low' as const, index: 30 },
+      { time: 4, value: 1.50, type: 'high' as const, index: 40 },
+    ];
+    const zz = collapseSwings(swings);
+    expect(zz.map((s) => s.value)).toEqual([1.7, 1.38, 1.5]);
+    expect(zz.map((s) => s.type)).toEqual(['high', 'low', 'high']);
+  });
+
+  it('drops an opposite pivot smaller than minPivotPct so the next same-type merges', () => {
+    const swings = [
+      { time: 1, value: 1.70, type: 'high' as const, index: 10 },
+      { time: 2, value: 1.695, type: 'low' as const, index: 14 },
+      { time: 3, value: 1.55, type: 'high' as const, index: 30 },
+    ];
+    const zz = collapseSwings(swings, 1);
+    expect(zz.map((s) => s.value)).toEqual([1.7]);
+  });
+});
+
 describe('trailingLowerHighs', () => {
   it('returns the trailing LH run only', () => {
     const highs = [
@@ -142,7 +180,7 @@ describe('detectSwoop', () => {
     expect(result.armed).toBe(false);
   });
 
-  it('arms on a flattening descending structure, spans the whole LH series, and labels pivots', () => {
+  it('arms on a flattening descending structure, draws one top/bottom line across it, and labels zigzag pivots', () => {
     const result = detectSwoop(makeFlatteningDowntrend(), {
       ...DEFAULT_SWOOP_SETTINGS,
       enabled: true,
@@ -159,8 +197,15 @@ describe('detectSwoop', () => {
     expect(result.projectBars).toBeGreaterThan(0);
     expect(result.fan.length).toBe(3);
     expect(result.drawSegments.length).toBeGreaterThan(0);
+    const tops = result.drawSegments.filter((s) => s.role === 'top');
+    const bottoms = result.drawSegments.filter((s) => s.role === 'bottom');
+    expect(tops.length).toBe(1);
+    expect(bottoms.length).toBe(1);
+    expect(result.drawSegments.some((s) => s.role === 'zigzag')).toBe(true);
     expect(result.labels.some((l) => l.text === 'H1' && l.kind === 'high')).toBe(true);
     expect(result.labels.some((l) => l.kind === 'low')).toBe(true);
+    expect(result.liveTopSlope).not.toBeNull();
+    expect(result.liveTopSlope!).toBeLessThan(0);
     expect(['armed', 'slowing', 'compressing', 'release']).toContain(result.state);
   });
 });
