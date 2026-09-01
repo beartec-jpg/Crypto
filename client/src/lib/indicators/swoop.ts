@@ -30,7 +30,7 @@ import type {
   SwoopSlopeBand,
   SwoopState,
 } from '@/types/swoop';
-import { DEFAULT_SWOOP_SETTINGS } from '@/types/swoop';
+import { DEFAULT_SWOOP_SETTINGS, SWOOP_GAP_LABEL } from '@/types/swoop';
 import { calculateSwings } from '@/lib/smc/pivots';
 import { analyzeSwoopGaps } from '@/lib/indicators/swoopGapAnalysis';
 
@@ -220,7 +220,7 @@ export function buildGapLabels(stats: SwoopGapStat[]): SwoopPivotLabel[] {
     return {
       time: (g.startTime + g.endTime) / 2,
       price: (g.startPrice + g.endPrice) / 2,
-      text: `${g.status} ${g.score}`,
+      text: `${SWOOP_GAP_LABEL[g.status]} ${g.score}`,
       sub: flags.length ? flags.join(' \u00b7 ') : undefined,
       kind: g.side === 'top' ? 'high' : 'low',
     };
@@ -388,23 +388,34 @@ function relMove(a: number, b: number): number {
 function isDeceleratingDescent(segs: SwoopSegment[]): boolean {
   if (segs.length < 2) return false;
   const slopes = segs.map((s) => s.slope);
-  if (slopes[slopes.length - 1] > 0) return false;
+  // The open of the run must be a dump; the last gap may already be flat.
+  if (slopes[0] >= 0) return false;
   let flattening = 0;
   for (let i = 1; i < slopes.length; i++) {
-    if (Math.abs(slopes[i]) < Math.abs(slopes[i - 1]) - 1e-12) flattening++;
+    if (slopes[i] > slopes[i - 1] + 1e-12) flattening++;
   }
   return flattening >= Math.ceil((slopes.length - 1) / 2);
 }
 
-function runIsFlat(points: SwoopPoint[], maxRel = 0.012): boolean {
+function overallDump(points: SwoopPoint[]): number {
+  if (points.length < 2) return 0;
+  const first = points[0].price;
+  const last = points[points.length - 1].price;
+  return (first - last) / Math.max(Math.abs(first), 1e-12);
+}
+
+function pointsMostlyFlat(points: SwoopPoint[], maxRel = 0.01): boolean {
   if (points.length < 2) return false;
-  return relMove(points[0].price, points[points.length - 1].price) <= maxRel * Math.max(1, points.length - 1);
+  let flat = 0;
+  for (let i = 1; i < points.length; i++) {
+    if (relMove(points[i - 1].price, points[i].price) <= maxRel) flat++;
+  }
+  return flat / (points.length - 1) >= 0.75;
 }
 
 /**
- * Pick the structure-book profile from LH / HL / LL runs on screen.
- * Swoop = curved (decelerating) LH top. Triangle = LH + HL.
- * Down compression = LH + LL wedge. Channel = both sides near horizontal.
+ * Whole-structure profile. A dump that flattens at the end is still a swoop
+ * (completing), not a channel. Channel only if the entire run is sideways.
  */
 export function classifyBookPattern(
   lh: SwoopPoint[],
@@ -417,20 +428,28 @@ export function classifyBookPattern(
   const hasHL = hl.length >= 2;
   if (!hasLH) return { pattern: 'none', bottom: 'none' };
 
-  const topFlat = runIsFlat(lh);
-  const botFlat = (hasHL && runIsFlat(hl)) || (hasLL && runIsFlat(ll));
-  if (topFlat && botFlat) {
-    return { pattern: 'channel', bottom: hasHL && runIsFlat(hl) ? 'hl' : 'll' };
+  const dump = overallDump(lh);
+  const curved = isDeceleratingDescent(topSegs);
+  const bottom: 'll' | 'hl' | 'none' = hasHL ? 'hl' : hasLL ? 'll' : 'none';
+
+  const wholeChannel =
+    dump < 0.03 &&
+    pointsMostlyFlat(lh) &&
+    ((hasHL && pointsMostlyFlat(hl)) || (hasLL && pointsMostlyFlat(ll)) || (!hasHL && !hasLL));
+  if (wholeChannel) return { pattern: 'channel', bottom: hasHL ? 'hl' : hasLL ? 'll' : 'none' };
+
+  // Completing swoop: real LH dump that decelerated, even if the last gap is flat
+  // or the last lows have started to rise (HL).
+  if (dump >= 0.03 && curved) {
+    return { pattern: 'swoop', bottom };
   }
-  if (hasHL) {
+
+  if (hasHL && dump < 0.12) {
     return { pattern: 'equal_compression', bottom: 'hl' };
   }
-  if (hasLL) {
-    if (isDeceleratingDescent(topSegs)) return { pattern: 'swoop', bottom: 'll' };
-    return { pattern: 'down_compression', bottom: 'll' };
-  }
-  if (isDeceleratingDescent(topSegs)) return { pattern: 'swoop', bottom: 'none' };
-  return { pattern: 'down_compression', bottom: 'none' };
+  if (hasLL) return { pattern: 'down_compression', bottom: 'll' };
+  if (hasHL) return { pattern: 'equal_compression', bottom: 'hl' };
+  return { pattern: dump >= 0.03 ? 'swoop' : 'down_compression', bottom: 'none' };
 }
 
 export interface SwoopVisibleRange {

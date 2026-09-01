@@ -78,6 +78,16 @@ export type SwoopGapStatus =
   | 'demand'
   | 'neutral';
 
+export const SWOOP_GAP_LABEL: Record<SwoopGapStatus, string> = {
+  markdown: 'selling',
+  absorption: 'absorption',
+  test: 'low-vol test',
+  divergence: 'divergence',
+  coil: 'coil',
+  demand: 'demand',
+  neutral: 'quiet',
+};
+
 export interface SwoopGapStat {
   side: 'top' | 'bottom';
   gapIndex: number;

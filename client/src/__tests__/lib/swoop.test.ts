@@ -206,8 +206,8 @@ describe('classifyBookPattern', () => {
   });
 
   it('labels LH + HL as equal compression (triangle)', () => {
-    const lh = [p(10, 20), p(20, 18), p(30, 16.5)];
-    const hl = [p(12, 10), p(22, 11), p(32, 12)];
+    const lh = [p(10, 10.2), p(20, 10.08), p(30, 9.96)];
+    const hl = [p(12, 9.4), p(22, 9.52), p(32, 9.64)];
     const top = [seg(lh[0], lh[1]), seg(lh[1], lh[2])];
     expect(classifyBookPattern(lh, [], hl, top)).toEqual({
       pattern: 'equal_compression',
