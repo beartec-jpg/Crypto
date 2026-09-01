@@ -27,7 +27,7 @@ export function SwoopRenderer({ chart, candleSeries, result, settings }: SwoopRe
       return;
     }
 
-    const primitive = new SwoopPrimitive(result.drawSegments);
+    const primitive = new SwoopPrimitive(result.drawSegments, result.labels ?? []);
     try {
       candleSeries.attachPrimitive(primitive);
       primitiveRef.current = primitive;
@@ -50,7 +50,7 @@ export function SwoopRenderer({ chart, candleSeries, result, settings }: SwoopRe
 
   useEffect(() => {
     if (primitiveRef.current && shouldShow) {
-      primitiveRef.current.update(result.drawSegments);
+      primitiveRef.current.update(result.drawSegments, result.labels ?? []);
     }
   }, [result, shouldShow]);
 

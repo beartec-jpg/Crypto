@@ -8,7 +8,7 @@ import type {
   ISeriesApi,
   SeriesType,
 } from 'lightweight-charts';
-import type { SwoopDrawSegment, SwoopLineStyle } from '@/types/swoop';
+import type { SwoopDrawSegment, SwoopLineStyle, SwoopPivotLabel } from '@/types/swoop';
 
 type RequestUpdateCallback = () => void;
 
@@ -34,12 +34,13 @@ function hexWithAlpha(color: string, alpha: number): string {
 class SwoopRenderer implements IPrimitivePaneRenderer {
   constructor(
     private _segments: SwoopDrawSegment[],
+    private _labels: SwoopPivotLabel[],
     private _series: ISeriesApi<SeriesType> | null,
     private _chart: IChartApi | null,
   ) {}
 
   draw(target: any) {
-    if (!this._series || !this._chart || this._segments.length === 0) return;
+    if (!this._series || !this._chart) return;
 
     target.useMediaCoordinateSpace((scope: any) => {
       const ctx: CanvasRenderingContext2D = scope.context;
@@ -62,6 +63,25 @@ class SwoopRenderer implements IPrimitivePaneRenderer {
         ctx.stroke();
         ctx.setLineDash([]);
       }
+
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textBaseline = 'middle';
+      for (const lab of this._labels) {
+        const x = timeScale.timeToCoordinate(lab.time as Time);
+        const y = this._series!.priceToCoordinate(lab.price);
+        if (x === null || y === null) continue;
+        const color = lab.kind === 'high' ? '#f87171' : '#fb7185';
+        ctx.fillStyle = hexWithAlpha(color, 0.9);
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fill();
+        const textY = lab.kind === 'high' ? y - 10 : y + 12;
+        const width = ctx.measureText(lab.text).width;
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+        ctx.fillRect(x + 5, textY - 7, width + 6, 14);
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillText(lab.text, x + 8, textY);
+      }
     });
   }
 }
@@ -69,22 +89,25 @@ class SwoopRenderer implements IPrimitivePaneRenderer {
 class SwoopPaneView implements IPrimitivePaneView {
   constructor(
     private _segments: SwoopDrawSegment[],
+    private _labels: SwoopPivotLabel[],
     private _series: ISeriesApi<SeriesType> | null,
     private _chart: IChartApi | null,
   ) {}
 
   update(
     segments: SwoopDrawSegment[],
+    labels: SwoopPivotLabel[],
     series: ISeriesApi<SeriesType> | null,
     chart: IChartApi | null,
   ) {
     this._segments = segments;
+    this._labels = labels;
     this._series = series;
     this._chart = chart;
   }
 
   renderer(): IPrimitivePaneRenderer {
-    return new SwoopRenderer(this._segments, this._series, this._chart);
+    return new SwoopRenderer(this._segments, this._labels, this._series, this._chart);
   }
 
   zOrder() {
@@ -94,21 +117,23 @@ class SwoopPaneView implements IPrimitivePaneView {
 
 export class SwoopPrimitive implements ISeriesPrimitive<Time> {
   private _segments: SwoopDrawSegment[] = [];
+  private _labels: SwoopPivotLabel[] = [];
   private _chart: IChartApi | null = null;
   private _series: ISeriesApi<SeriesType> | null = null;
   private _requestUpdate: RequestUpdateCallback | null = null;
   private _paneView: SwoopPaneView;
 
-  constructor(segments: SwoopDrawSegment[] = []) {
+  constructor(segments: SwoopDrawSegment[] = [], labels: SwoopPivotLabel[] = []) {
     this._segments = segments;
-    this._paneView = new SwoopPaneView(segments, null, null);
+    this._labels = labels;
+    this._paneView = new SwoopPaneView(segments, labels, null, null);
   }
 
   attached(param: SeriesAttachedParameter<Time>): void {
     this._chart = param.chart;
     this._series = param.series;
     this._requestUpdate = param.requestUpdate;
-    this._paneView.update(this._segments, this._series, this._chart);
+    this._paneView.update(this._segments, this._labels, this._series, this._chart);
   }
 
   detached(): void {
@@ -117,9 +142,10 @@ export class SwoopPrimitive implements ISeriesPrimitive<Time> {
     this._requestUpdate = null;
   }
 
-  update(segments: SwoopDrawSegment[]): void {
+  update(segments: SwoopDrawSegment[], labels: SwoopPivotLabel[] = []): void {
     this._segments = segments;
-    this._paneView.update(segments, this._series, this._chart);
+    this._labels = labels;
+    this._paneView.update(segments, labels, this._series, this._chart);
     this._requestUpdate?.();
   }
 

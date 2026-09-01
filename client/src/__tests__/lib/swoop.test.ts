@@ -4,6 +4,8 @@ import {
   expectedSlopeBand,
   isShallowerThanExpected,
   logSlope,
+  structureLowerHighs,
+  structureLowerLows,
   trailingLowerHighs,
   type SwoopCandle,
 } from '@/lib/indicators/swoop';
@@ -94,10 +96,39 @@ describe('trailingLowerHighs', () => {
 
   it('returns empty when last highs are not lower', () => {
     const highs = [
-      { index: 0, time: 0, price: 10 },
-      { index: 5, time: 5, price: 11 },
+      { index: 0, time: 0, price: 1.403 },
+      { index: 5, time: 5, price: 1.433 },
     ];
     expect(trailingLowerHighs(highs, 2)).toEqual([]);
+  });
+});
+
+describe('structureLowerHighs', () => {
+  it('keeps the envelope from the major top when a late bounce prints a higher high', () => {
+    const highs = [
+      { index: 10, time: 10, price: 1.7 },
+      { index: 40, time: 40, price: 1.55 },
+      { index: 80, time: 80, price: 1.47 },
+      { index: 110, time: 110, price: 1.403 },
+      { index: 140, time: 140, price: 1.433 },
+    ];
+    const run = structureLowerHighs(highs, 2, { lastIndex: 160, lookbackBars: 200 });
+    expect(run.length).toBeGreaterThanOrEqual(3);
+    expect(run[0].price).toBe(1.7);
+    expect(run.some((p) => p.price === 1.433)).toBe(false);
+  });
+});
+
+describe('structureLowerLows', () => {
+  it('spans lows after the major top and skips a later higher low', () => {
+    const lows = [
+      { index: 5, time: 5, price: 1.50 },
+      { index: 20, time: 20, price: 1.36 },
+      { index: 50, time: 50, price: 1.40 },
+      { index: 90, time: 90, price: 1.335 },
+    ];
+    const run = structureLowerLows(lows, 10, 2);
+    expect(run.map((p) => p.price)).toEqual([1.36, 1.335]);
   });
 });
 
@@ -111,19 +142,25 @@ describe('detectSwoop', () => {
     expect(result.armed).toBe(false);
   });
 
-  it('arms on a flattening descending structure and projects a fan', () => {
+  it('arms on a flattening descending structure, spans the whole LH series, and labels pivots', () => {
     const result = detectSwoop(makeFlatteningDowntrend(), {
       ...DEFAULT_SWOOP_SETTINGS,
       enabled: true,
       swingLength: 3,
       minLowerHighs: 2,
+      minPivotPct: 0,
       showFan: true,
+      showPivotLabels: true,
     });
     expect(result.armed).toBe(true);
     expect(result.highs.length).toBeGreaterThanOrEqual(2);
+    expect(result.highs[0].price).toBeGreaterThanOrEqual(result.highs[result.highs.length - 1].price);
+    expect(result.lows.length).toBeGreaterThanOrEqual(1);
     expect(result.projectBars).toBeGreaterThan(0);
     expect(result.fan.length).toBe(3);
     expect(result.drawSegments.length).toBeGreaterThan(0);
+    expect(result.labels.some((l) => l.text === 'H1' && l.kind === 'high')).toBe(true);
+    expect(result.labels.some((l) => l.kind === 'low')).toBe(true);
     expect(['armed', 'slowing', 'compressing', 'release']).toContain(result.state);
   });
 });

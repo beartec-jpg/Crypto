@@ -1,11 +1,11 @@
 import { useState, useCallback } from 'react';
 import { DEFAULT_SWOOP_SETTINGS, type SwoopSettings } from '@/types/swoop';
 
-const STORAGE_KEY = 'swoop-tool-settings';
+const STORAGE_KEY = 'swoop-tool-settings-v2';
 
 function loadSettings(): SwoopSettings {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem('swoop-tool-settings');
     if (stored) {
       const parsed = JSON.parse(stored);
       return { ...DEFAULT_SWOOP_SETTINGS, ...parsed };

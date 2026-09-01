@@ -10,8 +10,11 @@ export interface SwoopSettings {
   enabled: boolean;
   swingLength: number;
   minLowerHighs: number;
+  /** Ignore reversals smaller than this percent so large spikes aren't drowned in 5-bar chop. */
+  minPivotPct: number;
   showFan: boolean;
   showHud: boolean;
+  showPivotLabels: boolean;
   topColor: string;
   bottomColor: string;
   fanColor: string;
@@ -22,10 +25,12 @@ export interface SwoopSettings {
 
 export const DEFAULT_SWOOP_SETTINGS: SwoopSettings = {
   enabled: false,
-  swingLength: 5,
+  swingLength: 12,
   minLowerHighs: 2,
+  minPivotPct: 1,
   showFan: true,
   showHud: true,
+  showPivotLabels: true,
   topColor: '#f87171',
   bottomColor: '#fb7185',
   fanColor: '#fbbf24',
@@ -72,6 +77,13 @@ export interface SwoopDrawSegment {
   role: 'top' | 'bottom' | 'live-top' | 'live-bottom' | 'fan';
 }
 
+export interface SwoopPivotLabel {
+  time: number;
+  price: number;
+  text: string;
+  kind: 'high' | 'low';
+}
+
 export interface SwoopResult {
   state: SwoopState;
   armed: boolean;
@@ -90,5 +102,6 @@ export interface SwoopResult {
   projectBars: number;
   fan: SwoopFanRay[];
   drawSegments: SwoopDrawSegment[];
+  labels: SwoopPivotLabel[];
   label: string;
 }
