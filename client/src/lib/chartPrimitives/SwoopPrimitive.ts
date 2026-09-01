@@ -54,7 +54,9 @@ class SwoopRenderer implements IPrimitivePaneRenderer {
         if (x1 === null || y1 === null || x2 === null || y2 === null) continue;
 
         ctx.beginPath();
-        ctx.strokeStyle = seg.role === 'fan' ? hexWithAlpha(seg.color, 0.55) : seg.color;
+        if (seg.role === 'zigzag') ctx.strokeStyle = hexWithAlpha(seg.color, 0.4);
+        else if (seg.role === 'fan') ctx.strokeStyle = hexWithAlpha(seg.color, 0.55);
+        else ctx.strokeStyle = seg.color;
         ctx.lineWidth = Math.max(1, seg.lineWidth);
         ctx.lineCap = 'round';
         applyDash(ctx, seg.lineStyle, seg.lineWidth);

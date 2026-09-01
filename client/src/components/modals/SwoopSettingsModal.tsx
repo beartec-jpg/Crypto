@@ -44,9 +44,9 @@ export function SwoopSettingsModal({
 
         <div className="p-4 space-y-3">
           <p className="text-[11px] text-slate-400 leading-snug">
-            Arms from the major swing top and draws top / bottom lines across the whole
-            lower-high structure. Use a larger pivot length on 1h+ charts so a 20% spike
-            is not drowned in 5-bar chop.
+            Zigzag of length N from wick extremes (N bars left and right of the high/low
+            wick, alternating H-L). One top line and one bottom line span the whole
+            lower-high structure. HUD shows P{'{n}'} for the current length.
           </p>
 
           <div className="flex items-center justify-between">

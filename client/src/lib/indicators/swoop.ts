@@ -1,5 +1,13 @@
 /**
  * Swoop — predictive pivot-slope accumulation envelope.
+ *
+ * Pivots are a zigzag of length N from wick extremes:
+ *   1. n-bar fractal: wick high/low is the extreme of N bars left and N right
+ *   2. swings must alternate H-L-H-L; consecutive same-type keep the more extreme wick
+ *   3. minPivotPct is the minimum reversal to confirm the opposite pivot
+ *
+ * Trend lines are one top and one bottom across the whole lower-high structure,
+ * not a polyline through every fractal.
  */
 import type { CandleData } from '@/types/chart.types';
 import type {
@@ -68,6 +76,10 @@ function toPoint(index: number, time: number, price: number): SwoopPoint {
   return { index, time, price };
 }
 
+function swingToPoint(s: SwingLike): SwoopPoint {
+  return toPoint(s.index, s.time, s.value);
+}
+
 function buildSegments(points: SwoopPoint[]): SwoopSegment[] {
   const segs: SwoopSegment[] = [];
   for (let i = 1; i < points.length; i++) {
@@ -115,42 +127,51 @@ function fmtPx(n: number): string {
   return n.toFixed(5);
 }
 
-function buildPivotLabels(highs: SwoopPoint[], lows: SwoopPoint[]): SwoopPivotLabel[] {
+/** Label zigzag pivots in order: H1, L1, H2, L2… */
+export function buildZigzagLabels(swings: SwingLike[]): SwoopPivotLabel[] {
   const labels: SwoopPivotLabel[] = [];
-  highs.forEach((h, i) => labels.push({ time: h.time, price: h.price, text: `H${i + 1}`, kind: 'high' }));
-  lows.forEach((l, i) => labels.push({ time: l.time, price: l.price, text: `L${i + 1}`, kind: 'low' }));
+  let hi = 0;
+  let lo = 0;
+  for (const s of swings) {
+    if (s.type === 'high') {
+      hi += 1;
+      labels.push({ time: s.time, price: s.value, text: `H${hi}`, kind: 'high' });
+    } else {
+      lo += 1;
+      labels.push({ time: s.time, price: s.value, text: `L${lo}`, kind: 'low' });
+    }
+  }
   return labels;
 }
 
 /**
- * Merge same-type fractals that sit on top of each other (within a few bars)
- * and drop reversals smaller than minPivotPct. Distinct structure highs a
- * dozen bars apart are kept even if no trough was confirmed between them.
+ * True zigzag from n-bar wick fractals.
+ * Consecutive same-type swings keep the more extreme wick (highest high / lowest low).
+ * Opposite pivots must reverse at least minPivotPct or they are not confirmed.
  */
 export function collapseSwings(swings: SwingLike[], minPivotPct = 0): SwingLike[] {
   if (swings.length === 0) return [];
-  const alt: SwingLike[] = [];
+  const zz: SwingLike[] = [];
   const threshold = minPivotPct / 100;
-  const clusterBars = 8;
 
   for (const s of swings) {
-    if (alt.length === 0) {
-      alt.push(s);
+    if (zz.length === 0) {
+      zz.push(s);
       continue;
     }
-    const last = alt[alt.length - 1];
-    if (s.type === last.type && s.index - last.index <= clusterBars) {
+    const last = zz[zz.length - 1];
+    if (s.type === last.type) {
       const moreExtreme = s.type === 'high' ? s.value >= last.value : s.value <= last.value;
-      if (moreExtreme) alt[alt.length - 1] = s;
+      if (moreExtreme) zz[zz.length - 1] = s;
       continue;
     }
-    if (s.type !== last.type && threshold > 0) {
+    if (threshold > 0) {
       const change = Math.abs(s.value - last.value) / Math.max(last.value, 1e-12);
       if (change < threshold) continue;
     }
-    alt.push(s);
+    zz.push(s);
   }
-  return alt;
+  return zz;
 }
 
 export function trailingLowerHighs(highs: SwoopPoint[], minCount: number): SwoopPoint[] {
@@ -232,13 +253,20 @@ export function structureLowerLows(
   return pool.slice(0, Math.min(Math.max(minCount, 1), pool.length));
 }
 
+function structureSlope(points: SwoopPoint[]): number | null {
+  if (points.length < 2) return null;
+  const a = points[0];
+  const b = points[points.length - 1];
+  return logSlope(a.price, b.price, b.index - a.index);
+}
+
 export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DEFAULT_SWOOP_SETTINGS): SwoopResult {
   if (!settings.enabled || !candles || candles.length < settings.swingLength * 2 + 4) return EMPTY;
   const minPivotPct = settings.minPivotPct ?? 0;
   const raw = calculateSwings(candles as CandleData[], settings.swingLength);
   const swings = collapseSwings(raw, minPivotPct);
-  const highs: SwoopPoint[] = swings.filter((s) => s.type === 'high').map((s) => toPoint(s.index, s.time, s.value));
-  const lows: SwoopPoint[] = swings.filter((s) => s.type === 'low').map((s) => toPoint(s.index, s.time, s.value));
+  const highs: SwoopPoint[] = swings.filter((s) => s.type === 'high').map(swingToPoint);
+  const lows: SwoopPoint[] = swings.filter((s) => s.type === 'low').map(swingToPoint);
   const lastIdx = candles.length - 1;
   const lhRun = structureLowerHighs(highs, settings.minLowerHighs, {
     minPivotPct,
@@ -254,7 +282,7 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
     } else if (highs.length < settings.minLowerHighs) {
       reason = `Idle · need ${settings.minLowerHighs} lower highs`;
     }
-    const labels = settings.showPivotLabels ? buildPivotLabels(highs.slice(-6), lows.slice(-6)) : [];
+    const labels = settings.showPivotLabels ? buildZigzagLabels(swings.slice(-8)) : [];
     return { ...EMPTY, highs, lows, labels, label: reason };
   }
   const llRun = structureLowerLows(lows, lhRun[0].index, 2, { minPivotPct });
@@ -271,6 +299,8 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
   const expectedBottomBand = bottomSegments.length >= 2
     ? expectedSlopeBand(bottomSegments[bottomSegments.length - 2].slope, bottomSegments[bottomSegments.length - 1].slope)
     : bottomSegments.length === 1 ? { lo: bottomSegments[0].slope, mid: bottomSegments[0].slope, hi: bottomSegments[0].slope } : null;
+  const structureTopSlope = structureSlope(lhRun);
+  const structureBottomSlope = structureSlope(llRun);
   let liveHighPrice = lastHigh.price;
   let liveHighIndex = lastHigh.index;
   let lowAfterHighIndex = -1;
@@ -288,10 +318,10 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
     }
   }
   const lastCompletedTopSlope = topSegments.length ? topSegments[topSegments.length - 1].slope : null;
-  const liveTopSlope = liveHighIndex > lastHigh.index
+  const formingTopSlope = liveHighIndex > lastHigh.index
     ? logSlope(lastHigh.price, liveHighPrice, liveHighIndex - lastHigh.index)
     : lastCompletedTopSlope;
-  let liveBottomSlope: number | null = null;
+  let formingBottomSlope: number | null = null;
   let liveLowPrice = lastLow?.price ?? lastCandle.low;
   let liveLowIndex = lastLow?.index ?? lastIdx;
   if (lastLow) {
@@ -301,26 +331,28 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
       if (candles[i].low <= liveLowPrice) { liveLowPrice = candles[i].low; liveLowIndex = i; }
     }
     if (liveLowIndex === lastLow.index) { liveLowPrice = lastCandle.low; liveLowIndex = lastIdx; }
-    liveBottomSlope = liveLowIndex > lastLow.index
+    formingBottomSlope = liveLowIndex > lastLow.index
       ? logSlope(lastLow.price, liveLowPrice, liveLowIndex - lastLow.index)
       : bottomSegments.length ? bottomSegments[bottomSegments.length - 1].slope : null;
   }
+  const liveTopSlope = structureTopSlope ?? formingTopSlope;
+  const liveBottomSlope = structureBottomSlope ?? formingBottomSlope;
   const topSlopeForGap = liveTopSlope ?? expectedTopBand?.mid ?? 0;
-  const botAnchor = lastLow ?? { index: 0, time: candles[0].time, price: candles[0].low };
+  const botAnchor = llRun[0] ?? lastLow ?? { index: 0, time: candles[0].time, price: candles[0].low };
   const botSlopeForGap = liveBottomSlope ?? expectedBottomBand?.mid ?? 0;
-  const upperNow = linePriceAt(lastHigh, topSlopeForGap, lastIdx);
+  const upperNow = linePriceAt(lhRun[0], topSlopeForGap, lastIdx);
   const lowerNow = linePriceAt(botAnchor, botSlopeForGap, lastIdx);
   const gap = Math.max(0, upperNow - lowerNow);
   const armIndex = lhRun[1]?.index ?? lastHigh.index;
-  const upperArm = linePriceAt(lastHigh, topSegments[0]?.slope ?? topSlopeForGap, armIndex);
-  const lowerArm = lastLow ? linePriceAt(botAnchor, bottomSegments[0]?.slope ?? botSlopeForGap, armIndex) : upperArm * 0.98;
+  const upperArm = linePriceAt(lhRun[0], topSlopeForGap, armIndex);
+  const lowerArm = linePriceAt(botAnchor, botSlopeForGap, armIndex);
   const armGap = Math.max(gap, Math.abs(upperArm - lowerArm));
   const compression = armGap > 0 ? Math.max(0, Math.min(1, 1 - gap / armGap)) : 0;
   const flatten = settings.flattenThreshold;
-  const topFlattening = liveTopSlope != null && liveTopSlope >= -flatten;
-  const topShallower = liveTopSlope != null && expectedTopBand != null && (liveTopSlope > expectedTopBand.mid + flatten * 0.25 || isShallowerThanExpected(liveTopSlope, expectedTopBand));
+  const topFlattening = formingTopSlope != null && formingTopSlope >= -flatten;
+  const topShallower = formingTopSlope != null && expectedTopBand != null && (formingTopSlope > expectedTopBand.mid + flatten * 0.25 || isShallowerThanExpected(formingTopSlope, expectedTopBand));
   const slowing = topFlattening || topShallower;
-  const compressing = compression >= 0.18 && (slowing || (liveBottomSlope != null && expectedBottomBand != null && liveBottomSlope > expectedBottomBand.mid - flatten));
+  const compressing = compression >= 0.18 && (slowing || (formingBottomSlope != null && expectedBottomBand != null && formingBottomSlope > expectedBottomBand.mid - flatten));
   const closeAboveTop = lastCandle.close > upperNow * 1.001;
   let state: SwoopState = 'armed';
   if (closeAboveTop && (slowing || compressing)) state = 'release';
@@ -339,15 +371,55 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
   const pushSeg = (start: SwoopPoint, end: { time: number; price: number }, color: string, role: SwoopDrawSegment['role'], style: SwoopDrawSegment['lineStyle'] = settings.lineStyle, width = settings.lineWidth) => {
     drawSegments.push({ startTime: start.time, startPrice: start.price, endTime: end.time, endPrice: end.price, color, lineWidth: width, lineStyle: style, role });
   };
-  for (const seg of topSegments) pushSeg(seg.start, seg.end, settings.topColor, 'top');
-  for (const seg of bottomSegments) pushSeg(seg.start, seg.end, settings.bottomColor, 'bottom');
-  if (liveHighIndex > lastHigh.index) pushSeg(lastHigh, { time: candles[liveHighIndex].time, price: liveHighPrice }, settings.topColor, 'live-top', 'dashed', Math.max(1, settings.lineWidth));
-  if (lastLow && liveLowIndex > lastLow.index) pushSeg(lastLow, { time: candles[liveLowIndex].time, price: liveLowPrice }, settings.bottomColor, 'live-bottom', 'dashed', Math.max(1, settings.lineWidth));
+  const zzFromTop = swings.filter((s) => s.index >= lhRun[0].index);
+  for (let i = 1; i < zzFromTop.length; i++) {
+    const a = zzFromTop[i - 1];
+    const b = zzFromTop[i];
+    pushSeg(swingToPoint(a), { time: b.time, price: b.value }, settings.topColor, 'zigzag', 'solid', 1);
+  }
+  const extendIndex = lastIdx + projectBars;
+  const extendTime = projectTime(candles, lastIdx, projectBars);
+  if (lhRun.length >= 2 && structureTopSlope != null) {
+    pushSeg(lhRun[0], { time: extendTime, price: linePriceAt(lhRun[0], structureTopSlope, extendIndex) }, settings.topColor, 'top');
+  } else if (lhRun.length === 1) {
+    pushSeg(lhRun[0], { time: extendTime, price: linePriceAt(lhRun[0], topSlopeForGap, extendIndex) }, settings.topColor, 'top');
+  }
+  if (llRun.length >= 2 && structureBottomSlope != null) {
+    pushSeg(llRun[0], { time: extendTime, price: linePriceAt(llRun[0], structureBottomSlope, extendIndex) }, settings.bottomColor, 'bottom');
+  } else if (llRun.length === 1) {
+    pushSeg(llRun[0], { time: extendTime, price: linePriceAt(llRun[0], botSlopeForGap, extendIndex) }, settings.bottomColor, 'bottom');
+  }
+  if (liveHighIndex > lastHigh.index) {
+    pushSeg(lastHigh, { time: candles[liveHighIndex].time, price: liveHighPrice }, settings.topColor, 'live-top', 'dashed', Math.max(1, settings.lineWidth));
+  }
+  if (lastLow && liveLowIndex > lastLow.index) {
+    pushSeg(lastLow, { time: candles[liveLowIndex].time, price: liveLowPrice }, settings.bottomColor, 'live-bottom', 'dashed', Math.max(1, settings.lineWidth));
+  }
   if (settings.showFan) {
     for (const ray of fan) {
       drawSegments.push({ startTime: ray.startTime, startPrice: ray.startPrice, endTime: ray.endTime, endPrice: ray.endPrice, color: settings.fanColor, lineWidth: ray.kind === 'mid' ? settings.lineWidth : 1, lineStyle: ray.kind === 'mid' ? 'dashed' : 'dotted', role: 'fan' });
     }
   }
-  const labels = settings.showPivotLabels ? buildPivotLabels(lhRun, llRun) : [];
-  return { state, armed: true, highs: lhRun, lows: llRun, topSegments, bottomSegments, liveTopSlope, liveBottomSlope, expectedTopBand, expectedBottomBand, gap, armGap, compression, prevGapBars: Math.round(prevGapBars), projectBars, fan, drawSegments, labels, label: stateLabel(state, compression) };
+  const labels = settings.showPivotLabels ? buildZigzagLabels(zzFromTop) : [];
+  return {
+    state,
+    armed: true,
+    highs: lhRun,
+    lows: llRun,
+    topSegments,
+    bottomSegments,
+    liveTopSlope,
+    liveBottomSlope,
+    expectedTopBand,
+    expectedBottomBand,
+    gap,
+    armGap,
+    compression,
+    prevGapBars: Math.round(prevGapBars),
+    projectBars,
+    fan,
+    drawSegments,
+    labels,
+    label: stateLabel(state, compression),
+  };
 }
