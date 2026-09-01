@@ -14,6 +14,7 @@ export interface SwoopSettings {
   minPivotPct: number;
   showFan: boolean;
   showHud: boolean;
+  showPivotLabels: boolean;
   topColor: string;
   bottomColor: string;
   fanColor: string;
@@ -29,6 +30,7 @@ export const DEFAULT_SWOOP_SETTINGS: SwoopSettings = {
   minPivotPct: 1,
   showFan: true,
   showHud: true,
+  showPivotLabels: true,
   topColor: '#f87171',
   bottomColor: '#fb7185',
   fanColor: '#fbbf24',
@@ -75,6 +77,13 @@ export interface SwoopDrawSegment {
   role: 'top' | 'bottom' | 'live-top' | 'live-bottom' | 'fan';
 }
 
+export interface SwoopPivotLabel {
+  time: number;
+  price: number;
+  text: string;
+  kind: 'high' | 'low';
+}
+
 export interface SwoopResult {
   state: SwoopState;
   armed: boolean;
@@ -93,5 +102,6 @@ export interface SwoopResult {
   projectBars: number;
   fan: SwoopFanRay[];
   drawSegments: SwoopDrawSegment[];
+  labels: SwoopPivotLabel[];
   label: string;
 }

@@ -5,6 +5,7 @@ import {
   isShallowerThanExpected,
   logSlope,
   structureLowerHighs,
+  structureLowerLows,
   trailingLowerHighs,
   type SwoopCandle,
 } from '@/lib/indicators/swoop';
@@ -118,6 +119,19 @@ describe('structureLowerHighs', () => {
   });
 });
 
+describe('structureLowerLows', () => {
+  it('spans lows after the major top and skips a later higher low', () => {
+    const lows = [
+      { index: 5, time: 5, price: 1.50 },
+      { index: 20, time: 20, price: 1.36 },
+      { index: 50, time: 50, price: 1.40 },
+      { index: 90, time: 90, price: 1.335 },
+    ];
+    const run = structureLowerLows(lows, 10, 2);
+    expect(run.map((p) => p.price)).toEqual([1.36, 1.335]);
+  });
+});
+
 describe('detectSwoop', () => {
   it('stays idle when disabled', () => {
     const result = detectSwoop(makeFlatteningDowntrend(), {
@@ -128,7 +142,7 @@ describe('detectSwoop', () => {
     expect(result.armed).toBe(false);
   });
 
-  it('arms on a flattening descending structure and projects a fan', () => {
+  it('arms on a flattening descending structure, spans the whole LH series, and labels pivots', () => {
     const result = detectSwoop(makeFlatteningDowntrend(), {
       ...DEFAULT_SWOOP_SETTINGS,
       enabled: true,
@@ -136,12 +150,17 @@ describe('detectSwoop', () => {
       minLowerHighs: 2,
       minPivotPct: 0,
       showFan: true,
+      showPivotLabels: true,
     });
     expect(result.armed).toBe(true);
     expect(result.highs.length).toBeGreaterThanOrEqual(2);
+    expect(result.highs[0].price).toBeGreaterThanOrEqual(result.highs[result.highs.length - 1].price);
+    expect(result.lows.length).toBeGreaterThanOrEqual(1);
     expect(result.projectBars).toBeGreaterThan(0);
     expect(result.fan.length).toBe(3);
     expect(result.drawSegments.length).toBeGreaterThan(0);
+    expect(result.labels.some((l) => l.text === 'H1' && l.kind === 'high')).toBe(true);
+    expect(result.labels.some((l) => l.kind === 'low')).toBe(true);
     expect(['armed', 'slowing', 'compressing', 'release']).toContain(result.state);
   });
 });

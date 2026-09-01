@@ -5,6 +5,7 @@ import type { CandleData } from '@/types/chart.types';
 import type {
   SwoopDrawSegment,
   SwoopFanRay,
+  SwoopPivotLabel,
   SwoopPoint,
   SwoopResult,
   SwoopSegment,
@@ -44,6 +45,7 @@ const EMPTY: SwoopResult = {
   projectBars: 0,
   fan: [],
   drawSegments: [],
+  labels: [],
   label: 'Idle',
 };
 
@@ -111,6 +113,13 @@ function fmtPx(n: number): string {
   if (n >= 100) return n.toFixed(2);
   if (n >= 1) return n.toFixed(3);
   return n.toFixed(5);
+}
+
+function buildPivotLabels(highs: SwoopPoint[], lows: SwoopPoint[]): SwoopPivotLabel[] {
+  const labels: SwoopPivotLabel[] = [];
+  highs.forEach((h, i) => labels.push({ time: h.time, price: h.price, text: `H${i + 1}`, kind: 'high' }));
+  lows.forEach((l, i) => labels.push({ time: l.time, price: l.price, text: `L${i + 1}`, kind: 'low' }));
+  return labels;
 }
 
 /**
@@ -197,6 +206,32 @@ export function structureLowerHighs(
   return seq.length >= minCount ? seq : [];
 }
 
+/**
+ * Bottom of the same structure: swing lows after the major top, keeping
+ * successive lower lows so the channel spans the whole dump, not just the
+ * last two troughs.
+ */
+export function structureLowerLows(
+  lows: SwoopPoint[],
+  afterIndex: number,
+  minCount = 2,
+  options: { minPivotPct?: number } = {},
+): SwoopPoint[] {
+  const minPct = (options.minPivotPct ?? 0) / 100;
+  const pool = lows.filter((l) => l.index > afterIndex);
+  if (pool.length === 0) return [];
+  const seq: SwoopPoint[] = [pool[0]];
+  for (let i = 1; i < pool.length; i++) {
+    const l = pool[i];
+    const last = seq[seq.length - 1];
+    if (l.price >= last.price) continue;
+    if (minPct > 0 && (last.price - l.price) / last.price < minPct) continue;
+    seq.push(l);
+  }
+  if (seq.length >= minCount) return seq;
+  return pool.slice(0, Math.min(Math.max(minCount, 1), pool.length));
+}
+
 export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DEFAULT_SWOOP_SETTINGS): SwoopResult {
   if (!settings.enabled || !candles || candles.length < settings.swingLength * 2 + 4) return EMPTY;
   const minPivotPct = settings.minPivotPct ?? 0;
@@ -219,9 +254,10 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
     } else if (highs.length < settings.minLowerHighs) {
       reason = `Idle · need ${settings.minLowerHighs} lower highs`;
     }
-    return { ...EMPTY, highs, lows, label: reason };
+    const labels = settings.showPivotLabels ? buildPivotLabels(highs.slice(-6), lows.slice(-6)) : [];
+    return { ...EMPTY, highs, lows, labels, label: reason };
   }
-  const llRun = trailingLowerLows(lows, 2);
+  const llRun = structureLowerLows(lows, lhRun[0].index, 2, { minPivotPct });
   const lastCandle = candles[lastIdx];
   const topSegments = buildSegments(lhRun);
   const bottomSegments = buildSegments(llRun);
@@ -312,5 +348,6 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
       drawSegments.push({ startTime: ray.startTime, startPrice: ray.startPrice, endTime: ray.endTime, endPrice: ray.endPrice, color: settings.fanColor, lineWidth: ray.kind === 'mid' ? settings.lineWidth : 1, lineStyle: ray.kind === 'mid' ? 'dashed' : 'dotted', role: 'fan' });
     }
   }
-  return { state, armed: true, highs: lhRun, lows: llRun, topSegments, bottomSegments, liveTopSlope, liveBottomSlope, expectedTopBand, expectedBottomBand, gap, armGap, compression, prevGapBars: Math.round(prevGapBars), projectBars, fan, drawSegments, label: stateLabel(state, compression) };
+  const labels = settings.showPivotLabels ? buildPivotLabels(lhRun, llRun) : [];
+  return { state, armed: true, highs: lhRun, lows: llRun, topSegments, bottomSegments, liveTopSlope, liveBottomSlope, expectedTopBand, expectedBottomBand, gap, armGap, compression, prevGapBars: Math.round(prevGapBars), projectBars, fan, drawSegments, labels, label: stateLabel(state, compression) };
 }

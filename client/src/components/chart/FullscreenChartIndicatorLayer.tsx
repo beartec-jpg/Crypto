@@ -35,7 +35,7 @@ import type { PredictedLiquidityPoint, LiquidationZone } from '@/hooks/useLiquid
 const IDLE_SWOOP: SwoopResult = {
   state: 'idle', armed: false, highs: [], lows: [], topSegments: [], bottomSegments: [],
   liveTopSlope: null, liveBottomSlope: null, expectedTopBand: null, expectedBottomBand: null,
-  gap: null, armGap: null, compression: null, prevGapBars: 0, projectBars: 0, fan: [], drawSegments: [], label: 'Idle',
+  gap: null, armGap: null, compression: null, prevGapBars: 0, projectBars: 0, fan: [], drawSegments: [], labels: [], label: 'Idle',
 };
 
 interface FullscreenChartIndicatorLayerProps {
@@ -170,7 +170,7 @@ export function FullscreenChartIndicatorLayer(props: FullscreenChartIndicatorLay
       <VolumeEmaOverlay chart={chart} candles={candles} show={volumeEmaEnabled} settings={volumeEmaSettings} />
       <AutoTrendlineRenderer chart={chart} candleSeries={candleSeries} result={autoTrendlineResult} settings={autoTrendlineSettings} lastIndex={Math.max(0, (candles?.length ?? 1) - 1)} lastTime={candles?.length ? (candles[candles.length - 1] as { time?: number })?.time ?? null : null} />
       <SwoopRenderer chart={chart} candleSeries={candleSeries} result={swoopResult} settings={swoopSettings} />
-      <SwoopHud result={swoopResult} visible={swoopSettings.enabled && swoopSettings.showHud} />
+      <SwoopHud result={swoopResult} visible={swoopSettings.enabled && swoopSettings.showHud} pivotLength={swoopSettings.swingLength} />
       {divergenceScannerEnabled && (
         <DivergenceRenderer chart={chart} candleSeries={candleSeries} divergencePoints={filteredDivergencePoints} onBadgeClick={onSelectDivergencePoint} settings={divergenceSettings} />
       )}

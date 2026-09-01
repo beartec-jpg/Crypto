@@ -3,6 +3,7 @@ import type { SwoopResult } from '@/types/swoop';
 interface SwoopHudProps {
   result: SwoopResult;
   visible: boolean;
+  pivotLength: number;
 }
 
 function stateClass(state: SwoopResult['state']): string {
@@ -26,7 +27,7 @@ function fmtSlope(s: number | null): string {
   return `${pct >= 0 ? '+' : ''}${pct.toFixed(3)}%/bar`;
 }
 
-export function SwoopHud({ result, visible }: SwoopHudProps) {
+export function SwoopHud({ result, visible, pivotLength }: SwoopHudProps) {
   if (!visible) return null;
 
   return (
@@ -36,6 +37,7 @@ export function SwoopHud({ result, visible }: SwoopHudProps) {
     >
       <div className="flex items-center gap-1.5">
         <span className="font-bold tracking-wide">SWOOP</span>
+        <span className="rounded bg-black/35 px-1 font-mono text-[10px] text-slate-200">P{pivotLength}</span>
         <span className="font-semibold">{result.label}</span>
       </div>
       <div className="text-[10px] text-slate-300 mt-0.5 space-y-0.5">
