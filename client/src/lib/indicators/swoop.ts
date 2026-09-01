@@ -171,13 +171,14 @@ function linePriceAt(anchor: SwoopPoint, slope: number, index: number): number {
 }
 
 function projectTime(candles: SwoopCandle[], fromIndex: number, barsAhead: number): number {
-  const last = candles[candles.length - 1];
-  const prev = candles[Math.max(0, candles.length - 2)];
+  const lastIdx = candles.length - 1;
+  const last = candles[lastIdx];
+  const prev = candles[Math.max(0, lastIdx - 1)];
   const step = last && prev ? Math.max(1, last.time - prev.time) : 1;
-  const base = candles[Math.min(fromIndex, candles.length - 1)]?.time ?? last?.time ?? 0;
-  const extra = Math.max(0, fromIndex + barsAhead - (candles.length - 1));
-  if (fromIndex + barsAhead <= candles.length - 1) return candles[fromIndex + barsAhead].time;
-  return base + extra * step;
+  const target = fromIndex + barsAhead;
+  if (target <= lastIdx && target >= 0) return candles[target].time;
+  const extra = target - lastIdx;
+  return (last?.time ?? 0) + extra * step;
 }
 
 function stateLabel(state: SwoopState, compression: number | null): string {
@@ -436,17 +437,26 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
   else if (compressing) state = 'compressing';
   else if (slowing) state = 'slowing';
   const fan: SwoopFanRay[] = [];
-  const pushFan = (anchor: SwoopPoint, band: SwoopSlopeBand, side: 'top' | 'bottom') => {
+  const pushFan = (
+    anchor: SwoopPoint,
+    band: SwoopSlopeBand,
+    side: 'top' | 'bottom',
+    lastSeg: SwoopSegment | undefined,
+  ) => {
     // LH / LL projection must stay with the descent. A positive last-leg
     // is not this structure — skip so we never fire a ray up through price.
     if (band.mid > 1e-12) return;
-    const endTime = projectTime(candles, anchor.index, projectBars);
+    // Copy the last gap's Δtime so the dashed base is the same on-chart
+    // angle as that segment (price/time), not a bar-count chord into "now".
+    const dt = lastSeg ? lastSeg.end.time - lastSeg.start.time : 0;
+    const bars = lastSeg?.lengthBars ?? projectBars;
+    const endTime = dt > 0 ? anchor.time + dt : projectTime(candles, anchor.index, bars);
     const pushRay = (kind: SwoopFanRay['kind'], slope: number) => {
       fan.push({
         startTime: anchor.time,
         startPrice: anchor.price,
         endTime,
-        endPrice: linePriceAt(anchor, slope, anchor.index + projectBars),
+        endPrice: anchor.price + slope * bars,
         kind,
         side,
       });
@@ -456,8 +466,8 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
     const edgeSlope = edgeKind === 'lo' ? band.lo : edgeKind === 'hi' ? band.hi : band.mid;
     if (edgeKind !== 'mid') pushRay(edgeKind, edgeSlope);
   };
-  if (settings.showFan && expectedTopBand) pushFan(lastHigh, expectedTopBand, 'top');
-  if (settings.showFan && expectedBottomBand && lastLow) pushFan(lastLow, expectedBottomBand, 'bottom');
+  if (settings.showFan && expectedTopBand) pushFan(lastHigh, expectedTopBand, 'top', lastTop);
+  if (settings.showFan && expectedBottomBand && lastLow) pushFan(lastLow, expectedBottomBand, 'bottom', lastBot);
   const drawSegments: SwoopDrawSegment[] = [];
   const pushSeg = (start: SwoopPoint, end: { time: number; price: number }, color: string, role: SwoopDrawSegment['role'], style: SwoopDrawSegment['lineStyle'] = settings.lineStyle, width = settings.lineWidth) => {
     drawSegments.push({ startTime: start.time, startPrice: start.price, endTime: end.time, endPrice: end.price, color, lineWidth: width, lineStyle: style, role });

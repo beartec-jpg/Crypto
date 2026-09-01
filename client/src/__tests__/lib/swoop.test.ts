@@ -270,8 +270,8 @@ describe('detectSwoop', () => {
     expect(base).toBeDefined();
     expect(base!.startPrice).toBe(lastSeg.end.price);
     expect(base!.startTime).toBe(lastSeg.end.time);
-    const drawnSlope = (base!.endPrice - base!.startPrice) / result.projectBars;
-    expect(drawnSlope).toBeCloseTo(lastSeg.slope, 10);
-    expect(result.projectBars).toBeGreaterThanOrEqual(lastSeg.lengthBars);
+    // Same vector as the last gap → same on-chart angle.
+    expect(base!.endPrice - base!.startPrice).toBeCloseTo(lastSeg.end.price - lastSeg.start.price, 10);
+    expect(base!.endTime - base!.startTime).toBe(lastSeg.end.time - lastSeg.start.time);
   });
 });
