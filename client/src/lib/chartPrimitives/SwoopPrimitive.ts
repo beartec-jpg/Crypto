@@ -66,23 +66,33 @@ class SwoopRenderer implements IPrimitivePaneRenderer {
         ctx.setLineDash([]);
       }
 
-      ctx.font = 'bold 10px sans-serif';
-      ctx.textBaseline = 'middle';
+      ctx.textBaseline = 'top';
       for (const lab of this._labels) {
         const x = timeScale.timeToCoordinate(lab.time as Time);
         const y = this._series!.priceToCoordinate(lab.price);
         if (x === null || y === null) continue;
-        const color = lab.kind === 'high' ? '#f87171' : '#fb7185';
-        ctx.fillStyle = hexWithAlpha(color, 0.9);
-        ctx.beginPath();
-        ctx.arc(x, y, 3, 0, Math.PI * 2);
-        ctx.fill();
-        const textY = lab.kind === 'high' ? y - 10 : y + 12;
-        const width = ctx.measureText(lab.text).width;
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
-        ctx.fillRect(x + 5, textY - 7, width + 6, 14);
+        const lines = lab.sub ? [lab.text, lab.sub] : [lab.text];
+        ctx.font = 'bold 10px sans-serif';
+        const w0 = ctx.measureText(lines[0]).width;
+        ctx.font = '9px sans-serif';
+        const w1 = lines[1] ? ctx.measureText(lines[1]).width : 0;
+        const boxW = Math.max(w0, w1) + 10;
+        const boxH = lines[1] ? 26 : 14;
+        const boxX = x - boxW / 2;
+        const boxY = lab.kind === 'high' ? y - boxH - 8 : y + 8;
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+        ctx.fillRect(boxX, boxY, boxW, boxH);
+        ctx.strokeStyle = lab.kind === 'high' ? 'rgba(248,113,113,0.45)' : 'rgba(251,113,133,0.45)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(boxX, boxY, boxW, boxH);
         ctx.fillStyle = '#e2e8f0';
-        ctx.fillText(lab.text, x + 8, textY);
+        ctx.font = 'bold 10px sans-serif';
+        ctx.fillText(lines[0], boxX + 5, boxY + 2);
+        if (lines[1]) {
+          ctx.fillStyle = '#94a3b8';
+          ctx.font = '9px sans-serif';
+          ctx.fillText(lines[1], boxX + 5, boxY + 14);
+        }
       }
     });
   }

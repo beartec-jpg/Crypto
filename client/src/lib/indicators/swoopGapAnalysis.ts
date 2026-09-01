@@ -183,6 +183,8 @@ function analyzeOne(
     gapIndex: index,
     startTime: seg.start.time,
     endTime: seg.end.time,
+    startPrice: seg.start.price,
+    endPrice: seg.end.price,
     status,
     score,
     priceChangePct,

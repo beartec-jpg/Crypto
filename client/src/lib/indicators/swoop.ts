@@ -20,6 +20,7 @@ import type { CandleData } from '@/types/chart.types';
 import type {
   SwoopDrawSegment,
   SwoopFanRay,
+  SwoopGapStat,
   SwoopPivotLabel,
   SwoopPoint,
   SwoopResult,
@@ -203,7 +204,30 @@ function fmtPx(n: number): string {
   return n.toFixed(5);
 }
 
-/** Label zigzag pivots in order: H1, L1, H2, L2… */
+const FLAG_SHORT: Record<string, string> = {
+  cvd_vs_price: 'CVD\u2191/px\u2193',
+  rsi_div: 'RSI div',
+  vol_dry: 'vol dry',
+  up_bar_vol: 'up-vol',
+  flattening: 'flat',
+  range_shrink: 'tight',
+};
+
+/** Place gap-status text on the chart at the midpoint of each pivot period. */
+export function buildGapLabels(stats: SwoopGapStat[]): SwoopPivotLabel[] {
+  return stats.map((g) => {
+    const flags = g.flags.map((f) => FLAG_SHORT[f] ?? f).filter(Boolean);
+    return {
+      time: (g.startTime + g.endTime) / 2,
+      price: (g.startPrice + g.endPrice) / 2,
+      text: `${g.status} ${g.score}`,
+      sub: flags.length ? flags.join(' \u00b7 ') : undefined,
+      kind: g.side === 'top' ? 'high' : 'low',
+    };
+  });
+}
+
+/** @deprecated H/L markers — kept for older tests; chart now uses buildGapLabels. */
 export function buildZigzagLabels(swings: SwingLike[]): SwoopPivotLabel[] {
   const labels: SwoopPivotLabel[] = [];
   let hi = 0;
@@ -489,7 +513,7 @@ export function detectSwoop(
     } else if (highs.length < settings.minLowerHighs) {
       reason = `Idle · need ${settings.minLowerHighs} lower highs`;
     }
-    const labels = settings.showPivotLabels ? buildZigzagLabels(swings.slice(-8)) : [];
+    const labels: SwoopPivotLabel[] = [];
     return { ...EMPTY, highs, lows, labels, label: reason };
   }
   const llRun = structureLowerLows(lows, lhRun[0].index, 2, { minPivotPct });
@@ -649,8 +673,8 @@ export function detectSwoop(
       });
     }
   }
-  const zzFromTop = swings.filter((s) => s.index >= lhRun[0].index);
-  const labels = settings.showPivotLabels ? buildZigzagLabels(zzFromTop) : [];
+  const gapStats = analyzeSwoopGaps(series, topSegments, bottomSegments);
+  const labels = settings.showPivotLabels ? buildGapLabels(gapStats) : [];
   return {
     state,
     pattern: book.pattern,
@@ -672,6 +696,6 @@ export function detectSwoop(
     drawSegments,
     labels,
     label: stateLabel(state, compression),
-    gapStats: analyzeSwoopGaps(series, topSegments, bottomSegments),
+    gapStats,
   };
 }

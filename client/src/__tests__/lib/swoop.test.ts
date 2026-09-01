@@ -317,8 +317,9 @@ describe('detectSwoop', () => {
     }
     expect(result.drawSegments.some((s) => s.role === 'zigzag')).toBe(false);
     expect(result.drawSegments.some((s) => s.role === 'fan')).toBe(true);
-    expect(result.labels.some((l) => l.text === 'H1' && l.kind === 'high')).toBe(true);
-    expect(result.labels.some((l) => l.kind === 'low')).toBe(true);
+    expect(result.labels.length).toBe(result.gapStats.length);
+    expect(result.labels.some((l) => l.kind === 'high')).toBe(true);
+    expect(result.labels.every((l) => !/^H\d+$/.test(l.text))).toBe(true);
     expect(result.liveTopSlope).not.toBeNull();
     expect(result.liveTopSlope!).toBeLessThan(0);
     expect(['armed', 'slowing', 'compressing', 'release']).toContain(result.state);

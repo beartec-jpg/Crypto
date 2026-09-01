@@ -66,7 +66,7 @@ export function SwoopSettingsModal({
             />
           </div>
           <div className="flex items-center justify-between">
-            <Label className="text-xs text-slate-300">Pivot labels</Label>
+            <Label className="text-xs text-slate-300">Period details on chart</Label>
             <Switch
               checked={settings.showPivotLabels !== false}
               onCheckedChange={(showPivotLabels) => onSettingsChange({ showPivotLabels })}

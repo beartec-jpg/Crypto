@@ -83,6 +83,8 @@ export interface SwoopGapStat {
   gapIndex: number;
   startTime: number;
   endTime: number;
+  startPrice: number;
+  endPrice: number;
   status: SwoopGapStatus;
   /** 0–100 accumulation-before-breakout score. */
   score: number;
@@ -131,6 +133,8 @@ export interface SwoopPivotLabel {
   time: number;
   price: number;
   text: string;
+  /** Second line (CVD / vol / RSI flags). */
+  sub?: string;
   kind: 'high' | 'low';
 }
 

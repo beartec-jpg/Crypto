@@ -1,4 +1,4 @@
-import { SWOOP_BOOK_LABEL, type SwoopGapStat, type SwoopResult } from '@/types/swoop';
+import { SWOOP_BOOK_LABEL, type SwoopResult } from '@/types/swoop';
 
 interface SwoopHudProps {
   result: SwoopResult;
@@ -25,10 +25,6 @@ function fmtSlope(s: number | null): string {
   if (s == null || !Number.isFinite(s)) return '\u2014';
   const pct = s * 100;
   return `${pct >= 0 ? '+' : ''}${pct.toFixed(3)}%/bar`;
-}
-
-function gapWord(g: SwoopGapStat): string {
-  return `${g.side === 'top' ? 'H' : 'L'}${g.gapIndex + 1} ${g.status} ${g.score}`;
 }
 
 function angleWord(band: SwoopResult['expectedTopBand']): string {
@@ -66,15 +62,6 @@ export function SwoopHud({ result, visible, pivotLength }: SwoopHudProps) {
         {result.compression != null && result.armed && (
           <div>Gap {Math.round(result.compression * 100)}% tight · proj {result.projectBars} bars</div>
         )}
-        {result.gapStats
-          .filter((g) => g.side === 'top')
-          .slice(-3)
-          .map((g) => (
-            <div key={`t${g.gapIndex}`} className="font-mono text-[10px] text-slate-200/90">
-              {gapWord(g)}
-              {g.flags.includes('cvd_vs_price') ? ' · CVD↑/px↓' : ''}
-            </div>
-          ))}
       </div>
     </div>
   );
