@@ -8,6 +8,7 @@ import {
   structureLowerHighs,
   structureLowerLows,
   trailingLowerHighs,
+  projectLength,
   type SwoopCandle,
 } from '@/lib/indicators/swoop';
 import { DEFAULT_SWOOP_SETTINGS } from '@/types/swoop';
@@ -66,12 +67,25 @@ describe('expectedSlopeBand', () => {
     const band = expectedSlopeBand(-0.001, -0.002);
     expect(band.hi).toBe(-0.002);
     expect(band.lo).toBeLessThan(-0.002);
+    expect(band.mid).toBe(-0.002);
   });
 
   it('expects same or shallower after a shallower print', () => {
     const band = expectedSlopeBand(-0.003, -0.001);
     expect(band.lo).toBe(-0.001);
     expect(band.hi).toBeGreaterThan(-0.001);
+    expect(band.mid).toBe(-0.001);
+  });
+});
+
+describe('projectLength', () => {
+  it('scales the next leg by last/prev length ratio', () => {
+    expect(projectLength(20, 10)).toBe(5);
+    expect(projectLength(10, 20)).toBe(40);
+  });
+
+  it('falls back to the last length when there is no previous leg', () => {
+    expect(projectLength(0, 16)).toBe(16);
   });
 });
 
@@ -180,7 +194,7 @@ describe('detectSwoop', () => {
     expect(result.armed).toBe(false);
   });
 
-  it('arms on a flattening descending structure, draws one top/bottom line across it, and labels zigzag pivots', () => {
+  it('draws a trend line between each consecutive lower high and lower low', () => {
     const result = detectSwoop(makeFlatteningDowntrend(), {
       ...DEFAULT_SWOOP_SETTINGS,
       enabled: true,
@@ -195,17 +209,32 @@ describe('detectSwoop', () => {
     expect(result.highs[0].price).toBeGreaterThanOrEqual(result.highs[result.highs.length - 1].price);
     expect(result.lows.length).toBeGreaterThanOrEqual(1);
     expect(result.projectBars).toBeGreaterThan(0);
-    expect(result.fan.length).toBe(3);
+    expect(result.fan.length).toBeGreaterThanOrEqual(3);
     expect(result.drawSegments.length).toBeGreaterThan(0);
     const tops = result.drawSegments.filter((s) => s.role === 'top');
     const bottoms = result.drawSegments.filter((s) => s.role === 'bottom');
-    expect(tops.length).toBe(1);
-    expect(bottoms.length).toBe(1);
-    expect(result.drawSegments.some((s) => s.role === 'zigzag')).toBe(true);
+    expect(tops.length).toBe(result.highs.length - 1);
+    expect(tops.length).toBeGreaterThanOrEqual(1);
+    for (let i = 0; i < tops.length; i++) {
+      expect(tops[i].startPrice).toBe(result.highs[i].price);
+      expect(tops[i].endPrice).toBe(result.highs[i + 1].price);
+      expect(tops[i].startTime).toBe(result.highs[i].time);
+      expect(tops[i].endTime).toBe(result.highs[i + 1].time);
+    }
+    if (result.lows.length >= 2) {
+      expect(bottoms.length).toBe(result.lows.length - 1);
+      for (let i = 0; i < bottoms.length; i++) {
+        expect(bottoms[i].startPrice).toBe(result.lows[i].price);
+        expect(bottoms[i].endPrice).toBe(result.lows[i + 1].price);
+      }
+    }
+    expect(result.drawSegments.some((s) => s.role === 'zigzag')).toBe(false);
+    expect(result.drawSegments.some((s) => s.role === 'fan')).toBe(true);
     expect(result.labels.some((l) => l.text === 'H1' && l.kind === 'high')).toBe(true);
     expect(result.labels.some((l) => l.kind === 'low')).toBe(true);
     expect(result.liveTopSlope).not.toBeNull();
     expect(result.liveTopSlope!).toBeLessThan(0);
     expect(['armed', 'slowing', 'compressing', 'release']).toContain(result.state);
+    expect(result.topSegments.length).toBe(result.highs.length - 1);
   });
 });
