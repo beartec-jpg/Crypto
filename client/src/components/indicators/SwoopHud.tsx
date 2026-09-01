@@ -1,4 +1,4 @@
-import type { SwoopGapStat, SwoopResult } from '@/types/swoop';
+import { SWOOP_BOOK_LABEL, type SwoopGapStat, type SwoopResult } from '@/types/swoop';
 
 interface SwoopHudProps {
   result: SwoopResult;
@@ -48,9 +48,10 @@ export function SwoopHud({ result, visible, pivotLength }: SwoopHudProps) {
       data-testid="swoop-hud"
     >
       <div className="flex items-center gap-1.5">
-        <span className="font-bold tracking-wide">SWOOP</span>
+        <span className="font-bold tracking-wide">BOOK</span>
         <span className="rounded bg-black/35 px-1 font-mono text-[10px] text-slate-200">P{pivotLength}</span>
-        <span className="font-semibold">{result.label}</span>
+        <span className="font-semibold">{SWOOP_BOOK_LABEL[result.pattern ?? 'none']}</span>
+        <span className="text-slate-400">{result.label}</span>
       </div>
       <div className="text-[10px] text-slate-300 mt-0.5 space-y-0.5">
         <div>

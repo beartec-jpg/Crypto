@@ -193,8 +193,8 @@ export function ToolsMenu({
           </div>
           <div className="flex items-center justify-between py-1.5 px-1">
             <div className="min-w-0 mr-3">
-              <div className="text-sm font-medium text-slate-100 leading-tight">Swoop</div>
-              <div className="text-xs text-slate-400 leading-tight">LH/LL lines + same-angle base and one acceleration fan</div>
+              <div className="text-sm font-medium text-slate-100 leading-tight">Structure book</div>
+              <div className="text-xs text-slate-400 leading-tight">Swoop, triangle, down wedge, channel from visible pivots</div>
             </div>
             <div className="flex items-center gap-1">
               <Switch checked={swoopEnabled} onCheckedChange={onToggleSwoop} className="shrink-0 data-[state=checked]:bg-blue-600" data-testid="switch-swoop-tool" />

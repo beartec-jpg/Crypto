@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
+  classifyBookPattern,
   detectSwoop,
   expectedSlopeBand,
   isShallowerThanExpected,
   predictNextSlope,
   logSlope,
   collapseSwings,
+  structureHigherLows,
   structureLowerHighs,
   structureLowerLows,
   trailingLowerHighs,
@@ -194,6 +196,48 @@ describe('structureLowerHighs', () => {
   });
 });
 
+describe('classifyBookPattern', () => {
+  const p = (index: number, price: number) => ({ index, time: index, price });
+  const seg = (a: { index: number; price: number }, b: { index: number; price: number }) => ({
+    start: { ...a, time: a.index },
+    end: { ...b, time: b.index },
+    slope: (b.price - a.price) / (b.index - a.index),
+    lengthBars: b.index - a.index,
+  });
+
+  it('labels LH + HL as equal compression (triangle)', () => {
+    const lh = [p(10, 20), p(20, 18), p(30, 16.5)];
+    const hl = [p(12, 10), p(22, 11), p(32, 12)];
+    const top = [seg(lh[0], lh[1]), seg(lh[1], lh[2])];
+    expect(classifyBookPattern(lh, [], hl, top)).toEqual({
+      pattern: 'equal_compression',
+      bottom: 'hl',
+    });
+  });
+
+  it('labels LH + LL with flattening top as swoop', () => {
+    const lh = [p(10, 20), p(30, 16), p(50, 14.5)];
+    const ll = [p(15, 12), p(35, 10), p(55, 8)];
+    const top = [seg(lh[0], lh[1]), seg(lh[1], lh[2])];
+    expect(Math.abs(top[1].slope)).toBeLessThan(Math.abs(top[0].slope));
+    expect(classifyBookPattern(lh, ll, [], top).pattern).toBe('swoop');
+  });
+
+  it('labels LH + LL with a steep last gap as down compression', () => {
+    const lh = [p(10, 20), p(30, 18), p(50, 12)];
+    const ll = [p(15, 14), p(35, 11), p(55, 7)];
+    const top = [seg(lh[0], lh[1]), seg(lh[1], lh[2])];
+    expect(classifyBookPattern(lh, ll, [], top).pattern).toBe('down_compression');
+  });
+
+  it('labels two flat sides as channel', () => {
+    const lh = [p(10, 20.0), p(30, 20.05), p(50, 19.98)];
+    const ll = [p(15, 18.0), p(35, 18.02), p(55, 17.99)];
+    const top = [seg(lh[0], lh[1]), seg(lh[1], lh[2])];
+    expect(classifyBookPattern(lh, ll, [], top).pattern).toBe('channel');
+  });
+});
+
 describe('structureLowerLows', () => {
   it('spans lows after the major top and skips a later higher low', () => {
     const lows = [
@@ -204,6 +248,19 @@ describe('structureLowerLows', () => {
     ];
     const run = structureLowerLows(lows, 10, 2);
     expect(run.map((p) => p.price)).toEqual([1.36, 1.335]);
+  });
+});
+
+describe('structureHigherLows', () => {
+  it('keeps the trough then every higher low', () => {
+    const lows = [
+      { index: 10, time: 10, price: 1.20 },
+      { index: 20, time: 20, price: 1.10 },
+      { index: 40, time: 40, price: 1.14 },
+      { index: 60, time: 60, price: 1.18 },
+    ];
+    const run = structureHigherLows(lows, 5, 2);
+    expect(run.map((p) => p.price)).toEqual([1.10, 1.14, 1.18]);
   });
 });
 
@@ -228,6 +285,7 @@ describe('detectSwoop', () => {
       showPivotLabels: true,
     });
     expect(result.armed).toBe(true);
+    expect(['swoop', 'down_compression', 'equal_compression', 'channel']).toContain(result.pattern);
     expect(result.highs.length).toBeGreaterThanOrEqual(2);
     expect(result.highs[0].price).toBeGreaterThanOrEqual(result.highs[result.highs.length - 1].price);
     expect(result.lows.length).toBeGreaterThanOrEqual(1);

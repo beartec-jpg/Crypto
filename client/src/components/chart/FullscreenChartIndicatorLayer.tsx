@@ -33,7 +33,7 @@ import type { LiquidityHeatmapDebugInfo } from '@/hooks/useLiquidityHeatmapData'
 import type { PredictedLiquidityPoint, LiquidationZone } from '@/hooks/useLiquidityPivotAnalysis';
 
 const IDLE_SWOOP: SwoopResult = {
-  state: 'idle', armed: false, highs: [], lows: [], topSegments: [], bottomSegments: [],
+  state: 'idle', pattern: 'none', armed: false, highs: [], lows: [], topSegments: [], bottomSegments: [],
   liveTopSlope: null, liveBottomSlope: null, expectedTopBand: null, expectedBottomBand: null,
   gap: null, armGap: null, compression: null, prevGapBars: 0, projectBars: 0, fan: [], drawSegments: [], labels: [], label: 'Idle', gapStats: [],
 };

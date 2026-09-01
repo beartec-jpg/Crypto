@@ -31,7 +31,7 @@ export function SwoopSettingsModal({
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="bg-slate-900 border-slate-700 text-slate-100 max-w-sm p-0 gap-0">
         <DialogHeader className="px-4 py-3 border-b border-slate-700 flex flex-row items-center justify-between">
-          <DialogTitle className="text-sm font-semibold">Swoop</DialogTitle>
+          <DialogTitle className="text-sm font-semibold">Structure book</DialogTitle>
           <Button
             variant="ghost"
             size="sm"
@@ -44,9 +44,9 @@ export function SwoopSettingsModal({
 
         <div className="p-4 space-y-3">
           <p className="text-[11px] text-slate-400 leading-snug">
-            Zigzag of length N from wick extremes in the visible range. Confirmed
-            lines join each LH/LL on screen. Forecast is a dashed base at the last
-            line’s angle plus one dotted fan from the Δangles of every gap in view.
+            Visible-range zigzag. Classifies the envelope as Swoop (curved LH
+            deceleration), equal compression (LH+HL triangle), down compression
+            (LH+LL wedge), or channel (flat). Fan is last-gap angle plus Δ-fit.
           </p>
 
           <div className="flex items-center justify-between">

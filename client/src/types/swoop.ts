@@ -4,6 +4,22 @@
 
 export type SwoopState = 'idle' | 'armed' | 'slowing' | 'compressing' | 'release';
 
+/** Profiles in the structure book. Swoop is one of them, not the book itself. */
+export type SwoopBookPattern =
+  | 'none'
+  | 'swoop'
+  | 'equal_compression'
+  | 'down_compression'
+  | 'channel';
+
+export const SWOOP_BOOK_LABEL: Record<SwoopBookPattern, string> = {
+  none: 'Idle',
+  swoop: 'Swoop',
+  equal_compression: 'Equal compression',
+  down_compression: 'Down compression',
+  channel: 'Channel',
+};
+
 export type SwoopLineStyle = 'solid' | 'dashed' | 'dotted';
 
 export interface SwoopSettings {
@@ -120,6 +136,7 @@ export interface SwoopPivotLabel {
 
 export interface SwoopResult {
   state: SwoopState;
+  pattern: SwoopBookPattern;
   armed: boolean;
   highs: SwoopPoint[];
   lows: SwoopPoint[];

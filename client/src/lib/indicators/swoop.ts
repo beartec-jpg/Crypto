@@ -24,6 +24,7 @@ import type {
   SwoopPoint,
   SwoopResult,
   SwoopSegment,
+  SwoopBookPattern,
   SwoopSettings,
   SwoopSlopeBand,
   SwoopState,
@@ -46,6 +47,7 @@ interface SwingLike {
 
 const EMPTY: SwoopResult = {
   state: 'idle',
+  pattern: 'none',
   armed: false,
   highs: [],
   lows: [],
@@ -327,6 +329,86 @@ export function structureLowerLows(
   return pool.slice(0, Math.min(Math.max(minCount, 1), pool.length));
 }
 
+/**
+ * Higher-low run after the major top: trough, then every higher low.
+ * Used for equal compression (triangle): LH + HL.
+ */
+export function structureHigherLows(
+  lows: SwoopPoint[],
+  afterIndex: number,
+  minCount = 2,
+  options: { minPivotPct?: number } = {},
+): SwoopPoint[] {
+  const minPct = (options.minPivotPct ?? 0) / 100;
+  const pool = lows.filter((l) => l.index > afterIndex);
+  if (pool.length < minCount) return [];
+  let trough = 0;
+  for (let i = 1; i < pool.length; i++) {
+    if (pool[i].price < pool[trough].price) trough = i;
+  }
+  const seq: SwoopPoint[] = [pool[trough]];
+  for (let i = trough + 1; i < pool.length; i++) {
+    const l = pool[i];
+    const last = seq[seq.length - 1];
+    if (l.price <= last.price) continue;
+    if (minPct > 0 && (l.price - last.price) / last.price < minPct) continue;
+    seq.push(l);
+  }
+  return seq.length >= minCount ? seq : [];
+}
+
+function relMove(a: number, b: number): number {
+  return Math.abs(b - a) / Math.max(Math.abs(a), 1e-12);
+}
+
+function isDeceleratingDescent(segs: SwoopSegment[]): boolean {
+  if (segs.length < 2) return false;
+  const slopes = segs.map((s) => s.slope);
+  if (slopes[slopes.length - 1] > 0) return false;
+  let flattening = 0;
+  for (let i = 1; i < slopes.length; i++) {
+    if (Math.abs(slopes[i]) < Math.abs(slopes[i - 1]) - 1e-12) flattening++;
+  }
+  return flattening >= Math.ceil((slopes.length - 1) / 2);
+}
+
+function runIsFlat(points: SwoopPoint[], maxRel = 0.012): boolean {
+  if (points.length < 2) return false;
+  return relMove(points[0].price, points[points.length - 1].price) <= maxRel * Math.max(1, points.length - 1);
+}
+
+/**
+ * Pick the structure-book profile from LH / HL / LL runs on screen.
+ * Swoop = curved (decelerating) LH top. Triangle = LH + HL.
+ * Down compression = LH + LL wedge. Channel = both sides near horizontal.
+ */
+export function classifyBookPattern(
+  lh: SwoopPoint[],
+  ll: SwoopPoint[],
+  hl: SwoopPoint[],
+  topSegs: SwoopSegment[],
+): { pattern: SwoopBookPattern; bottom: 'll' | 'hl' | 'none' } {
+  const hasLH = lh.length >= 2;
+  const hasLL = ll.length >= 2;
+  const hasHL = hl.length >= 2;
+  if (!hasLH) return { pattern: 'none', bottom: 'none' };
+
+  const topFlat = runIsFlat(lh);
+  const botFlat = (hasHL && runIsFlat(hl)) || (hasLL && runIsFlat(ll));
+  if (topFlat && botFlat) {
+    return { pattern: 'channel', bottom: hasHL && runIsFlat(hl) ? 'hl' : 'll' };
+  }
+  if (hasHL) {
+    return { pattern: 'equal_compression', bottom: 'hl' };
+  }
+  if (hasLL) {
+    if (isDeceleratingDescent(topSegs)) return { pattern: 'swoop', bottom: 'll' };
+    return { pattern: 'down_compression', bottom: 'll' };
+  }
+  if (isDeceleratingDescent(topSegs)) return { pattern: 'swoop', bottom: 'none' };
+  return { pattern: 'down_compression', bottom: 'none' };
+}
+
 export interface SwoopVisibleRange {
   fromIndex?: number;
   toIndex?: number;
@@ -411,11 +493,14 @@ export function detectSwoop(
     return { ...EMPTY, highs, lows, labels, label: reason };
   }
   const llRun = structureLowerLows(lows, lhRun[0].index, 2, { minPivotPct });
+  const hlRun = structureHigherLows(lows, lhRun[0].index, 2, { minPivotPct });
   const lastCandle = series[lastIdx];
   const topSegments = buildSegments(lhRun);
-  const bottomSegments = buildSegments(llRun);
+  const book = classifyBookPattern(lhRun, llRun, hlRun, topSegments);
+  const bottomRun = book.bottom === 'hl' ? hlRun : book.bottom === 'll' ? llRun : [];
+  const bottomSegments = buildSegments(bottomRun);
   const lastHigh = lhRun[lhRun.length - 1];
-  const lastLow = llRun.length ? llRun[llRun.length - 1] : null;
+  const lastLow = bottomRun.length ? bottomRun[bottomRun.length - 1] : null;
   const lastTop = topSegments[topSegments.length - 1];
   const prevTop = topSegments[topSegments.length - 2];
   const lastBot = bottomSegments[bottomSegments.length - 1];
@@ -568,9 +653,10 @@ export function detectSwoop(
   const labels = settings.showPivotLabels ? buildZigzagLabels(zzFromTop) : [];
   return {
     state,
+    pattern: book.pattern,
     armed: true,
     highs: lhRun,
-    lows: llRun,
+    lows: bottomRun,
     topSegments,
     bottomSegments,
     liveTopSlope,
