@@ -12,6 +12,9 @@
  *   - base: same linear angle (Δprice/Δbars) as the last confirmed pivot line
  *   - fan: that angle + measured Δ (or % change of the Δs when 3 legs exist)
  * Flattening is clamped so a descending line cannot reverse up through price.
+ * Detection is scoped to the visible chart range (plus a swing-length pad
+ * so edge pivots can still confirm). Panning into history rebuilds Swoop
+ * from the candles on screen.
  */
 import type { CandleData } from '@/types/chart.types';
 import type {
@@ -321,18 +324,76 @@ export function structureLowerLows(
   return pool.slice(0, Math.min(Math.max(minCount, 1), pool.length));
 }
 
-export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DEFAULT_SWOOP_SETTINGS): SwoopResult {
+export interface SwoopVisibleRange {
+  fromIndex?: number;
+  toIndex?: number;
+  from?: number;
+  to?: number;
+}
+
+export function resolveSwoopWindow(
+  candles: SwoopCandle[],
+  visibleRange?: SwoopVisibleRange | null,
+): { fromIdx: number; toIdx: number } {
+  const n = candles.length;
+  if (!n) return { fromIdx: 0, toIdx: 0 };
+  let fromIdx = 0;
+  let toIdx = n - 1;
+  if (visibleRange) {
+    if (Number.isFinite(visibleRange.fromIndex) && Number.isFinite(visibleRange.toIndex)) {
+      fromIdx = Math.floor(visibleRange.fromIndex as number);
+      toIdx = Math.ceil(visibleRange.toIndex as number);
+    } else if (Number.isFinite(visibleRange.from) && Number.isFinite(visibleRange.to)) {
+      const fromT = Number(visibleRange.from);
+      const toT = Number(visibleRange.to);
+      fromIdx = candles.findIndex((c) => c.time >= fromT);
+      if (fromIdx < 0) fromIdx = 0;
+      toIdx = n - 1;
+      for (let i = n - 1; i >= 0; i--) {
+        if (candles[i].time <= toT) {
+          toIdx = i;
+          break;
+        }
+      }
+    }
+  }
+  fromIdx = Math.max(0, Math.min(n - 1, fromIdx));
+  toIdx = Math.max(fromIdx, Math.min(n - 1, toIdx));
+  return { fromIdx, toIdx };
+}
+
+export function detectSwoop(
+  candles: SwoopCandle[],
+  settings: SwoopSettings = DEFAULT_SWOOP_SETTINGS,
+  visibleRange?: SwoopVisibleRange | null,
+): SwoopResult {
   if (!settings.enabled || !candles || candles.length < settings.swingLength * 2 + 4) return EMPTY;
+  const { fromIdx, toIdx } = resolveSwoopWindow(candles, visibleRange);
+  const pad = settings.swingLength;
+  const sliceFrom = Math.max(0, fromIdx - pad);
+  const sliceTo = Math.min(candles.length - 1, toIdx + pad);
+  const series = candles.slice(sliceFrom, sliceTo + 1);
+  const visLo = fromIdx - sliceFrom;
+  const visHi = toIdx - sliceFrom;
+  if (series.length < settings.swingLength * 2 + 4) return EMPTY;
+
   const minPivotPct = settings.minPivotPct ?? 0;
-  const raw = calculateSwings(candles as CandleData[], settings.swingLength);
+  const raw = calculateSwings(series as CandleData[], settings.swingLength);
   const swings = collapseSwings(raw, minPivotPct);
-  const highs: SwoopPoint[] = swings.filter((s) => s.type === 'high').map(swingToPoint);
-  const lows: SwoopPoint[] = swings.filter((s) => s.type === 'low').map(swingToPoint);
-  const lastIdx = candles.length - 1;
+  const highs: SwoopPoint[] = swings
+    .filter((s) => s.type === 'high' && s.index >= visLo && s.index <= visHi)
+    .map(swingToPoint);
+  const lows: SwoopPoint[] = swings
+    .filter((s) => s.type === 'low' && s.index >= visLo && s.index <= visHi)
+    .map(swingToPoint);
+  const lastIdx = visHi;
+  const lookbackBars = visibleRange
+    ? Math.max(toIdx - fromIdx + 1, settings.swingLength * 4)
+    : Math.max(500, settings.swingLength * 40);
   const lhRun = structureLowerHighs(highs, settings.minLowerHighs, {
     minPivotPct,
     lastIndex: lastIdx,
-    lookbackBars: Math.max(500, settings.swingLength * 40),
+    lookbackBars,
   });
   if (lhRun.length < settings.minLowerHighs) {
     const a = highs.length >= 2 ? highs[highs.length - 2] : null;
@@ -347,7 +408,7 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
     return { ...EMPTY, highs, lows, labels, label: reason };
   }
   const llRun = structureLowerLows(lows, lhRun[0].index, 2, { minPivotPct });
-  const lastCandle = candles[lastIdx];
+  const lastCandle = series[lastIdx];
   const topSegments = buildSegments(lhRun);
   const bottomSegments = buildSegments(llRun);
   const lastHigh = lhRun[lhRun.length - 1];
@@ -374,14 +435,14 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
   if (lastLow && lastLow.index > lastHigh.index) lowAfterHighIndex = lastLow.index;
   else {
     for (let i = lastHigh.index + 1; i <= lastIdx; i++) {
-      if (lowAfterHighIndex < 0 || candles[i].low <= candles[lowAfterHighIndex].low) lowAfterHighIndex = i;
+      if (lowAfterHighIndex < 0 || series[i].low <= series[lowAfterHighIndex].low) lowAfterHighIndex = i;
     }
   }
   if (lowAfterHighIndex > lastHigh.index) {
-    liveHighPrice = candles[lowAfterHighIndex].high;
+    liveHighPrice = series[lowAfterHighIndex].high;
     liveHighIndex = lowAfterHighIndex;
     for (let i = lowAfterHighIndex; i <= lastIdx; i++) {
-      if (candles[i].high >= liveHighPrice) { liveHighPrice = candles[i].high; liveHighIndex = i; }
+      if (series[i].high >= liveHighPrice) { liveHighPrice = series[i].high; liveHighIndex = i; }
     }
   }
   const lastCompletedTopSlope = lastTop?.slope ?? null;
@@ -395,7 +456,7 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
     liveLowPrice = lastLow.price;
     liveLowIndex = lastLow.index;
     for (let i = lastLow.index + 1; i <= lastIdx; i++) {
-      if (candles[i].low <= liveLowPrice) { liveLowPrice = candles[i].low; liveLowIndex = i; }
+      if (series[i].low <= liveLowPrice) { liveLowPrice = series[i].low; liveLowIndex = i; }
     }
     if (liveLowIndex === lastLow.index) { liveLowPrice = lastCandle.low; liveLowIndex = lastIdx; }
     formingBottomSlope = liveLowIndex > lastLow.index
@@ -405,7 +466,7 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
   const liveTopSlope = formingTopSlope;
   const liveBottomSlope = formingBottomSlope;
   const topSlopeForGap = lastCompletedTopSlope ?? liveTopSlope ?? expectedTopBand?.mid ?? 0;
-  const botAnchor = lastLow ?? { index: 0, time: candles[0].time, price: candles[0].low };
+  const botAnchor = lastLow ?? { index: visLo, time: series[visLo].time, price: series[visLo].low };
   const botSlopeForGap = lastBot?.slope ?? liveBottomSlope ?? expectedBottomBand?.mid ?? 0;
   const upperNow = linePriceAt(lastHigh, topSlopeForGap, lastIdx);
   const lowerNow = linePriceAt(botAnchor, botSlopeForGap, lastIdx);
@@ -450,7 +511,7 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
     // angle as that segment (price/time), not a bar-count chord into "now".
     const dt = lastSeg ? lastSeg.end.time - lastSeg.start.time : 0;
     const bars = lastSeg?.lengthBars ?? projectBars;
-    const endTime = dt > 0 ? anchor.time + dt : projectTime(candles, anchor.index, bars);
+    const endTime = dt > 0 ? anchor.time + dt : projectTime(series, anchor.index, bars);
     const pushRay = (kind: SwoopFanRay['kind'], slope: number) => {
       fan.push({
         startTime: anchor.time,
@@ -479,7 +540,7 @@ export function detectSwoop(candles: SwoopCandle[], settings: SwoopSettings = DE
     pushSeg(seg.start, { time: seg.end.time, price: seg.end.price }, settings.bottomColor, 'bottom');
   }
   if (!settings.showFan && lastTop) {
-    const endTime = projectTime(candles, lastHigh.index, projectBars);
+    const endTime = projectTime(series, lastHigh.index, projectBars);
     pushSeg(lastHigh, { time: endTime, price: linePriceAt(lastHigh, lastTop.slope, lastHigh.index + projectBars) }, settings.topColor, 'live-top', 'dashed');
   }
   if (settings.showFan) {

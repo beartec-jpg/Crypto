@@ -798,8 +798,8 @@ export function ChartFullscreenPage({
 
   // Hooks - Auto-Fibonacci detection
   const autoFibSettings = useAutoFibSettings();
-  const autoFibVisibleRange = useVisibleRange(chartRef.current, chartReady);
-  const autoFibResult = useAutoFibDetection(effectiveCandles, autoFibVisibleRange, autoFibSettings.settings);
+  const chartVisibleRange = useVisibleRange(chartRef.current, chartReady);
+  const autoFibResult = useAutoFibDetection(effectiveCandles, chartVisibleRange, autoFibSettings.settings);
 
   // Hooks - Auto Trendlines (macro / mid / LTF)
   const autoTrendlineSettings = useAutoTrendlineSettings();
@@ -811,6 +811,7 @@ export function ChartFullscreenPage({
   const swoopResult = useSwoopDetection(
     effectiveCandles as Array<{ time: number; open: number; high: number; low: number; close: number; volume?: number }>,
     swoopSettings.settings,
+    chartVisibleRange,
   );
 
   // Hooks - Volume EMA overlay (display settings)
@@ -3059,7 +3060,7 @@ export function ChartFullscreenPage({
             onWeightsChanged={() => setConditionWeightsVersion(v => v + 1)}
             scoringInput={activeSystemDetails.scoringInput}
             structureBreaks={structureBreaks}
-            visibleRange={autoFibVisibleRange ?? undefined}
+            visibleRange={chartVisibleRange ?? undefined}
             historicalSignalEvents={historicalSystemSignalEvents}
             onLockToViewport={handleSystemLockToViewport}
             canLockToViewport={candles.length >= 2}

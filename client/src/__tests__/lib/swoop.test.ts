@@ -274,4 +274,26 @@ describe('detectSwoop', () => {
     expect(base!.endPrice - base!.startPrice).toBeCloseTo(lastSeg.end.price - lastSeg.start.price, 10);
     expect(base!.endTime - base!.startTime).toBe(lastSeg.end.time - lastSeg.start.time);
   });
+
+  it('rebuilds structure from the visible window when panned into history', () => {
+    const candles = makeFlatteningDowntrend();
+    const settings = {
+      ...DEFAULT_SWOOP_SETTINGS,
+      enabled: true,
+      swingLength: 3,
+      minLowerHighs: 2,
+      minPivotPct: 0,
+      showFan: true,
+    };
+    const early = detectSwoop(candles, settings, { fromIndex: 0, toIndex: 50 });
+    const late = detectSwoop(candles, settings, { fromIndex: 45, toIndex: candles.length - 1 });
+    if (early.armed && early.highs.length) {
+      const lastEarly = early.highs[early.highs.length - 1].time;
+      expect(lastEarly).toBeLessThanOrEqual(candles[50].time);
+    }
+    if (late.armed && late.highs.length) {
+      const firstLate = late.highs[0].time;
+      expect(firstLate).toBeGreaterThanOrEqual(candles[45].time);
+    }
+  });
 });

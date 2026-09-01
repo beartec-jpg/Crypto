@@ -44,9 +44,9 @@ export function SwoopSettingsModal({
 
         <div className="p-4 space-y-3">
           <p className="text-[11px] text-slate-400 leading-snug">
-            Zigzag of length N from wick extremes. Confirmed lines join each LH/LL.
-            Forecast is a dashed base at the last line’s angle plus one dotted fan
-            from the measured angle-change between prior legs.
+            Zigzag of length N from wick extremes in the visible range. Confirmed
+            lines join each LH/LL on screen. Forecast is a dashed base at the last
+            line’s angle plus one dotted fan from the Δangles of every gap in view.
           </p>
 
           <div className="flex items-center justify-between">
