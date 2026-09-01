@@ -52,6 +52,38 @@ export interface SwoopSegment {
   lengthBars: number;
 }
 
+/** Tape read for one confirmed LH–LH or LL–LL gap. */
+export type SwoopGapStatus =
+  | 'markdown'
+  | 'absorption'
+  | 'test'
+  | 'divergence'
+  | 'coil'
+  | 'demand'
+  | 'neutral';
+
+export interface SwoopGapStat {
+  side: 'top' | 'bottom';
+  gapIndex: number;
+  startTime: number;
+  endTime: number;
+  status: SwoopGapStatus;
+  /** 0–100 accumulation-before-breakout score. */
+  score: number;
+  priceChangePct: number;
+  slope: number;
+  cvdChange: number;
+  volume: number;
+  volumeRatio: number | null;
+  avgRange: number;
+  rsiDelta: number | null;
+  upVolShare: number;
+  bars: number;
+  flags: string[];
+  meanClose: number;
+  downVol: number;
+}
+
 export interface SwoopSlopeBand {
   lo: number;
   mid: number;
@@ -106,4 +138,6 @@ export interface SwoopResult {
   drawSegments: SwoopDrawSegment[];
   labels: SwoopPivotLabel[];
   label: string;
+  /** Per-gap volume / CVD / divergence read, oldest → newest. */
+  gapStats: SwoopGapStat[];
 }

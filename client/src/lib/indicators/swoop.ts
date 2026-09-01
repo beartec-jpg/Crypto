@@ -30,9 +30,11 @@ import type {
 } from '@/types/swoop';
 import { DEFAULT_SWOOP_SETTINGS } from '@/types/swoop';
 import { calculateSwings } from '@/lib/smc/pivots';
+import { analyzeSwoopGaps } from '@/lib/indicators/swoopGapAnalysis';
 
 export type SwoopCandle = Pick<CandleData, 'time' | 'open' | 'high' | 'low' | 'close'> & {
   volume?: number;
+  takerBuyVolume?: number;
 };
 
 interface SwingLike {
@@ -62,6 +64,7 @@ const EMPTY: SwoopResult = {
   drawSegments: [],
   labels: [],
   label: 'Idle',
+  gapStats: [],
 };
 
 export function logSlope(p1: number, p2: number, bars: number): number {
@@ -583,5 +586,6 @@ export function detectSwoop(
     drawSegments,
     labels,
     label: stateLabel(state, compression),
+    gapStats: analyzeSwoopGaps(series, topSegments, bottomSegments),
   };
 }

@@ -35,7 +35,7 @@ import type { PredictedLiquidityPoint, LiquidationZone } from '@/hooks/useLiquid
 const IDLE_SWOOP: SwoopResult = {
   state: 'idle', armed: false, highs: [], lows: [], topSegments: [], bottomSegments: [],
   liveTopSlope: null, liveBottomSlope: null, expectedTopBand: null, expectedBottomBand: null,
-  gap: null, armGap: null, compression: null, prevGapBars: 0, projectBars: 0, fan: [], drawSegments: [], labels: [], label: 'Idle',
+  gap: null, armGap: null, compression: null, prevGapBars: 0, projectBars: 0, fan: [], drawSegments: [], labels: [], label: 'Idle', gapStats: [],
 };
 
 interface FullscreenChartIndicatorLayerProps {
