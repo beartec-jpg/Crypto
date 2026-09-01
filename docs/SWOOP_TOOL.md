@@ -1,6 +1,7 @@
 # Swoop tool
 
-Predictive accumulation envelope on the fullscreen chart.
+Predictive accumulation from successive lower-high / lower-low pivot legs
+on the fullscreen chart.
 
 ## Where it lives
 
@@ -25,12 +26,33 @@ points actually used.
 
 ## Trend lines
 
-One **top** line and one **bottom** line span the whole lower-high structure
-(from the major swing top / first lower low through to now, then projected).
-A thin zigzag overlay shows the H-L-H-L path of the wick pivots.
+A **separate line** is drawn between each consecutive lower high and each
+consecutive lower low:
 
-Later higher-high or higher-low noise is skipped for the envelope so a 1.433
-bounce after a 1.70 spike does not reset or clip the channel.
+- H1 → H2, H2 → H3, H3 → H4, …
+- L1 → L2, L2 → L3, L3 → L4, …
+
+That is the whole lower-high structure, not a single envelope from H1 and not
+only the last two pivots.
+
+Later higher-high or higher-low noise is skipped so a 1.433 bounce after a 1.70
+spike does not reset the run.
+
+## Extension (the prediction)
+
+The next leg is projected from the **last two completed legs**:
+
+- **Angle:** compare P1→P2 slope with P2→P3 slope.
+  - Equal angle: continue the last slope as a straight line.
+  - Steepening (last steeper than prev): fan equal angle **and** an estimated
+    increase of descent (`last + (last − prev)`).
+  - Shallowing (last flatter than prev): fan equal angle **and** a decreasing
+    angle (`last + (last − prev)`).
+- **Length:** `lastBars × (lastBars / prevBars)` — if P2→P3 was shorter than
+  P1→P2, the projection is shorter; if it stretched, the projection is longer.
+
+The fan (when enabled) starts at the last confirmed pivot. HUD **Top** is the
+last (or still-forming) H-to-H slope; **Expect** is that fan band.
 
 ## Defaults
 

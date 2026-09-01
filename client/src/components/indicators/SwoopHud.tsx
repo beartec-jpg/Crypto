@@ -27,8 +27,16 @@ function fmtSlope(s: number | null): string {
   return `${pct >= 0 ? '+' : ''}${pct.toFixed(3)}%/bar`;
 }
 
+function angleWord(band: SwoopResult['expectedTopBand']): string {
+  if (!band) return '';
+  if (band.lo < band.mid - 1e-12) return 'steepening';
+  if (band.hi > band.mid + 1e-12) return 'shallowing';
+  return 'equal angle';
+}
+
 export function SwoopHud({ result, visible, pivotLength }: SwoopHudProps) {
   if (!visible) return null;
+  const angle = angleWord(result.expectedTopBand);
 
   return (
     <div
@@ -41,7 +49,10 @@ export function SwoopHud({ result, visible, pivotLength }: SwoopHudProps) {
         <span className="font-semibold">{result.label}</span>
       </div>
       <div className="text-[10px] text-slate-300 mt-0.5 space-y-0.5">
-        <div>Top {fmtSlope(result.liveTopSlope)}</div>
+        <div>
+          Last {fmtSlope(result.liveTopSlope)}
+          {angle ? ` · ${angle}` : ''}
+        </div>
         {result.expectedTopBand && (
           <div>
             Expect {fmtSlope(result.expectedTopBand.lo)} → {fmtSlope(result.expectedTopBand.hi)}
