@@ -230,6 +230,13 @@ describe('classifyBookPattern', () => {
     expect(classifyBookPattern(lh, ll, [], top).pattern).toBe('down_compression');
   });
 
+  it('keeps a multi-point dump that flattens at the end as swoop, not channel', () => {
+    const lh = [p(0, 20), p(20, 16), p(40, 13.5), p(60, 12.2), p(80, 12.05)];
+    const ll = [p(10, 14), p(30, 11), p(50, 10), p(70, 9.85), p(90, 9.82)];
+    const top = [seg(lh[0], lh[1]), seg(lh[1], lh[2]), seg(lh[2], lh[3]), seg(lh[3], lh[4])];
+    expect(classifyBookPattern(lh, ll, [], top).pattern).toBe('swoop');
+  });
+
   it('labels two flat sides as channel', () => {
     const lh = [p(10, 20.0), p(30, 20.05), p(50, 19.98)];
     const ll = [p(15, 18.0), p(35, 18.02), p(55, 17.99)];
