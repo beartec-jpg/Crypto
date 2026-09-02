@@ -705,6 +705,7 @@ export function detectSwoop(
     gapStats.filter((g) => g.side === 'top'),
     lastCandle.close,
     lastCandle.time,
+    state === 'release',
   );
   const sell = detectSwoopExit(series.slice(0, lastIdx + 1), lastHigh, buy);
   const labels = settings.showPivotLabels ? buildGapLabels(gapStats) : [];

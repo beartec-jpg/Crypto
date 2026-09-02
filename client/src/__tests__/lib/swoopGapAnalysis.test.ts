@@ -275,6 +275,10 @@ describe('analyzeSwoopGaps', () => {
     const r = detectSwoopBuy('swoop', highs, topStats, 1.022, 51);
     expect(r?.armed).toBe(false);
     expect(r?.triggered).toBe(false);
+    const live = detectSwoopBuy('swoop', highs, topStats, 1.022, 51, true);
+    expect(live?.armed).toBe(true);
+    expect(live?.triggered).toBe(true);
+    expect(live?.tells).toEqual(expect.arrayContaining(['release']));
   });
 
   it('arms completing when last gap is a low-vol test even without range_shrink', () => {

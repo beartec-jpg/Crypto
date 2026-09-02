@@ -27,6 +27,12 @@ function fmtSlope(s: number | null): string {
   return `${pct >= 0 ? '+' : ''}${pct.toFixed(3)}%/bar`;
 }
 
+function fmtPx(n: number): string {
+  if (n >= 100) return n.toFixed(2);
+  if (n >= 1) return n.toFixed(3);
+  return n.toFixed(5);
+}
+
 function angleWord(band: SwoopResult['expectedTopBand']): string {
   if (!band) return '';
   if (band.lo < band.mid - 1e-12) return 'steepening';
@@ -65,7 +71,7 @@ export function SwoopHud({ result, visible, pivotLength }: SwoopHudProps) {
         {result.sell?.triggered && (
           <div className="font-semibold text-rose-300">SELL · {result.sell.reason}</div>
         )}
-        {result.buy?.triggered && !result.sell?.triggered && (
+        {result.buy?.triggered && (
           <div className="font-semibold text-emerald-300">BUY · {result.buy.reason}</div>
         )}
         {result.buy?.triggered && result.sell?.armed && !result.sell?.triggered && (
@@ -73,7 +79,12 @@ export function SwoopHud({ result, visible, pivotLength }: SwoopHudProps) {
         )}
         {result.buy?.armed && !result.buy.triggered && (
           <div className="text-amber-200">
-            setup · {result.buy.reason} · wait close &gt; last LH
+            setup · {result.buy.reason} · wait close &gt; last LH {fmtPx(result.buy.price)}
+          </div>
+        )}
+        {result.state === 'release' && result.buy && !result.buy.armed && !result.buy.triggered && (
+          <div className="text-amber-200">
+            release vs line · last LH {fmtPx(result.buy.price)} · {result.buy.reason}
           </div>
         )}
       </div>

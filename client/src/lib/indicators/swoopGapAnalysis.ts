@@ -289,6 +289,8 @@ export function detectSwoopBuy(
   topStats: SwoopGapStat[],
   lastClose: number,
   lastTime: number,
+  /** True when close is already through the descending envelope (HUD "release"). */
+  released = false,
 ): SwoopBuyTrigger | null {
   if (pattern === 'none' || pattern === 'channel') return null;
   if (highs.length < 2 || topStats.length < 1) return null;
@@ -310,13 +312,18 @@ export function detectSwoopBuy(
   if (equalHigh || flags.has('flattening')) completingTells.push('LH flat');
   const lastSqueeze = lastFlags.has('range_shrink') || lastGap.status === 'test';
   const lastMarkdown = lastGap.status === 'markdown';
-  const completing =
-    !lastMarkdown &&
-    lastSqueeze &&
+  const completingCore =
     completingTells.length >= 2 &&
     (flags.has('rsi_div') || flags.has('rsi_hold') || flags.has('vol_dry'));
+  // Squeeze/test is the quality gate. Envelope release is the live break the
+  // HUD already calls "release" — don't hide BUY behind a 16-bar squeeze flag.
+  const completing =
+    !lastMarkdown && completingCore && (lastSqueeze || released);
   if (completing && lastGap.status === 'test' && !completingTells.includes('squeeze')) {
     completingTells.push('test');
+  }
+  if (completing && released && !completingTells.includes('squeeze') && !completingTells.includes('test')) {
+    completingTells.push('release');
   }
 
   const rsiOs = lastGap.rsiEnd != null && lastGap.rsiEnd <= 50;
@@ -430,6 +437,8 @@ export function detectSwoopExit(
     kind: 'exhaustion' as const,
   };
   if (last <= from + 2) return waiting;
+  // Don't flatten on the break bar — need the long to actually exist above the LH.
+  if (lastC.close <= lastH.price * 1.01) return waiting;
 
   const closes = candles.map((c) => c.close);
   const rsi = wilderRsi(closes, 14);
