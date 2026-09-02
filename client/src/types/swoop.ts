@@ -139,13 +139,22 @@ export interface SwoopDrawSegment {
   role: 'top' | 'bottom' | 'live-top' | 'live-bottom' | 'fan' | 'zigzag';
 }
 
+export interface SwoopBuyTrigger {
+  armed: boolean;
+  triggered: boolean;
+  time: number;
+  price: number;
+  reason: string;
+  tells: string[];
+}
+
 export interface SwoopPivotLabel {
   time: number;
   price: number;
   text: string;
   /** Second line (CVD / vol / RSI flags). */
   sub?: string;
-  kind: 'high' | 'low';
+  kind: 'high' | 'low' | 'buy';
 }
 
 export interface SwoopResult {
@@ -171,4 +180,5 @@ export interface SwoopResult {
   label: string;
   /** Per-gap volume / CVD / divergence read, oldest → newest. */
   gapStats: SwoopGapStat[];
+  buy: SwoopBuyTrigger | null;
 }

@@ -32,7 +32,7 @@ import type {
 } from '@/types/swoop';
 import { DEFAULT_SWOOP_SETTINGS, SWOOP_GAP_LABEL } from '@/types/swoop';
 import { calculateSwings } from '@/lib/smc/pivots';
-import { analyzeSwoopGaps } from '@/lib/indicators/swoopGapAnalysis';
+import { analyzeSwoopGaps, detectSwoopBuy } from '@/lib/indicators/swoopGapAnalysis';
 
 export type SwoopCandle = Pick<CandleData, 'time' | 'open' | 'high' | 'low' | 'close'> & {
   volume?: number;
@@ -68,6 +68,7 @@ const EMPTY: SwoopResult = {
   labels: [],
   label: 'Idle',
   gapStats: [],
+  buy: null,
 };
 
 export function logSlope(p1: number, p2: number, bars: number): number {
@@ -207,10 +208,12 @@ function fmtPx(n: number): string {
 const FLAG_SHORT: Record<string, string> = {
   cvd_vs_price: 'CVD\u2191/px\u2193',
   rsi_div: 'RSI div',
+  rsi_hold: 'RSI hold',
   vol_dry: 'vol dry',
   up_bar_vol: 'up-vol',
   flattening: 'flat',
   range_shrink: 'tight',
+  equal_high: 'LH=',
 };
 
 /** Place gap-status text on the chart at the midpoint of each pivot period. */
@@ -693,7 +696,23 @@ export function detectSwoop(
     }
   }
   const gapStats = analyzeSwoopGaps(series, topSegments, bottomSegments);
+  const buy = detectSwoopBuy(
+    book.pattern,
+    lhRun,
+    gapStats.filter((g) => g.side === 'top'),
+    lastCandle.close,
+    lastCandle.time,
+  );
   const labels = settings.showPivotLabels ? buildGapLabels(gapStats) : [];
+  if (buy?.triggered) {
+    labels.push({
+      time: buy.time,
+      price: buy.price,
+      text: 'BUY',
+      sub: buy.reason,
+      kind: 'buy',
+    });
+  }
   return {
     state,
     pattern: book.pattern,
@@ -716,5 +735,6 @@ export function detectSwoop(
     labels,
     label: stateLabel(state, compression),
     gapStats,
+    buy,
   };
 }

@@ -26,7 +26,14 @@
  *               Closest to a sign of strength inside the envelope.
  */
 import type { SwoopCandle } from '@/lib/indicators/swoop';
-import type { SwoopGapStat, SwoopGapStatus, SwoopSegment } from '@/types/swoop';
+import type {
+  SwoopBookPattern,
+  SwoopBuyTrigger,
+  SwoopGapStat,
+  SwoopGapStatus,
+  SwoopPoint,
+  SwoopSegment,
+} from '@/types/swoop';
 
 export function barDelta(c: SwoopCandle): number {
   const vol = Number.isFinite(c.volume) && (c.volume as number) > 0 ? (c.volume as number) : 0;
@@ -77,50 +84,67 @@ function classify(args: {
   const flags: string[] = [];
   let score = 0;
   const priceDownOrFlat = args.priceChangePct <= 0.001;
-  const priceFlat = Math.abs(args.priceChangePct) <= 0.004;
+  const priceFlat = Math.abs(args.priceChangePct) <= 0.0035;
   const cvdUp = args.cvdChange > 0;
   const cvdDown = args.cvdChange < 0;
 
-  if (priceDownOrFlat && cvdUp) {
-    flags.push('cvd_vs_price');
-    score += 28;
-  }
+  // Primary tells from the Aug-19 XRP swoop: RSI vs LH, vol dry-up,
+  // range squeeze, last highs almost equal. CVD up is a bonus.
+  // CVD down must not veto those four.
   if (args.rsiDelta != null && args.priceChangePct < -0.001 && args.rsiDelta > 1) {
     flags.push('rsi_div');
-    score += 22;
-  }
-  if (args.volRatio != null && args.volRatio < 0.85 && args.priceChangePct <= 0) {
-    flags.push('vol_dry');
-    score += 14;
-  }
-  if (args.upVolShare >= 0.55 && cvdUp) {
-    flags.push('up_bar_vol');
+    score += 26;
+  } else if (args.rsiDelta != null && priceDownOrFlat && args.rsiDelta > -0.5) {
+    flags.push('rsi_hold');
     score += 16;
+  }
+  if (args.volRatio != null && args.volRatio < 0.85 && priceDownOrFlat) {
+    flags.push('vol_dry');
+    score += 18;
+  }
+  if (args.rangeRatio != null && args.rangeRatio < 0.85) {
+    flags.push('range_shrink');
+    score += 14;
   }
   if (args.slopeFlattening) {
     flags.push('flattening');
     score += 12;
   }
-  if (args.rangeRatio != null && args.rangeRatio < 0.85) {
-    flags.push('range_shrink');
-    score += 8;
+  if (priceFlat) {
+    flags.push('equal_high');
+    score += 18;
   }
-  if (priceDownOrFlat && cvdDown && (args.upVolShare < 0.45)) {
+  if (priceDownOrFlat && cvdUp) {
+    flags.push('cvd_vs_price');
+    score += 12;
+  }
+  if (args.upVolShare >= 0.55 && cvdUp) {
+    flags.push('up_bar_vol');
+    score += 10;
+  }
+
+  const bullishTape =
+    flags.includes('rsi_div') ||
+    flags.includes('rsi_hold') ||
+    flags.includes('vol_dry') ||
+    flags.includes('range_shrink') ||
+    flags.includes('equal_high');
+  if (priceDownOrFlat && cvdDown && args.upVolShare < 0.45 && !bullishTape) {
     score = Math.min(score, 24);
   }
 
   score = Math.max(0, Math.min(100, score));
 
   let status: SwoopGapStatus = 'neutral';
-  if (args.upVolShare >= 0.55 && cvdUp && args.slopeFlattening) status = 'demand';
-  else if (flags.includes('rsi_div') || (flags.includes('cvd_vs_price') && args.rsiDelta != null && args.rsiDelta > 0)) {
-    status = 'divergence';
-  } else if (flags.includes('cvd_vs_price') || (priceFlat && (args.volRatio == null || args.volRatio >= 1) && !cvdDown)) {
-    status = 'absorption';
-  } else if (flags.includes('vol_dry') && priceDownOrFlat) status = 'test';
+  if (flags.includes('equal_high') && bullishTape) status = 'coil';
+  else if (args.upVolShare >= 0.55 && cvdUp && args.slopeFlattening) status = 'demand';
+  else if (flags.includes('rsi_div')) status = 'divergence';
+  else if (flags.includes('cvd_vs_price')) status = 'absorption';
+  else if (flags.includes('vol_dry') && priceDownOrFlat) status = 'test';
   else if (args.slopeFlattening && flags.includes('range_shrink')) status = 'coil';
   else if (!priceDownOrFlat && cvdUp) status = 'demand';
-  else if (priceDownOrFlat && cvdDown) status = 'markdown';
+  else if (priceDownOrFlat && cvdDown && !bullishTape) status = 'markdown';
+  else if (bullishTape) status = 'coil';
 
   return { status, score, flags };
 }
@@ -230,4 +254,45 @@ export function analyzeSwoopGaps(
     prevBot = stat;
   });
   return out;
+}
+
+/**
+ * BUY when a swoop (or triangle) has completed: last LHs almost equal,
+ * RSI held or diverged, volume dried and/or range squeezed — then price
+ * closes through the last confirmed lower high.
+ * CVD is not required and cannot veto.
+ */
+export function detectSwoopBuy(
+  pattern: SwoopBookPattern,
+  highs: SwoopPoint[],
+  topStats: SwoopGapStat[],
+  lastClose: number,
+  lastTime: number,
+): SwoopBuyTrigger | null {
+  if (pattern !== 'swoop' && pattern !== 'equal_compression') return null;
+  if (highs.length < 2 || topStats.length < 1) return null;
+  const lastH = highs[highs.length - 1];
+  const prevH = highs[highs.length - 2];
+  const recent = topStats.slice(-3);
+  const flags = new Set(recent.flatMap((g) => g.flags));
+  const tells: string[] = [];
+  if (flags.has('rsi_div') || flags.has('rsi_hold')) tells.push('RSI vs LH');
+  if (flags.has('vol_dry')) tells.push('vol dry');
+  if (flags.has('range_shrink')) tells.push('squeeze');
+  const lastGap = topStats[topStats.length - 1];
+  const equalHigh =
+    flags.has('equal_high') ||
+    Math.abs(lastH.price - prevH.price) / Math.max(Math.abs(prevH.price), 1e-12) <= 0.004;
+  if (equalHigh || flags.has('flattening')) tells.push('LH flat');
+  const setup =
+    tells.length >= 2 && (flags.has('rsi_div') || flags.has('rsi_hold') || flags.has('vol_dry'));
+  const broken = lastClose > lastH.price * 1.001;
+  return {
+    armed: setup,
+    triggered: setup && broken,
+    time: lastTime,
+    price: lastH.price,
+    reason: tells.join(' + ') || lastGap.status,
+    tells,
+  };
 }

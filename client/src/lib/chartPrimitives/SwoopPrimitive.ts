@@ -79,17 +79,22 @@ class SwoopRenderer implements IPrimitivePaneRenderer {
         const boxW = Math.max(w0, w1) + 10;
         const boxH = lines[1] ? 26 : 14;
         const boxX = x - boxW / 2;
-        const boxY = lab.kind === 'high' ? y - boxH - 8 : y + 8;
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
+        const boxY = lab.kind === 'low' ? y + 8 : y - boxH - 8;
+        const isBuy = lab.kind === 'buy';
+        ctx.fillStyle = isBuy ? 'rgba(6, 78, 59, 0.92)' : 'rgba(15, 23, 42, 0.82)';
         ctx.fillRect(boxX, boxY, boxW, boxH);
-        ctx.strokeStyle = lab.kind === 'high' ? 'rgba(248,113,113,0.45)' : 'rgba(251,113,133,0.45)';
-        ctx.lineWidth = 1;
+        ctx.strokeStyle = isBuy
+          ? 'rgba(52, 211, 153, 0.9)'
+          : lab.kind === 'high'
+            ? 'rgba(248,113,113,0.45)'
+            : 'rgba(251,113,133,0.45)';
+        ctx.lineWidth = isBuy ? 1.5 : 1;
         ctx.strokeRect(boxX, boxY, boxW, boxH);
-        ctx.fillStyle = '#e2e8f0';
+        ctx.fillStyle = isBuy ? '#a7f3d0' : '#e2e8f0';
         ctx.font = 'bold 10px sans-serif';
         ctx.fillText(lines[0], boxX + 5, boxY + 2);
         if (lines[1]) {
-          ctx.fillStyle = '#94a3b8';
+          ctx.fillStyle = isBuy ? '#6ee7b7' : '#94a3b8';
           ctx.font = '9px sans-serif';
           ctx.fillText(lines[1], boxX + 5, boxY + 14);
         }
