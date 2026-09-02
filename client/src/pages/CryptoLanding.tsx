@@ -117,9 +117,12 @@ export default function CryptoLanding() {
       return;
     }
     const play = () => {
-      video.play().catch(() => {
-        /* autoplay can be blocked; canvas still provides motion */
-      });
+      const playing = video.play();
+      if (playing && typeof playing.catch === 'function') {
+        playing.catch(() => {
+          /* autoplay can be blocked; canvas still provides motion */
+        });
+      }
     };
     play();
     video.addEventListener('canplay', play);
