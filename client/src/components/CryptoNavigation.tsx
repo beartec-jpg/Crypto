@@ -1,8 +1,7 @@
 import { Link, useLocation } from 'wouter';
-import { BarChart3, Bot, GraduationCap, Crown, Wallet, Bitcoin, MessageSquare } from 'lucide-react';
+import { BarChart3, Bot, GraduationCap, Crown, MessageSquare } from 'lucide-react';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import { useQuery } from '@tanstack/react-query';
-import { SHOW_QBTC } from '@/constants/featureFlags';
 
 interface SubscriptionData {
   tier: string;
@@ -11,16 +10,12 @@ interface SubscriptionData {
   canUseAI: boolean;
 }
 
-interface CryptoNavigationProps {
-  showWallet?: boolean;
-}
-
 const isDevelopment = typeof window !== 'undefined' && 
   (window.location.hostname.includes('replit') || 
    window.location.hostname.includes('localhost') ||
    window.location.hostname.includes('127.0.0.1'));
 
-export function CryptoNavigation({ showWallet = false }: CryptoNavigationProps = {}) {
+export function CryptoNavigation() {
   const [location] = useLocation();
   const { tier: localTier, isAuthenticated, isLoading: authLoading } = useCryptoAuth();
   
@@ -47,8 +42,6 @@ export function CryptoNavigation({ showWallet = false }: CryptoNavigationProps =
     { path: '/crypto/training', icon: GraduationCap, label: 'Training' },
     { path: '/cryptoindicators', icon: BarChart3, label: 'Charts' },
     { path: '/cryptoai', icon: Bot, label: 'AI' },
-    // QBTC hub kept in code; hidden from nav when SHOW_QBTC is false
-    ...(SHOW_QBTC ? [{ path: '/qbtc', icon: Bitcoin, label: 'QBTC' }] : []),
   ];
 
   return (
@@ -78,21 +71,6 @@ export function CryptoNavigation({ showWallet = false }: CryptoNavigationProps =
               </Link>
             );
           })}
-          
-          {showWallet && (
-            <Link href="/wallet" data-testid="link-wallet">
-              <button
-                className={`flex flex-col items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-all ${
-                  location === '/wallet'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                }`}
-              >
-                <Wallet className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span className="text-[10px] sm:text-xs font-medium">Wallet</span>
-              </button>
-            </Link>
-          )}
           
           <Link href="/crypto/account" data-testid="tier-indicator" className="cursor-pointer">
             <button

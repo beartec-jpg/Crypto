@@ -41,6 +41,8 @@ describe('Marketing homepage', () => {
     expect(screen.queryByText('TO ENTER')).not.toBeInTheDocument()
     expect(screen.queryByText(/Falcon PL/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/QBTC/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/wallet/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/testnet/i)).not.toBeInTheDocument()
   })
 
   it('puts tools, plans, risk, and footer after the hero', () => {
