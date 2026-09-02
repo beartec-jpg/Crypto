@@ -9,7 +9,6 @@ import { InstallPrompt } from '@/components/InstallPrompt';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { RedirectTo } from '@/components/marketing/RedirectTo';
 import { lazy, Suspense } from 'react';
-import { SHOW_QBTC } from '@/constants/featureFlags';
 import '@/utils/sandboxBootstrap';
 
 // Lazy load all route components for code splitting
@@ -31,15 +30,7 @@ const DevAnalytics = lazy(() => import('@/pages/DevAnalytics'));
 const CryptoSandbox = lazy(() => import('@/pages/CryptoSandbox'));
 const AdminPanel = lazy(() => import('@/pages/AdminPanel'));
 const NotFound = lazy(() => import('@/pages/not-found'));
-// 1. Add with other lazy imports (around line 22)
-const Wallet = lazy(() => import('@/pages/Wallet'));
 const ChartPage = lazy(() => import('@/pages/ChartPage'));
-// QBTC pages kept (not deleted) — gated by SHOW_QBTC
-const QBTCFaucet = lazy(() => import('@/pages/QBTCFaucet'));
-const QBTCScan = lazy(() => import('@/pages/QBTCScan'));
-const QBTCHomePage = lazy(() => import('@/pages/QBTCHomePage'));
-const QBTCMining = lazy(() => import('@/pages/QBTCMining'));
-const QBTCMarketplace = lazy(() => import('@/pages/QBTCMarketplace'));
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   return (
@@ -104,51 +95,6 @@ function App() {
             <Route path="/cryptoterms">
               <RedirectTo to="/terms" />
             </Route>
-            {/* QBTC public routes — hidden when SHOW_QBTC is false (pages not deleted) */}
-            {SHOW_QBTC && (
-              <>
-                <Route path="/qbtc-faucet">
-                  <Suspense fallback={<LoadingSpinner message="Loading faucet..." />}>
-                    <QBTCFaucet />
-                  </Suspense>
-                </Route>
-                <Route path="/crypto/qbtc-faucet">
-                  <Suspense fallback={<LoadingSpinner message="Loading faucet..." />}>
-                    <QBTCFaucet />
-                  </Suspense>
-                </Route>
-                <Route path="/qbtc-scan">
-                  <Suspense fallback={<LoadingSpinner message="Loading scanner..." />}>
-                    <QBTCScan />
-                  </Suspense>
-                </Route>
-                <Route path="/crypto/qbtc-scan">
-                  <Suspense fallback={<LoadingSpinner message="Loading scanner..." />}>
-                    <QBTCScan />
-                  </Suspense>
-                </Route>
-                <Route path="/qbtc">
-                  <Suspense fallback={<LoadingSpinner message="Loading QBTC..." />}>
-                    <QBTCHomePage />
-                  </Suspense>
-                </Route>
-                <Route path="/qbtc-mine">
-                  <Suspense fallback={<LoadingSpinner message="Loading mining..." />}>
-                    <QBTCMining />
-                  </Suspense>
-                </Route>
-                <Route path="/crypto/qbtc-mine">
-                  <Suspense fallback={<LoadingSpinner message="Loading mining..." />}>
-                    <QBTCMining />
-                  </Suspense>
-                </Route>
-                <Route path="/marketplace">
-                  <Suspense fallback={<LoadingSpinner message="Loading marketplace..." />}>
-                    <QBTCMarketplace />
-                  </Suspense>
-                </Route>
-              </>
-            )}
             
             {/* Protected routes - require authentication */}
             <Route path="/cryptoindicators">
@@ -192,9 +138,6 @@ function App() {
             </Route>
             <Route path="/dev/sandbox">
               <ProtectedRoute component={CryptoSandbox} />
-            </Route>
-            <Route path="/wallet">
-              <ProtectedRoute component={Wallet} />
             </Route>
             
             <Route>

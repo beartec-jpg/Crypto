@@ -9,6 +9,7 @@ import CryptoContact from '@/pages/CryptoContact'
 import NotFound from '@/pages/not-found'
 import CryptoPrivacy from '@/pages/CryptoPrivacy'
 import CryptoTerms from '@/pages/CryptoTerms'
+import CryptoLogin from '@/pages/CryptoLogin'
 
 vi.mock('@assets/grok_video_2025-11-13-19-48-28_1763063433278.mp4', () => ({
   default: 'hero.mp4',
@@ -40,6 +41,8 @@ describe('Marketing homepage', () => {
     expect(screen.queryByText('TO ENTER')).not.toBeInTheDocument()
     expect(screen.queryByText(/Falcon PL/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/QBTC/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/wallet/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/testnet/i)).not.toBeInTheDocument()
   })
 
   it('puts tools, plans, risk, and footer after the hero', () => {
@@ -86,6 +89,15 @@ describe('Canonical public pages', () => {
     expect(container).not.toBeEmptyDOMElement()
     expect(screen.getByTestId('not-found-page')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Home' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Pricing' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Contact' })).toBeInTheDocument()
+  })
+
+  it('renders the existing login page without requiring Clerk in development', () => {
+    renderPage(<CryptoLogin />)
+    expect(screen.getByRole('heading', { name: 'BearTec' })).toBeInTheDocument()
+    expect(screen.getByText('Development Mode')).toBeInTheDocument()
   })
 
   it('uses Clerk rather than Replit on legal pages', () => {

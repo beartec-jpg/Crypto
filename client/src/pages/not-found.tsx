@@ -14,12 +14,12 @@ export default function NotFound() {
             <Button className="bg-[#00c4b4] text-black hover:bg-[#00a89c]">Home</Button>
           </Link>
           <Link href="/pricing">
-            <Button variant="outline" className="border-white/20 text-white hover:bg-white/10">
+            <Button className="border border-white/25 bg-transparent text-white hover:bg-white/10">
               Pricing
             </Button>
           </Link>
           <Link href="/contact">
-            <Button variant="outline" className="border-white/20 text-white hover:bg-white/10">
+            <Button className="border border-white/25 bg-transparent text-white hover:bg-white/10">
               Contact
             </Button>
           </Link>

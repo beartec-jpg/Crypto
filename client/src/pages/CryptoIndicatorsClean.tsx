@@ -208,7 +208,7 @@ export default function CryptoIndicatorsClean() {
           </div>
 
           {/* Bottom Navigation */}
-          <CryptoNavigation showWallet={true} />
+          <CryptoNavigation />
         </div>
     </>
   );
