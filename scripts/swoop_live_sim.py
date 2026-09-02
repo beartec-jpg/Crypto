@@ -361,7 +361,26 @@ def gap_read(cs, seg, prev, rsi, cvd):
     }
 
 
-def detect_buy(pattern, lh, tops, last_close, released):
+def find_selling_climax(cs, t, last_h_i, ind):
+    lo = max(1, min(last_h_i, t - 48))
+    found = None
+    rsi, mfi, atr = ind["rsi"], ind["mfi"], ind["atr"]
+    for i in range(lo, t + 1):
+        lo8 = min(cs[j]["l"] for j in range(max(0, i - 7), i + 1))
+        if cs[i]["l"] > lo8 * 1.002:
+            continue
+        rng = (cs[i]["h"] - cs[i]["l"]) / atr[i] if isnum(atr[i]) and atr[i] > 0 else 0.0
+        vols = sorted(cs[j]["v"] for j in range(max(0, i - 20), i) if cs[j]["v"] > 0)
+        med = vols[len(vols) // 2] if vols else 0.0
+        volx = cs[i]["v"] / med if med > 0 else 0.0
+        dr = (rsi[i] - rsi[i - 1]) if isnum(rsi[i]) and isnum(rsi[i - 1]) else 0.0
+        dm = (mfi[i] - mfi[i - 1]) if isnum(mfi[i]) and isnum(mfi[i - 1]) else 0.0
+        if rng >= 2.5 and volx >= 2 and (dr <= -8 or dm <= -10):
+            found = i
+    return found
+
+
+def detect_buy(pattern, lh, tops, last_close, cs, t, ind):
     if pattern in ("none", "channel") or len(lh) < 2 or not tops:
         return None
     last_h, prev_h = lh[-1][1], lh[-2][1]
@@ -384,24 +403,32 @@ def detect_buy(pattern, lh, tops, last_close, released):
     last_squeeze = "range_shrink" in last_flags or last_g["st"] == "test"
     last_md = last_g["st"] == "markdown"
     core = len(tells) >= 2 and ("rsi_div" in flags or "rsi_hold" in flags or "vol_dry" in flags)
-    completing = (not last_md) and core and (last_squeeze or released)
+    completing = (not last_md) and core and last_squeeze
     rsi_os = last_g["rsi_end"] is not None and last_g["rsi_end"] <= 50
     stoch_os = last_g["stoch_end"] is not None and last_g["stoch_end"] <= 20
     dumping = last_h < prev_h * 0.997
     oversold = dumping and (rsi_os or stoch_os)
     if completing:
-        return {"armed": True, "triggered": broken, "px": last_h, "reason": " + ".join(tells), "path": "completing"}
+        return {"armed": True, "triggered": broken, "px": last_h, "reason": " + ".join(tells),
+                "path": "completing", "stop": last_h, "lh_i": lh[-1][0]}
+    cap = find_selling_climax(cs, t, lh[-1][0], ind)
+    if cap is not None:
+        reclaimed = last_close > cs[cap]["h"] * 1.001
+        return {"armed": True, "triggered": reclaimed, "px": cs[cap]["h"], "reason": "climax reclaim",
+                "path": "climax", "stop": cs[cap]["l"], "lh_i": cap}
     if oversold:
-        return {"armed": True, "triggered": broken, "px": last_h, "reason": "oversold reclaim", "path": "oversold"}
-    return {"armed": False, "triggered": False, "px": last_h, "reason": last_g["st"], "path": None}
+        return {"armed": True, "triggered": broken, "px": last_h, "reason": "oversold reclaim",
+                "path": "oversold", "stop": last_h, "lh_i": lh[-1][0]}
+    return {"armed": False, "triggered": False, "px": last_h, "reason": last_g["st"],
+            "path": None, "stop": last_h, "lh_i": lh[-1][0]}
 
 
-def detect_exit(cs, t, entry_lh_i, entry_lh_px, ind):
+def detect_exit(cs, t, entry_i, stop_px, ind):
     c = cs[t]
-    if c["c"] < entry_lh_px * 0.999:
-        return {"triggered": True, "kind": "fail", "reason": "close < last LH", "px": c["c"]}
+    if c["c"] < stop_px * 0.999:
+        return {"triggered": True, "kind": "fail", "reason": "close < stop", "px": c["c"]}
     if t < 24:
-        return {"triggered": False, "kind": None, "reason": "wait", "px": entry_lh_px}
+        return {"triggered": False, "kind": None, "reason": "wait", "px": stop_px}
 
     rsi, mfi, atr = ind["rsi"], ind["mfi"], ind["atr"]
     d_rsi = (rsi[t] - rsi[t - 1]) if isnum(rsi[t]) and isnum(rsi[t - 1]) else 0.0
@@ -423,8 +450,8 @@ def detect_exit(cs, t, entry_lh_i, entry_lh_px, ind):
         return {"triggered": True, "kind": "exhaustion", "reason": " + ".join(tells), "px": c["h"]}
 
     prev = t - 1
-    run = entry_lh_px
-    for j in range(entry_lh_i, prev):
+    run = cs[entry_i]["h"]
+    for j in range(entry_i, prev):
         if cs[j]["h"] > run:
             run = cs[j]["h"]
     peak = cs[prev]
@@ -450,7 +477,7 @@ def detect_exit(cs, t, entry_lh_i, entry_lh_px, ind):
     failed_hold = c["h"] < peak["h"] * 0.9995 and loc_now <= 0.35 and (d_rsi <= -4 or d_mfi <= -4)
     if is_new and weak and lagged and failed_hold:
         return {"triggered": True, "kind": "quiet", "reason": "quiet top", "px": c["c"]}
-    return {"triggered": False, "kind": None, "reason": "wait", "px": entry_lh_px}
+    return {"triggered": False, "kind": None, "reason": "wait", "px": stop_px}
 
 
 def structure_at(cs, t, swing, rsi, cvd, all_highs, all_lows):
@@ -506,7 +533,7 @@ def simulate(cs, swing):
         if pos is not None:
             if cs[t]["h"] > pos["peak"]:
                 pos["peak"] = cs[t]["h"]
-            x = detect_exit(cs, t, pos["lh_i"], pos["lh_px"], ind)
+            x = detect_exit(cs, t, pos["entry_i"], pos["stop_px"], ind)
             if x["triggered"]:
                 px0, px1 = pos["entry_px"], cs[t]["c"]
                 trades.append({
@@ -540,14 +567,15 @@ def simulate(cs, swing):
         last_top_slope = (cache["lh"][-1][1] - cache["lh"][-2][1]) / max(1, cache["lh"][-1][0] - cache["lh"][-2][0])
         upper = last_h[1] + last_top_slope * (t - last_h[0])
         released = cs[t]["c"] > upper * 1.001 and last_top_slope <= 0
-        b = detect_buy(cache["pattern"], cache["lh"], cache["tops"], cs[t]["c"], released)
+        b = detect_buy(cache["pattern"], cache["lh"], cache["tops"], cs[t]["c"], cs, t, ind)
         if b and b["triggered"]:
             pos = {
                 "entry_i": t,
                 "entry_t": cs[t]["t"],
                 "entry_px": cs[t]["c"],
-                "lh_i": last_h[0],
+                "lh_i": b["lh_i"],
                 "lh_px": last_h[1],
+                "stop_px": b["stop"],
                 "path": b["path"],
                 "reason": b["reason"],
                 "pattern": cache["pattern"],

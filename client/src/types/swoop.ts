@@ -148,6 +148,8 @@ export interface SwoopBuyTrigger {
   price: number;
   reason: string;
   tells: string[];
+  /** Stop for the spot long (last LH or climax-bar low). */
+  stop?: number;
 }
 
 /** Spot exit on a triggered BUY — flatten the long, not a short. */

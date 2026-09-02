@@ -276,12 +276,10 @@ export function analyzeSwoopGaps(
 }
 
 /**
- * Two BUY paths, same trigger (close through last confirmed LH):
- *  A) Completing swoop — RSI/vol/flat tells, AND last gap is a squeeze
- *     or a low-vol test. Markdown last gap cannot arm this path.
- *  B) Oversold reclaim — last LH with RSI ≤ 50 and/or stoch ≤ 20 (flushed),
- *     then price reclaims that high. May–Jun relief rally. Markdown is OK.
- * Channel never arms. CVD cannot veto either path.
+ * BUY paths (spot long). Channel never arms. CVD cannot veto.
+ *  A) Coil break — completing tells + last-gap squeeze/test, close through last LH.
+ *  B) Oversold reclaim — flushed last LH, then close through it.
+ *  C) Climax accumulation — selling-climax at a low, then close through that bar's high.
  */
 export function detectSwoopBuy(
   pattern: SwoopBookPattern,
@@ -289,8 +287,8 @@ export function detectSwoopBuy(
   topStats: SwoopGapStat[],
   lastClose: number,
   lastTime: number,
-  /** True when close is already through the descending envelope (HUD "release"). */
-  released = false,
+  _released = false,
+  candles?: SwoopCandle[],
 ): SwoopBuyTrigger | null {
   if (pattern === 'none' || pattern === 'channel') return null;
   if (highs.length < 2 || topStats.length < 1) return null;
@@ -315,15 +313,9 @@ export function detectSwoopBuy(
   const completingCore =
     completingTells.length >= 2 &&
     (flags.has('rsi_div') || flags.has('rsi_hold') || flags.has('vol_dry'));
-  // Squeeze/test is the quality gate. Envelope release is the live break the
-  // HUD already calls "release" — don't hide BUY behind a 16-bar squeeze flag.
-  const completing =
-    !lastMarkdown && completingCore && (lastSqueeze || released);
+  const completing = !lastMarkdown && completingCore && lastSqueeze;
   if (completing && lastGap.status === 'test' && !completingTells.includes('squeeze')) {
     completingTells.push('test');
-  }
-  if (completing && released && !completingTells.includes('squeeze') && !completingTells.includes('test')) {
-    completingTells.push('release');
   }
 
   const rsiOs = lastGap.rsiEnd != null && lastGap.rsiEnd <= 50;
@@ -343,8 +335,25 @@ export function detectSwoopBuy(
       price: lastH.price,
       reason: completingTells.join(' + '),
       tells: completingTells,
+      stop: lastH.price,
     };
   }
+
+  const cap = candles?.length ? findSellingClimax(candles, lastH.index) : null;
+  if (cap != null) {
+    const bar = candles![cap];
+    const reclaimed = lastClose > bar.high * 1.001;
+    return {
+      armed: true,
+      triggered: reclaimed,
+      time: lastTime,
+      price: bar.high,
+      reason: reclaimed ? 'climax reclaim' : 'climax · wait close > dump bar',
+      tells: ['climax reclaim'],
+      stop: bar.low,
+    };
+  }
+
   if (oversold) {
     return {
       armed: true,
@@ -353,6 +362,7 @@ export function detectSwoopBuy(
       price: lastH.price,
       reason: `oversold reclaim · ${oversoldTells.join(' + ')}`,
       tells: oversoldTells,
+      stop: lastH.price,
     };
   }
   return {
@@ -362,6 +372,7 @@ export function detectSwoopBuy(
     price: lastH.price,
     reason: lastGap.status,
     tells: [],
+    stop: lastH.price,
   };
 }
 
@@ -428,6 +439,31 @@ function barEffort(candles: SwoopCandle[], i: number): { rngAtr: number; volX: n
   return { rngAtr, volX, loc: locInBar(c) };
 }
 
+/** Most recent selling-climax bar at a local low (causal). */
+function findSellingClimax(candles: SwoopCandle[], lastHIndex: number): number | null {
+  const last = candles.length - 1;
+  if (last < 21) return null;
+  const from = Math.max(1, Math.min(lastHIndex, last - 48));
+  const closes = candles.map((c) => c.close);
+  const rsi = wilderRsi(closes, 14);
+  const mfi = mfiSeries(candles, 14);
+  let found: number | null = null;
+  for (let i = from; i <= last; i++) {
+    let lo8 = candles[i].low;
+    for (let j = Math.max(0, i - 7); j <= i; j++) {
+      if (candles[j].low < lo8) lo8 = candles[j].low;
+    }
+    if (candles[i].low > lo8 * 1.002) continue;
+    const e = barEffort(candles, i);
+    const dRsi =
+      Number.isFinite(rsi[i]) && Number.isFinite(rsi[i - 1]) ? rsi[i] - rsi[i - 1] : 0;
+    const dMfi =
+      Number.isFinite(mfi[i]) && Number.isFinite(mfi[i - 1]) ? mfi[i] - mfi[i - 1] : 0;
+    if (e.rngAtr >= 2.5 && e.volX >= 2 && (dRsi <= -8 || dMfi <= -10)) found = i;
+  }
+  return found;
+}
+
 function windowMax(xs: number[], lo: number, hi: number): { i: number; v: number } {
   let bestI = lo;
   let best = -Infinity;
@@ -458,15 +494,16 @@ export function detectSwoopExit(
   if (!buy?.triggered || !candles.length) return null;
   const last = candles.length - 1;
   const lastC = candles[last];
-  const failed = lastC.close < lastH.price * 0.999;
+  const stop = buy.stop ?? lastH.price;
+  const failed = lastC.close < stop * 0.999;
   if (failed) {
     return {
       armed: true,
       triggered: true,
       time: lastC.time,
       price: lastC.close,
-      reason: 'close < last LH',
-      tells: ['close < last LH'],
+      reason: buy.stop != null && buy.stop !== lastH.price ? 'close < climax low' : 'close < last LH',
+      tells: ['fail'],
       kind: 'fail',
     };
   }
