@@ -158,8 +158,8 @@ export interface SwoopSellTrigger {
   price: number;
   reason: string;
   tells: string[];
-  /** exhaustion = climax top bar; fail = close back through last LH. */
-  kind: 'fail' | 'exhaustion';
+  /** exhaustion = violent climax; quiet = failed hold of a weak high; fail = close < last LH. */
+  kind: 'fail' | 'exhaustion' | 'quiet';
 }
 
 export interface SwoopPivotLabel {

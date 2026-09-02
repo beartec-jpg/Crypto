@@ -392,6 +392,6 @@ describe('detectSwoopExit', () => {
     const sell = detectSwoopExit(candles, lastH, buy);
     expect(sell?.armed).toBe(true);
     expect(sell?.triggered).toBe(false);
-    expect(sell?.reason).toMatch(/climax top/);
+    expect(sell?.reason).toMatch(/climax or quiet top/);
   });
 });

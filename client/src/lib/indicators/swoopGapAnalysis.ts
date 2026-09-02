@@ -380,14 +380,6 @@ function atrAt(candles: SwoopCandle[], i: number, period = 14): number | null {
   return s;
 }
 
-function bbWidthAt(closes: number[], i: number, period = 20): number | null {
-  if (i < period - 1 || i >= closes.length) return null;
-  const slice = closes.slice(i - period + 1, i + 1);
-  const m = slice.reduce((a, b) => a + b, 0) / period;
-  const sd = Math.sqrt(slice.reduce((a, b) => a + (b - m) ** 2, 0) / period);
-  return m > 0 ? (4 * sd) / m : 0;
-}
-
 function locInBar(c: SwoopCandle): number {
   const rng = c.high - c.low;
   return rng <= 0 ? 0.5 : (c.close - c.low) / rng;
@@ -415,13 +407,47 @@ function mfiSeries(candles: SwoopCandle[], period = 14): number[] {
   return out;
 }
 
+function volMedian(candles: SwoopCandle[], i: number, look = 20): number {
+  const vols: number[] = [];
+  for (let j = Math.max(0, i - look); j < i; j++) {
+    const v = Number(candles[j].volume);
+    if (Number.isFinite(v) && v > 0) vols.push(v);
+  }
+  if (!vols.length) return 0;
+  vols.sort((a, b) => a - b);
+  return vols[Math.floor(vols.length / 2)];
+}
+
+function barEffort(candles: SwoopCandle[], i: number): { rngAtr: number; volX: number; loc: number } {
+  const c = candles[i];
+  const atr = atrAt(candles, i);
+  const rngAtr = atr != null && atr > 0 ? (c.high - c.low) / atr : 0;
+  const med = volMedian(candles, i);
+  const v = Number(c.volume);
+  const volX = med > 0 && Number.isFinite(v) ? v / med : 0;
+  return { rngAtr, volX, loc: locInBar(c) };
+}
+
+function windowMax(xs: number[], lo: number, hi: number): { i: number; v: number } {
+  let bestI = lo;
+  let best = -Infinity;
+  for (let i = lo; i <= hi; i++) {
+    const v = xs[i];
+    if (Number.isFinite(v) && v >= best) {
+      best = v;
+      bestI = i;
+    }
+  }
+  return { i: bestI, v: best };
+}
+
 /**
  * Spot EXIT on a triggered BUY. Not a short. Not a trail.
  *
- * Top = this bar is a buying climax that dies:
- *   range ≥ 2.5 ATR and vol ≥ 2× median, AND RSI or MFI collapse on the bar.
- * Continuation rockets (1.03 / 1.10 / 1.22) print climax but RSI/MFI still rise
- * and close on the high — those are skipped.
+ * Two top types:
+ *  climax (violent) — this bar is a buying climax that dies (range + vol + RSI/MFI collapse).
+ *  quiet            — weak lagged high, next bar cannot take it and closes weak (4 Jul).
+ * Continuation rockets (1.03 / 1.10 / 1.22) are skipped.
  * Fail = close back through the last LH (stop).
  */
 export function detectSwoopExit(
@@ -450,43 +476,25 @@ export function detectSwoopExit(
     triggered: false,
     time: lastC.time,
     price: lastH.price,
-    reason: 'long · wait climax top or close < last LH',
+    reason: 'long · wait climax or quiet top or close < last LH',
     tells: [],
     kind: 'exhaustion',
   };
-  if (last < 21) return waiting;
+  if (last < 24) return waiting;
 
   const closes = candles.map((c) => c.close);
   const rsi = wilderRsi(closes, 14);
   const mfi = mfiSeries(candles, 14);
-  const rsiNow = rsi[last];
-  const rsiPrev = rsi[last - 1];
-  const mfiNow = mfi[last];
-  const mfiPrev = mfi[last - 1];
-  const dRsi =
-    Number.isFinite(rsiNow) && Number.isFinite(rsiPrev) ? rsiNow - rsiPrev : 0;
-  const dMfi =
-    Number.isFinite(mfiNow) && Number.isFinite(mfiPrev) ? mfiNow - mfiPrev : 0;
+  const d = (a: number, b: number) =>
+    Number.isFinite(a) && Number.isFinite(b) ? a - b : 0;
+  const dRsi = d(rsi[last], rsi[last - 1]);
+  const dMfi = d(mfi[last], mfi[last - 1]);
+  const now = barEffort(candles, last);
 
-  const atrNow = atrAt(candles, last);
-  const rngAtr = atrNow != null && atrNow > 0 ? (lastC.high - lastC.low) / atrNow : 0;
-  const vols: number[] = [];
-  for (let j = Math.max(0, last - 20); j < last; j++) {
-    const v = Number(candles[j].volume);
-    if (Number.isFinite(v) && v > 0) vols.push(v);
-  }
-  vols.sort((a, b) => a - b);
-  const medVol = vols.length ? vols[Math.floor(vols.length / 2)] : 0;
-  const lastVol = Number(lastC.volume);
-  const volX = medVol > 0 && Number.isFinite(lastVol) ? lastVol / medVol : 0;
-  const loc = locInBar(lastC);
-
-  const climax = rngAtr >= 2.5 && volX >= 2;
+  const climax = now.rngAtr >= 2.5 && now.volX >= 2;
   const oscDeath = dRsi <= -8 || dMfi <= -10;
-  const continuationRocket = loc >= 0.8 && dRsi > 0 && dMfi > 0;
-  const top = climax && oscDeath && !continuationRocket;
-
-  if (top) {
+  const continuationRocket = now.loc >= 0.8 && dRsi > 0 && dMfi > 0;
+  if (climax && oscDeath && !continuationRocket) {
     const tells: string[] = ['climax'];
     if (dRsi <= -8) tells.push(`RSI ${dRsi.toFixed(0)}`);
     if (dMfi <= -10) tells.push(`MFI ${dMfi.toFixed(0)}`);
@@ -495,9 +503,45 @@ export function detectSwoopExit(
       triggered: true,
       time: lastC.time,
       price: lastC.high,
-      reason: `${tells.join(' + ')} · ${rngAtr.toFixed(1)} ATR`,
+      reason: `${tells.join(' + ')} · ${now.rngAtr.toFixed(1)} ATR`,
       tells,
       kind: 'exhaustion',
+    };
+  }
+
+  // Quiet top (4 Jul): previous bar is a weak, lagged new high; this bar
+  // cannot take it and closes in the lower third.
+  const prev = last - 1;
+  const from = Math.max(0, lastH.index);
+  let runHigh = lastH.price;
+  for (let j = from; j < prev; j++) {
+    if (candles[j].high > runHigh) runHigh = candles[j].high;
+  }
+  const peak = candles[prev];
+  const isNewHigh = peak.high >= runHigh * 0.999;
+  const peakEff = barEffort(candles, prev);
+  const weakHigh = peakEff.rngAtr < 2 && peakEff.volX < 2.2;
+  const rsiLook = Math.max(0, prev - 24);
+  const rsiMax = windowMax(rsi, rsiLook, prev);
+  const mfiMax = windowMax(mfi, rsiLook, prev);
+  const lagged =
+    Number.isFinite(rsi[prev]) &&
+    rsi[prev] >= 70 &&
+    (rsiMax.i <= prev - 6 || (Number.isFinite(mfi[prev]) && mfi[prev] < mfiMax.v - 3));
+  const failedHold =
+    lastC.high < peak.high * 0.9995 &&
+    now.loc <= 0.35 &&
+    (dRsi <= -4 || dMfi <= -4);
+
+  if (isNewHigh && weakHigh && lagged && failedHold) {
+    return {
+      armed: true,
+      triggered: true,
+      time: lastC.time,
+      price: lastC.close,
+      reason: `quiet top · failed hold ${peak.high.toPrecision(4)}`,
+      tells: ['quiet', 'failed hold'],
+      kind: 'quiet',
     };
   }
   return waiting;
