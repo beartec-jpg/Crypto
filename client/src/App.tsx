@@ -8,6 +8,7 @@ import { CryptoAuthGate } from '@/components/CryptoAuthGate';
 import { InstallPrompt } from '@/components/InstallPrompt';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { RedirectTo } from '@/components/marketing/RedirectTo';
+import { isDevelopment } from '@/hooks/useCryptoAuth';
 import { lazy, Suspense } from 'react';
 import '@/utils/sandboxBootstrap';
 
@@ -40,6 +41,17 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
       </Suspense>
     </CryptoAuthGate>
   );
+}
+
+function InternalOnlyRoute({ component: Component }: { component: React.ComponentType }) {
+  if (!isDevelopment) {
+    return (
+      <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+        <NotFound />
+      </Suspense>
+    );
+  }
+  return <ProtectedRoute component={Component} />;
 }
 
 function App() {
@@ -128,16 +140,16 @@ function App() {
               <ProtectedRoute component={CryptoElliottWaveLessons} />
             </Route>
             <Route path="/dev/analytics">
-              <ProtectedRoute component={DevAnalytics} />
+              <InternalOnlyRoute component={DevAnalytics} />
             </Route>
             <Route path="/admin">
-              <ProtectedRoute component={DevAnalytics} />
+              <InternalOnlyRoute component={DevAnalytics} />
             </Route>
             <Route path="/admin/users">
-              <ProtectedRoute component={AdminPanel} />
+              <InternalOnlyRoute component={AdminPanel} />
             </Route>
             <Route path="/dev/sandbox">
-              <ProtectedRoute component={CryptoSandbox} />
+              <InternalOnlyRoute component={CryptoSandbox} />
             </Route>
             
             <Route>
