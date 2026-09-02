@@ -34,6 +34,8 @@ Thumbs.db
 __pycache__
 *.pyc
 .venv
+secrets.env
+crypto-data/
 
 # Test coverage
 coverage
