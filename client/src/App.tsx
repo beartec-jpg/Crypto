@@ -7,6 +7,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { CryptoAuthGate } from '@/components/CryptoAuthGate';
 import { InstallPrompt } from '@/components/InstallPrompt';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { RedirectTo } from '@/components/marketing/RedirectTo';
 import { lazy, Suspense } from 'react';
 import { SHOW_QBTC } from '@/constants/featureFlags';
 import '@/utils/sandboxBootstrap';
@@ -16,6 +17,8 @@ const CryptoLanding = lazy(() => import('@/pages/CryptoLanding'));
 const CryptoLogin = lazy(() => import('@/pages/CryptoLogin'));
 const CryptoPrivacy = lazy(() => import('@/pages/CryptoPrivacy'));
 const CryptoTerms = lazy(() => import('@/pages/CryptoTerms'));
+const CryptoPricing = lazy(() => import('@/pages/CryptoPricing'));
+const CryptoContact = lazy(() => import('@/pages/CryptoContact'));
 const CryptoIndicators = lazy(() => import('@/pages/CryptoIndicatorsClean'));
 const CryptoAI = lazy(() => import('@/pages/CryptoAI'));
 const CryptoElliottWave = lazy(() => import('@/pages/CryptoElliottWave'));
@@ -65,20 +68,41 @@ function App() {
                 <CryptoLanding />
               </Suspense>
             </Route>
+            <Route path="/login">
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+                <CryptoLogin />
+              </Suspense>
+            </Route>
             <Route path="/cryptologin">
               <Suspense fallback={<LoadingSpinner message="Loading..." />}>
                 <CryptoLogin />
               </Suspense>
             </Route>
-            <Route path="/cryptoprivacy">
+            <Route path="/pricing">
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+                <CryptoPricing />
+              </Suspense>
+            </Route>
+            <Route path="/privacy">
               <Suspense fallback={<LoadingSpinner message="Loading..." />}>
                 <CryptoPrivacy />
               </Suspense>
             </Route>
-            <Route path="/cryptoterms">
+            <Route path="/terms">
               <Suspense fallback={<LoadingSpinner message="Loading..." />}>
                 <CryptoTerms />
               </Suspense>
+            </Route>
+            <Route path="/contact">
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+                <CryptoContact />
+              </Suspense>
+            </Route>
+            <Route path="/cryptoprivacy">
+              <RedirectTo to="/privacy" />
+            </Route>
+            <Route path="/cryptoterms">
+              <RedirectTo to="/terms" />
             </Route>
             {/* QBTC public routes — hidden when SHOW_QBTC is false (pages not deleted) */}
             {SHOW_QBTC && (

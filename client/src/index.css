@@ -184,3 +184,29 @@ body {
     padding-right: env(safe-area-inset-right);
   }
 }
+
+@keyframes bt-fade-up {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes bt-scroll-line {
+  0% { transform: scaleY(0); transform-origin: top; opacity: 0.25; }
+  45% { transform: scaleY(1); transform-origin: top; opacity: 1; }
+  100% { transform: scaleY(0); transform-origin: bottom; opacity: 0.2; }
+}
+
+.bt-reveal {
+  animation: bt-fade-up 0.75s ease-out both;
+}
+
+.bt-scroll-line {
+  animation: bt-scroll-line 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bt-reveal,
+  .bt-scroll-line {
+    animation: none;
+  }
+}
