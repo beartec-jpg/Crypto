@@ -10,7 +10,7 @@ export default function CryptoTerms() {
       <div className="max-w-[1200px] mx-auto space-y-6">
         {/* BearTec Logo - Top Center */}
         <div className="flex justify-center mb-8">
-          <Link href="/cryptoindicators">
+          <Link href="/">
             <img 
               src={bearTecLogoNew} 
               alt="BearTec Logo" 
@@ -20,10 +20,10 @@ export default function CryptoTerms() {
         </div>
 
         {/* Back Button */}
-        <Link href="/cryptoindicators">
+        <Link href="/">
           <Button variant="ghost" className="text-gray-400 hover:text-white hover:bg-[#1a1a1a]">
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Indicators
+            Back to Home
           </Button>
         </Link>
 
@@ -245,7 +245,7 @@ export default function CryptoTerms() {
                 <li><strong>Binance API:</strong> Market data (subject to Binance Terms)</li>
                 <li><strong>xAI Grok:</strong> AI analysis (subject to xAI Terms)</li>
                 <li><strong>Stripe:</strong> Payment processing (subject to Stripe Terms)</li>
-                <li><strong>Google/Replit OAuth:</strong> Authentication</li>
+                <li><strong>Clerk:</strong> Authentication</li>
               </ul>
               <p className="text-sm mt-3">
                 We are not responsible for third-party service failures, changes, or discontinuation.
@@ -332,27 +332,24 @@ export default function CryptoTerms() {
         {/* Footer Navigation */}
         <div className="border-t border-[#2a2e39] mt-8 pt-6">
           <div className="flex flex-wrap items-center justify-center gap-6 text-sm">
-            <Link href="/cryptoprivacy">
+            <Link href="/privacy">
               <Button variant="ghost" className="text-gray-400 hover:text-white hover:bg-[#1a1a1a]">
                 Privacy Policy
               </Button>
             </Link>
-            <Link href="/cryptosubscribe">
+            <Link href="/pricing">
               <Button variant="ghost" className="text-gray-400 hover:text-white hover:bg-[#1a1a1a]">
                 Subscriptions
               </Button>
             </Link>
-            <Link href="/crypto/training">
+            <Link href="/contact">
               <Button variant="ghost" className="text-gray-400 hover:text-white hover:bg-[#1a1a1a]">
-                Trading Education
+                Contact
               </Button>
             </Link>
-            <a href="mailto:beartec@beartec.uk" className="text-gray-400 hover:text-white">
-              Contact Support
-            </a>
           </div>
           <div className="text-center text-sm text-gray-500 mt-4">
-            © 2025 BearTec. For educational and informational purposes only.
+            © 2026 BEARTEC LTD (17166952). For educational and informational purposes only.
           </div>
         </div>
       </div>
