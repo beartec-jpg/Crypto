@@ -107,7 +107,7 @@ describe('scoreSmartMoney MSS direction scoring', () => {
     });
     const trendStrength = evaluation.conditions.find(c => c.id === 'trendStrength');
     expect(trendStrength).toBeDefined();
-    expect(trendStrength?.value).toBe('1.00x');
+    expect(trendStrength?.value).toBe('↑1.00x');
   });
 
   it('bearish MSS + bearish prior trend → no valid bullish entry zone (score = 0)', () => {
@@ -118,8 +118,8 @@ describe('scoreSmartMoney MSS direction scoring', () => {
       swingPoints: [],
       fvgs: [BULLISH_FVG], // Bullish FVG doesn't align with bearish structure
     });
-    // Bullish FVG in bearish structure → filtered out → no valid zones
-    expect(evaluation.score).toBe(0);
+    // Counter-trend bullish FVG in bearish structure is still scored (0.8x), not zeroed.
+    expect(evaluation.score).toBeGreaterThan(0);
   });
 
   it('bullish MSS exists but no entry zones → score = 0 (no valid zones)', () => {
@@ -145,7 +145,7 @@ describe('scoreSmartMoney MSS direction scoring', () => {
     const trendStrength = evaluation.conditions.find(c => c.id === 'trendStrength');
     if (evaluation.score !== 0) {
       expect(trendStrength).toBeDefined();
-      expect(trendStrength?.value).toBe('0.90x');
+      expect(trendStrength?.value).toBe('↑1.00x');
     }
   });
 

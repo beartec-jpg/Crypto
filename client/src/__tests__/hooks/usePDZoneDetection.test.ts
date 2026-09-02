@@ -51,7 +51,7 @@ describe('usePDZoneDetection', () => {
     const { result } = renderHook(() =>
       usePDZoneDetection({
         candles,
-        settings: { ...DEFAULT_PD_ZONE_SETTINGS, rangeSource: 'swing' },
+        settings: { ...DEFAULT_PD_ZONE_SETTINGS, enabled: true, rangeSource: 'swing' },
       }),
     );
 
@@ -83,7 +83,7 @@ describe('usePDZoneDetection', () => {
     const { result } = renderHook(() =>
       usePDZoneDetection({
         candles,
-        settings: { ...DEFAULT_PD_ZONE_SETTINGS, rangeSource: 'day' },
+        settings: { ...DEFAULT_PD_ZONE_SETTINGS, enabled: true, rangeSource: 'day' },
       }),
     );
 
