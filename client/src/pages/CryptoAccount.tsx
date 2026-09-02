@@ -370,7 +370,7 @@ export default function CryptoAccount() {
             </div>
 
             {/* Admin Panel - Only visible to admin */}
-            {isAdmin && (
+            {isAdmin && isDevelopment && (
               <div className="bg-gradient-to-r from-purple-900/50 to-pink-900/50 border border-purple-500/50 rounded-lg p-6">
                 <div className="flex items-center gap-3 mb-4">
                   <ShieldCheck className="w-6 h-6 text-purple-400" />
