@@ -365,14 +365,6 @@ export function detectSwoopBuy(
   };
 }
 
-function emaSeries(xs: number[], period: number): number[] {
-  if (!xs.length) return [];
-  const k = 2 / (period + 1);
-  const out = [xs[0]];
-  for (let i = 1; i < xs.length; i++) out.push(xs[i] * k + out[i - 1] * (1 - k));
-  return out;
-}
-
 function atrAt(candles: SwoopCandle[], i: number, period = 14): number | null {
   if (i < period || i >= candles.length) return null;
   const tr: number[] = [candles[0].high - candles[0].low];
@@ -396,14 +388,41 @@ function bbWidthAt(closes: number[], i: number, period = 20): number | null {
   return m > 0 ? (4 * sd) / m : 0;
 }
 
+function locInBar(c: SwoopCandle): number {
+  const rng = c.high - c.low;
+  return rng <= 0 ? 0.5 : (c.close - c.low) / rng;
+}
+
+function mfiSeries(candles: SwoopCandle[], period = 14): number[] {
+  const n = candles.length;
+  const out = Array(n).fill(NaN);
+  const tp = candles.map((c) => (c.high + c.low + c.close) / 3);
+  const rmf = Array(n).fill(0);
+  for (let i = 1; i < n; i++) {
+    const v = Number.isFinite(candles[i].volume) ? (candles[i].volume as number) : 0;
+    if (tp[i] > tp[i - 1]) rmf[i] = tp[i] * v;
+    else if (tp[i] < tp[i - 1]) rmf[i] = -tp[i] * v;
+  }
+  for (let i = period; i < n; i++) {
+    let pos = 0;
+    let neg = 0;
+    for (let j = i - period + 1; j <= i; j++) {
+      if (rmf[j] > 0) pos += rmf[j];
+      else neg -= rmf[j];
+    }
+    out[i] = neg === 0 ? 100 : 100 - 100 / (1 + pos / neg);
+  }
+  return out;
+}
+
 /**
- * Spot EXIT on a triggered BUY. Not a short.
+ * Spot EXIT on a triggered BUY. Not a short. Not a trail.
  *
- * Live — does not wait for the current high to 16-bar confirm:
- *  fail        close back through the last LH (BUY thesis dead)
- *  exhaustion  RSI ≥ 80 or RSI vs the live rally high, plus expansion or climax
- *  roll        RSI ≥ 70 and close loses ema20 after a stretch (quiet top)
- * CVD cannot veto. Stoch-hot is ignored.
+ * Top = this bar is a buying climax that dies:
+ *   range ≥ 2.5 ATR and vol ≥ 2× median, AND RSI or MFI collapse on the bar.
+ * Continuation rockets (1.03 / 1.10 / 1.22) print climax but RSI/MFI still rise
+ * and close on the high — those are skipped.
+ * Fail = close back through the last LH (stop).
  */
 export function detectSwoopExit(
   candles: SwoopCandle[],
@@ -413,7 +432,6 @@ export function detectSwoopExit(
   if (!buy?.triggered || !candles.length) return null;
   const last = candles.length - 1;
   const lastC = candles[last];
-  const from = Math.max(0, lastH.index);
   const failed = lastC.close < lastH.price * 0.999;
   if (failed) {
     return {
@@ -427,27 +445,31 @@ export function detectSwoopExit(
     };
   }
 
-  const waiting = {
+  const waiting: SwoopSellTrigger = {
     armed: true,
     triggered: false,
     time: lastC.time,
     price: lastH.price,
-    reason: 'long · wait exhaustion or close < last LH',
+    reason: 'long · wait climax top or close < last LH',
     tells: [],
-    kind: 'exhaustion' as const,
+    kind: 'exhaustion',
   };
-  if (last <= from + 2) return waiting;
-  // Don't flatten on the break bar — need the long to actually exist above the LH.
-  if (lastC.close <= lastH.price * 1.01) return waiting;
+  if (last < 21) return waiting;
 
   const closes = candles.map((c) => c.close);
   const rsi = wilderRsi(closes, 14);
+  const mfi = mfiSeries(candles, 14);
   const rsiNow = rsi[last];
-  const ema20 = emaSeries(closes, 20);
+  const rsiPrev = rsi[last - 1];
+  const mfiNow = mfi[last];
+  const mfiPrev = mfi[last - 1];
+  const dRsi =
+    Number.isFinite(rsiNow) && Number.isFinite(rsiPrev) ? rsiNow - rsiPrev : 0;
+  const dMfi =
+    Number.isFinite(mfiNow) && Number.isFinite(mfiPrev) ? mfiNow - mfiPrev : 0;
+
   const atrNow = atrAt(candles, last);
-  const atrThen = atrAt(candles, from);
-  const bbNow = bbWidthAt(closes, last);
-  const bbThen = bbWidthAt(closes, from);
+  const rngAtr = atrNow != null && atrNow > 0 ? (lastC.high - lastC.low) / atrNow : 0;
   const vols: number[] = [];
   for (let j = Math.max(0, last - 20); j < last; j++) {
     const v = Number(candles[j].volume);
@@ -457,64 +479,25 @@ export function detectSwoopExit(
   const medVol = vols.length ? vols[Math.floor(vols.length / 2)] : 0;
   const lastVol = Number(lastC.volume);
   const volX = medVol > 0 && Number.isFinite(lastVol) ? lastVol / medVol : 0;
-  const rngAtr =
-    atrNow != null && atrNow > 0 ? (lastC.high - lastC.low) / atrNow : 0;
+  const loc = locInBar(lastC);
 
-  let priorI = from;
-  let priorH = candles[from].high;
-  for (let j = from + 1; j < last; j++) {
-    if (candles[j].high >= priorH) {
-      priorH = candles[j].high;
-      priorI = j;
-    }
-  }
-  const rsiPrior = rsi[priorI];
-  const liveDiv =
-    lastC.high > priorH * 1.002 &&
-    Number.isFinite(rsiNow) &&
-    Number.isFinite(rsiPrior) &&
-    rsiNow < rsiPrior - 0.5;
+  const climax = rngAtr >= 2.5 && volX >= 2;
+  const oscDeath = dRsi <= -8 || dMfi <= -10;
+  const continuationRocket = loc >= 0.8 && dRsi > 0 && dMfi > 0;
+  const top = climax && oscDeath && !continuationRocket;
 
-  const rsi80 = Number.isFinite(rsiNow) && rsiNow >= 80;
-  const rsi70 = Number.isFinite(rsiNow) && rsiNow >= 70;
-  const expand =
-    (bbNow != null && bbThen != null && bbThen > 0 && bbNow / bbThen >= 1.5) ||
-    (atrNow != null && atrThen != null && atrThen > 0 && atrNow / atrThen >= 1.4);
-  const climax = volX >= 2.5 || rngAtr >= 2.5;
-  const stretched =
-    ema20[last] > 0 && lastC.high >= ema20[last] * 1.03;
-  const emaLost =
-    ema20[last] > 0 && lastC.close < ema20[last] && stretched;
-
-  const tells: string[] = [];
-  if (rsi80) tells.push(`RSI ${rsiNow.toFixed(0)}`);
-  else if (liveDiv) tells.push('RSI vs HH');
-  else if (rsi70) tells.push(`RSI ${rsiNow.toFixed(0)}`);
-  if (expand) tells.push('expand');
-  if (climax) tells.push(volX >= 2.5 ? 'vol climax' : 'range climax');
-  if (emaLost) tells.push('ema20 loss');
-
-  const exhaustion = (rsi80 || liveDiv) && (expand || climax);
-  if (exhaustion) {
+  if (top) {
+    const tells: string[] = ['climax'];
+    if (dRsi <= -8) tells.push(`RSI ${dRsi.toFixed(0)}`);
+    if (dMfi <= -10) tells.push(`MFI ${dMfi.toFixed(0)}`);
     return {
       armed: true,
       triggered: true,
       time: lastC.time,
       price: lastC.high,
-      reason: tells.join(' + '),
+      reason: `${tells.join(' + ')} · ${rngAtr.toFixed(1)} ATR`,
       tells,
       kind: 'exhaustion',
-    };
-  }
-  if (rsi70 && emaLost) {
-    return {
-      armed: true,
-      triggered: true,
-      time: lastC.time,
-      price: lastC.close,
-      reason: tells.join(' + ') || 'ema20 loss',
-      tells: tells.length ? tells : ['ema20 loss'],
-      kind: 'roll',
     };
   }
   return waiting;

@@ -387,11 +387,11 @@ describe('detectSwoopExit', () => {
     expect(sell?.reason).toMatch(/last LH/);
   });
 
-  it('waits while the long is still above the last LH without exhaustion', () => {
+  it('waits while the long is still above the last LH without a climax top', () => {
     const candles = Array.from({ length: 40 }, (_, i) => c(i, 1.03, 1.035, 1.025, 1.03, 100));
     const sell = detectSwoopExit(candles, lastH, buy);
     expect(sell?.armed).toBe(true);
     expect(sell?.triggered).toBe(false);
-    expect(sell?.reason).toMatch(/wait exhaustion/);
+    expect(sell?.reason).toMatch(/climax top/);
   });
 });
