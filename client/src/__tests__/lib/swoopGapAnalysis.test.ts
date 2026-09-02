@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { analyzeSwoopGaps, barDelta, detectSwoopBuy, wilderRsi } from '@/lib/indicators/swoopGapAnalysis';
+import { analyzeSwoopGaps, barDelta, detectSwoopBuy, detectSwoopExit, wilderRsi } from '@/lib/indicators/swoopGapAnalysis';
 import type { SwoopCandle } from '@/lib/indicators/swoop';
 import type { SwoopSegment } from '@/types/swoop';
 
@@ -351,5 +351,43 @@ describe('analyzeSwoopGaps', () => {
     const reclaim = detectSwoopBuy('swoop', highs, [flushed], 1.053, 51);
     expect(reclaim?.armed).toBe(true);
     expect(reclaim?.reason).toMatch(/oversold reclaim/);
+  });
+});
+
+describe('detectSwoopExit', () => {
+  const buy = {
+    armed: true,
+    triggered: true,
+    time: 50,
+    price: 1.02,
+    reason: 'vol dry + squeeze',
+    tells: ['vol dry', 'squeeze'],
+  };
+  const lastH = { index: 20, time: 20, price: 1.02 };
+
+  it('does not arm until BUY has triggered', () => {
+    const candles = Array.from({ length: 40 }, (_, i) => c(i, 1, 1.01, 0.99, 1, 100));
+    expect(detectSwoopExit(candles, lastH, { ...buy, triggered: false })).toBeNull();
+    expect(detectSwoopExit(candles, lastH, null)).toBeNull();
+  });
+
+  it('exits when close falls back through the last LH', () => {
+    const candles = Array.from({ length: 40 }, (_, i) => {
+      const px = i < 25 ? 1.04 : 1.01;
+      return c(i, px, px + 0.005, px - 0.005, i === 39 ? 1.018 : px, 100);
+    });
+    candles[39] = c(39, 1.02, 1.022, 1.015, 1.016, 100);
+    const sell = detectSwoopExit(candles, lastH, buy);
+    expect(sell?.triggered).toBe(true);
+    expect(sell?.kind).toBe('fail');
+    expect(sell?.reason).toMatch(/last LH/);
+  });
+
+  it('waits while the long is still above the last LH without exhaustion', () => {
+    const candles = Array.from({ length: 40 }, (_, i) => c(i, 1.03, 1.035, 1.025, 1.03, 100));
+    const sell = detectSwoopExit(candles, lastH, buy);
+    expect(sell?.armed).toBe(true);
+    expect(sell?.triggered).toBe(false);
+    expect(sell?.reason).toMatch(/wait exhaustion/);
   });
 });

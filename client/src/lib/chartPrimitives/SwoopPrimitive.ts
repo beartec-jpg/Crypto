@@ -81,20 +81,27 @@ class SwoopRenderer implements IPrimitivePaneRenderer {
         const boxX = x - boxW / 2;
         const boxY = lab.kind === 'low' ? y + 8 : y - boxH - 8;
         const isBuy = lab.kind === 'buy';
-        ctx.fillStyle = isBuy ? 'rgba(6, 78, 59, 0.92)' : 'rgba(15, 23, 42, 0.82)';
+        const isSell = lab.kind === 'sell';
+        ctx.fillStyle = isBuy
+          ? 'rgba(6, 78, 59, 0.92)'
+          : isSell
+            ? 'rgba(127, 29, 29, 0.92)'
+            : 'rgba(15, 23, 42, 0.82)';
         ctx.fillRect(boxX, boxY, boxW, boxH);
         ctx.strokeStyle = isBuy
           ? 'rgba(52, 211, 153, 0.9)'
-          : lab.kind === 'high'
-            ? 'rgba(248,113,113,0.45)'
-            : 'rgba(251,113,133,0.45)';
-        ctx.lineWidth = isBuy ? 1.5 : 1;
+          : isSell
+            ? 'rgba(251, 113, 133, 0.95)'
+            : lab.kind === 'high'
+              ? 'rgba(248,113,113,0.45)'
+              : 'rgba(251,113,133,0.45)';
+        ctx.lineWidth = isBuy || isSell ? 1.5 : 1;
         ctx.strokeRect(boxX, boxY, boxW, boxH);
-        ctx.fillStyle = isBuy ? '#a7f3d0' : '#e2e8f0';
+        ctx.fillStyle = isBuy ? '#a7f3d0' : isSell ? '#fecdd3' : '#e2e8f0';
         ctx.font = 'bold 10px sans-serif';
         ctx.fillText(lines[0], boxX + 5, boxY + 2);
         if (lines[1]) {
-          ctx.fillStyle = isBuy ? '#6ee7b7' : '#94a3b8';
+          ctx.fillStyle = isBuy ? '#6ee7b7' : isSell ? '#fda4af' : '#94a3b8';
           ctx.font = '9px sans-serif';
           ctx.fillText(lines[1], boxX + 5, boxY + 14);
         }

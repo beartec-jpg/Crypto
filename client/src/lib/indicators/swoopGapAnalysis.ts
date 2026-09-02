@@ -33,6 +33,7 @@ import type {
   SwoopGapStatus,
   SwoopPoint,
   SwoopSegment,
+  SwoopSellTrigger,
 } from '@/types/swoop';
 
 export function barDelta(c: SwoopCandle): number {
@@ -355,4 +356,157 @@ export function detectSwoopBuy(
     reason: lastGap.status,
     tells: [],
   };
+}
+
+function emaSeries(xs: number[], period: number): number[] {
+  if (!xs.length) return [];
+  const k = 2 / (period + 1);
+  const out = [xs[0]];
+  for (let i = 1; i < xs.length; i++) out.push(xs[i] * k + out[i - 1] * (1 - k));
+  return out;
+}
+
+function atrAt(candles: SwoopCandle[], i: number, period = 14): number | null {
+  if (i < period || i >= candles.length) return null;
+  const tr: number[] = [candles[0].high - candles[0].low];
+  for (let j = 1; j <= i; j++) {
+    const c = candles[j];
+    const p = candles[j - 1];
+    tr.push(Math.max(c.high - c.low, Math.abs(c.high - p.close), Math.abs(c.low - p.close)));
+  }
+  let s = 0;
+  for (let j = 0; j < period; j++) s += tr[j];
+  s /= period;
+  for (let j = period; j <= i; j++) s = (s * (period - 1) + tr[j]) / period;
+  return s;
+}
+
+function bbWidthAt(closes: number[], i: number, period = 20): number | null {
+  if (i < period - 1 || i >= closes.length) return null;
+  const slice = closes.slice(i - period + 1, i + 1);
+  const m = slice.reduce((a, b) => a + b, 0) / period;
+  const sd = Math.sqrt(slice.reduce((a, b) => a + (b - m) ** 2, 0) / period);
+  return m > 0 ? (4 * sd) / m : 0;
+}
+
+/**
+ * Spot EXIT on a triggered BUY. Not a short.
+ *
+ * Live — does not wait for the current high to 16-bar confirm:
+ *  fail        close back through the last LH (BUY thesis dead)
+ *  exhaustion  RSI ≥ 80 or RSI vs the live rally high, plus expansion or climax
+ *  roll        RSI ≥ 70 and close loses ema20 after a stretch (quiet top)
+ * CVD cannot veto. Stoch-hot is ignored.
+ */
+export function detectSwoopExit(
+  candles: SwoopCandle[],
+  lastH: SwoopPoint,
+  buy: SwoopBuyTrigger | null,
+): SwoopSellTrigger | null {
+  if (!buy?.triggered || !candles.length) return null;
+  const last = candles.length - 1;
+  const lastC = candles[last];
+  const from = Math.max(0, lastH.index);
+  const failed = lastC.close < lastH.price * 0.999;
+  if (failed) {
+    return {
+      armed: true,
+      triggered: true,
+      time: lastC.time,
+      price: lastC.close,
+      reason: 'close < last LH',
+      tells: ['close < last LH'],
+      kind: 'fail',
+    };
+  }
+
+  const waiting = {
+    armed: true,
+    triggered: false,
+    time: lastC.time,
+    price: lastH.price,
+    reason: 'long · wait exhaustion or close < last LH',
+    tells: [],
+    kind: 'exhaustion' as const,
+  };
+  if (last <= from + 2) return waiting;
+
+  const closes = candles.map((c) => c.close);
+  const rsi = wilderRsi(closes, 14);
+  const rsiNow = rsi[last];
+  const ema20 = emaSeries(closes, 20);
+  const atrNow = atrAt(candles, last);
+  const atrThen = atrAt(candles, from);
+  const bbNow = bbWidthAt(closes, last);
+  const bbThen = bbWidthAt(closes, from);
+  const vols: number[] = [];
+  for (let j = Math.max(0, last - 20); j < last; j++) {
+    const v = Number(candles[j].volume);
+    if (Number.isFinite(v) && v > 0) vols.push(v);
+  }
+  vols.sort((a, b) => a - b);
+  const medVol = vols.length ? vols[Math.floor(vols.length / 2)] : 0;
+  const lastVol = Number(lastC.volume);
+  const volX = medVol > 0 && Number.isFinite(lastVol) ? lastVol / medVol : 0;
+  const rngAtr =
+    atrNow != null && atrNow > 0 ? (lastC.high - lastC.low) / atrNow : 0;
+
+  let priorI = from;
+  let priorH = candles[from].high;
+  for (let j = from + 1; j < last; j++) {
+    if (candles[j].high >= priorH) {
+      priorH = candles[j].high;
+      priorI = j;
+    }
+  }
+  const rsiPrior = rsi[priorI];
+  const liveDiv =
+    lastC.high > priorH * 1.002 &&
+    Number.isFinite(rsiNow) &&
+    Number.isFinite(rsiPrior) &&
+    rsiNow < rsiPrior - 0.5;
+
+  const rsi80 = Number.isFinite(rsiNow) && rsiNow >= 80;
+  const rsi70 = Number.isFinite(rsiNow) && rsiNow >= 70;
+  const expand =
+    (bbNow != null && bbThen != null && bbThen > 0 && bbNow / bbThen >= 1.5) ||
+    (atrNow != null && atrThen != null && atrThen > 0 && atrNow / atrThen >= 1.4);
+  const climax = volX >= 2.5 || rngAtr >= 2.5;
+  const stretched =
+    ema20[last] > 0 && lastC.high >= ema20[last] * 1.03;
+  const emaLost =
+    ema20[last] > 0 && lastC.close < ema20[last] && stretched;
+
+  const tells: string[] = [];
+  if (rsi80) tells.push(`RSI ${rsiNow.toFixed(0)}`);
+  else if (liveDiv) tells.push('RSI vs HH');
+  else if (rsi70) tells.push(`RSI ${rsiNow.toFixed(0)}`);
+  if (expand) tells.push('expand');
+  if (climax) tells.push(volX >= 2.5 ? 'vol climax' : 'range climax');
+  if (emaLost) tells.push('ema20 loss');
+
+  const exhaustion = (rsi80 || liveDiv) && (expand || climax);
+  if (exhaustion) {
+    return {
+      armed: true,
+      triggered: true,
+      time: lastC.time,
+      price: lastC.high,
+      reason: tells.join(' + '),
+      tells,
+      kind: 'exhaustion',
+    };
+  }
+  if (rsi70 && emaLost) {
+    return {
+      armed: true,
+      triggered: true,
+      time: lastC.time,
+      price: lastC.close,
+      reason: tells.join(' + ') || 'ema20 loss',
+      tells: tells.length ? tells : ['ema20 loss'],
+      kind: 'roll',
+    };
+  }
+  return waiting;
 }

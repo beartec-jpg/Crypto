@@ -150,13 +150,25 @@ export interface SwoopBuyTrigger {
   tells: string[];
 }
 
+/** Spot exit on a triggered BUY — flatten the long, not a short. */
+export interface SwoopSellTrigger {
+  armed: boolean;
+  triggered: boolean;
+  time: number;
+  price: number;
+  reason: string;
+  tells: string[];
+  /** exhaustion = take profit into the high; fail = close back through last LH. */
+  kind: 'exhaustion' | 'fail' | 'roll';
+}
+
 export interface SwoopPivotLabel {
   time: number;
   price: number;
   text: string;
   /** Second line (CVD / vol / RSI flags). */
   sub?: string;
-  kind: 'high' | 'low' | 'buy';
+  kind: 'high' | 'low' | 'buy' | 'sell';
 }
 
 export interface SwoopResult {
@@ -183,4 +195,5 @@ export interface SwoopResult {
   /** Per-gap volume / CVD / divergence read, oldest → newest. */
   gapStats: SwoopGapStat[];
   buy: SwoopBuyTrigger | null;
+  sell: SwoopSellTrigger | null;
 }

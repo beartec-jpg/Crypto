@@ -62,8 +62,14 @@ export function SwoopHud({ result, visible, pivotLength }: SwoopHudProps) {
         {result.compression != null && result.armed && (
           <div>Gap {Math.round(result.compression * 100)}% tight · proj {result.projectBars} bars</div>
         )}
-        {result.buy?.triggered && (
+        {result.sell?.triggered && (
+          <div className="font-semibold text-rose-300">SELL · {result.sell.reason}</div>
+        )}
+        {result.buy?.triggered && !result.sell?.triggered && (
           <div className="font-semibold text-emerald-300">BUY · {result.buy.reason}</div>
+        )}
+        {result.buy?.triggered && result.sell?.armed && !result.sell?.triggered && (
+          <div className="text-amber-200">{result.sell.reason}</div>
         )}
         {result.buy?.armed && !result.buy.triggered && (
           <div className="text-amber-200">
