@@ -276,10 +276,11 @@ export function analyzeSwoopGaps(
 
 /**
  * Two BUY paths, same trigger (close through last confirmed LH):
- *  A) Completing swoop — RSI vs LH, vol dry, squeeze, last highs equal.
+ *  A) Completing swoop — RSI/vol/flat tells, AND last gap is a squeeze
+ *     or a low-vol test. Markdown last gap cannot arm this path.
  *  B) Oversold reclaim — last LH with RSI ≤ 50 and/or stoch ≤ 20 (flushed),
- *     then price reclaims that high. May–Jun relief rally.
- * CVD cannot veto either path.
+ *     then price reclaims that high. May–Jun relief rally. Markdown is OK.
+ * Channel never arms. CVD cannot veto either path.
  */
 export function detectSwoopBuy(
   pattern: SwoopBookPattern,
@@ -295,6 +296,7 @@ export function detectSwoopBuy(
   const recent = topStats.slice(-3);
   const flags = new Set(recent.flatMap((g) => g.flags));
   const lastGap = topStats[topStats.length - 1];
+  const lastFlags = new Set(lastGap.flags);
   const broken = lastClose > lastH.price * 1.001;
 
   const completingTells: string[] = [];
@@ -305,9 +307,16 @@ export function detectSwoopBuy(
     flags.has('equal_high') ||
     Math.abs(lastH.price - prevH.price) / Math.max(Math.abs(prevH.price), 1e-12) <= 0.004;
   if (equalHigh || flags.has('flattening')) completingTells.push('LH flat');
+  const lastSqueeze = lastFlags.has('range_shrink') || lastGap.status === 'test';
+  const lastMarkdown = lastGap.status === 'markdown';
   const completing =
+    !lastMarkdown &&
+    lastSqueeze &&
     completingTells.length >= 2 &&
     (flags.has('rsi_div') || flags.has('rsi_hold') || flags.has('vol_dry'));
+  if (completing && lastGap.status === 'test' && !completingTells.includes('squeeze')) {
+    completingTells.push('test');
+  }
 
   const rsiOs = lastGap.rsiEnd != null && lastGap.rsiEnd <= 50;
   const stochOs = lastGap.stochEnd != null && lastGap.stochEnd <= 20;

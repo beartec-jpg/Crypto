@@ -66,7 +66,9 @@ export function SwoopHud({ result, visible, pivotLength }: SwoopHudProps) {
           <div className="font-semibold text-emerald-300">BUY · {result.buy.reason}</div>
         )}
         {result.buy?.armed && !result.buy.triggered && (
-          <div className="text-amber-200">setup · wait close &gt; last LH</div>
+          <div className="text-amber-200">
+            setup · {result.buy.reason} · wait close &gt; last LH
+          </div>
         )}
       </div>
     </div>

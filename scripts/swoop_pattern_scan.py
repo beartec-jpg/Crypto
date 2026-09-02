@@ -453,7 +453,14 @@ def buy_path(pattern: str, lh, last_gap: dict) -> str | None:
     equal = "equal_high" in flags or abs(last_h - prev_h) / max(abs(prev_h), 1e-12) <= 0.004
     if equal or "flattening" in flags:
         completing.append("LH flat")
-    if len(completing) >= 2 and ("rsi_div" in flags or "rsi_hold" in flags or "vol_dry" in flags):
+    last_squeeze = "range_shrink" in flags or last_gap["st"] == "test"
+    last_markdown = last_gap["st"] == "markdown"
+    if (
+        not last_markdown
+        and last_squeeze
+        and len(completing) >= 2
+        and ("rsi_div" in flags or "rsi_hold" in flags or "vol_dry" in flags)
+    ):
         return "completing"
     rsi_os = last_gap["rsi_end"] is not None and last_gap["rsi_end"] <= 50
     stoch_os = last_gap["stoch_end"] is not None and last_gap["stoch_end"] <= 20
