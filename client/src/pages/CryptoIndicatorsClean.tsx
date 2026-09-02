@@ -202,7 +202,13 @@ export default function CryptoIndicatorsClean() {
             symbol={selectedSymbol}
             showPatternBacktest={false}
             activeOscillators={activeOscillators}
-            onActiveOscillatorsChange={setActiveOscillators}
+            onActiveOscillatorsChange={(oscillators) => {
+              setActiveOscillators(
+                oscillators.filter((id): id is OscillatorId =>
+                  VALID_OSCILLATOR_IDS.has(id as OscillatorId),
+                ),
+              );
+            }}
             watchlistHasTickers={watchlistHasTickers}
           />
           </div>

@@ -17,6 +17,7 @@ import {
   scoreWaveB,
   scoreWaveC,
   calcRetracementLevels,
+  calcExtensionLevels,
   calcW5ProjectionLevels,
   type FibLevel,
   type WaveFibResult,

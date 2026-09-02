@@ -2506,7 +2506,7 @@ export function ChartFullscreenPage({
             const logical = chartRef.current!.timeScale().coordinateToLogical(px.x);
             const price = candleSeriesRef.current!.coordinateToPrice(px.y);
             if (logical === null || price === null) return null;
-            return { time: logicalToTime(logical), price };
+            return { time: logicalToTime(logical), price: Number(price) };
           })
           .filter((p): p is { time: number; price: number } => p !== null);
       } else if (currentMode === 'line_assisted') {

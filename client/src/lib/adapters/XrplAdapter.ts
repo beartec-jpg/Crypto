@@ -21,7 +21,7 @@
  * Conversion: rippleEpoch = unixTimestamp - 946_684_800
  */
 
-import { Client, Wallet, AccountOfferCancelRequest } from 'xrpl';
+import { Client, Wallet } from 'xrpl';
 import { sha256 } from '@noble/hashes/sha256';
 import type { IChainAdapter, LockParams, LockResult, ClaimParams, RefundParams, ChainId } from './IChainAdapter.ts';
 

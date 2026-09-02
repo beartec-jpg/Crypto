@@ -9366,6 +9366,16 @@ CRITICAL DATA RULES:
       if (!offer) return res.status(404).json({ error: 'Offer not found' });
       if (offer.status !== 'OPEN') return res.status(409).json({ error: 'Offer is no longer open' });
 
+      if (
+        !offer.sellerQbtcAddress ||
+        !offer.sellerEvmAddress ||
+        !offer.sellerPubKeyHex ||
+        !offer.qbtcAmount ||
+        !offer.usdcAmountRequested
+      ) {
+        return res.status(400).json({ error: 'Offer is missing required swap fields' });
+      }
+
       // Generate secret and compute SHA-256 hash
       const secretBytes = crypto.randomBytes(32);
       const secretHex = secretBytes.toString('hex');

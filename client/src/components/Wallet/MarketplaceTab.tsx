@@ -1495,6 +1495,7 @@ function V2SwapActions({
           secretHash: secret,
           timelockSecs,
           counterpartyAddress: takerXrpAddr,
+          refundAddress: xrplWallet.classicAddress,
         }));
       } else {
         // Taker only knows secretHash — build Condition directly from hash
@@ -1506,6 +1507,7 @@ function V2SwapActions({
           timelockSecs,
           counterpartyAddress: takerXrpAddr,
           conditionHex,
+          refundAddress: xrplWallet.classicAddress,
         }));
       }
 
@@ -1580,6 +1582,7 @@ function V2SwapActions({
         absoluteLocktime: locktimeUnix,
         timelockSecs: 0,
         counterpartyAddress: counterpartyEth!,
+        refundAddress: ethSigner.address,
       });
 
       const ts = Math.floor(Date.now() / 1000);
@@ -1634,7 +1637,7 @@ function V2SwapActions({
         if (!secretEntry) throw new Error('Secret not found — was this offer created on this device?');
         const secret: string = typeof secretEntry === 'string' ? secretEntry : secretEntry.secret;
 
-        const claimTxHash = await evmAdapter.claimFunds({ signerKey: ethSigner, lockId: ethLockId, secret });
+        const claimTxHash = await evmAdapter.claimFunds({ signerKey: ethSigner, lockId: ethLockId, secret, outputAddress: ethSigner.address });
         // Report to server — stores secret and sets COMPLETE
         // Non-fatal: EvmMonitor will catch up on next poll if this fails
         try {
@@ -1648,7 +1651,7 @@ function V2SwapActions({
       } else {
         // Taker claims ETH (ETH/XRP) — secret was revealed by maker on XRP chain, now in swap.secret
         if (!swap.secret) throw new Error('Secret not yet available — maker must claim XRP first');
-        await evmAdapter.claimFunds({ signerKey: ethSigner, lockId: ethLockId, secret: swap.secret });
+        await evmAdapter.claimFunds({ signerKey: ethSigner, lockId: ethLockId, secret: swap.secret, outputAddress: ethSigner.address });
         localStorage.setItem(ethClaimedKey, '1');
         setEthAlreadyClaimed(true);
       }
@@ -1687,7 +1690,7 @@ function V2SwapActions({
         const secretEntry = secrets[swap.secretHash];
         if (!secretEntry) throw new Error('Secret not found — was this offer created on this device?');
         const secret: string = typeof secretEntry === 'string' ? secretEntry : secretEntry.secret;
-        await xrplAdapter.claimFunds({ signerKey: xrplWallet, lockId: xrpLockId, secret });
+        await xrplAdapter.claimFunds({ signerKey: xrplWallet, lockId: xrpLockId, secret, outputAddress: xrplWallet.classicAddress });
         // Report to server so it stores the secret and marks COMPLETE immediately
         // (XrplMonitor also polls but this is faster)
         try {
@@ -1710,7 +1713,7 @@ function V2SwapActions({
         // Taker claims XRP (XRP/ETH) — secret revealed by maker via ETH withdraw
         if (!swap.secret) throw new Error('Secret not yet available — maker must claim ETH first');
         if (!xrpLockId) throw new Error('XRP lock ID not found');
-        await xrplAdapter.claimFunds({ signerKey: xrplWallet, lockId: xrpLockId, secret: swap.secret });
+        await xrplAdapter.claimFunds({ signerKey: xrplWallet, lockId: xrpLockId, secret: swap.secret, outputAddress: xrplWallet.classicAddress });
       }
 
       localStorage.setItem(xrpClaimedKey, '1');
@@ -1768,6 +1771,7 @@ function V2SwapActions({
         absoluteLocktime: locktimeUnix,
         timelockSecs: 0,
         counterpartyAddress: counterpartyEth!,
+        refundAddress: bnbSigner.address,
       });
 
       const ts = Math.floor(Date.now() / 1000);
@@ -1822,7 +1826,7 @@ function V2SwapActions({
         const secret: string = typeof secretEntry === 'string' ? secretEntry : secretEntry.secret;
         let claimTxHash: string;
         try {
-          claimTxHash = await evmAdapter.claimFunds({ signerKey: bnbSigner, lockId: bnbLockId, secret });
+          claimTxHash = await evmAdapter.claimFunds({ signerKey: bnbSigner, lockId: bnbLockId, secret, outputAddress: bnbSigner.address });
         } catch (claimErr: any) {
           // If already withdrawn on-chain (status=COMPLETE but bnbClaimedKey not set locally), mark done
           const msg = String(claimErr?.message || claimErr?.reason || '');
@@ -1848,7 +1852,7 @@ function V2SwapActions({
         }
       } else {
         if (!swap.secret) throw new Error('Secret not yet available — maker must claim their side first');
-        await evmAdapter.claimFunds({ signerKey: bnbSigner, lockId: bnbLockId, secret: swap.secret });
+        await evmAdapter.claimFunds({ signerKey: bnbSigner, lockId: bnbLockId, secret: swap.secret, outputAddress: bnbSigner.address });
         localStorage.setItem(bnbClaimedKey, '1');
         setBnbAlreadyClaimed(true);
       }
@@ -1933,7 +1937,7 @@ function V2SwapActions({
           },
         });
         lockId = result.lockId;
-        lockAddress = result.lockAddress;
+        lockAddress = result.lockAddress ?? '';
         htlcScriptHex = result.htlcScriptHex;
         if (htlcScriptHex) localStorage.setItem(`v2_qbtc_script_${swap.publicId}`, htlcScriptHex);
       }
@@ -2151,7 +2155,7 @@ function V2SwapActions({
 
       const result = await btcAdapter.lockFunds({
         signerKey: { privateKeyHex: btcPrivKeyHex, publicKeyHex: myBtcPubKeyHex },
-        amount: Number(lockAmount),
+        amount: String(lockAmount),
         secretHash: swap.secretHash,
         absoluteLocktime: locktimeUnix,
         timelockSecs: 0, // ignored when absoluteLocktime is set

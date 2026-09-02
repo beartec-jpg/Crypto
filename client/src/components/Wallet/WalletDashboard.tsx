@@ -14,7 +14,8 @@ import {
 } from '@/lib/balanceService';
 import { 
   fetchChainTransactions, 
-  type Transaction 
+  type Transaction,
+  type Chain as TxChain,
 } from '@/lib/transactionService';
 import { getCurrentWallet } from '@/lib/walletService';
 import {
@@ -283,7 +284,7 @@ export default function WalletDashboard({
     }
 
     try {
-      const chains: Chain[] = SHOW_QBTC
+      const chains: TxChain[] = SHOW_QBTC
         ? ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana', 'qbtc']
         : ['ethereum', 'bitcoin', 'bsc', 'xrp', 'solana'];
       

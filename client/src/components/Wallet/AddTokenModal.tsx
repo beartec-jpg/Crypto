@@ -18,9 +18,10 @@ interface AddTokenModalProps {
   onSetTrustline?: (currency: string, issuer: string) => Promise<void>;
 }
 
-const CHAIN_LABELS = {
+const CHAIN_LABELS: Record<Chain, { name: string; standard: string; placeholder: string }> = {
   ethereum: { name: 'Ethereum', standard: 'ERC-20', placeholder: '0x... (contract address)' },
   bsc: { name: 'BNB Smart Chain', standard: 'BEP-20', placeholder: '0x... (contract address)' },
+  bsc_testnet: { name: 'BNB Smart Chain (Testnet)', standard: 'BEP-20', placeholder: '0x... (contract address)' },
   xrp: { name: 'XRP Ledger', standard: 'XRPL', placeholder: 'Currency code (e.g., USD)' },
   solana: { name: 'Solana', standard: 'SPL Token', placeholder: 'Mint address' },
   bitcoin: { name: 'Bitcoin', standard: 'N/A', placeholder: 'Bitcoin does not support tokens' },
