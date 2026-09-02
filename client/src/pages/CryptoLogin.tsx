@@ -29,25 +29,25 @@ function DevelopmentLogin() {
             </p>
           </div>
 
-          <Link href="/cryptoindicators">
-            <Button
-              className="w-full bg-[#00c4b4] hover:bg-[#00a89c] text-black font-medium py-6 text-lg"
-              data-testid="button-start-trading"
-            >
+          <Button
+            asChild
+            className="w-full bg-[#00c4b4] hover:bg-[#00a89c] text-black font-medium py-6 text-lg"
+            data-testid="button-start-trading"
+          >
+            <Link href="/cryptoindicators">
               <BarChart2 className="w-5 h-5 mr-3" />
               Get free charts
               <ArrowRight className="w-5 h-5 ml-3" />
-            </Button>
-          </Link>
+            </Link>
+          </Button>
 
-          <Link href="/">
-            <Button
-              variant="outline"
-              className="w-full border-[#2a2e39] bg-transparent text-gray-300 hover:bg-[#2a2e39]"
-            >
-              Back to Home
-            </Button>
-          </Link>
+          <Button
+            asChild
+            variant="outline"
+            className="w-full border-[#2a2e39] bg-transparent text-gray-300 hover:bg-[#2a2e39]"
+          >
+            <Link href="/">Back to Home</Link>
+          </Button>
         </CardContent>
       </Card>
     </div>
@@ -99,14 +99,13 @@ function ProductionLogin() {
             <p>Don&apos;t have an account? Sign up during login</p>
           </div>
 
-          <Link href="/">
-            <Button
-              variant="outline"
-              className="w-full border-[#2a2e39] bg-transparent text-gray-300 hover:bg-[#2a2e39]"
-            >
-              Back to Home
-            </Button>
-          </Link>
+          <Button
+            asChild
+            variant="outline"
+            className="w-full border-[#2a2e39] bg-transparent text-gray-300 hover:bg-[#2a2e39]"
+          >
+            <Link href="/">Back to Home</Link>
+          </Button>
         </CardContent>
       </Card>
     </div>

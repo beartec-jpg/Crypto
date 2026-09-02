@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import type { ReactElement } from 'react'
 import { HelmetProvider } from 'react-helmet-async'
@@ -87,17 +87,30 @@ describe('Canonical public pages', () => {
   it('renders a branded 404 instead of null', () => {
     const { container } = renderPage(<NotFound />)
     expect(container).not.toBeEmptyDOMElement()
-    expect(screen.getByTestId('not-found-page')).toBeInTheDocument()
+    const page = screen.getByTestId('not-found-page')
+    expect(page).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Home' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Pricing' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Contact' })).toBeInTheDocument()
+    const home = within(page).getByRole('link', { name: 'Home' })
+    const pricing = within(page).getByRole('link', { name: 'Pricing' })
+    const contact = within(page).getByRole('link', { name: 'Contact' })
+    expect(home).toHaveAttribute('href', '/')
+    expect(pricing).toHaveAttribute('href', '/pricing')
+    expect(contact).toHaveAttribute('href', '/contact')
+    expect(home.querySelector('button')).toBeNull()
+    expect(pricing.querySelector('button')).toBeNull()
+    expect(contact.querySelector('button')).toBeNull()
   })
 
   it('renders the existing login page without requiring Clerk in development', () => {
     renderPage(<CryptoLogin />)
     expect(screen.getByRole('heading', { name: 'BearTec' })).toBeInTheDocument()
     expect(screen.getByText('Development Mode')).toBeInTheDocument()
+    const charts = screen.getByRole('link', { name: /Get free charts/i })
+    const home = screen.getByRole('link', { name: 'Back to Home' })
+    expect(charts).toHaveAttribute('href', '/cryptoindicators')
+    expect(home).toHaveAttribute('href', '/')
+    expect(charts.querySelector('button')).toBeNull()
+    expect(home.querySelector('button')).toBeNull()
   })
 
   it('uses Clerk rather than Replit on legal pages', () => {
