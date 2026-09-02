@@ -41,9 +41,9 @@ export interface SwoopSettings {
 
 export const DEFAULT_SWOOP_SETTINGS: SwoopSettings = {
   enabled: false,
-  swingLength: 12,
+  swingLength: 16,
   minLowerHighs: 2,
-  minPivotPct: 1,
+  minPivotPct: 0,
   showFan: true,
   showHud: true,
   showPivotLabels: true,
