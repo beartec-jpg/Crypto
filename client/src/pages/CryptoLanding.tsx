@@ -149,7 +149,7 @@ export default function CryptoLanding() {
       </a>
 
       <section
-        className="relative isolate flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-black"
+        className="relative isolate flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-black pb-24"
         data-testid="marketing-hero"
         aria-label="BearTec"
       >
