@@ -67,7 +67,10 @@ describe('useUserSettings', () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    expect(result.current.settings).toEqual(mockSettings);
+    expect(result.current.settings).toEqual({
+      ...DEFAULT_USER_SETTINGS,
+      ...mockSettings,
+    });
   });
 
   it('should update settings optimistically', async () => {
@@ -125,7 +128,7 @@ describe('useUserSettings', () => {
       .mockRejectedValueOnce(new Error('Network error'))
       .mockResolvedValueOnce({ json: async () => initialSettings } as Response);
 
-    result.current.updateSettings({ lastSymbol: 'SOLUSDT' });
+    await expect(result.current.updateSettings({ lastSymbol: 'SOLUSDT' })).rejects.toThrow('Network error');
 
     // After error, should rollback to the original value
     await waitFor(() => expect(result.current.settings.lastSymbol).toBe('BTCUSDT'));

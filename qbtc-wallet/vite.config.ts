@@ -5,6 +5,11 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
 
+// workbox-build 7.x (pulled by vite-plugin-pwa) requires Node >= 20.
+// Skip SW generation on Node 18 so Actions `build (18.x)` can finish.
+const nodeMajor = Number.parseInt(process.versions.node.split('.')[0], 10);
+const pwaDisabled = Number.isNaN(nodeMajor) || nodeMajor < 20;
+
 export default defineConfig({
   base: '/qbtc-wallet/',
   plugins: [
@@ -13,6 +18,7 @@ export default defineConfig({
     nodePolyfills({ include: ['buffer', 'crypto', 'stream'], globals: { Buffer: true } }),
     react(),
     VitePWA({
+      disable: pwaDisabled,
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon-192x192.png', 'icons/icon-512x512.png'],
       manifest: {

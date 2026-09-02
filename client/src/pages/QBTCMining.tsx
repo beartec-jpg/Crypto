@@ -44,6 +44,7 @@ interface WorkerInfo {
   pool_tier?: string;
   recent_hashrate?: number;
   earnings_24h?: number;
+  weighted_shares?: number;
 }
 
 interface PoolStats {

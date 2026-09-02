@@ -186,7 +186,7 @@ class TradePaneView implements IPrimitivePaneView {
   }
 }
 
-export class TradePrimitive implements ISeriesPrimitive<SeriesType> {
+export class TradePrimitive implements ISeriesPrimitive<Time> {
   trades: ManualTrade[] = [];
   series: ISeriesApi<SeriesType> | null = null;
   chart: IChartApi | null = null;

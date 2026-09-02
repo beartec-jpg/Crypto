@@ -4,6 +4,10 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import wasm from 'vite-plugin-wasm';
 
+// workbox-build 7.x (pulled by vite-plugin-pwa) requires Node >= 20.
+const nodeMajor = Number.parseInt(process.versions.node.split('.')[0], 10);
+const pwaDisabled = Number.isNaN(nodeMajor) || nodeMajor < 20;
+
 export default defineConfig({
   base: '/cold-signer/',
   plugins: [
@@ -11,6 +15,7 @@ export default defineConfig({
     nodePolyfills({ include: ['buffer'], globals: { Buffer: true } }),
     react(),
     VitePWA({
+      disable: pwaDisabled,
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon-192x192.png', 'icons/icon-512x512.png'],
       manifest: {

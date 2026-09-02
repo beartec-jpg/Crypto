@@ -400,12 +400,15 @@ function checkCryptoIntegrity(): SecurityWarning | null {
  */
 export function quickSecurityCheck(): boolean {
   try {
-    // Only check the most critical issues
-    const cryptoOk = window.crypto?.subtle && 
-      window.crypto.getRandomValues.toString().includes('[native code]');
-    
+    // Only check the most critical issues.
+    // Coerce to boolean: missing crypto.subtle (Node 18 / some jsdom) is undefined,
+    // and `undefined && x` would otherwise leak a non-boolean return.
+    const cryptoOk = Boolean(
+      window.crypto?.subtle &&
+        window.crypto.getRandomValues.toString().includes('[native code]'),
+    );
     const consoleOk = console.log.toString().includes('[native code]');
-    
+
     return cryptoOk && consoleOk;
   } catch {
     return false;

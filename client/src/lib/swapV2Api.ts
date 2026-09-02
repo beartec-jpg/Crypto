@@ -58,7 +58,7 @@ export interface V2Swap {
   /** BTC HTLC redeem script hex stored by server at lock time — allows taker to claim without localStorage */
   sideAHtlcScript?: string;
   secret?: string;
-  status: 'PENDING_SIDE_A' | 'SIDE_A_LOCKED' | 'SIDE_B_LOCKED' | 'COMPLETE' | 'EXPIRED';
+  status: 'PENDING_SIDE_A' | 'SIDE_A_LOCKED' | 'SIDE_B_LOCKED' | 'COMPLETE' | 'EXPIRED' | 'CANCELLED';
   createdAt: string;
   updatedAt: string;
 }
