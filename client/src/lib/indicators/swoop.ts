@@ -209,6 +209,8 @@ const FLAG_SHORT: Record<string, string> = {
   cvd_vs_price: 'CVD\u2191/px\u2193',
   rsi_div: 'RSI div',
   rsi_hold: 'RSI hold',
+  oversold: 'oversold',
+  stoch_os: 'stoch OS',
   vol_dry: 'vol dry',
   up_bar_vol: 'up-vol',
   flattening: 'flat',

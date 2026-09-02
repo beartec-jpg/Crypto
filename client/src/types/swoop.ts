@@ -105,6 +105,8 @@ export interface SwoopGapStat {
   volumeRatio: number | null;
   avgRange: number;
   rsiDelta: number | null;
+  rsiEnd: number | null;
+  stochEnd: number | null;
   upVolShare: number;
   bars: number;
   flags: string[];

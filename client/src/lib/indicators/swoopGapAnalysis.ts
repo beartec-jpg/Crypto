@@ -149,6 +149,18 @@ function classify(args: {
   return { status, score, flags };
 }
 
+function stochK(candles: SwoopCandle[], i: number, period = 14): number | null {
+  if (i < period - 1 || i >= candles.length) return null;
+  let hh = -Infinity;
+  let ll = Infinity;
+  for (let j = i - period + 1; j <= i; j++) {
+    if (candles[j].high > hh) hh = candles[j].high;
+    if (candles[j].low < ll) ll = candles[j].low;
+  }
+  if (!(hh > ll)) return 50;
+  return (100 * (candles[i].close - ll)) / (hh - ll);
+}
+
 function analyzeOne(
   candles: SwoopCandle[],
   seg: SwoopSegment,
@@ -201,6 +213,10 @@ function analyzeOne(
     rsiDelta,
     slopeFlattening,
   });
+  const rsiEnd = Number.isFinite(rsiB) ? rsiB : null;
+  const stochEnd = stochK(candles, hi);
+  if (rsiEnd != null && rsiEnd <= 50) flags.push('oversold');
+  if (stochEnd != null && stochEnd <= 20) flags.push('stoch_os');
 
   return {
     side,
@@ -218,6 +234,8 @@ function analyzeOne(
     volumeRatio: volRatio,
     avgRange,
     rsiDelta,
+    rsiEnd,
+    stochEnd,
     upVolShare,
     bars,
     flags,
@@ -257,10 +275,11 @@ export function analyzeSwoopGaps(
 }
 
 /**
- * BUY when a swoop (or triangle) has completed: last LHs almost equal,
- * RSI held or diverged, volume dried and/or range squeezed — then price
- * closes through the last confirmed lower high.
- * CVD is not required and cannot veto.
+ * Two BUY paths, same trigger (close through last confirmed LH):
+ *  A) Completing swoop — RSI vs LH, vol dry, squeeze, last highs equal.
+ *  B) Oversold reclaim — last LH with RSI ≤ 50 and/or stoch ≤ 20 (flushed),
+ *     then price reclaims that high. May–Jun relief rally.
+ * CVD cannot veto either path.
  */
 export function detectSwoopBuy(
   pattern: SwoopBookPattern,
@@ -269,30 +288,62 @@ export function detectSwoopBuy(
   lastClose: number,
   lastTime: number,
 ): SwoopBuyTrigger | null {
-  if (pattern !== 'swoop' && pattern !== 'equal_compression') return null;
+  if (pattern === 'none' || pattern === 'channel') return null;
   if (highs.length < 2 || topStats.length < 1) return null;
   const lastH = highs[highs.length - 1];
   const prevH = highs[highs.length - 2];
   const recent = topStats.slice(-3);
   const flags = new Set(recent.flatMap((g) => g.flags));
-  const tells: string[] = [];
-  if (flags.has('rsi_div') || flags.has('rsi_hold')) tells.push('RSI vs LH');
-  if (flags.has('vol_dry')) tells.push('vol dry');
-  if (flags.has('range_shrink')) tells.push('squeeze');
   const lastGap = topStats[topStats.length - 1];
+  const broken = lastClose > lastH.price * 1.001;
+
+  const completingTells: string[] = [];
+  if (flags.has('rsi_div') || flags.has('rsi_hold')) completingTells.push('RSI vs LH');
+  if (flags.has('vol_dry')) completingTells.push('vol dry');
+  if (flags.has('range_shrink')) completingTells.push('squeeze');
   const equalHigh =
     flags.has('equal_high') ||
     Math.abs(lastH.price - prevH.price) / Math.max(Math.abs(prevH.price), 1e-12) <= 0.004;
-  if (equalHigh || flags.has('flattening')) tells.push('LH flat');
-  const setup =
-    tells.length >= 2 && (flags.has('rsi_div') || flags.has('rsi_hold') || flags.has('vol_dry'));
-  const broken = lastClose > lastH.price * 1.001;
+  if (equalHigh || flags.has('flattening')) completingTells.push('LH flat');
+  const completing =
+    completingTells.length >= 2 &&
+    (flags.has('rsi_div') || flags.has('rsi_hold') || flags.has('vol_dry'));
+
+  const rsiOs = lastGap.rsiEnd != null && lastGap.rsiEnd <= 50;
+  const stochOs = lastGap.stochEnd != null && lastGap.stochEnd <= 20;
+  const stillDumping = lastH.price < prevH.price * 0.997;
+  const oversold = stillDumping && (rsiOs || stochOs);
+  const oversoldTells: string[] = [];
+  if (rsiOs) oversoldTells.push(`RSI ${lastGap.rsiEnd!.toFixed(0)}`);
+  if (stochOs) oversoldTells.push(`stoch ${lastGap.stochEnd!.toFixed(0)}`);
+  oversoldTells.push('reclaim LH');
+
+  if (completing) {
+    return {
+      armed: true,
+      triggered: broken,
+      time: lastTime,
+      price: lastH.price,
+      reason: completingTells.join(' + '),
+      tells: completingTells,
+    };
+  }
+  if (oversold) {
+    return {
+      armed: true,
+      triggered: broken,
+      time: lastTime,
+      price: lastH.price,
+      reason: `oversold reclaim · ${oversoldTells.join(' + ')}`,
+      tells: oversoldTells,
+    };
+  }
   return {
-    armed: setup,
-    triggered: setup && broken,
+    armed: false,
+    triggered: false,
     time: lastTime,
     price: lastH.price,
-    reason: tells.join(' + ') || lastGap.status,
-    tells,
+    reason: lastGap.status,
+    tells: [],
   };
 }

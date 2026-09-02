@@ -113,6 +113,8 @@ describe('analyzeSwoopGaps', () => {
         volumeRatio: 0.4,
         avgRange: 0.01,
         rsiDelta: 2,
+        rsiEnd: 55,
+        stochEnd: 65,
         upVolShare: 0.4,
         bars: 30,
         flags: ['rsi_div', 'vol_dry', 'equal_high', 'flattening'],
@@ -126,5 +128,116 @@ describe('analyzeSwoopGaps', () => {
     const fired = detectSwoopBuy('swoop', highs, topStats, 1.022, 51);
     expect(fired?.triggered).toBe(true);
     expect(fired?.tells).toEqual(expect.arrayContaining(['RSI vs LH', 'vol dry', 'LH flat']));
+  });
+
+  it('arms an oversold-reclaim BUY when last LH is flushed and close reclaims it', () => {
+    const highs = [
+      { index: 10, time: 10, price: 1.186 },
+      { index: 40, time: 40, price: 1.158 },
+    ];
+    const topStats = [
+      {
+        side: 'top' as const,
+        gapIndex: 0,
+        startTime: 10,
+        endTime: 40,
+        startPrice: 1.186,
+        endPrice: 1.158,
+        status: 'markdown' as const,
+        score: 12,
+        priceChangePct: -0.024,
+        slope: -0.001,
+        cvdChange: -10,
+        volume: 200,
+        volumeRatio: 1.2,
+        avgRange: 0.02,
+        rsiDelta: -8,
+        rsiEnd: 46,
+        stochEnd: 8.5,
+        upVolShare: 0.4,
+        bars: 30,
+        flags: ['oversold', 'stoch_os'],
+        meanClose: 1.14,
+        downVol: 120,
+      },
+    ];
+    const armed = detectSwoopBuy('swoop', highs, topStats, 1.15, 50);
+    expect(armed?.armed).toBe(true);
+    expect(armed?.triggered).toBe(false);
+    expect(armed?.reason).toMatch(/oversold reclaim/);
+    const fired = detectSwoopBuy('down_compression', highs, topStats, 1.17, 51);
+    expect(fired?.triggered).toBe(true);
+    expect(fired?.reason).toMatch(/oversold reclaim/);
+  });
+
+  it('prefers completing-swoop over oversold reclaim when both could apply', () => {
+    const highs = [
+      { index: 10, time: 10, price: 1.08 },
+      { index: 40, time: 40, price: 1.05 },
+    ];
+    const topStats = [
+      {
+        side: 'top' as const,
+        gapIndex: 0,
+        startTime: 10,
+        endTime: 40,
+        startPrice: 1.02,
+        endPrice: 1.019,
+        status: 'coil' as const,
+        score: 60,
+        priceChangePct: -0.001,
+        slope: -0.00003,
+        cvdChange: -1,
+        volume: 100,
+        volumeRatio: 0.4,
+        avgRange: 0.01,
+        rsiDelta: 2,
+        rsiEnd: 48,
+        stochEnd: 18,
+        upVolShare: 0.4,
+        bars: 30,
+        flags: ['rsi_div', 'vol_dry', 'equal_high', 'flattening', 'oversold', 'stoch_os'],
+        meanClose: 1.01,
+        downVol: 60,
+      },
+    ];
+    const fired = detectSwoopBuy('swoop', highs, topStats, 1.053, 51);
+    expect(fired?.triggered).toBe(true);
+    expect(fired?.reason).not.toMatch(/oversold reclaim/);
+    expect(fired?.tells).toEqual(expect.arrayContaining(['RSI vs LH', 'vol dry']));
+  });
+
+  it('does not arm BUY on a channel', () => {
+    const highs = [
+      { index: 10, time: 10, price: 1.186 },
+      { index: 40, time: 40, price: 1.158 },
+    ];
+    const topStats = [
+      {
+        side: 'top' as const,
+        gapIndex: 0,
+        startTime: 10,
+        endTime: 40,
+        startPrice: 1.186,
+        endPrice: 1.158,
+        status: 'markdown' as const,
+        score: 12,
+        priceChangePct: -0.024,
+        slope: -0.001,
+        cvdChange: -10,
+        volume: 200,
+        volumeRatio: 1.2,
+        avgRange: 0.02,
+        rsiDelta: -8,
+        rsiEnd: 46,
+        stochEnd: 8.5,
+        upVolShare: 0.4,
+        bars: 30,
+        flags: ['oversold', 'stoch_os'],
+        meanClose: 1.14,
+        downVol: 120,
+      },
+    ];
+    expect(detectSwoopBuy('channel', highs, topStats, 1.17, 51)).toBeNull();
   });
 });
