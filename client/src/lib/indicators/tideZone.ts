@@ -376,10 +376,16 @@ export interface TideAccumZone {
   status: 'forming' | 'confirmed';
 }
 
-const ACCUM_EMA_SEP = 2;
-const ACCUM_PX = 0.0005;
-const ACCUM_CONFIRM = 2;
-const ACCUM_KEEP = 10;
+/** Both EMA troughs must be below the neutral band — not a 0-line wiggle. */
+const ACCUM_BELOW = -10;
+/** Higher EMA low must lift by this many score points. */
+const ACCUM_EMA_SEP = 8;
+const ACCUM_PX = 0.003;
+/** Wider than 2 so 1–2 bar noise is not a trough. */
+const ACCUM_CONFIRM = 5;
+/** Troughs this close are the same dip, not a larger divergence. */
+const ACCUM_MIN_GAP = 8;
+const ACCUM_KEEP = 8;
 
 function emaTroughs(ema: { time: number; value: number }[], w: number): number[] {
   const idx: number[] = [];
@@ -417,9 +423,14 @@ function priceLowNear(
   return lo;
 }
 
+function isDeepTrough(e1: number, e2: number): boolean {
+  return e1 < ACCUM_BELOW && e2 < ACCUM_BELOW && e2 > e1 + ACCUM_EMA_SEP;
+}
+
 /**
  * Regular bull div on the Tide EMA vs price: two EMA troughs, price LL, EMA HL.
- * Confirm window is 2 bars (see it on the second low) — warehouse used 8 on EMA21.
+ * Both troughs must sit below −10 (not the zero line). Wider confirm so only
+ * larger swings count.
  */
 export function findTideAccumZones(
   candles: { time: number; low: number }[],
@@ -434,12 +445,13 @@ export function findTideAccumZones(
   for (let k = 1; k < troughs.length; k++) {
     const a = troughs[k - 1];
     const b = troughs[k];
+    if (b - a < ACCUM_MIN_GAP) continue;
     const p1 = priceLowNear(candles, ema[a].time);
     const p2 = priceLowNear(candles, ema[b].time);
     if (p1 == null || p2 == null) continue;
     const e1 = ema[a].value;
     const e2 = ema[b].value;
-    if (!(e2 > e1 + ACCUM_EMA_SEP)) continue;
+    if (!isDeepTrough(e1, e2)) continue;
     if (!(p2 <= p1 * (1 - ACCUM_PX))) continue;
     out.push({
       t1: ema[a].time,
@@ -461,7 +473,7 @@ export function findTideAccumZones(
       p1 != null &&
       lastC.time > ema[lastT].time &&
       lastC.low <= p1 * (1 - ACCUM_PX) &&
-      lastEma.value > e1 + ACCUM_EMA_SEP
+      isDeepTrough(e1, lastEma.value)
     ) {
       const already = out.some((z) => z.t1 === ema[lastT].time && z.status === 'confirmed');
       if (!already) {

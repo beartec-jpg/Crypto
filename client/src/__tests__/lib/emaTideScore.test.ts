@@ -52,5 +52,20 @@ describe('findTideAccumZones', () => {
     expect(confirmed.length).toBeGreaterThanOrEqual(1);
     expect(confirmed[0].price2).toBeLessThan(confirmed[0].price1);
     expect(confirmed[0].ema2).toBeGreaterThan(confirmed[0].ema1);
+    expect(confirmed[0].ema1).toBeLessThan(-10);
+    expect(confirmed[0].ema2).toBeLessThan(-10);
+  });
+
+  it('ignores wiggles on the neutral line', () => {
+    const n = 40;
+    const data: TideZonePoint[] = [];
+    const candles: { time: number; low: number }[] = [];
+    for (let i = 0; i < n; i++) {
+      const score = i === 10 ? -4 : i === 26 ? -2 : 1;
+      data.push(pt(i + 1, score));
+      candles.push({ time: i + 1, low: i === 26 ? 90 : i === 10 ? 100 : 102 });
+    }
+    const zones = findTideAccumZones(candles, data, 1, 2);
+    expect(zones.filter((z) => z.status === 'confirmed')).toHaveLength(0);
   });
 });

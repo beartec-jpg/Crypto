@@ -138,8 +138,8 @@ export function TideZoneHud({
           )}
           {showAccum && (
             <p className="text-[10px] leading-snug text-cyan-100">
-              Accum watch: price made a lower low while the Tide EMA made a higher low. Demand showing
-              under the candles — not a breakout. Complementary to absorb, later than the 0-cross.
+              Accum watch: price lower low vs Tide EMA higher low, both troughs below −10.
+              Larger swing under the candles — not a 0-line wiggle, not a breakout.
             </p>
           )}
           <p className="text-[10px] leading-snug text-slate-400">
