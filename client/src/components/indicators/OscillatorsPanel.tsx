@@ -248,7 +248,7 @@ export function OscillatorsPanel({
                   : 'text-slate-400',
           text: `Tide ${(last.tide * 100).toFixed(0)} · Energy ${(last.energy * 100).toFixed(0)} · Tape ${(last.tape * 100).toFixed(0)}`,
           meaning: tideZoneLabel(last.kind),
-          lookFor: 'Green = 4h tide follow. Amber = vol bounce against a down tide. Red = sell zone.',
+          lookFor: 'Green = 4h tide up (location, not a buy). Amber = bounce vs down tide. Red = down tide.',
         };
       }
       default:

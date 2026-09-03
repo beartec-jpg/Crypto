@@ -9,9 +9,9 @@
  *   - taker/CVD slope confirms the tape
  *
  * Score is in [-100, +100].
- *   > +40  buy zone (follow the 4h tide)
- *   bounce buy when tide is low and energy is high
- *   < -40  sell zone (quiet or confirmed down tide)
+ *   > +40  up tide (4h location — not a buy signal)
+ *   bounce when tide is low and energy is high
+ *   < -40  down tide
  */
 
 export interface TideZoneCandle {
@@ -357,8 +357,8 @@ export function tideZoneColor(kind: TideZoneKind, score: number): string {
 }
 
 export function tideZoneLabel(kind: TideZoneKind): string {
-  if (kind === 'follow_buy') return 'Buy zone — 4h tide up';
-  if (kind === 'bounce_buy') return 'Buy zone — vol bounce vs down tide';
-  if (kind === 'sell') return 'Sell zone — down tide';
-  return 'No zone';
+  if (kind === 'follow_buy') return 'Up tide — with the 4h';
+  if (kind === 'bounce_buy') return 'Bounce vs down tide';
+  if (kind === 'sell') return 'Down tide';
+  return 'No tide';
 }

@@ -109,7 +109,7 @@ function getTSIStatus(tsi: number, signal: number): { label: string; value: stri
 }
 
 function getTideZoneStatus(kind: TideZoneKind, score: number): { label: string; value: string; color: string; zone: string } {
-  const zone = kind === 'follow_buy' ? 'BUY' : kind === 'bounce_buy' ? 'BNC' : kind === 'sell' ? 'SELL' : 'NEU';
+  const zone = kind === 'follow_buy' ? 'UP' : kind === 'bounce_buy' ? 'BNC' : kind === 'sell' ? 'DN' : 'NEU';
   const color = kind === 'follow_buy' ? 'text-green-400' : kind === 'bounce_buy' ? 'text-amber-400' : kind === 'sell' ? 'text-red-400' : 'text-slate-400';
   return { label: 'TIDE', value: score.toFixed(0), color, zone };
 }

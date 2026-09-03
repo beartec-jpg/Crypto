@@ -57,11 +57,11 @@ raw = 0.55*(2*tide−1) + 0.35*(2*energy−1)*(1−tide) + 0.25*(2*tape−1)
 score = 100 * tanh(raw)     # −100 … +100
 ```
 
-Zones:
+Live labels (location, not a constant buy/sell):
 
-- **Follow buy** (green): score ≥ +40
-- **Bounce buy** (amber): tide < 0.45 and energy > 0.65 and score > 15
-- **Sell** (red): score ≤ −40
+- **Up tide** (green): score ≥ +40 — with the 4h, not a buy signal the whole trend
+- **Bounce vs down tide** (amber): tide < 0.45 and energy > 0.65 and score > 15
+- **Down tide** (red): score ≤ −40
 
 Tape uses candle signed volume so the pane works without Coinglass. When
 taker/liq history is on the box, it confirmed the same direction.

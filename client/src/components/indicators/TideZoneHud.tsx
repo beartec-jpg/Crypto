@@ -15,7 +15,7 @@ const COMPONENTS = [
   {
     key: 'tide',
     label: 'Tide',
-    blurb: '4h RSI and distance from 4h EMA50. High = uptrend location — follow-buy. Low = downtrend.',
+    blurb: '4h RSI and distance from 4h EMA50. High = uptrend location, not a buy. Low = downtrend location.',
   },
   {
     key: 'energy',
@@ -114,8 +114,9 @@ export function TideZoneHud({ last, absorb = false, distro = false, reacc = fals
             </p>
           )}
           <p className="text-[10px] leading-snug text-slate-400">
-            Green +40 = follow 4h. Amber = bounce vs down tide. Red −40 = sell / no long. Exit longs at 0,
-            not −40. Distro/Reacc need OI; they stay off if the book feed is missing.
+            Green +40 = 4h tide is up (where you are, not a buy). Amber = bounce vs down tide.
+            Red −40 = 4h tide is down. Exit longs at 0, not −40. Distro/Reacc need OI; they stay
+            off if the book feed is missing.
           </p>
         </div>
       )}
