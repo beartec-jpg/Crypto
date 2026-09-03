@@ -365,6 +365,123 @@ export function emaTideScore(
   return out;
 }
 
+export interface TideAccumZone {
+  t1: number;
+  t2: number;
+  price1: number;
+  price2: number;
+  ema1: number;
+  ema2: number;
+  /** forming = second low is still printing; confirmed = EMA trough is in. */
+  status: 'forming' | 'confirmed';
+}
+
+const ACCUM_EMA_SEP = 2;
+const ACCUM_PX = 0.0005;
+const ACCUM_CONFIRM = 2;
+const ACCUM_KEEP = 10;
+
+function emaTroughs(ema: { time: number; value: number }[], w: number): number[] {
+  const idx: number[] = [];
+  const n = ema.length;
+  if (n < 2 * w + 1) return idx;
+  for (let i = 2 * w; i < n; i++) {
+    const p = i - w;
+    const v = ema[p].value;
+    if (!Number.isFinite(v)) continue;
+    let isMin = true;
+    let unique = true;
+    for (let j = p - w; j <= p + w; j++) {
+      const x = ema[j].value;
+      if (!Number.isFinite(x)) {
+        isMin = false;
+        break;
+      }
+      if (j !== p && x < v) isMin = false;
+      if (j !== p && x === v) unique = false;
+    }
+    if (isMin && unique) idx.push(p);
+  }
+  return idx;
+}
+
+function priceLowNear(
+  candles: { time: number; low: number }[],
+  time: number,
+): number | null {
+  const i = candles.findIndex((c) => c.time === time);
+  if (i < 0) return null;
+  let lo = candles[i].low;
+  if (i > 0) lo = Math.min(lo, candles[i - 1].low);
+  if (i + 1 < candles.length) lo = Math.min(lo, candles[i + 1].low);
+  return lo;
+}
+
+/**
+ * Regular bull div on the Tide EMA vs price: two EMA troughs, price LL, EMA HL.
+ * Confirm window is 2 bars (see it on the second low) — warehouse used 8 on EMA21.
+ */
+export function findTideAccumZones(
+  candles: { time: number; low: number }[],
+  data: TideZonePoint[],
+  emaPeriod: number,
+  confirmBars = ACCUM_CONFIRM,
+): TideAccumZone[] {
+  const ema = emaTideScore(data, emaPeriod);
+  if (ema.length < confirmBars * 4 || candles.length < 8) return [];
+  const troughs = emaTroughs(ema, confirmBars);
+  const out: TideAccumZone[] = [];
+  for (let k = 1; k < troughs.length; k++) {
+    const a = troughs[k - 1];
+    const b = troughs[k];
+    const p1 = priceLowNear(candles, ema[a].time);
+    const p2 = priceLowNear(candles, ema[b].time);
+    if (p1 == null || p2 == null) continue;
+    const e1 = ema[a].value;
+    const e2 = ema[b].value;
+    if (!(e2 > e1 + ACCUM_EMA_SEP)) continue;
+    if (!(p2 <= p1 * (1 - ACCUM_PX))) continue;
+    out.push({
+      t1: ema[a].time,
+      t2: ema[b].time,
+      price1: p1,
+      price2: p2,
+      ema1: e1,
+      ema2: e2,
+      status: 'confirmed',
+    });
+  }
+  const lastT = troughs.length ? troughs[troughs.length - 1] : -1;
+  if (lastT >= 0) {
+    const lastEma = ema[ema.length - 1];
+    const lastC = candles[candles.length - 1];
+    const p1 = priceLowNear(candles, ema[lastT].time);
+    const e1 = ema[lastT].value;
+    if (
+      p1 != null &&
+      lastC.time > ema[lastT].time &&
+      lastC.low <= p1 * (1 - ACCUM_PX) &&
+      lastEma.value > e1 + ACCUM_EMA_SEP
+    ) {
+      const already = out.some((z) => z.t1 === ema[lastT].time && z.status === 'confirmed');
+      if (!already) {
+        out.push({
+          t1: ema[lastT].time,
+          t2: lastC.time,
+          price1: p1,
+          price2: lastC.low,
+          ema1: e1,
+          ema2: lastEma.value,
+          status: 'forming',
+        });
+      }
+    }
+  }
+  const forming = out.filter((z) => z.status === 'forming');
+  const confirmed = out.filter((z) => z.status === 'confirmed').slice(-ACCUM_KEEP);
+  return [...confirmed, ...forming];
+}
+
 export function tideZoneColor(kind: TideZoneKind, score: number): string {
   if (kind === 'follow_buy') return '#22c55e';
   if (kind === 'bounce_buy') return '#f59e0b';

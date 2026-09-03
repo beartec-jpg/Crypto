@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { emaTideScore, type TideZonePoint } from '@/lib/indicators/tideZone';
+import { emaTideScore, findTideAccumZones, type TideZonePoint } from '@/lib/indicators/tideZone';
 
 function pt(time: number, score: number): TideZonePoint {
   return {
@@ -25,5 +25,32 @@ describe('emaTideScore', () => {
 
   it('returns empty for empty input', () => {
     expect(emaTideScore([], 8)).toEqual([]);
+  });
+});
+
+describe('findTideAccumZones', () => {
+  it('marks price LL + hist HL as confirmed accum', () => {
+    const n = 40;
+    const data: TideZonePoint[] = [];
+    const candles: { time: number; low: number }[] = [];
+    for (let i = 0; i < n; i++) {
+      let score = 0;
+      if (i <= 10) score = -5 * i;
+      else if (i <= 18) score = -50 + 6 * (i - 10);
+      else if (i <= 26) score = -2 + -3 * (i - 18);
+      else score = -26 + 4 * (i - 26);
+      data.push(pt(i + 1, score));
+      let low = 100;
+      if (i === 10) low = 50;
+      else if (i === 9 || i === 11) low = 55;
+      else if (i === 26) low = 40;
+      else if (i === 25 || i === 27) low = 45;
+      candles.push({ time: i + 1, low });
+    }
+    const zones = findTideAccumZones(candles, data, 1, 2);
+    const confirmed = zones.filter((z) => z.status === 'confirmed');
+    expect(confirmed.length).toBeGreaterThanOrEqual(1);
+    expect(confirmed[0].price2).toBeLessThan(confirmed[0].price1);
+    expect(confirmed[0].ema2).toBeGreaterThan(confirmed[0].ema1);
   });
 });

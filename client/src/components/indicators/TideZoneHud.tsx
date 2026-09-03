@@ -12,6 +12,7 @@ interface TideZoneHudProps {
   className?: string;
   emaPeriod?: number;
   emaValue?: number;
+  accum?: boolean;
 }
 
 const COMPONENTS = [
@@ -47,12 +48,14 @@ export function TideZoneHud({
   className,
   emaPeriod,
   emaValue,
+  accum = false,
 }: TideZoneHudProps) {
   const [open, setOpen] = useState(false);
   const pct = (v: number) => Math.round(v * 100);
   const showAbsorb = absorb || last.tell === 'absorb';
   const showDistro = !showAbsorb && (distro || last.tell === 'distro');
   const showReacc = !showAbsorb && !showDistro && (reacc || last.tell === 'reacc');
+  const showAccum = accum;
 
   return (
     <div
@@ -81,6 +84,11 @@ export function TideZoneHud({
             {showReacc && (
               <span className="mr-1 rounded bg-sky-500/25 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-sky-200">
                 Reacc
+              </span>
+            )}
+            {showAccum && (
+              <span className="mr-1 rounded bg-cyan-400/25 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-cyan-100">
+                Accum
               </span>
             )}
             {tideZoneLabel(last.kind)}
@@ -126,6 +134,12 @@ export function TideZoneHud({
           {showReacc && (
             <p className="text-[10px] leading-snug text-sky-200">
               Reacc watch: high in an up-tide and OI is not flushing. Pause in trend, not OI-leave distro.
+            </p>
+          )}
+          {showAccum && (
+            <p className="text-[10px] leading-snug text-cyan-100">
+              Accum watch: price made a lower low while the Tide EMA made a higher low. Demand showing
+              under the candles — not a breakout. Complementary to absorb, later than the 0-cross.
             </p>
           )}
           <p className="text-[10px] leading-snug text-slate-400">

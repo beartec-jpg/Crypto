@@ -2,14 +2,14 @@ import { useEffect, useRef } from 'react';
 import { createChart, ColorType, HistogramSeries, LineSeries, type IChartApi, type Time } from 'lightweight-charts';
 import { applyMainChartVisibleRange, type MainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 import type { TideZonePoint } from '@/lib/indicators/tideZone';
-import { emaTideScore, tideZoneColor } from '@/lib/indicators/tideZone';
+import { emaTideScore, findTideAccumZones, tideZoneColor } from '@/lib/indicators/tideZone';
 import { TideZoneHud } from '@/components/indicators/TideZoneHud';
 import { TideHistEmaControl } from '@/components/indicators/TideHistEmaControl';
 import { useTideHistEmaPeriod } from '@/hooks/useTideHistEmaPeriod';
 
 interface TideZonePanelProps {
   data: TideZonePoint[];
-  candles: { time: number }[];
+  candles: { time: number; low?: number }[];
   onChartCreated?: (chart: IChartApi) => void;
   syncWithMainChart?: boolean;
   mainChartVisibleRange?: MainChartVisibleRange;
@@ -131,6 +131,12 @@ export function TideZonePanel({
   const last = data.length ? data[data.length - 1] : null;
   const emaSeries = emaTideScore(data, emaPeriod);
   const emaLast = emaSeries.length ? emaSeries[emaSeries.length - 1].value : undefined;
+  const accumZones = findTideAccumZones(candles, data, emaPeriod);
+  const lastAccum = accumZones.length ? accumZones[accumZones.length - 1] : null;
+  const accumLive = Boolean(
+    lastAccum &&
+      (lastAccum.status === 'forming' || data.slice(-4).some((d) => d.time === lastAccum.t2)),
+  );
 
   return (
     <div className="relative h-full min-h-0 w-full">
@@ -147,6 +153,7 @@ export function TideZonePanel({
             reacc={data.slice(-3).some((d) => d.tell === 'reacc')}
             emaPeriod={emaPeriod}
             emaValue={emaLast}
+            accum={accumLive}
           />
         </div>
       )}

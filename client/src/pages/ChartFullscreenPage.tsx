@@ -36,6 +36,8 @@ import { FullscreenChartIndicatorLayer } from '@/components/chart/FullscreenChar
 import { FullscreenChartModals } from '@/components/chart/FullscreenChartModals';
 import { FullscreenChartViewportLayer } from '@/components/chart/FullscreenChartViewportLayer';
 import { FullscreenOscillatorLayout } from '@/components/oscillators/FullscreenOscillatorLayout';
+import { TideAccumRenderer } from '@/components/indicators/TideAccumRenderer';
+import { useTideHistEmaPeriod } from '@/hooks/useTideHistEmaPeriod';
 
 import { useSuperTrendSettings } from '@/hooks/useSuperTrendSettings';
 import { useSuperTrendCalculation } from '@/hooks/useSuperTrendCalculation';
@@ -465,6 +467,7 @@ export function ChartFullscreenPage({
 
   // Hooks - Oscillator panel (needed first for totalHeight)
   const oscillatorPanel = useOscillatorPanel();
+  const [tideHistEmaPeriod] = useTideHistEmaPeriod();
 
   // Hooks - Chart instance
   const { chartRef, candleSeriesRef, isReady: chartReady, fitContent } = useChartInstance({
@@ -3080,6 +3083,7 @@ export function ChartFullscreenPage({
           miniOscillators={oscillatorPanel.miniOscillators}
           selectedOscillators={oscillatorPanel.selectedOscillators}
           oscillatorData={oscillatorData}
+          candles={effectiveCandles}
           onCycleMiniMode={oscillatorPanel.cycleMode}
           smartMoneyPanelData={smartMoneyPanelData}
           smcTrendEnginePanelData={smcTrendEnginePanelData}
@@ -3242,6 +3246,15 @@ export function ChartFullscreenPage({
           trades={manualTrades}
           currentTime={currentTradeTime}
           timeframe={timeframe}
+        />
+
+        <TideAccumRenderer
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          candles={effectiveCandles}
+          tideZone={oscillatorData.tideZone}
+          emaPeriod={tideHistEmaPeriod}
+          enabled={oscillatorPanel.selectedOscillators.has('tideZone')}
         />
 
         {/* Trade panel popup */}
