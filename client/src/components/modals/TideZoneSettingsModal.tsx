@@ -88,8 +88,9 @@ export function TideZoneSettingsModal({
 
         <div className="p-4 space-y-3">
           <p className="text-[11px] text-slate-400 leading-snug">
-            DIV is price lower-low vs Tide EMA higher-low. Absorb is the same print on
-            the 0-cross / near-low tell. Both are watches, not buys.
+            Zigzag N sizes both the price wick swings and the Tide EMA swings.
+            DIV = price lower pivot vs EMA higher pivot. Absorb = price flat/down
+            while Tide EMA is rising. Watches, not buys.
           </p>
 
           <div className="flex items-center justify-between">
@@ -139,7 +140,7 @@ export function TideZoneSettingsModal({
           />
           <NumRow
             label="Zigzag length N"
-            hint="Same N on price wicks and on the Tide EMA. Bigger N = larger legs."
+            hint="N bars either side on price and on Tide EMA. This is the only size control."
             value={settings.confirmBars}
             min={2}
             max={21}
@@ -147,40 +148,13 @@ export function TideZoneSettingsModal({
             onChange={(confirmBars) => onSettingsChange({ confirmBars })}
           />
           <NumRow
-            label="Min gap (bars)"
-            hint="Two troughs closer than this are the same dip"
-            value={settings.minGap}
-            min={4}
-            max={48}
-            step={1}
-            onChange={(minGap) => onSettingsChange({ minGap })}
-          />
-          <NumRow
             label="Below score"
-            hint="Both EMA troughs must be under this (e.g. −10)"
+            hint="DIV EMA pivots must be under this (0 = off). Absorb does not use this."
             value={settings.belowScore}
             min={-80}
             max={0}
             step={1}
             onChange={(belowScore) => onSettingsChange({ belowScore })}
-          />
-          <NumRow
-            label="EMA lift"
-            hint="Second trough must be this many points higher"
-            value={settings.emaSep}
-            min={1}
-            max={40}
-            step={1}
-            onChange={(emaSep) => onSettingsChange({ emaSep })}
-          />
-          <NumRow
-            label="Price LL %"
-            hint="Second price low must be this % lower"
-            value={Math.round(settings.priceLlPct * 1000) / 10}
-            min={0.1}
-            max={5}
-            step={0.1}
-            onChange={(pct) => onSettingsChange({ priceLlPct: pct / 100 })}
           />
           <NumRow
             label="Keep last N"

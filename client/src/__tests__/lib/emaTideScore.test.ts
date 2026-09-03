@@ -51,7 +51,7 @@ describe('findTideAccumZones', () => {
     const confirmed = zones.filter((z) => z.status === 'confirmed');
     expect(confirmed.length).toBeGreaterThanOrEqual(1);
     expect(confirmed[0].price2).toBeLessThan(confirmed[0].price1);
-    expect(confirmed[0].ema2).toBeGreaterThan(confirmed[0].ema1);
+    expect((confirmed[0].ema2 ?? 0) > (confirmed[0].ema1 ?? 0)).toBe(true);
     expect(confirmed[0].ema1).toBeLessThan(-10);
     expect(confirmed[0].ema2).toBeLessThan(-10);
     expect(confirmed[0].kind).toBe('div');
@@ -102,5 +102,16 @@ describe('zigzagByLength', () => {
     expect(lows.length).toBeGreaterThanOrEqual(2);
     expect(lows.some((z) => z.value === 10)).toBe(true);
     expect(lows.some((z) => z.value === 8)).toBe(true);
+  });
+
+  it('larger N produces fewer price zigzag lows', () => {
+    const candles: { time: number; low: number; high: number }[] = [];
+    for (let i = 0; i < 80; i++) {
+      const wave = Math.sin(i / 3);
+      candles.push({ time: i + 1, low: 100 + wave * 10, high: 110 + wave * 10 });
+    }
+    const short = zigzagPrice(candles, 3).filter((z) => z.type === 'low');
+    const long = zigzagPrice(candles, 12).filter((z) => z.type === 'low');
+    expect(long.length).toBeLessThan(short.length);
   });
 });

@@ -126,8 +126,8 @@ export function TideZoneHud({
           ))}
           {showAbsorb && (
             <p className="text-[10px] leading-snug text-cyan-200">
-              Absorb: price down/flat at a low or 0-cross while hist and tape rose. Taking the long here is
-              still a success even if you exit before a runner. Not a breakout yet.
+              Absorb: price flat or down between two price zigzag lows while the Tide EMA is
+              rising. Demand under the candles — not a breakout.
             </p>
           )}
           {showDistro && (

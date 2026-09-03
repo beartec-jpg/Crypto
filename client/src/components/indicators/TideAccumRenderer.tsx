@@ -25,13 +25,33 @@ export function TideAccumRenderer({
   const zones = useMemo(() => {
     if (!enabled || !tideZone.length) return [];
     const div = settings.showDiv
-      ? findTideDivZones(candles, tideZone, settings)
+      ? findTideDivZones(candles, tideZone, {
+          emaPeriod: settings.emaPeriod,
+          confirmBars: settings.confirmBars,
+          belowScore: settings.belowScore,
+          keep: settings.keep,
+        })
       : [];
     const absorb = settings.showAbsorb
-      ? findTideAbsorbZones(candles, tideZone, settings.keep)
+      ? findTideAbsorbZones(candles, tideZone, {
+          emaPeriod: settings.emaPeriod,
+          confirmBars: settings.confirmBars,
+          keep: settings.keep,
+        })
       : [];
-    return [...div, ...absorb];
-  }, [enabled, candles, tideZone, settings]);
+    const divKey = new Set(div.map((z) => `${z.t1}:${z.t2}`));
+    return [...div, ...absorb.filter((z) => !divKey.has(`${z.t1}:${z.t2}`))];
+  }, [
+    enabled,
+    candles,
+    tideZone,
+    settings.showDiv,
+    settings.showAbsorb,
+    settings.emaPeriod,
+    settings.confirmBars,
+    settings.belowScore,
+    settings.keep,
+  ]);
   const style = useMemo(
     () => ({ divColor: settings.divColor, absorbColor: settings.absorbColor }),
     [settings.divColor, settings.absorbColor],
@@ -54,7 +74,7 @@ export function TideAccumRenderer({
       }
       if (primitiveRef.current === primitive) primitiveRef.current = null;
     };
-  }, [chart, candleSeries, enabled]);
+  }, [chart, candleSeries, enabled, settings.confirmBars, settings.emaPeriod]);
 
   useEffect(() => {
     primitiveRef.current?.update(zones, style);
