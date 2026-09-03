@@ -56,7 +56,7 @@ export function FullscreenChartViewportLayer({
       {showHtfBiasPanel && <HTFBiasPanel entries={htfBiasEntries} />}
 
       {selectedOscillators?.has('tideZone') && oscillatorData.tideZone.length > 0 && (
-        <div className="absolute top-2 left-2 z-30 max-w-[calc(100%-5.5rem)]">
+        <div className="absolute top-16 left-2 z-20 max-w-[calc(100%-5.5rem)]">
           <TideZoneHud
             last={oscillatorData.tideZone[oscillatorData.tideZone.length - 1]}
             absorb={oscillatorData.tideZone.slice(-3).some((d) => d.tell === 'absorb')}
