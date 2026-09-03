@@ -103,7 +103,7 @@ export function TideZonePanel({
       chart.remove();
       chartRef.current = null;
     };
-  }, [candles, data, height, mainChartVisibleRange, onChartCreated]);
+  }, [candles, data, height, onChartCreated]);
 
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {

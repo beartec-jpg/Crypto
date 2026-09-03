@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createChart, ColorType, IChartApi, HistogramSeries, Time, createSeriesMarkers } from 'lightweight-charts';
 import { SqueezeMomentumValue, SqueezeMomentumSettings } from '@/types/squeezeMomentum';
+import { applyMainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 
 interface SqueezeMomentumPanelProps {
   data: SqueezeMomentumValue[];
@@ -89,6 +90,10 @@ export function SqueezeMomentumPanel({
       );
     }
 
+    if (mainChartVisibleRange) {
+      applyMainChartVisibleRange(chart, mainChartVisibleRange);
+    }
+
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height: newHeight } = entry.contentRect;
@@ -109,8 +114,10 @@ export function SqueezeMomentumPanel({
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {
       try {
-        chartRef.current.timeScale().setVisibleRange(mainChartVisibleRange);
-      } catch (e) { /* ignore if range invalid */ }
+        applyMainChartVisibleRange(chartRef.current, mainChartVisibleRange);
+      } catch {
+        /* ignore if range invalid */
+      }
     }
   }, [mainChartVisibleRange]);
 

@@ -5,6 +5,7 @@ import { DraggableToolbar } from '@/components/draggable/DraggableToolbar';
 import { X } from 'lucide-react';
 import { TideZonePanel } from '@/components/indicators/oscillators/TideZonePanel';
 import { calculateTideZone } from '@/lib/indicators/tideZone';
+import { applyMainChartVisibleRange, readMainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 
 // Height of the mobile navigation bar at the bottom of the screen
 const MOBILE_NAV_HEIGHT = 65; // px
@@ -296,29 +297,37 @@ export function FullscreenOscillatorPanel({
     };
   }, [showWilliamsR, candles, williamsRPeriod, isVisible, calculateWilliamsR]);
 
-  // Sync time scale with main chart
+  // Sync time scale with main chart (logical first so rightOffset whitespace follows)
   useEffect(() => {
     if (!isVisible || !mainChartRef.current) return;
-    
+
     const mainChart = mainChartRef.current;
-    
-    const handleVisibleTimeRangeChange = () => {
-      const timeRange = mainChart.timeScale().getVisibleRange();
-      if (!timeRange) return;
-      
-      chartsRef.current.forEach(oscChart => {
+
+    const handleVisibleRangeChange = () => {
+      const range = readMainChartVisibleRange(mainChart);
+      if (!range.time && !range.logical) return;
+
+      chartsRef.current.forEach((oscChart) => {
         try {
-          oscChart.timeScale().setVisibleRange(timeRange);
-        } catch (e) {
+          applyMainChartVisibleRange(oscChart, range);
+        } catch {
           // Ignore errors if chart is being destroyed
         }
       });
     };
-    
-    mainChart.timeScale().subscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
-    
+
+    handleVisibleRangeChange();
+    const ts = mainChart.timeScale();
+    ts.subscribeVisibleTimeRangeChange(handleVisibleRangeChange);
+    ts.subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+
     return () => {
-      mainChart.timeScale().unsubscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
+      try {
+        ts.unsubscribeVisibleTimeRangeChange(handleVisibleRangeChange);
+        ts.unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+      } catch {
+        /* disposed */
+      }
     };
   }, [isVisible, mainChartRef, showRSI, showMACD, showStochRSI, showCCI, showWilliamsR, showTideZone]);
 

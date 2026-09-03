@@ -60,13 +60,6 @@ export function CVDChart({
       onChartCreated(chart);
     }
     
-    // Sync with main chart if enabled
-    if (syncWithMainChart && mainChartVisibleRange) {
-      try {
-        applyMainChartVisibleRange(chart, mainChartVisibleRange);
-      } catch (e) { /* ignore */ }
-    }
-    
     const cvdSeries = chart.addSeries(LineSeries, { 
       color: '#2196F3', 
       lineWidth: 2,
@@ -91,11 +84,29 @@ export function CVDChart({
         { time: data[data.length - 1].time as Time, value: 0 }
       ]);
     }
+
+    if (syncWithMainChart && mainChartVisibleRange) {
+      try {
+        applyMainChartVisibleRange(chart, mainChartVisibleRange);
+      } catch {
+        /* ignore */
+      }
+    }
     
     return () => {
       chart.remove();
     };
-  }, [data, onChartCreated, syncWithMainChart, mainChartVisibleRange]);
+  }, [data, onChartCreated, syncWithMainChart]);
+
+  useEffect(() => {
+    if (chartRef.current && syncWithMainChart && mainChartVisibleRange) {
+      try {
+        applyMainChartVisibleRange(chartRef.current, mainChartVisibleRange);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [mainChartVisibleRange, syncWithMainChart]);
 
   return <div ref={containerRef} className="w-full" data-testid="chart-cvd" />;
 }

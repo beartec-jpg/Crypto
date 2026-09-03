@@ -60,13 +60,6 @@ export function VolumeChart({
       onChartCreated(chart);
     }
     
-    // Sync with main chart if enabled
-    if (syncWithMainChart && mainChartVisibleRange) {
-      try {
-        applyMainChartVisibleRange(chart, mainChartVisibleRange);
-      } catch (e) { /* ignore */ }
-    }
-    
     const volumeSeries = chart.addSeries(HistogramSeries, {
       color: '#26a69a',
       priceFormat: {
@@ -79,11 +72,29 @@ export function VolumeChart({
       time: d.time as Time,
       color: d.color || '#26a69a'
     })));
+
+    if (syncWithMainChart && mainChartVisibleRange) {
+      try {
+        applyMainChartVisibleRange(chart, mainChartVisibleRange);
+      } catch {
+        /* ignore */
+      }
+    }
     
     return () => {
       chart.remove();
     };
-  }, [data, onChartCreated, syncWithMainChart, mainChartVisibleRange]);
+  }, [data, onChartCreated, syncWithMainChart]);
+
+  useEffect(() => {
+    if (chartRef.current && syncWithMainChart && mainChartVisibleRange) {
+      try {
+        applyMainChartVisibleRange(chartRef.current, mainChartVisibleRange);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [mainChartVisibleRange, syncWithMainChart]);
 
   return <div ref={containerRef} className="w-full" data-testid="chart-volume" />;
 }
