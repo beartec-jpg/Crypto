@@ -178,7 +178,11 @@ export default function CryptoIndicatorsClean() {
                   <ChevronDown className="ml-2 h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64 border-slate-700 bg-slate-900 text-slate-100">
+              <DropdownMenuContent
+                align="end"
+                collisionPadding={12}
+                className="w-64 max-h-[min(70dvh,var(--radix-dropdown-menu-content-available-height))] overflow-y-auto overscroll-contain border-slate-700 bg-slate-900 text-slate-100"
+              >
                 <DropdownMenuLabel>Toggle oscillator panels</DropdownMenuLabel>
                 <DropdownMenuSeparator className="bg-slate-700" />
                 {OSCILLATOR_OPTIONS.map((oscillator) => (

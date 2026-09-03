@@ -3,6 +3,8 @@ import { createChart, IChartApi, ColorType, LineStyle, LineSeries, HistogramSeri
 import type { CandleData } from '@/types/chart.types';
 import { DraggableToolbar } from '@/components/draggable/DraggableToolbar';
 import { X } from 'lucide-react';
+import { TideZonePanel } from '@/components/indicators/oscillators/TideZonePanel';
+import { calculateTideZone } from '@/lib/indicators/tideZone';
 
 // Height of the mobile navigation bar at the bottom of the screen
 const MOBILE_NAV_HEIGHT = 65; // px
@@ -54,6 +56,7 @@ export function FullscreenOscillatorPanel({
   const [showStochRSI, setShowStochRSI] = useState(false);
   const [showCCI, setShowCCI] = useState(false);
   const [showWilliamsR, setShowWilliamsR] = useState(false);
+  const [showTideZone, setShowTideZone] = useState(false);
   
   // Refs for oscillator charts
   const rsiRef = useRef<HTMLDivElement>(null);
@@ -317,7 +320,7 @@ export function FullscreenOscillatorPanel({
     return () => {
       mainChart.timeScale().unsubscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
     };
-  }, [isVisible, mainChartRef, showRSI, showMACD, showStochRSI, showCCI, showWilliamsR]);
+  }, [isVisible, mainChartRef, showRSI, showMACD, showStochRSI, showCCI, showWilliamsR, showTideZone]);
 
   if (!isVisible) return null;
 
@@ -327,9 +330,10 @@ export function FullscreenOscillatorPanel({
     { id: 'stochrsi', name: 'Stochastic RSI', enabled: showStochRSI, setter: setShowStochRSI },
     { id: 'cci', name: 'CCI', enabled: showCCI, setter: setShowCCI },
     { id: 'williamsr', name: 'Williams %R', enabled: showWilliamsR, setter: setShowWilliamsR },
+    { id: 'tideZone', name: 'Tide Zone', enabled: showTideZone, setter: setShowTideZone },
   ];
 
-  const hasAnyEnabled = showRSI || showMACD || showStochRSI || showCCI || showWilliamsR;
+  const hasAnyEnabled = showRSI || showMACD || showStochRSI || showCCI || showWilliamsR || showTideZone;
 
   return (
     <>
@@ -343,7 +347,7 @@ export function FullscreenOscillatorPanel({
           })}
           className="z-[999]"
         >
-          <div className="bg-slate-800/95 backdrop-blur-sm border border-slate-700 rounded-lg rounded-t-none p-4 shadow-2xl min-w-[280px]">
+          <div className="bg-slate-800/95 backdrop-blur-sm border border-slate-700 rounded-lg rounded-t-none p-4 shadow-2xl min-w-[280px] max-h-[min(60dvh,calc(100dvh-8rem))] overflow-y-auto overscroll-contain">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-white font-medium">Select Oscillators</h3>
               <button
@@ -405,6 +409,7 @@ export function FullscreenOscillatorPanel({
                 setShowStochRSI(false);
                 setShowCCI(false);
                 setShowWilliamsR(false);
+                setShowTideZone(false);
                 chartsRef.current.forEach(chart => chart.remove());
                 chartsRef.current.clear();
               }}
@@ -534,6 +539,21 @@ export function FullscreenOscillatorPanel({
                 </button>
               </div>
               <div ref={williamsRRef} className="w-full" />
+            </div>
+          )}
+
+          {showTideZone && (
+            <div className="bg-slate-800 rounded-lg p-2 mb-3">
+              <div className="text-xs text-gray-400 mb-1 flex items-center justify-between">
+                <span>Tide Zone</span>
+                <button
+                  onClick={() => setShowTideZone(false)}
+                  className="text-red-400 hover:text-red-300"
+                >
+                  ✕
+                </button>
+              </div>
+              <TideZonePanel data={calculateTideZone(candles)} candles={candles} height={140} />
             </div>
           )}
         </div>

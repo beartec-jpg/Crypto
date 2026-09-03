@@ -129,7 +129,7 @@ const FREE_MODE_POINT_INTERVAL = 3;
 // All possible oscillator panel IDs (must match OscillatorSelectorModal)
 const ALL_OSCILLATOR_IDS = [
   'rsi', 'macd', 'waddah', 'cmf', 'volume', 'stochRsi', 'tsi',
-  'williamsR', 'cci', 'adx', 'obv', 'mfi', 'klinger', 'smartMoney', 'smcTrendEngine',
+  'williamsR', 'cci', 'adx', 'obv', 'mfi', 'klinger', 'tideZone', 'smartMoney', 'smcTrendEngine',
 ];
 
 // Minimum number of candles required for meaningful indicator calculations during rewind

@@ -101,5 +101,5 @@ export function TideZonePanel({
     };
   }, [candles, data, height, mainChartVisibleRange, onChartCreated]);
 
-  return <div ref={containerRef} className="w-full" style={{ height }} />;
+  return <div ref={containerRef} className="w-full h-full min-h-[80px]" style={{ height: height || undefined }} />;
 }

@@ -22,6 +22,7 @@ import {
   calculateCCI,
   calculateADX,
 } from '@/lib/indicators';
+import { calculateTideZone, type TideZonePoint } from '@/lib/indicators/tideZone';
 
 interface CandleData {
   time: number;
@@ -60,6 +61,7 @@ export interface OscillatorData {
     histogram: Array<{ time: number; value: number; color: string }>;
     explosion: Array<{ time: number; value: number }>;
   };
+  tideZone: TideZonePoint[];
 }
 
 export interface OscillatorCalculationSettings {
@@ -117,6 +119,7 @@ export function useOscillatorData(
         tsi: { tsi: [], signal: [] },
         klinger: { klinger: [], signal: [] },
         waddah: { histogram: [], explosion: [] },
+        tideZone: [],
       };
     }
 
@@ -151,6 +154,7 @@ export function useOscillatorData(
       tsi: calculateTSI(candles, 25, 13, 7),
       klinger: calculateKlingerOscillator(candles, 34, 55, 13),
       waddah: calculateWaddahAttarExplosion(candles, 150, 20, 2),
+      tideZone: calculateTideZone(candles),
     };
   }, [candles, settings]);
 }

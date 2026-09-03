@@ -11,6 +11,7 @@ import { WaddahExplosionPanel } from '@/components/indicators/oscillators/Waddah
 import { CMFPanel } from '@/components/indicators/oscillators/CMFPanel';
 import { TSIPanel } from '@/components/indicators/oscillators/TSIPanel';
 import { KlingerPanel } from '@/components/indicators/oscillators/KlingerPanel';
+import { TideZonePanel } from '@/components/indicators/oscillators/TideZonePanel';
 import { SMCDebugTable } from '@/components/tradingSystems/SMCDebugTable';
 import { SMCTrendEnginePanel } from '@/components/trading/SMCTrendEngine/SMCTrendEnginePanel';
 import { OSCILLATOR_PANEL_HEIGHT_PER, MOBILE_NAV_HEIGHT, TOP_TOOLBAR_HEIGHT } from '@/lib/constants/layout';
@@ -332,6 +333,21 @@ export function DockedOscillatorSection({
                   />
                 </>
               )}
+            </div>
+          </div>
+        )}
+
+        {selectedOscillators.has('tideZone') && !poppedOutOscillators.has('tideZone') && !miniOscillators?.has('tideZone') && (
+          <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
+            <div
+              onClick={() => onCycleMode?.('tideZone')}
+              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
+            >
+              <span>Tide Zone</span>
+              <span className="text-slate-600 ml-2">tap to cycle</span>
+            </div>
+            <div className="h-[calc(100%-1.25rem)]">
+              <TideZonePanel data={oscillatorData.tideZone} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} height={100} />
             </div>
           </div>
         )}
