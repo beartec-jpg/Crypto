@@ -139,7 +139,7 @@ export function TideZoneSettingsModal({
           />
           <NumRow
             label="Zigzag length N"
-            hint="N bars left and right to confirm a swing (like Swoop). Bigger N = larger legs."
+            hint="Same N on price wicks and on the Tide EMA. Bigger N = larger legs."
             value={settings.confirmBars}
             min={2}
             max={21}

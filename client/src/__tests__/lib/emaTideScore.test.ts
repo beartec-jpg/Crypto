@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { emaTideScore, findTideAccumZones, zigzagByLength, type TideZonePoint } from '@/lib/indicators/tideZone';
+import { emaTideScore, findTideAccumZones, zigzagByLength, zigzagPrice, type TideZonePoint } from '@/lib/indicators/tideZone';
 
 function pt(time: number, score: number): TideZonePoint {
   return {
@@ -88,5 +88,19 @@ describe('zigzagByLength', () => {
     }
     expect(zz.some((z) => z.type === 'low')).toBe(true);
     expect(zz.some((z) => z.type === 'high')).toBe(true);
+  });
+
+  it('builds a separate price zigzag from wicks', () => {
+    const candles = [];
+    for (let i = 0; i < 30; i++) {
+      const low = i === 8 ? 10 : i === 22 ? 8 : 20;
+      const high = i === 15 ? 40 : 22;
+      candles.push({ time: i + 1, low, high });
+    }
+    const zz = zigzagPrice(candles, 3);
+    const lows = zz.filter((z) => z.type === 'low');
+    expect(lows.length).toBeGreaterThanOrEqual(2);
+    expect(lows.some((z) => z.value === 10)).toBe(true);
+    expect(lows.some((z) => z.value === 8)).toBe(true);
   });
 });

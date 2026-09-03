@@ -7,7 +7,7 @@ import type { TideZoneSettings } from '@/types/tideZoneSettings';
 interface TideAccumRendererProps {
   chart: IChartApi | null;
   candleSeries: ISeriesApi<'Candlestick'> | null;
-  candles: { time: number; low: number }[];
+  candles: { time: number; low: number; high?: number }[];
   tideZone: TideZonePoint[];
   settings: TideZoneSettings;
   enabled: boolean;
