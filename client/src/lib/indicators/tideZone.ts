@@ -349,6 +349,22 @@ export function calculateTideZone(candles: TideZoneCandle[], options: TideZoneOp
   return out;
 }
 
+/** EMA of the histogram score. Period 8–13 irons 1–2 bar early tide flips without hiding the raw bars. */
+export function emaTideScore(
+  data: TideZonePoint[],
+  period: number,
+): { time: number; value: number }[] {
+  if (!data.length || period < 1) return [];
+  const k = 2 / (period + 1);
+  let prev = data[0].score;
+  const out = [{ time: data[0].time, value: prev }];
+  for (let i = 1; i < data.length; i++) {
+    prev = data[i].score * k + prev * (1 - k);
+    out.push({ time: data[i].time, value: prev });
+  }
+  return out;
+}
+
 export function tideZoneColor(kind: TideZoneKind, score: number): string {
   if (kind === 'follow_buy') return '#22c55e';
   if (kind === 'bounce_buy') return '#f59e0b';

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { TideZonePoint } from '@/lib/indicators/tideZone';
 import { tideZoneLabel } from '@/lib/indicators/tideZone';
+import { TideHistEmaControl } from '@/components/indicators/TideHistEmaControl';
 
 interface TideZoneHudProps {
   last: TideZonePoint;
@@ -9,6 +10,8 @@ interface TideZoneHudProps {
   distro?: boolean;
   reacc?: boolean;
   className?: string;
+  emaPeriod?: number;
+  emaValue?: number;
 }
 
 const COMPONENTS = [
@@ -36,7 +39,15 @@ function kindClass(kind: TideZonePoint['kind']): string {
   return 'text-slate-300 border-slate-600/60 bg-slate-900/85';
 }
 
-export function TideZoneHud({ last, absorb = false, distro = false, reacc = false, className }: TideZoneHudProps) {
+export function TideZoneHud({
+  last,
+  absorb = false,
+  distro = false,
+  reacc = false,
+  className,
+  emaPeriod,
+  emaValue,
+}: TideZoneHudProps) {
   const [open, setOpen] = useState(false);
   const pct = (v: number) => Math.round(v * 100);
   const showAbsorb = absorb || last.tell === 'absorb';
@@ -77,6 +88,9 @@ export function TideZoneHud({ last, absorb = false, distro = false, reacc = fals
           </div>
           <div className="text-[10px] opacity-90 tabular-nums leading-tight">
             T {pct(last.tide)} · E {pct(last.energy)} · Tp {pct(last.tape)}
+            {emaPeriod != null && emaValue != null && Number.isFinite(emaValue) && (
+              <span className="text-sky-200"> · EMA{emaPeriod} {emaValue.toFixed(0)}</span>
+            )}
           </div>
         </div>
         {open ? <ChevronUp className="h-3.5 w-3.5 shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0" />}
@@ -84,6 +98,7 @@ export function TideZoneHud({ last, absorb = false, distro = false, reacc = fals
 
       {open && (
         <div className="border-t border-white/10 px-2 py-2 space-y-2">
+          <TideHistEmaControl />
           {COMPONENTS.map((c) => (
             <div key={c.key}>
               <div className="text-[10px] font-semibold uppercase tracking-wide">
@@ -115,8 +130,9 @@ export function TideZoneHud({ last, absorb = false, distro = false, reacc = fals
           )}
           <p className="text-[10px] leading-snug text-slate-400">
             Green +40 = 4h tide is up (where you are, not a buy). Amber = bounce vs down tide.
-            Red −40 = 4h tide is down. Exit longs at 0, not −40. Distro/Reacc need OI; they stay
-            off if the book feed is missing.
+            Red −40 = 4h tide is down. Sky line is an EMA of the hist — use it to ignore 1–2 bar
+            early flips. Exit longs at 0, not −40. Distro/Reacc need OI; they stay off if the
+            book feed is missing.
           </p>
         </div>
       )}

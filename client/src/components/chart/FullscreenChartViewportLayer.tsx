@@ -8,6 +8,8 @@ import type { ScoringInput } from '@/lib/tradingSystemScoring';
 import type { SystemEvaluation } from '@/types/systemScoring';
 import type { SMCTrendEnginePanelData } from '@/components/trading/SMCTrendEngine/types';
 import { TideZoneHud } from '@/components/indicators/TideZoneHud';
+import { emaTideScore } from '@/lib/indicators/tideZone';
+import { useTideHistEmaPeriod } from '@/hooks/useTideHistEmaPeriod';
 
 interface FullscreenChartViewportLayerProps {
   miniOscillators: Set<string>;
@@ -43,6 +45,12 @@ export function FullscreenChartViewportLayer({
   smartMoneyPanelData,
   smcTrendEnginePanelData,
 }: FullscreenChartViewportLayerProps) {
+  const [tideEmaPeriod] = useTideHistEmaPeriod();
+  const tideEma = selectedOscillators?.has('tideZone')
+    ? emaTideScore(oscillatorData.tideZone, tideEmaPeriod)
+    : [];
+  const tideEmaLast = tideEma.length ? tideEma[tideEma.length - 1].value : undefined;
+
   return (
     <>
       <MiniOscillatorSection
@@ -62,6 +70,8 @@ export function FullscreenChartViewportLayer({
             absorb={oscillatorData.tideZone.slice(-3).some((d) => d.tell === 'absorb')}
             distro={oscillatorData.tideZone.slice(-3).some((d) => d.tell === 'distro')}
             reacc={oscillatorData.tideZone.slice(-3).some((d) => d.tell === 'reacc')}
+            emaPeriod={tideEmaPeriod}
+            emaValue={tideEmaLast}
           />
         </div>
       )}

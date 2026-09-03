@@ -2,8 +2,10 @@ import { useEffect, useRef } from 'react';
 import { createChart, ColorType, HistogramSeries, LineSeries, type IChartApi, type Time } from 'lightweight-charts';
 import { applyMainChartVisibleRange, type MainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 import type { TideZonePoint } from '@/lib/indicators/tideZone';
-import { tideZoneColor } from '@/lib/indicators/tideZone';
+import { emaTideScore, tideZoneColor } from '@/lib/indicators/tideZone';
 import { TideZoneHud } from '@/components/indicators/TideZoneHud';
+import { TideHistEmaControl } from '@/components/indicators/TideHistEmaControl';
+import { useTideHistEmaPeriod } from '@/hooks/useTideHistEmaPeriod';
 
 interface TideZonePanelProps {
   data: TideZonePoint[];
@@ -26,6 +28,7 @@ export function TideZonePanel({
 }: TideZonePanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const [emaPeriod] = useTideHistEmaPeriod();
 
   useEffect(() => {
     if (!containerRef.current || !candles?.length || !data?.length) return;
@@ -82,6 +85,16 @@ export function TideZonePanel({
     mkLine(-40, '#ef444466');
     mkLine(0, '#475569');
 
+    const ema = emaTideScore(data, emaPeriod);
+    if (ema.length) {
+      chart.addSeries(LineSeries, {
+        color: '#38bdf8',
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: true,
+      }).setData(ema.map((d) => ({ time: d.time as Time, value: d.value })));
+    }
+
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.08, bottom: 0.08 } });
 
     if (mainChartVisibleRange) {
@@ -103,7 +116,7 @@ export function TideZonePanel({
       chart.remove();
       chartRef.current = null;
     };
-  }, [candles, data, height, onChartCreated]);
+  }, [candles, data, height, onChartCreated, emaPeriod]);
 
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {
@@ -116,17 +129,24 @@ export function TideZonePanel({
   }, [mainChartVisibleRange]);
 
   const last = data.length ? data[data.length - 1] : null;
+  const emaSeries = emaTideScore(data, emaPeriod);
+  const emaLast = emaSeries.length ? emaSeries[emaSeries.length - 1].value : undefined;
 
   return (
     <div className="relative h-full min-h-0 w-full">
       <div ref={containerRef} className="absolute inset-0" />
+      <div className="absolute top-1 right-12 z-20">
+        <TideHistEmaControl />
+      </div>
       {showHud && last && (
-        <div className="absolute top-1 left-1 right-12 z-20">
+        <div className="absolute top-1 left-1 right-28 z-20">
           <TideZoneHud
             last={last}
             absorb={data.slice(-3).some((d) => d.tell === 'absorb')}
             distro={data.slice(-3).some((d) => d.tell === 'distro')}
             reacc={data.slice(-3).some((d) => d.tell === 'reacc')}
+            emaPeriod={emaPeriod}
+            emaValue={emaLast}
           />
         </div>
       )}
