@@ -553,7 +553,9 @@ export function FullscreenOscillatorPanel({
                   ✕
                 </button>
               </div>
-              <TideZonePanel data={calculateTideZone(candles)} candles={candles} height={140} />
+              <div className="w-full h-[180px]">
+                <TideZonePanel data={calculateTideZone(candles)} candles={candles} />
+              </div>
             </div>
           )}
         </div>

@@ -338,16 +338,16 @@ export function DockedOscillatorSection({
         )}
 
         {selectedOscillators.has('tideZone') && !poppedOutOscillators.has('tideZone') && !miniOscillators?.has('tideZone') && (
-          <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
+          <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2 flex flex-col">
             <div
               onClick={() => onCycleMode?.('tideZone')}
-              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
+              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none shrink-0"
             >
               <span>Tide Zone</span>
               <span className="text-slate-600 ml-2">tap to cycle</span>
             </div>
-            <div className="h-[calc(100%-1.25rem)]">
-              <TideZonePanel data={oscillatorData.tideZone} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} height={100} />
+            <div className="min-h-0 flex-1">
+              <TideZonePanel data={oscillatorData.tideZone} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />
             </div>
           </div>
         )}

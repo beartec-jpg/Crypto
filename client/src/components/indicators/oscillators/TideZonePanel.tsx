@@ -27,8 +27,8 @@ export function TideZonePanel({
     if (!containerRef.current || !candles?.length || !data?.length) return;
 
     const chart = createChart(containerRef.current, {
-      width: containerRef.current.clientWidth,
-      height: containerRef.current.clientHeight || height,
+      width: containerRef.current.clientWidth || containerRef.current.parentElement?.clientWidth || 300,
+      height: containerRef.current.clientHeight || containerRef.current.parentElement?.clientHeight || height,
       layout: {
         background: { type: ColorType.Solid, color: '#1e293b' },
         textColor: '#94a3b8',
@@ -101,5 +101,15 @@ export function TideZonePanel({
     };
   }, [candles, data, height, mainChartVisibleRange, onChartCreated]);
 
-  return <div ref={containerRef} className="w-full h-full min-h-[80px]" style={{ height: height || undefined }} />;
+  useEffect(() => {
+    if (chartRef.current && mainChartVisibleRange) {
+      try {
+        applyMainChartVisibleRange(chartRef.current, mainChartVisibleRange);
+      } catch {
+        /* ignore if range invalid */
+      }
+    }
+  }, [mainChartVisibleRange]);
+
+  return <div ref={containerRef} className="w-full h-full" />;
 }

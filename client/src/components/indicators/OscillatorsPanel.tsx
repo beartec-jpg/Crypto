@@ -536,7 +536,9 @@ export function OscillatorsPanel({
                   <X className="h-4 w-4" />
                 </button>
               </div>
-              <TideZonePanel data={calculatedData.tideZone} candles={candles} />
+              <div className="h-[200px]">
+                <TideZonePanel data={calculatedData.tideZone} candles={candles} />
+              </div>
               <CoachReadout indicator="tideZone" />
             </div>
           )}
