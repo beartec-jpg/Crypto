@@ -44,7 +44,7 @@ export function IndicatorsSection({
         <div className="mt-2.5 rounded-lg border border-dashed border-slate-700 bg-slate-900/60 px-4 py-6 text-center">
           <p className="text-sm text-slate-300">No oscillators selected</p>
           <p className="mt-1 text-xs text-slate-500">
-            Use the Oscillators menu above to enable RSI, MACD, or others.
+            Use the Oscillators menu above to enable RSI, MACD, Tide Zone, or others.
           </p>
         </div>
       )}

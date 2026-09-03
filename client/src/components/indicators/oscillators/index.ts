@@ -6,6 +6,7 @@ export { MFIPanel } from './MFIPanel';
 export { WilliamsRPanel } from './WilliamsRPanel';
 export { CCIPanel } from './CCIPanel';
 export { ADXPanel } from './ADXPanel';
+export { TideZonePanel } from './TideZonePanel';
 export { WaddahExplosionPanel } from './WaddahExplosionPanel';
 export { CMFPanel } from './CMFPanel';
 export { TSIPanel } from './TSIPanel';

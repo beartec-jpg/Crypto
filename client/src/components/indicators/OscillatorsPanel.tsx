@@ -10,6 +10,7 @@ import { MFIPanel } from '@/components/indicators/oscillators/MFIPanel';
 import { WilliamsRPanel } from '@/components/indicators/oscillators/WilliamsRPanel';
 import { CCIPanel } from '@/components/indicators/oscillators/CCIPanel';
 import { ADXPanel } from '@/components/indicators/oscillators/ADXPanel';
+import { TideZonePanel } from '@/components/indicators/oscillators/TideZonePanel';
 
 // Calculation functions
 import { calculateRSI, calculateMACD } from '@/lib/indicators/momentum';
@@ -20,6 +21,7 @@ import {
   calculateCCI, 
   calculateADX 
 } from '@/lib/indicators';
+import { calculateTideZone, tideZoneLabel } from '@/lib/indicators/tideZone';
 
 // For divergence detection
 import { detectDivergence } from '@/lib/calculations';
@@ -73,6 +75,7 @@ export const OSCILLATOR_OPTIONS = [
   { id: 'williamsR', label: 'Williams %R' },
   { id: 'cci', label: 'CCI' },
   { id: 'adx', label: 'ADX' },
+  { id: 'tideZone', label: 'Tide Zone' },
 ] as const;
 
 // Divergence meter constants
@@ -106,6 +109,7 @@ export function OscillatorsPanel({
     williamsR: candles.length > 0 ? calculateWilliamsR(candles, 14) : [],
     cci: candles.length > 0 ? calculateCCI(candles, 20) : [],
     adx: candles.length > 0 ? calculateADX(candles, 14) : [],
+    tideZone: candles.length > 0 ? calculateTideZone(candles) : [],
   };
 
   const toggleOscillator = (id: string) => {
@@ -224,6 +228,28 @@ export function OscillatorsPanel({
         values.minusDI = lastADX?.minusDI;
         values.slope = recent.length >= 2 ? recent[recent.length - 1] - recent[0] : 0;
         break;
+      }
+      case 'tidezone': {
+        const last = calculatedData.tideZone[calculatedData.tideZone.length - 1];
+        if (!last) return null;
+        values.value = last.score;
+        values.tide = last.tide;
+        values.energy = last.energy;
+        values.tape = last.tape;
+        return {
+          headline: tideZoneLabel(last.kind),
+          color:
+            last.kind === 'follow_buy'
+              ? 'text-emerald-400'
+              : last.kind === 'bounce_buy'
+                ? 'text-amber-400'
+                : last.kind === 'sell'
+                  ? 'text-red-400'
+                  : 'text-slate-400',
+          text: `Tide ${(last.tide * 100).toFixed(0)} · Energy ${(last.energy * 100).toFixed(0)} · Tape ${(last.tape * 100).toFixed(0)}`,
+          meaning: tideZoneLabel(last.kind),
+          lookFor: 'Green = 4h tide follow. Amber = vol bounce against a down tide. Red = sell zone.',
+        };
       }
       default:
         return null;
@@ -490,6 +516,28 @@ export function OscillatorsPanel({
                 candles={candles}
               />
               <CoachReadout indicator="adx" />
+            </div>
+          )}
+
+          {activeOscillators.includes('tideZone') && (
+            <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h4 className="text-sm font-semibold text-white">🌊 Tide Zone</h4>
+                  {(() => {
+                    const coach = getCoach('tideZone');
+                    return coach ? <p className={`text-xs ${coach.color}`}>{coach.headline}</p> : null;
+                  })()}
+                </div>
+                <button
+                  onClick={() => toggleOscillator('tideZone')}
+                  className="text-gray-400 hover:text-red-400 transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <TideZonePanel data={calculatedData.tideZone} candles={candles} />
+              <CoachReadout indicator="tideZone" />
             </div>
           )}
         </div>
