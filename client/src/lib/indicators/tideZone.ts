@@ -25,7 +25,7 @@ export interface TideZoneCandle {
 
 export type TideZoneKind = 'follow_buy' | 'bounce_buy' | 'sell' | 'neutral';
 
-export type TideZoneTell = 'absorb' | null;
+export type TideZoneTell = 'absorb' | 'distro' | 'reacc' | null;
 
 export interface TideZonePoint {
   time: number;
@@ -34,9 +34,23 @@ export interface TideZonePoint {
   energy: number;
   tape: number;
   kind: TideZoneKind;
-  /** 1h path study: hist/tape up while price is down at a low or 0-cross. */
+  /** absorb = demand at a low; distro = OI leaving a high (watch); reacc = high in uptide, book not leaving. */
   tell: TideZoneTell;
 }
+
+export interface TideZoneOiPoint {
+  time: number;
+  value: number;
+}
+
+export interface TideZoneOptions {
+  /** Open-interest marks (unix seconds). 24h change used for distro/reacc. */
+  oi?: TideZoneOiPoint[];
+}
+
+const OI_FLUSH = -0.03;
+const NEAR_PIVOT = 0.003;
+const SWING = 16;
 
 const HTF_SECONDS = 4 * 3600;
 const PCT_WIN = 200;
@@ -210,7 +224,15 @@ function kindOf(score: number, tide: number, energy: number): TideZoneKind {
   return 'neutral';
 }
 
-export function calculateTideZone(candles: TideZoneCandle[]): TideZonePoint[] {
+function oiChange24h(oi: TideZoneOiPoint[] | undefined, t: number): number | null {
+  if (!oi?.length) return null;
+  const now = lastLe(oi, t);
+  const prev = lastLe(oi, t - 86400);
+  if (!now || !prev || !(prev.value > 0)) return null;
+  return now.value / prev.value - 1;
+}
+
+export function calculateTideZone(candles: TideZoneCandle[], options: TideZoneOptions = {}): TideZonePoint[] {
   if (candles.length < 80) return [];
   const barSec = medianDt(candles);
   const factor = Math.max(1, Math.round(HTF_SECONDS / barSec));
@@ -283,18 +305,36 @@ export function calculateTideZone(candles: TideZoneCandle[]): TideZonePoint[] {
     const score = 100 * Math.tanh(raw);
     let tell: TideZoneTell = null;
     const prev = out.length ? out[out.length - 1] : null;
+    const from = Math.max(0, i - (SWING - 1));
+    let lo16 = candles[i].low;
+    let hi16 = candles[i].high;
+    for (let j = from; j <= i; j++) {
+      lo16 = Math.min(lo16, candles[j].low);
+      hi16 = Math.max(hi16, candles[j].high);
+    }
+    const atHigh = candles[i].high === hi16;
+    const nearHigh = hi16 > 0 && candles[i].close >= hi16 * (1 - NEAR_PIVOT);
+    const nearLow = lo16 > 0 && candles[i].close <= lo16 * (1 + NEAR_PIVOT);
+    const oiChg = oiChange24h(options.oi, candles[i].time);
+
     if (prev && i > 0 && prev.time === candles[i - 1].time) {
       const pxDownOrFlat = candles[i].close <= candles[i - 1].close;
       const tapeUp = tape > prev.tape;
       const scoreUp = score > prev.score;
       const zeroCross = prev.score < 0 && score >= 0;
-      let lo16 = candles[i].low;
-      const from = Math.max(0, i - 15);
-      for (let j = from; j <= i; j++) lo16 = Math.min(lo16, candles[j].low);
-      const nearLow = lo16 > 0 && candles[i].close <= lo16 * 1.003;
       if (pxDownOrFlat && tapeUp && (zeroCross || (scoreUp && nearLow))) {
         tell = 'absorb';
       }
+    }
+    // Stage-1 distro: OI leaving a local high. Watch only — not a short trigger.
+    // Skip if tape is still lifting through the high (more likely short-cover squeeze).
+    if (!tell && atHigh && nearHigh && oiChg !== null && oiChg <= OI_FLUSH) {
+      const squeeze = tape > 0.65 && i > 0 && candles[i].close > candles[i - 1].close;
+      if (!squeeze) tell = 'distro';
+    }
+    // Reaccumulation watch: still in up-tide at a high, book is not leaving.
+    if (!tell && atHigh && nearHigh && tide >= 0.55 && oiChg !== null && oiChg > OI_FLUSH) {
+      tell = 'reacc';
     }
     out.push({
       time: candles[i].time,

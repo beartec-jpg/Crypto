@@ -122,7 +122,12 @@ export function TideZonePanel({
       <div ref={containerRef} className="absolute inset-0" />
       {showHud && last && (
         <div className="absolute top-1 left-1 right-12 z-20">
-          <TideZoneHud last={last} absorb={data.slice(-3).some((d) => d.tell === 'absorb')} />
+          <TideZoneHud
+            last={last}
+            absorb={data.slice(-3).some((d) => d.tell === 'absorb')}
+            distro={data.slice(-3).some((d) => d.tell === 'distro')}
+            reacc={data.slice(-3).some((d) => d.tell === 'reacc')}
+          />
         </div>
       )}
     </div>

@@ -553,6 +553,7 @@ export function ChartFullscreenPage({
   const {
     externalMetrics: gdsExternalMetrics,
     cvdData: gdsCvdData,
+    oiHistory: gdsOiHistory,
     isLoading: isGdsMetricsLoading,
   } = useGDSMarketMetrics({
     symbol,
@@ -649,7 +650,9 @@ export function ChartFullscreenPage({
   );
 
   // Hooks - Oscillator data
-  const oscillatorData = useOscillatorData(effectiveCandles, oscillatorSettings);
+  const oscillatorData = useOscillatorData(effectiveCandles, oscillatorSettings, {
+    oiHistory: gdsOiHistory,
+  });
 
   const oscillatorModalConfigs = useMemo<Record<string, OscillatorModalConfig>>(
     () => ({

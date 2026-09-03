@@ -60,6 +60,8 @@ export function FullscreenChartViewportLayer({
           <TideZoneHud
             last={oscillatorData.tideZone[oscillatorData.tideZone.length - 1]}
             absorb={oscillatorData.tideZone.slice(-3).some((d) => d.tell === 'absorb')}
+            distro={oscillatorData.tideZone.slice(-3).some((d) => d.tell === 'distro')}
+            reacc={oscillatorData.tideZone.slice(-3).some((d) => d.tell === 'reacc')}
           />
         </div>
       )}
