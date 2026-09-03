@@ -70,3 +70,23 @@ describe('findTideAccumZones', () => {
     expect(zones.filter((z) => z.status === 'confirmed')).toHaveLength(0);
   });
 });
+
+describe('zigzagByLength', () => {
+  it('alternates high and low on a two-leg dip', () => {
+    const series: { time: number; value: number }[] = [];
+    for (let i = 0; i < 30; i++) {
+      let v = 0;
+      if (i <= 8) v = -i;
+      else if (i <= 16) v = -8 + (i - 8);
+      else v = 0 - (i - 16);
+      series.push({ time: i + 1, value: v });
+    }
+    const zz = zigzagByLength(series, 3);
+    const types = zz.map((z) => z.type);
+    for (let i = 1; i < types.length; i++) {
+      expect(types[i]).not.toBe(types[i - 1]);
+    }
+    expect(zz.some((z) => z.type === 'low')).toBe(true);
+    expect(zz.some((z) => z.type === 'high')).toBe(true);
+  });
+});
