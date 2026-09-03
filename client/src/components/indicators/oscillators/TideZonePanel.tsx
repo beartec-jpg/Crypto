@@ -1,11 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createChart, ColorType, HistogramSeries, LineSeries, type IChartApi, type Time } from 'lightweight-charts';
 import { applyMainChartVisibleRange, type MainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 import type { TideZonePoint } from '@/lib/indicators/tideZone';
-import { emaTideScore, findTideAccumZones, tideZoneColor } from '@/lib/indicators/tideZone';
+import { emaTideScore, findTideDivZones, tideZoneColor } from '@/lib/indicators/tideZone';
 import { TideZoneHud } from '@/components/indicators/TideZoneHud';
 import { TideHistEmaControl } from '@/components/indicators/TideHistEmaControl';
-import { useTideHistEmaPeriod } from '@/hooks/useTideHistEmaPeriod';
+import { TideZoneSettingsModal } from '@/components/modals/TideZoneSettingsModal';
+import { useTideZoneSettings } from '@/hooks/useTideZoneSettings';
 
 interface TideZonePanelProps {
   data: TideZonePoint[];
@@ -28,7 +29,9 @@ export function TideZonePanel({
 }: TideZonePanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const [emaPeriod] = useTideHistEmaPeriod();
+  const { settings, updateSettings, resetToDefaults } = useTideZoneSettings();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const emaPeriod = settings.emaPeriod;
 
   useEffect(() => {
     if (!containerRef.current || !candles?.length || !data?.length) return;
@@ -131,19 +134,29 @@ export function TideZonePanel({
   const last = data.length ? data[data.length - 1] : null;
   const emaSeries = emaTideScore(data, emaPeriod);
   const emaLast = emaSeries.length ? emaSeries[emaSeries.length - 1].value : undefined;
-  const accumZones = findTideAccumZones(candles, data, emaPeriod);
-  const lastAccum = accumZones.length ? accumZones[accumZones.length - 1] : null;
-  const accumLive = Boolean(
-    lastAccum &&
-      (lastAccum.status === 'forming' || data.slice(-4).some((d) => d.time === lastAccum.t2)),
+  const divZones = findTideDivZones(
+    candles.map((c) => ({ time: c.time, low: c.low ?? 0 })),
+    data,
+    settings,
+  );
+  const lastDiv = divZones.length ? divZones[divZones.length - 1] : null;
+  const divLive = Boolean(
+    lastDiv && (lastDiv.status === 'forming' || data.slice(-4).some((d) => d.time === lastDiv.t2)),
   );
 
   return (
     <div className="relative h-full min-h-0 w-full">
       <div ref={containerRef} className="absolute inset-0" />
       <div className="absolute top-1 right-12 z-20">
-        <TideHistEmaControl />
+        <TideHistEmaControl onOpenSettings={() => setSettingsOpen(true)} />
       </div>
+      <TideZoneSettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        settings={settings}
+        onSettingsChange={updateSettings}
+        onReset={resetToDefaults}
+      />
       {showHud && last && (
         <div className="absolute top-1 left-1 right-28 z-20">
           <TideZoneHud
@@ -153,7 +166,7 @@ export function TideZonePanel({
             reacc={data.slice(-3).some((d) => d.tell === 'reacc')}
             emaPeriod={emaPeriod}
             emaValue={emaLast}
-            accum={accumLive}
+            div={divLive}
           />
         </div>
       )}

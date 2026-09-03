@@ -37,7 +37,7 @@ import { FullscreenChartModals } from '@/components/chart/FullscreenChartModals'
 import { FullscreenChartViewportLayer } from '@/components/chart/FullscreenChartViewportLayer';
 import { FullscreenOscillatorLayout } from '@/components/oscillators/FullscreenOscillatorLayout';
 import { TideAccumRenderer } from '@/components/indicators/TideAccumRenderer';
-import { useTideHistEmaPeriod } from '@/hooks/useTideHistEmaPeriod';
+import { useTideZoneSettings } from '@/hooks/useTideZoneSettings';
 
 import { useSuperTrendSettings } from '@/hooks/useSuperTrendSettings';
 import { useSuperTrendCalculation } from '@/hooks/useSuperTrendCalculation';
@@ -467,7 +467,7 @@ export function ChartFullscreenPage({
 
   // Hooks - Oscillator panel (needed first for totalHeight)
   const oscillatorPanel = useOscillatorPanel();
-  const [tideHistEmaPeriod] = useTideHistEmaPeriod();
+  const tideZoneSettings = useTideZoneSettings();
 
   // Hooks - Chart instance
   const { chartRef, candleSeriesRef, isReady: chartReady, fitContent } = useChartInstance({
@@ -3253,7 +3253,7 @@ export function ChartFullscreenPage({
           candleSeries={candleSeriesRef.current}
           candles={effectiveCandles}
           tideZone={oscillatorData.tideZone}
-          emaPeriod={tideHistEmaPeriod}
+          settings={tideZoneSettings.settings}
           enabled={oscillatorPanel.selectedOscillators.has('tideZone')}
         />
 

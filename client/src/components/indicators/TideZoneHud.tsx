@@ -3,6 +3,8 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { TideZonePoint } from '@/lib/indicators/tideZone';
 import { tideZoneLabel } from '@/lib/indicators/tideZone';
 import { TideHistEmaControl } from '@/components/indicators/TideHistEmaControl';
+import { TideZoneSettingsModal } from '@/components/modals/TideZoneSettingsModal';
+import { useTideZoneSettings } from '@/hooks/useTideZoneSettings';
 
 interface TideZoneHudProps {
   last: TideZonePoint;
@@ -13,6 +15,7 @@ interface TideZoneHudProps {
   emaPeriod?: number;
   emaValue?: number;
   accum?: boolean;
+  div?: boolean;
 }
 
 const COMPONENTS = [
@@ -49,13 +52,16 @@ export function TideZoneHud({
   emaPeriod,
   emaValue,
   accum = false,
+  div = false,
 }: TideZoneHudProps) {
   const [open, setOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const { settings, updateSettings, resetToDefaults } = useTideZoneSettings();
   const pct = (v: number) => Math.round(v * 100);
   const showAbsorb = absorb || last.tell === 'absorb';
   const showDistro = !showAbsorb && (distro || last.tell === 'distro');
   const showReacc = !showAbsorb && !showDistro && (reacc || last.tell === 'reacc');
-  const showAccum = accum;
+  const showDiv = div || accum;
 
   return (
     <div
@@ -86,9 +92,9 @@ export function TideZoneHud({
                 Reacc
               </span>
             )}
-            {showAccum && (
-              <span className="mr-1 rounded bg-cyan-400/25 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-cyan-100">
-                Accum
+            {showDiv && (
+              <span className="mr-1 rounded bg-violet-500/30 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-200">
+                Div
               </span>
             )}
             {tideZoneLabel(last.kind)}
@@ -106,7 +112,7 @@ export function TideZoneHud({
 
       {open && (
         <div className="border-t border-white/10 px-2 py-2 space-y-2">
-          <TideHistEmaControl />
+          <TideHistEmaControl onOpenSettings={() => setSettingsOpen(true)} />
           {COMPONENTS.map((c) => (
             <div key={c.key}>
               <div className="text-[10px] font-semibold uppercase tracking-wide">
@@ -136,10 +142,10 @@ export function TideZoneHud({
               Reacc watch: high in an up-tide and OI is not flushing. Pause in trend, not OI-leave distro.
             </p>
           )}
-          {showAccum && (
-            <p className="text-[10px] leading-snug text-cyan-100">
-              Accum watch: price lower low vs Tide EMA higher low, both troughs below −10.
-              Larger swing under the candles — not a 0-line wiggle, not a breakout.
+          {showDiv && (
+            <p className="text-[10px] leading-snug text-violet-200">
+              Div watch: price lower low vs Tide EMA higher low, both troughs below the
+              below-score line. Same print as absorb, later than the 0-cross. Not a buy.
             </p>
           )}
           <p className="text-[10px] leading-snug text-slate-400">
@@ -150,6 +156,13 @@ export function TideZoneHud({
           </p>
         </div>
       )}
+      <TideZoneSettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        settings={settings}
+        onSettingsChange={updateSettings}
+        onReset={resetToDefaults}
+      />
     </div>
   );
 }

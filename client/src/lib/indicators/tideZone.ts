@@ -365,27 +365,42 @@ export function emaTideScore(
   return out;
 }
 
-export interface TideAccumZone {
+export type TidePrintKind = 'div' | 'absorb';
+
+export interface TidePrintZone {
+  kind: TidePrintKind;
   t1: number;
   t2: number;
   price1: number;
   price2: number;
-  ema1: number;
-  ema2: number;
-  /** forming = second low is still printing; confirmed = EMA trough is in. */
+  ema1?: number;
+  ema2?: number;
+  /** forming = second low is still printing; confirmed = trough is in. */
   status: 'forming' | 'confirmed';
 }
 
-/** Both EMA troughs must be below the neutral band — not a 0-line wiggle. */
-const ACCUM_BELOW = -10;
-/** Higher EMA low must lift by this many score points. */
-const ACCUM_EMA_SEP = 8;
-const ACCUM_PX = 0.003;
-/** Wider than 2 so 1–2 bar noise is not a trough. */
-const ACCUM_CONFIRM = 5;
-/** Troughs this close are the same dip, not a larger divergence. */
-const ACCUM_MIN_GAP = 8;
-const ACCUM_KEEP = 8;
+/** @deprecated use TidePrintZone */
+export type TideAccumZone = TidePrintZone;
+
+export interface TideDivParams {
+  emaPeriod: number;
+  confirmBars: number;
+  minGap: number;
+  belowScore: number;
+  emaSep: number;
+  priceLlPct: number;
+  keep: number;
+}
+
+const DEFAULT_DIV: TideDivParams = {
+  emaPeriod: 8,
+  confirmBars: 5,
+  minGap: 8,
+  belowScore: -10,
+  emaSep: 8,
+  priceLlPct: 0.003,
+  keep: 8,
+};
 
 function emaTroughs(ema: { time: number; value: number }[], w: number): number[] {
   const idx: number[] = [];
@@ -423,37 +438,36 @@ function priceLowNear(
   return lo;
 }
 
-function isDeepTrough(e1: number, e2: number): boolean {
-  return e1 < ACCUM_BELOW && e2 < ACCUM_BELOW && e2 > e1 + ACCUM_EMA_SEP;
+function isDeepTrough(e1: number, e2: number, below: number, sep: number): boolean {
+  return e1 < below && e2 < below && e2 > e1 + sep;
 }
 
 /**
  * Regular bull div on the Tide EMA vs price: two EMA troughs, price LL, EMA HL.
- * Both troughs must sit below −10 (not the zero line). Wider confirm so only
- * larger swings count.
  */
-export function findTideAccumZones(
+export function findTideDivZones(
   candles: { time: number; low: number }[],
   data: TideZonePoint[],
-  emaPeriod: number,
-  confirmBars = ACCUM_CONFIRM,
-): TideAccumZone[] {
-  const ema = emaTideScore(data, emaPeriod);
-  if (ema.length < confirmBars * 4 || candles.length < 8) return [];
-  const troughs = emaTroughs(ema, confirmBars);
-  const out: TideAccumZone[] = [];
+  params: Partial<TideDivParams> = {},
+): TidePrintZone[] {
+  const p = { ...DEFAULT_DIV, ...params };
+  const ema = emaTideScore(data, p.emaPeriod);
+  if (ema.length < p.confirmBars * 4 || candles.length < 8) return [];
+  const troughs = emaTroughs(ema, p.confirmBars);
+  const out: TidePrintZone[] = [];
   for (let k = 1; k < troughs.length; k++) {
     const a = troughs[k - 1];
     const b = troughs[k];
-    if (b - a < ACCUM_MIN_GAP) continue;
+    if (b - a < p.minGap) continue;
     const p1 = priceLowNear(candles, ema[a].time);
     const p2 = priceLowNear(candles, ema[b].time);
     if (p1 == null || p2 == null) continue;
     const e1 = ema[a].value;
     const e2 = ema[b].value;
-    if (!isDeepTrough(e1, e2)) continue;
-    if (!(p2 <= p1 * (1 - ACCUM_PX))) continue;
+    if (!isDeepTrough(e1, e2, p.belowScore, p.emaSep)) continue;
+    if (!(p2 <= p1 * (1 - p.priceLlPct))) continue;
     out.push({
+      kind: 'div',
       t1: ema[a].time,
       t2: ema[b].time,
       price1: p1,
@@ -472,12 +486,13 @@ export function findTideAccumZones(
     if (
       p1 != null &&
       lastC.time > ema[lastT].time &&
-      lastC.low <= p1 * (1 - ACCUM_PX) &&
-      isDeepTrough(e1, lastEma.value)
+      lastC.low <= p1 * (1 - p.priceLlPct) &&
+      isDeepTrough(e1, lastEma.value, p.belowScore, p.emaSep)
     ) {
       const already = out.some((z) => z.t1 === ema[lastT].time && z.status === 'confirmed');
       if (!already) {
         out.push({
+          kind: 'div',
           t1: ema[lastT].time,
           t2: lastC.time,
           price1: p1,
@@ -490,8 +505,56 @@ export function findTideAccumZones(
     }
   }
   const forming = out.filter((z) => z.status === 'forming');
-  const confirmed = out.filter((z) => z.status === 'confirmed').slice(-ACCUM_KEEP);
+  const confirmed = out.filter((z) => z.status === 'confirmed').slice(-p.keep);
   return [...confirmed, ...forming];
+}
+
+/** @deprecated use findTideDivZones */
+export function findTideAccumZones(
+  candles: { time: number; low: number }[],
+  data: TideZonePoint[],
+  emaPeriod: number,
+  confirmBars?: number,
+): TidePrintZone[] {
+  return findTideDivZones(candles, data, {
+    emaPeriod,
+    confirmBars: confirmBars ?? DEFAULT_DIV.confirmBars,
+  });
+}
+
+/** Same candle print as div: swing-low → absorb bar. */
+export function findTideAbsorbZones(
+  candles: { time: number; low: number }[],
+  data: TideZonePoint[],
+  keep = DEFAULT_DIV.keep,
+): TidePrintZone[] {
+  if (!candles.length || !data.length) return [];
+  const idx = new Map<number, number>();
+  candles.forEach((c, i) => idx.set(c.time, i));
+  const out: TidePrintZone[] = [];
+  for (const d of data) {
+    if (d.tell !== 'absorb') continue;
+    const i = idx.get(d.time);
+    if (i == null) continue;
+    const from = Math.max(0, i - 15);
+    let lo = candles[i].low;
+    let tLo = candles[i].time;
+    for (let j = from; j <= i; j++) {
+      if (candles[j].low < lo) {
+        lo = candles[j].low;
+        tLo = candles[j].time;
+      }
+    }
+    out.push({
+      kind: 'absorb',
+      t1: tLo,
+      t2: d.time,
+      price1: lo,
+      price2: candles[i].low,
+      status: 'confirmed',
+    });
+  }
+  return out.slice(-keep);
 }
 
 export function tideZoneColor(kind: TideZoneKind, score: number): string {

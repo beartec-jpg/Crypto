@@ -54,6 +54,7 @@ describe('findTideAccumZones', () => {
     expect(confirmed[0].ema2).toBeGreaterThan(confirmed[0].ema1);
     expect(confirmed[0].ema1).toBeLessThan(-10);
     expect(confirmed[0].ema2).toBeLessThan(-10);
+    expect(confirmed[0].kind).toBe('div');
   });
 
   it('ignores wiggles on the neutral line', () => {

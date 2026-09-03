@@ -8,8 +8,8 @@ import type { ScoringInput } from '@/lib/tradingSystemScoring';
 import type { SystemEvaluation } from '@/types/systemScoring';
 import type { SMCTrendEnginePanelData } from '@/components/trading/SMCTrendEngine/types';
 import { TideZoneHud } from '@/components/indicators/TideZoneHud';
-import { emaTideScore, findTideAccumZones } from '@/lib/indicators/tideZone';
-import { useTideHistEmaPeriod } from '@/hooks/useTideHistEmaPeriod';
+import { emaTideScore, findTideDivZones } from '@/lib/indicators/tideZone';
+import { useTideZoneSettings } from '@/hooks/useTideZoneSettings';
 
 interface FullscreenChartViewportLayerProps {
   miniOscillators: Set<string>;
@@ -47,18 +47,19 @@ export function FullscreenChartViewportLayer({
   smartMoneyPanelData,
   smcTrendEnginePanelData,
 }: FullscreenChartViewportLayerProps) {
-  const [tideEmaPeriod] = useTideHistEmaPeriod();
+  const { settings: tideSettings } = useTideZoneSettings();
+  const tideEmaPeriod = tideSettings.emaPeriod;
   const tideEma = selectedOscillators?.has('tideZone')
     ? emaTideScore(oscillatorData.tideZone, tideEmaPeriod)
     : [];
   const tideEmaLast = tideEma.length ? tideEma[tideEma.length - 1].value : undefined;
-  const tideAccum = selectedOscillators?.has('tideZone')
-    ? findTideAccumZones(candles, oscillatorData.tideZone, tideEmaPeriod)
+  const tideDiv = selectedOscillators?.has('tideZone')
+    ? findTideDivZones(candles, oscillatorData.tideZone, tideSettings)
     : [];
-  const lastAccum = tideAccum.length ? tideAccum[tideAccum.length - 1] : null;
+  const lastDiv = tideDiv.length ? tideDiv[tideDiv.length - 1] : null;
   const recentTimes = new Set(candles.slice(-4).map((c) => c.time));
-  const accumLive = Boolean(
-    lastAccum && (lastAccum.status === 'forming' || recentTimes.has(lastAccum.t2)),
+  const divLive = Boolean(
+    lastDiv && (lastDiv.status === 'forming' || recentTimes.has(lastDiv.t2)),
   );
 
   return (
@@ -82,7 +83,7 @@ export function FullscreenChartViewportLayer({
             reacc={oscillatorData.tideZone.slice(-3).some((d) => d.tell === 'reacc')}
             emaPeriod={tideEmaPeriod}
             emaValue={tideEmaLast}
-            accum={accumLive}
+            div={divLive}
           />
         </div>
       )}
