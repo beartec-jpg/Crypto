@@ -3291,6 +3291,7 @@ export function ChartFullscreenPage({
         totalPercentage={oscillatorPanel.totalPercentage}
         perOscillatorPercentage={oscillatorPanel.perOscillatorPercentage}
           mainChartVisibleRange={syncedOscillatorRange}
+          mainChart={chartReady ? chartRef.current : null}
           smartMoneyPanelData={smartMoneyPanelData}
           smcTrendEnginePanelData={smcTrendEnginePanelData}
         />

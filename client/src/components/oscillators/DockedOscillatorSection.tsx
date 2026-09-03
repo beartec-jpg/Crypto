@@ -12,6 +12,7 @@ import { CMFPanel } from '@/components/indicators/oscillators/CMFPanel';
 import { TSIPanel } from '@/components/indicators/oscillators/TSIPanel';
 import { KlingerPanel } from '@/components/indicators/oscillators/KlingerPanel';
 import { TideZonePanel } from '@/components/indicators/oscillators/TideZonePanel';
+import { OscillatorVerticalCrosshair } from '@/components/oscillators/OscillatorVerticalCrosshair';
 import { SMCDebugTable } from '@/components/tradingSystems/SMCDebugTable';
 import { SMCTrendEnginePanel } from '@/components/trading/SMCTrendEngine/SMCTrendEnginePanel';
 import { OSCILLATOR_PANEL_HEIGHT_PER, MOBILE_NAV_HEIGHT, TOP_TOOLBAR_HEIGHT } from '@/lib/constants/layout';
@@ -19,6 +20,7 @@ import type { OscillatorData } from '@/hooks/useOscillatorData';
 import type { ScoringInput } from '@/lib/tradingSystemScoring';
 import type { SystemEvaluation } from '@/types/systemScoring';
 import type { SMCTrendEnginePanelData } from '@/components/trading/SMCTrendEngine/types';
+import type { IChartApi } from 'lightweight-charts';
 
 function getSmartMoneyScoreColor(score: number): string {
   if (score >= 60) return 'text-green-400';
@@ -43,6 +45,7 @@ interface DockedOscillatorSectionProps {
   totalPercentage?: number;
   perOscillatorPercentage?: number;
   mainChartVisibleRange?: any;
+  mainChart?: IChartApi | null;
   smartMoneyPanelData?: {
     scoringInput: ScoringInput | null;
     evaluation: SystemEvaluation | null;
@@ -64,6 +67,7 @@ export function DockedOscillatorSection({
   totalPercentage = 0,
   perOscillatorPercentage = 0,
   mainChartVisibleRange,
+  mainChart,
   smartMoneyPanelData,
   smcTrendEnginePanelData,
 }: DockedOscillatorSectionProps) {
@@ -84,6 +88,7 @@ export function DockedOscillatorSection({
           : `calc(100vh - ${isFullscreen ? 0 : MOBILE_NAV_HEIGHT}px - ${TOP_TOOLBAR_HEIGHT}px)`
       }}
     >
+      <OscillatorVerticalCrosshair mainChart={mainChart} />
       <div className="bg-slate-900 overflow-y-auto h-full">
         {selectedOscillators.has('rsi') && !poppedOutOscillators.has('rsi') && !miniOscillators?.has('rsi') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
