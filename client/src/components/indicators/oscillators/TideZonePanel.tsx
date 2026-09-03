@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { createChart, ColorType, HistogramSeries, LineSeries, type IChartApi, type Time } from 'lightweight-charts';
 import { applyMainChartVisibleRange, type MainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 import type { TideZonePoint } from '@/lib/indicators/tideZone';
-import { tideZoneColor } from '@/lib/indicators/tideZone';
+import { tideZoneColor, tideZoneLabel } from '@/lib/indicators/tideZone';
 
 interface TideZonePanelProps {
   data: TideZonePoint[];
@@ -111,5 +111,29 @@ export function TideZonePanel({
     }
   }, [mainChartVisibleRange]);
 
-  return <div ref={containerRef} className="w-full h-full" />;
+  const last = data.length ? data[data.length - 1] : null;
+  const readoutColor =
+    last?.kind === 'follow_buy'
+      ? 'text-emerald-400'
+      : last?.kind === 'bounce_buy'
+        ? 'text-amber-400'
+        : last?.kind === 'sell'
+          ? 'text-red-400'
+          : 'text-slate-400';
+
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <div ref={containerRef} className="min-h-0 w-full flex-1" />
+      {last && (
+        <div className="shrink-0 pt-1 px-0.5 text-[10px] leading-tight sm:text-[11px]">
+          <span className={`font-semibold ${readoutColor}`}>{tideZoneLabel(last.kind)}</span>
+          <span className="text-slate-500"> · {last.score.toFixed(0)}</span>
+          <span className="text-slate-400">
+            {' '}
+            · Tide {(last.tide * 100).toFixed(0)} · Energy {(last.energy * 100).toFixed(0)} · Tape {(last.tape * 100).toFixed(0)}
+          </span>
+        </div>
+      )}
+    </div>
+  );
 }
