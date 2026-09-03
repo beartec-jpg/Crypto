@@ -25,6 +25,8 @@ export interface TideZoneCandle {
 
 export type TideZoneKind = 'follow_buy' | 'bounce_buy' | 'sell' | 'neutral';
 
+export type TideZoneTell = 'absorb' | null;
+
 export interface TideZonePoint {
   time: number;
   score: number;
@@ -32,6 +34,8 @@ export interface TideZonePoint {
   energy: number;
   tape: number;
   kind: TideZoneKind;
+  /** 1h path study: hist/tape up while price is down at a low or 0-cross. */
+  tell: TideZoneTell;
 }
 
 const HTF_SECONDS = 4 * 3600;
@@ -277,6 +281,21 @@ export function calculateTideZone(candles: TideZoneCandle[]): TideZonePoint[] {
       0.35 * (2 * energy - 1) * (1 - tide) +
       0.25 * (2 * tape - 1);
     const score = 100 * Math.tanh(raw);
+    let tell: TideZoneTell = null;
+    const prev = out.length ? out[out.length - 1] : null;
+    if (prev && i > 0 && prev.time === candles[i - 1].time) {
+      const pxDownOrFlat = candles[i].close <= candles[i - 1].close;
+      const tapeUp = tape > prev.tape;
+      const scoreUp = score > prev.score;
+      const zeroCross = prev.score < 0 && score >= 0;
+      let lo16 = candles[i].low;
+      const from = Math.max(0, i - 15);
+      for (let j = from; j <= i; j++) lo16 = Math.min(lo16, candles[j].low);
+      const nearLow = lo16 > 0 && candles[i].close <= lo16 * 1.003;
+      if (pxDownOrFlat && tapeUp && (zeroCross || (scoreUp && nearLow))) {
+        tell = 'absorb';
+      }
+    }
     out.push({
       time: candles[i].time,
       score,
@@ -284,6 +303,7 @@ export function calculateTideZone(candles: TideZoneCandle[]): TideZonePoint[] {
       energy,
       tape,
       kind: kindOf(score, tide, energy),
+      tell,
     });
   }
   return out;

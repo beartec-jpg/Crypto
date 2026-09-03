@@ -5,6 +5,8 @@ import { tideZoneLabel } from '@/lib/indicators/tideZone';
 
 interface TideZoneHudProps {
   last: TideZonePoint;
+  /** True if absorb printed on this bar or the last 2. */
+  absorb?: boolean;
   className?: string;
 }
 
@@ -33,9 +35,10 @@ function kindClass(kind: TideZonePoint['kind']): string {
   return 'text-slate-300 border-slate-600/60 bg-slate-900/85';
 }
 
-export function TideZoneHud({ last, className }: TideZoneHudProps) {
+export function TideZoneHud({ last, absorb = false, className }: TideZoneHudProps) {
   const [open, setOpen] = useState(false);
   const pct = (v: number) => Math.round(v * 100);
+  const showAbsorb = absorb || last.tell === 'absorb';
 
   return (
     <div
@@ -51,6 +54,11 @@ export function TideZoneHud({ last, className }: TideZoneHudProps) {
       >
         <div className="min-w-0 flex-1">
           <div className="text-[11px] font-semibold leading-tight truncate">
+            {showAbsorb && (
+              <span className="mr-1 rounded bg-cyan-500/30 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-cyan-200">
+                Absorb
+              </span>
+            )}
             {tideZoneLabel(last.kind)}
             <span className="opacity-80"> · {last.score.toFixed(0)}</span>
           </div>
@@ -74,8 +82,15 @@ export function TideZoneHud({ last, className }: TideZoneHudProps) {
               <p className="text-[10px] leading-snug text-slate-200/90">{c.blurb}</p>
             </div>
           ))}
+          {showAbsorb && (
+            <p className="text-[10px] leading-snug text-cyan-200">
+              Absorb: price down/flat at a low or 0-cross while hist and tape rose. 1h holdout: next 12h
+              median green (~+0.2%). Not a breakout yet — location, then wait for price to stop making lows.
+            </p>
+          )}
           <p className="text-[10px] leading-snug text-slate-400">
-            Green +40 = follow 4h. Amber = bounce vs down tide. Red −40 = sell / no long.
+            Green +40 = follow 4h. Amber = bounce vs down tide. Red −40 = sell / no long. Exit longs at 0,
+            not −40. Distribution (price up, hist down) did not hold as a short on 1h.
           </p>
         </div>
       )}
