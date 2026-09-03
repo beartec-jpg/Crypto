@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { emaTideScore, findTideAccumZones, type TideZonePoint } from '@/lib/indicators/tideZone';
+import { emaTideScore, findTideAccumZones, zigzagByLength, type TideZonePoint } from '@/lib/indicators/tideZone';
 
 function pt(time: number, score: number): TideZonePoint {
   return {

@@ -15,7 +15,7 @@ function normalize(raw: Partial<TideZoneSettings> | null | undefined): TideZoneS
   const s = { ...d, ...(raw || {}) };
   return {
     emaPeriod: clamp(s.emaPeriod, 2, 34, d.emaPeriod),
-    confirmBars: clamp(Math.round(s.confirmBars), 2, 13, d.confirmBars),
+    confirmBars: clamp(Math.round(s.confirmBars), 2, 21, d.confirmBars),
     minGap: clamp(Math.round(s.minGap), 4, 48, d.minGap),
     belowScore: clamp(s.belowScore, -80, 0, d.belowScore),
     emaSep: clamp(s.emaSep, 1, 40, d.emaSep),

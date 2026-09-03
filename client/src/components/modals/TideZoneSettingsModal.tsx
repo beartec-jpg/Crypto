@@ -138,11 +138,11 @@ export function TideZoneSettingsModal({
             onChange={(emaPeriod) => onSettingsChange({ emaPeriod })}
           />
           <NumRow
-            label="Trough width (bars)"
-            hint="How wide a dip must be to count as a trough"
+            label="Zigzag length N"
+            hint="N bars left and right to confirm a swing (like Swoop). Bigger N = larger legs."
             value={settings.confirmBars}
             min={2}
-            max={13}
+            max={21}
             step={1}
             onChange={(confirmBars) => onSettingsChange({ confirmBars })}
           />

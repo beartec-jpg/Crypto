@@ -402,40 +402,71 @@ const DEFAULT_DIV: TideDivParams = {
   keep: 8,
 };
 
-function emaTroughs(ema: { time: number; value: number }[], w: number): number[] {
-  const idx: number[] = [];
-  const n = ema.length;
-  if (n < 2 * w + 1) return idx;
-  for (let i = 2 * w; i < n; i++) {
-    const p = i - w;
-    const v = ema[p].value;
-    if (!Number.isFinite(v)) continue;
-    let isMin = true;
-    let unique = true;
-    for (let j = p - w; j <= p + w; j++) {
-      const x = ema[j].value;
-      if (!Number.isFinite(x)) {
-        isMin = false;
-        break;
-      }
-      if (j !== p && x < v) isMin = false;
-      if (j !== p && x === v) unique = false;
-    }
-    if (isMin && unique) idx.push(p);
-  }
-  return idx;
+interface ZigZagPivot {
+  index: number;
+  time: number;
+  value: number;
+  type: 'high' | 'low';
 }
 
-function priceLowNear(
+/**
+ * Zigzag of length N: n-bar fractal, then collapse to alternating H-L-H-L
+ * (consecutive same-type keeps the more extreme). Same idea as Swoop swings.
+ */
+export function zigzagByLength(
+  series: { time: number; value: number }[],
+  n: number,
+): ZigZagPivot[] {
+  const len = Math.max(2, Math.round(n));
+  const raw: ZigZagPivot[] = [];
+  if (series.length < len * 2 + 1) return [];
+  for (let i = len; i < series.length - len; i++) {
+    const v = series[i].value;
+    if (!Number.isFinite(v)) continue;
+    let isHigh = true;
+    let isLow = true;
+    for (let j = i - len; j <= i + len; j++) {
+      if (j === i) continue;
+      const x = series[j].value;
+      if (!Number.isFinite(x)) {
+        isHigh = false;
+        isLow = false;
+        break;
+      }
+      if (x > v) isHigh = false;
+      if (x < v) isLow = false;
+    }
+    if (isHigh === isLow) continue;
+    raw.push({
+      index: i,
+      time: series[i].time,
+      value: v,
+      type: isHigh ? 'high' : 'low',
+    });
+  }
+  const zz: ZigZagPivot[] = [];
+  for (const s of raw) {
+    if (!zz.length) {
+      zz.push(s);
+      continue;
+    }
+    const last = zz[zz.length - 1];
+    if (s.type === last.type) {
+      const more = s.type === 'high' ? s.value >= last.value : s.value <= last.value;
+      if (more) zz[zz.length - 1] = s;
+      continue;
+    }
+    zz.push(s);
+  }
+  return zz;
+}
+
+function priceAt(
   candles: { time: number; low: number }[],
   time: number,
 ): number | null {
   const i = candles.findIndex((c) => c.time === time);
-  if (i < 0) return null;
-  let lo = candles[i].low;
-  if (i > 0) lo = Math.min(lo, candles[i - 1].low);
-  if (i + 1 < candles.length) lo = Math.min(lo, candles[i + 1].low);
-  return lo;
+  return i < 0 ? null : candles[i].low;
 }
 
 function isDeepTrough(e1: number, e2: number, below: number, sep: number): boolean {
@@ -443,7 +474,8 @@ function isDeepTrough(e1: number, e2: number, below: number, sep: number): boole
 }
 
 /**
- * Regular bull div on the Tide EMA vs price: two EMA troughs, price LL, EMA HL.
+ * Regular bull div: consecutive zigzag lows on the Tide EMA (length N),
+ * price LL vs EMA HL. A high always sits between the two lows.
  */
 export function findTideDivZones(
   candles: { time: number; low: number }[],
@@ -452,52 +484,50 @@ export function findTideDivZones(
 ): TidePrintZone[] {
   const p = { ...DEFAULT_DIV, ...params };
   const ema = emaTideScore(data, p.emaPeriod);
-  if (ema.length < p.confirmBars * 4 || candles.length < 8) return [];
-  const troughs = emaTroughs(ema, p.confirmBars);
+  if (ema.length < p.confirmBars * 2 + 4 || candles.length < 8) return [];
+  const zz = zigzagByLength(ema, p.confirmBars);
+  const lows = zz.filter((z) => z.type === 'low');
   const out: TidePrintZone[] = [];
-  for (let k = 1; k < troughs.length; k++) {
-    const a = troughs[k - 1];
-    const b = troughs[k];
-    if (b - a < p.minGap) continue;
-    const p1 = priceLowNear(candles, ema[a].time);
-    const p2 = priceLowNear(candles, ema[b].time);
+  for (let k = 1; k < lows.length; k++) {
+    const a = lows[k - 1];
+    const b = lows[k];
+    if (b.index - a.index < p.minGap) continue;
+    const p1 = priceAt(candles, a.time);
+    const p2 = priceAt(candles, b.time);
     if (p1 == null || p2 == null) continue;
-    const e1 = ema[a].value;
-    const e2 = ema[b].value;
-    if (!isDeepTrough(e1, e2, p.belowScore, p.emaSep)) continue;
+    if (!isDeepTrough(a.value, b.value, p.belowScore, p.emaSep)) continue;
     if (!(p2 <= p1 * (1 - p.priceLlPct))) continue;
     out.push({
       kind: 'div',
-      t1: ema[a].time,
-      t2: ema[b].time,
+      t1: a.time,
+      t2: b.time,
       price1: p1,
       price2: p2,
-      ema1: e1,
-      ema2: e2,
+      ema1: a.value,
+      ema2: b.value,
       status: 'confirmed',
     });
   }
-  const lastT = troughs.length ? troughs[troughs.length - 1] : -1;
-  if (lastT >= 0) {
+  const lastLow = lows.length ? lows[lows.length - 1] : null;
+  if (lastLow) {
     const lastEma = ema[ema.length - 1];
     const lastC = candles[candles.length - 1];
-    const p1 = priceLowNear(candles, ema[lastT].time);
-    const e1 = ema[lastT].value;
+    const p1 = priceAt(candles, lastLow.time);
     if (
       p1 != null &&
-      lastC.time > ema[lastT].time &&
+      lastC.time > lastLow.time &&
       lastC.low <= p1 * (1 - p.priceLlPct) &&
-      isDeepTrough(e1, lastEma.value, p.belowScore, p.emaSep)
+      isDeepTrough(lastLow.value, lastEma.value, p.belowScore, p.emaSep)
     ) {
-      const already = out.some((z) => z.t1 === ema[lastT].time && z.status === 'confirmed');
+      const already = out.some((z) => z.t1 === lastLow.time && z.status === 'confirmed');
       if (!already) {
         out.push({
           kind: 'div',
-          t1: ema[lastT].time,
+          t1: lastLow.time,
           t2: lastC.time,
           price1: p1,
           price2: lastC.low,
-          ema1: e1,
+          ema1: lastLow.value,
           ema2: lastEma.value,
           status: 'forming',
         });
