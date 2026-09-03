@@ -7,9 +7,11 @@ import type { OscillatorData } from '@/hooks/useOscillatorData';
 import type { ScoringInput } from '@/lib/tradingSystemScoring';
 import type { SystemEvaluation } from '@/types/systemScoring';
 import type { SMCTrendEnginePanelData } from '@/components/trading/SMCTrendEngine/types';
+import { TideZoneHud } from '@/components/indicators/TideZoneHud';
 
 interface FullscreenChartViewportLayerProps {
   miniOscillators: Set<string>;
+  selectedOscillators?: Set<string>;
   oscillatorData: OscillatorData;
   onCycleMiniMode: (oscillatorId: string) => void;
   showHtfBiasPanel: boolean;
@@ -28,6 +30,7 @@ interface FullscreenChartViewportLayerProps {
 
 export function FullscreenChartViewportLayer({
   miniOscillators,
+  selectedOscillators,
   oscillatorData,
   onCycleMiniMode,
   showHtfBiasPanel,
@@ -51,6 +54,12 @@ export function FullscreenChartViewportLayer({
       />
 
       {showHtfBiasPanel && <HTFBiasPanel entries={htfBiasEntries} />}
+
+      {selectedOscillators?.has('tideZone') && oscillatorData.tideZone.length > 0 && (
+        <div className="absolute top-2 left-2 z-30 max-w-[calc(100%-5.5rem)]">
+          <TideZoneHud last={oscillatorData.tideZone[oscillatorData.tideZone.length - 1]} />
+        </div>
+      )}
 
       <ChartLoadingOverlay isLoading={isLoading} error={errorMessage} />
 

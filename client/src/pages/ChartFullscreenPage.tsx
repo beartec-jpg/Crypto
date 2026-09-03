@@ -3075,6 +3075,7 @@ export function ChartFullscreenPage({
 
         <FullscreenChartViewportLayer
           miniOscillators={oscillatorPanel.miniOscillators}
+          selectedOscillators={oscillatorPanel.selectedOscillators}
           oscillatorData={oscillatorData}
           onCycleMiniMode={oscillatorPanel.cycleMode}
           smartMoneyPanelData={smartMoneyPanelData}

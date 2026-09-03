@@ -347,7 +347,7 @@ export function DockedOscillatorSection({
               <span className="text-slate-600 ml-2">tap to cycle</span>
             </div>
             <div className="min-h-0 flex-1">
-              <TideZonePanel data={oscillatorData.tideZone} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />
+              <TideZonePanel data={oscillatorData.tideZone} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} showHud={false} />
             </div>
           </div>
         )}
