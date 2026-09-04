@@ -13,6 +13,7 @@ import { TSIPanel } from '@/components/indicators/oscillators/TSIPanel';
 import { KlingerPanel } from '@/components/indicators/oscillators/KlingerPanel';
 import { TideZonePanel } from '@/components/indicators/oscillators/TideZonePanel';
 import { OscillatorVerticalCrosshair } from '@/components/oscillators/OscillatorVerticalCrosshair';
+import { OscillatorDockHeader } from '@/components/oscillators/OscillatorInfoButton';
 import { SMCDebugTable } from '@/components/tradingSystems/SMCDebugTable';
 import { SMCTrendEnginePanel } from '@/components/trading/SMCTrendEngine/SMCTrendEnginePanel';
 import { OSCILLATOR_PANEL_HEIGHT_PER, MOBILE_NAV_HEIGHT, TOP_TOOLBAR_HEIGHT } from '@/lib/constants/layout';
@@ -92,26 +93,14 @@ export function DockedOscillatorSection({
       <div className="bg-slate-900 overflow-y-auto h-full">
         {selectedOscillators.has('rsi') && !poppedOutOscillators.has('rsi') && !miniOscillators?.has('rsi') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div
-              onClick={() => onCycleMode?.('rsi')}
-              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
-            >
-              <span>RSI (14)</span>
-              <span className="text-slate-600 ml-2">tap to cycle</span>
-            </div>
+            <OscillatorDockHeader id="rsi" title="RSI (14)" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <RSIPanel data={oscillatorData.rsi} period={14} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
         
         {selectedOscillators.has('macd') && !poppedOutOscillators.has('macd') && !miniOscillators?.has('macd') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div
-              onClick={() => onCycleMode?.('macd')}
-              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
-            >
-              <span>MACD (12, 26, 9)</span>
-              <span className="text-slate-600 ml-2">tap to cycle</span>
-            </div>
+            <OscillatorDockHeader id="macd" title="MACD (12, 26, 9)" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <MACDPanel 
               macdData={oscillatorData.macd.macd}
               signalData={oscillatorData.macd.signal}
@@ -126,13 +115,7 @@ export function DockedOscillatorSection({
 
         {selectedOscillators.has('waddah') && !poppedOutOscillators.has('waddah') && !miniOscillators?.has('waddah') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div
-              onClick={() => onCycleMode?.('waddah')}
-              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
-            >
-              <span>Waddah Explosion</span>
-              <span className="text-slate-600 ml-2">tap to cycle</span>
-            </div>
+            <OscillatorDockHeader id="waddah" title="Waddah Explosion" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <WaddahExplosionPanel
               histogramData={oscillatorData.waddah.histogram}
               explosionData={oscillatorData.waddah.explosion}
@@ -143,26 +126,14 @@ export function DockedOscillatorSection({
 
         {selectedOscillators.has('cmf') && !poppedOutOscillators.has('cmf') && !miniOscillators?.has('cmf') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div
-              onClick={() => onCycleMode?.('cmf')}
-              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
-            >
-              <span>CMF (20)</span>
-              <span className="text-slate-600 ml-2">tap to cycle</span>
-            </div>
+            <OscillatorDockHeader id="cmf" title="CMF (20)" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <CMFPanel data={oscillatorData.cmf} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
         
         {selectedOscillators.has('volume') && !poppedOutOscillators.has('volume') && !miniOscillators?.has('volume') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div
-              onClick={() => onCycleMode?.('volume')}
-              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
-            >
-              <span>Volume</span>
-              <span className="text-slate-600 ml-2">tap to cycle</span>
-            </div>
+            <OscillatorDockHeader id="volume" title="Volume" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <VolumePanel
               data={oscillatorData.volume}
               syncWithMainChart mainChartVisibleRange={mainChartVisibleRange}
@@ -172,26 +143,14 @@ export function DockedOscillatorSection({
 
         {selectedOscillators.has('stochRsi') && !poppedOutOscillators.has('stochRsi') && !miniOscillators?.has('stochRsi') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div
-              onClick={() => onCycleMode?.('stochRsi')}
-              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
-            >
-              <span>Stoch RSI (14,14,3,3)</span>
-              <span className="text-slate-600 ml-2">tap to cycle</span>
-            </div>
+            <OscillatorDockHeader id="stochRsi" title="Stoch RSI (14,14,3,3)" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <StochasticPanel data={oscillatorData.stochRsi} period={14} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
 
         {selectedOscillators.has('tsi') && !poppedOutOscillators.has('tsi') && !miniOscillators?.has('tsi') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div
-              onClick={() => onCycleMode?.('tsi')}
-              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
-            >
-              <span>TSI (25,13,7)</span>
-              <span className="text-slate-600 ml-2">tap to cycle</span>
-            </div>
+            <OscillatorDockHeader id="tsi" title="TSI (25,13,7)" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <TSIPanel
               tsiData={oscillatorData.tsi.tsi}
               signalData={oscillatorData.tsi.signal}
@@ -202,78 +161,42 @@ export function DockedOscillatorSection({
 
         {selectedOscillators.has('williamsR') && !poppedOutOscillators.has('williamsR') && !miniOscillators?.has('williamsR') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div
-              onClick={() => onCycleMode?.('williamsR')}
-              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
-            >
-              <span>Williams %R (14)</span>
-              <span className="text-slate-600 ml-2">tap to cycle</span>
-            </div>
+            <OscillatorDockHeader id="williamsR" title="Williams %R (14)" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <WilliamsRPanel data={oscillatorData.williamsR} period={14} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
 
         {selectedOscillators.has('cci') && !poppedOutOscillators.has('cci') && !miniOscillators?.has('cci') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div
-              onClick={() => onCycleMode?.('cci')}
-              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
-            >
-              <span>CCI (20)</span>
-              <span className="text-slate-600 ml-2">tap to cycle</span>
-            </div>
+            <OscillatorDockHeader id="cci" title="CCI (20)" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <CCIPanel data={oscillatorData.cci} period={20} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
 
         {selectedOscillators.has('adx') && !poppedOutOscillators.has('adx') && !miniOscillators?.has('adx') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div
-              onClick={() => onCycleMode?.('adx')}
-              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
-            >
-              <span>ADX (14)</span>
-              <span className="text-slate-600 ml-2">tap to cycle</span>
-            </div>
+            <OscillatorDockHeader id="adx" title="ADX (14)" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <ADXPanel data={oscillatorData.adx} period={14} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
 
         {selectedOscillators.has('obv') && !poppedOutOscillators.has('obv') && !miniOscillators?.has('obv') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div
-              onClick={() => onCycleMode?.('obv')}
-              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
-            >
-              <span>OBV</span>
-              <span className="text-slate-600 ml-2">tap to cycle</span>
-            </div>
+            <OscillatorDockHeader id="obv" title="OBV" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <OBVPanel data={oscillatorData.obv} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
 
         {selectedOscillators.has('mfi') && !poppedOutOscillators.has('mfi') && !miniOscillators?.has('mfi') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div
-              onClick={() => onCycleMode?.('mfi')}
-              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
-            >
-              <span>MFI (14)</span>
-              <span className="text-slate-600 ml-2">tap to cycle</span>
-            </div>
+            <OscillatorDockHeader id="mfi" title="MFI (14)" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <MFIPanel data={oscillatorData.mfi} period={14} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />
           </div>
         )}
 
         {selectedOscillators.has('klinger') && !poppedOutOscillators.has('klinger') && !miniOscillators?.has('klinger') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div
-              onClick={() => onCycleMode?.('klinger')}
-              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
-            >
-              <span>Klinger (34,55,13)</span>
-              <span className="text-slate-600 ml-2">tap to cycle</span>
-            </div>
+            <OscillatorDockHeader id="klinger" title="Klinger (34,55,13)" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <KlingerPanel
               klingerData={oscillatorData.klinger.klinger}
               signalData={oscillatorData.klinger.signal}
@@ -284,13 +207,7 @@ export function DockedOscillatorSection({
 
         {selectedOscillators.has('smartMoney') && !poppedOutOscillators.has('smartMoney') && !miniOscillators?.has('smartMoney') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div
-              onClick={() => onCycleMode?.('smartMoney')}
-              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
-            >
-              <span>Smart Money Tracker</span>
-              <span className="text-slate-600 ml-2">tap to cycle</span>
-            </div>
+            <OscillatorDockHeader id="smartMoney" title="Smart Money Tracker" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <div className="h-full w-full overflow-y-auto rounded border border-slate-700 bg-slate-900/70 p-3">
               {!smartMoneyPanelData?.evaluation || !smartMoneyPanelData.scoringInput ? (
                 <div className="text-xs text-slate-400">Waiting for SMC data...</div>
@@ -344,13 +261,7 @@ export function DockedOscillatorSection({
 
         {selectedOscillators.has('tideZone') && !poppedOutOscillators.has('tideZone') && !miniOscillators?.has('tideZone') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2 flex flex-col">
-            <div
-              onClick={() => onCycleMode?.('tideZone')}
-              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none shrink-0"
-            >
-              <span>Tide Zone</span>
-              <span className="text-slate-600 ml-2">tap to cycle</span>
-            </div>
+            <OscillatorDockHeader id="tideZone" title="Tide Zone" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <div className="min-h-0 flex-1">
               <TideZonePanel data={oscillatorData.tideZone} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} showHud={false} />
             </div>
@@ -359,13 +270,7 @@ export function DockedOscillatorSection({
 
         {selectedOscillators.has('smcTrendEngine') && !poppedOutOscillators.has('smcTrendEngine') && !miniOscillators?.has('smcTrendEngine') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
-            <div
-              onClick={() => onCycleMode?.('smcTrendEngine')}
-              className="flex items-center text-xs text-slate-400 mb-1 cursor-pointer hover:text-slate-300 select-none"
-            >
-              <span>SMC Trend Engine</span>
-              <span className="text-slate-600 ml-2">tap to cycle</span>
-            </div>
+            <OscillatorDockHeader id="smcTrendEngine" title="SMC Trend Engine" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <div className="h-full w-full overflow-y-auto rounded border border-slate-700 bg-slate-900/70 p-3">
               <SMCTrendEnginePanel panelData={smcTrendEnginePanelData} />
             </div>
