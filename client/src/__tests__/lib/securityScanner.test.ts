@@ -13,6 +13,26 @@ describe('Security Scanner', () => {
       const result = quickSecurityCheck();
       expect(typeof result).toBe('boolean');
     });
+
+    it('should return false rather than undefined when crypto.subtle is missing', () => {
+      const originalCrypto = window.crypto;
+      Object.defineProperty(window, 'crypto', {
+        configurable: true,
+        value: {
+          getRandomValues: originalCrypto?.getRandomValues?.bind(originalCrypto),
+        },
+      });
+      try {
+        const result = quickSecurityCheck();
+        expect(typeof result).toBe('boolean');
+        expect(result).toBe(false);
+      } finally {
+        Object.defineProperty(window, 'crypto', {
+          configurable: true,
+          value: originalCrypto,
+        });
+      }
+    });
   });
 
   describe('runSecurityScan', () => {

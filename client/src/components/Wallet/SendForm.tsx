@@ -65,7 +65,18 @@ import {
   serializeForQR,
 } from '@/lib/coldSignerService';
 import type { Chain } from '@/lib/balanceService';
+import type { Chain as WalletChain } from '@/lib/walletService';
 import type { usePendingTransactions } from '@/hooks/usePendingTransactions';
+
+function toWalletChain(chain: Chain): WalletChain {
+  return chain === 'bsc_testnet' ? 'bsc' : chain;
+}
+
+function toPendingChain(
+  chain: Chain,
+): 'ethereum' | 'bsc' | 'bitcoin' | 'xrp' | 'solana' | 'qbtc' {
+  return chain === 'bsc_testnet' ? 'bsc' : chain;
+}
 
 // Constants
 const TRANSACTION_BUFFER = 0.0001;
@@ -522,7 +533,7 @@ export default function SendForm({
       const fromAddress = getFromAddress();
       onAddPendingTransaction({
         hash: result.hash,
-        chain: selectedChain,
+        chain: toPendingChain(selectedChain),
         from: fromAddress || '',
         to: recipient,
         amount,
@@ -847,7 +858,7 @@ export default function SendForm({
       const signedTx = await signTransaction(
         walletId,
         password,
-        selectedChain,
+        toWalletChain(selectedChain),
         tx,
         isPasskeyAuthenticated || passkeyAuthenticatedThisSession,
         masterSeed,
@@ -861,7 +872,7 @@ export default function SendForm({
       if (onAddPendingTransaction) {
         onAddPendingTransaction({
           hash: result.hash,
-          chain: selectedChain,
+          chain: toPendingChain(selectedChain),
           from: fromAddress,
           to: recipient,
           amount,

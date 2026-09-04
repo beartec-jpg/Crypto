@@ -16,7 +16,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const coinalyzeSymbol = `${symbol}_PERP.A`;
 
     const coinalyzeApiKey = process.env.COINALYZE_API_KEY;
-    const coinglassApiKey = process.env.COINGLASS_API_KEY;
+    const coinglassApiKey = process.env.COINGLASS_API_KEY || process.env.CG_API_KEY;
     
     let historyData: any[] = [];
     let dataSource = 'none';
@@ -52,8 +52,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Fallback to CoinGlass
     if (historyData.length === 0 && coinglassApiKey) {
       try {
-        // CoinGlass expects base symbol without USDT (e.g., "BTC" not "BTCUSDT")
-        const coinglassSymbol = symbol.replace(/USDT$/, '').replace(/BUSD$/, '');
+        // Pair OI history wants the full futures pair (BTCUSDT), not the coin (BTC).
+        const coinglassSymbol = symbol.replace(/BUSD$/, 'USDT');
         const cgUrl = `https://open-api-v4.coinglass.com/api/futures/open-interest/history?exchange=Binance&symbol=${coinglassSymbol}&interval=4h&limit=42`;
         
         console.log(`📊 Fetching CoinGlass OI for ${symbol}...`);
@@ -97,10 +97,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
     
-    const newHistory = historyData.slice(-10).map((point: any) => ({
-      timestamp: (point.t || point.time || point.timestamp) * 1000,
-      value: [point.c, point.v, point.oi, point.value].find((v) => v !== undefined) ?? 0
-    }));
+    // Keep ≥24h of 4h marks so Tide Zone can compute a 24h OI change.
+    const newHistory = historyData.slice(-18).map((point: any) => {
+      let t = Number(point.t || point.time || point.timestamp || 0);
+      if (t > 0 && t < 1e12) t *= 1000;
+      return {
+        timestamp: t,
+        value: Number([point.c, point.v, point.oi, point.value].find((v) => v !== undefined) ?? 0),
+      };
+    });
     
     const currentValue = newHistory.length > 0 ? newHistory[newHistory.length - 1].value : 0;
     const previousValue = newHistory.length > 1 ? newHistory[newHistory.length - 2].value : currentValue;

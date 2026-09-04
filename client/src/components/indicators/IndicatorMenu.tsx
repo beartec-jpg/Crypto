@@ -28,6 +28,7 @@ const OSCILLATORS = [
   { id: 'williamsR', name: 'Williams %R', description: 'Williams Percent Range (14)' },
   { id: 'cci', name: 'CCI', description: 'Commodity Channel Index (20)' },
   { id: 'adx', name: 'ADX', description: 'Average Directional Index (14)' },
+  { id: 'tideZone', name: 'Tide Zone', description: '4h tide + local energy/tape zones' },
 ];
 
 interface IndicatorMenuProps {
@@ -178,7 +179,8 @@ export function IndicatorMenu({
       <PopoverContent
         side="bottom"
         align="start"
-        className="w-64 p-0 bg-slate-900 border-slate-700 text-slate-100"
+        collisionPadding={12}
+        className="w-64 max-h-[min(70dvh,var(--radix-popover-content-available-height,70dvh))] overflow-hidden p-0 bg-slate-900 border-slate-700 text-slate-100 flex flex-col"
       >
         <div className="flex items-center justify-between px-2 py-2 border-b border-slate-700 bg-slate-800">
           <span className="text-xs font-semibold text-slate-300">Indicators & SMC</span>
@@ -191,7 +193,7 @@ export function IndicatorMenu({
             <X className="h-3.5 w-3.5" />
           </Button>
         </div>
-        <Tabs defaultValue="osc">
+        <Tabs defaultValue="osc" className="min-h-0 flex-1 flex flex-col">
           <TabsList className="w-full rounded-none border-b border-slate-700 bg-slate-900 h-9">
             <TabsTrigger
               value="osc"
@@ -214,7 +216,7 @@ export function IndicatorMenu({
           </TabsList>
 
           {/* OSC Tab */}
-          <TabsContent value="osc" className="m-0 p-2">
+          <TabsContent value="osc" className="m-0 p-2 min-h-0 overflow-y-auto overscroll-contain max-h-[min(52dvh,calc(70dvh-6rem))]">
             <div className="flex items-center justify-between mb-1 px-1">
               <span className="text-xs text-slate-400 font-medium uppercase tracking-wide">
                 Oscillators
@@ -243,7 +245,7 @@ export function IndicatorMenu({
           </TabsContent>
 
           {/* Trend Tab */}
-          <TabsContent value="mas" className="m-0 p-2">
+          <TabsContent value="mas" className="m-0 p-2 min-h-0 overflow-y-auto overscroll-contain max-h-[min(52dvh,calc(70dvh-6rem))]">
             <div className="flex items-center justify-between mb-1 px-1">
               <span className="text-xs text-slate-400 font-medium uppercase tracking-wide">
                 Moving Averages
@@ -329,7 +331,7 @@ export function IndicatorMenu({
           </TabsContent>
 
           {/* SMC Tab */}
-          <TabsContent value="smc" className="m-0 p-2">
+          <TabsContent value="smc" className="m-0 p-2 min-h-0 overflow-y-auto overscroll-contain max-h-[min(52dvh,calc(70dvh-6rem))]">
             <div className="flex items-center justify-between mb-1 px-1">
               <span className="text-xs text-slate-400 font-medium uppercase tracking-wide">
                 Smart Money Concepts

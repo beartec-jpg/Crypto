@@ -10,7 +10,7 @@ export default function CryptoPrivacy() {
       <div className="max-w-[1200px] mx-auto space-y-6">
         {/* BearTec Logo - Top Center */}
         <div className="flex justify-center mb-8">
-          <Link href="/cryptoindicators">
+          <Link href="/">
             <img 
               src={bearTecLogoNew} 
               alt="BearTec Logo" 
@@ -20,10 +20,10 @@ export default function CryptoPrivacy() {
         </div>
 
         {/* Back Button */}
-        <Link href="/cryptoindicators">
+        <Link href="/">
           <Button variant="ghost" className="text-gray-400 hover:text-white hover:bg-[#1a1a1a]">
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Indicators
+            Back to Home
           </Button>
         </Link>
 
@@ -63,7 +63,7 @@ export default function CryptoPrivacy() {
                 <h3 className="text-lg font-semibold text-white mb-2">Personal Information</h3>
                 <ul className="list-disc list-inside space-y-2 text-sm">
                   <li>Email address (for account creation and authentication)</li>
-                  <li>Name and profile information (if provided via OAuth providers like Google or Replit)</li>
+                  <li>Name and profile information (if provided via OAuth providers like Google or Clerk)</li>
                   <li>Payment information (processed securely through Stripe)</li>
                   <li>Subscription tier and billing information</li>
                 </ul>
@@ -122,7 +122,7 @@ export default function CryptoPrivacy() {
                 <h3 className="text-lg font-semibold text-white mb-2">Service Providers</h3>
                 <ul className="list-disc list-inside space-y-2 text-sm">
                   <li><strong>Stripe:</strong> Payment processing and subscription management</li>
-                  <li><strong>Replit/Google OAuth:</strong> Authentication services</li>
+                  <li><strong>Clerk:</strong> Authentication services</li>
                   <li><strong>xAI (Grok):</strong> AI-powered market analysis</li>
                   <li><strong>Neon Database:</strong> Secure data storage</li>
                   <li><strong>Binance/Exchange APIs:</strong> Real-time market data</li>
@@ -224,7 +224,7 @@ export default function CryptoPrivacy() {
               <ul className="list-disc list-inside space-y-2 text-sm">
                 <li><strong>Stripe:</strong> stripe.com/privacy</li>
                 <li><strong>Google:</strong> policies.google.com/privacy</li>
-                <li><strong>Replit:</strong> replit.com/site/privacy</li>
+                <li><strong>Clerk:</strong> clerk.com/legal/privacy</li>
                 <li><strong>xAI:</strong> x.ai/legal/privacy-policy</li>
               </ul>
               <p className="text-sm mt-3">
@@ -277,27 +277,24 @@ export default function CryptoPrivacy() {
         {/* Footer Navigation */}
         <div className="border-t border-[#2a2e39] mt-8 pt-6">
           <div className="flex flex-wrap items-center justify-center gap-6 text-sm">
-            <Link href="/cryptoterms">
+            <Link href="/terms">
               <Button variant="ghost" className="text-gray-400 hover:text-white hover:bg-[#1a1a1a]">
                 Terms of Service
               </Button>
             </Link>
-            <Link href="/cryptosubscribe">
+            <Link href="/pricing">
               <Button variant="ghost" className="text-gray-400 hover:text-white hover:bg-[#1a1a1a]">
                 Subscriptions
               </Button>
             </Link>
-            <Link href="/crypto/training">
+            <Link href="/contact">
               <Button variant="ghost" className="text-gray-400 hover:text-white hover:bg-[#1a1a1a]">
-                Trading Education
+                Contact
               </Button>
             </Link>
-            <a href="mailto:beartec@beartec.uk" className="text-gray-400 hover:text-white">
-              Contact Support
-            </a>
           </div>
           <div className="text-center text-sm text-gray-500 mt-4">
-            © 2025 BearTec. For educational and informational purposes only.
+            © 2026 BEARTEC LTD (17166952). For educational and informational purposes only.
           </div>
         </div>
       </div>

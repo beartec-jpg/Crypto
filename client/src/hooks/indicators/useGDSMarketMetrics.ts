@@ -36,6 +36,7 @@ interface PremiumResponse {
 interface UseGDSMarketMetricsReturn {
   externalMetrics: GDSExternalMetrics;
   cvdData: CVDDataItem[];
+  oiHistory: NormalizedSeriesPoint[];
   isLoading: boolean;
   error: Error | null;
 }
@@ -145,6 +146,7 @@ export function useGDSMarketMetrics({
         symbol,
       },
       cvdData: mapCvdToTable(data?.cvd?.history),
+      oiHistory,
       isLoading,
       error: error instanceof Error ? error : null,
     };

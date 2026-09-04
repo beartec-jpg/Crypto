@@ -33,8 +33,7 @@ const WALLETCONNECT_PROJECT_ID = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID
 const isDevelopment = 
   window.location.hostname.includes('replit') || 
   window.location.hostname.includes('localhost') ||
-  window.location.hostname.includes('127.0.0.1') ||
-  window.location.pathname.includes('/dev');
+  window.location.hostname.includes('127.0.0.1');
 
 // In production, require the key
 if (!isDevelopment && !PUBLISHABLE_KEY) {

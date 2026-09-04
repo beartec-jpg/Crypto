@@ -353,7 +353,7 @@ export async function authenticateWithPasskeyPRF(
     try {
       allowCredentials.push({
         type: 'public-key',
-        id: b64uDecode(credentialIdB64),
+        id: b64uDecode(credentialIdB64) as BufferSource,
         transports: ['internal', 'hybrid'],
       });
     } catch {

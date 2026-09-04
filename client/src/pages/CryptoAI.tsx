@@ -461,7 +461,7 @@ export default function CryptoAI() {
           <Skeleton className="h-10 w-80 bg-slate-800" />
           <Skeleton className="h-48 w-full bg-slate-800" />
         </div>
-        <CryptoNavigation showWallet={true} />
+        <CryptoNavigation />
       </div>
     );
   }
@@ -1154,7 +1154,7 @@ export default function CryptoAI() {
         {pageSection === 'usage' ? usagePanel : null}
       </div>
 
-      <CryptoNavigation showWallet={true} />
+      <CryptoNavigation />
     </div>
   );
 }

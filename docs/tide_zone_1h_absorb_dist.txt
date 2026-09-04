@@ -1,0 +1,172 @@
+TIDE ZONE 1h ABSORB vs DISTRIBUTE
+A = absorption (hist up, price not). D = distribution (hist down, price not).
+Forward close-to-close. Holdout = 2024+.
+
+== A score↑ px↓ ==
+  [6h]
+    all: n=52560  mean=+0.045%  med=+0.056%  win= 51.9%
+    train: n=33206  mean=+0.051%  med=+0.056%  win= 51.9%
+    hold: n=19354  mean=+0.034%  med=+0.055%  win= 52.1%
+  [12h]
+    all: n=52560  mean=+0.101%  med=+0.065%  win= 51.6%
+    train: n=33206  mean=+0.121%  med=+0.056%  win= 51.4%
+    hold: n=19354  mean=+0.068%  med=+0.081%  win= 52.1%
+  [24h]
+    all: n=52560  mean=+0.240%  med=+0.120%  win= 52.0%
+    train: n=33206  mean=+0.335%  med=+0.145%  win= 52.3%
+    hold: n=19354  mean=+0.078%  med=+0.078%  win= 51.3%
+
+== A score↑ px↓/flat ==
+  [6h]
+    all: n=74277  mean=+0.032%  med=+0.029%  win= 51.0%
+    train: n=46556  mean=+0.035%  med=+0.026%  win= 50.9%
+    hold: n=27721  mean=+0.027%  med=+0.032%  win= 51.3%
+  [12h]
+    all: n=74277  mean=+0.087%  med=+0.046%  win= 51.2%
+    train: n=46556  mean=+0.105%  med=+0.038%  win= 51.0%
+    hold: n=27721  mean=+0.055%  med=+0.057%  win= 51.6%
+  [24h]
+    all: n=74277  mean=+0.196%  med=+0.080%  win= 51.4%
+    train: n=46556  mean=+0.266%  med=+0.090%  win= 51.6%
+    hold: n=27721  mean=+0.078%  med=+0.063%  win= 51.2%
+
+== A score↑ 2bar px↓ish ==
+  [6h]
+    all: n=95425  mean=+0.029%  med=+0.027%  win= 50.9%
+    train: n=61147  mean=+0.021%  med=+0.016%  win= 50.4%
+    hold: n=34278  mean=+0.042%  med=+0.043%  win= 51.7%
+  [12h]
+    all: n=95425  mean=+0.099%  med=+0.050%  win= 51.2%
+    train: n=61147  mean=+0.115%  med=+0.036%  win= 50.8%
+    hold: n=34278  mean=+0.070%  med=+0.077%  win= 51.9%
+  [24h]
+    all: n=95425  mean=+0.219%  med=+0.087%  win= 51.3%
+    train: n=61147  mean=+0.283%  med=+0.096%  win= 51.5%
+    hold: n=34278  mean=+0.106%  med=+0.069%  win= 51.0%
+
+== A near-low + score↑ ==
+  [6h]
+    all: n= 5642  mean=+0.011%  med=+0.083%  win= 54.3%
+    train: n= 2832  mean=+0.026%  med=+0.085%  win= 54.4%
+    hold: n= 2810  mean=-0.005%  med=+0.077%  win= 54.1%
+  [12h]
+    all: n= 5642  mean=-0.035%  med=+0.073%  win= 52.6%
+    train: n= 2832  mean=-0.035%  med=+0.049%  win= 52.0%
+    hold: n= 2810  mean=-0.035%  med=+0.104%  win= 53.2%
+  [24h]
+    all: n= 5642  mean=+0.084%  med=+0.163%  win= 53.6%
+    train: n= 2832  mean=+0.202%  med=+0.195%  win= 55.0%
+    hold: n= 2810  mean=-0.036%  med=+0.137%  win= 52.2%
+
+== A near-low + score↑ + tape↑ ==
+  [6h]
+    all: n= 2962  mean=+0.033%  med=+0.058%  win= 53.6%
+    train: n= 1527  mean=+0.032%  med=+0.050%  win= 53.6%
+    hold: n= 1435  mean=+0.034%  med=+0.061%  win= 53.7%
+  [12h]
+    all: n= 2962  mean=+0.008%  med=+0.064%  win= 52.7%
+    train: n= 1527  mean=+0.018%  med=+0.041%  win= 52.3%
+    hold: n= 1435  mean=-0.002%  med=+0.094%  win= 53.2%
+  [24h]
+    all: n= 2962  mean=+0.085%  med=+0.117%  win= 53.4%
+    train: n= 1527  mean=+0.071%  med=+0.080%  win= 53.0%
+    hold: n= 1435  mean=+0.100%  med=+0.174%  win= 53.7%
+
+== A 0-cross + px↓ + tape↑ ==
+  [6h]
+    all: n= 1292  mean=+0.086%  med=+0.038%  win= 51.2%
+    train: n=  805  mean=+0.102%  med=+0.014%  win= 50.6%
+    hold: n=  487  mean=+0.059%  med=+0.084%  win= 52.4%
+  [12h]
+    all: n= 1292  mean=+0.234%  med=+0.103%  win= 52.9%
+    train: n=  805  mean=+0.268%  med=+0.070%  win= 52.2%
+    hold: n=  487  mean=+0.177%  med=+0.169%  win= 54.2%
+  [24h]
+    all: n= 1292  mean=+0.281%  med=+0.207%  win= 53.4%
+    train: n=  805  mean=+0.310%  med=+0.167%  win= 52.0%
+    hold: n=  487  mean=+0.233%  med=+0.267%  win= 55.6%
+
+== D score↓ px↑ ==
+  [6h]
+    all: n=56596  mean=+0.050%  med=-0.003%  win= 49.6%
+    train: n=35732  mean=+0.063%  med=-0.012%  win= 49.3%
+    hold: n=20864  mean=+0.026%  med=+0.006%  win= 50.2%
+  [12h]
+    all: n=56596  mean=+0.076%  med=-0.013%  win= 49.5%
+    train: n=35732  mean=+0.114%  med=-0.025%  win= 49.2%
+    hold: n=20864  mean=+0.012%  med=+0.005%  win= 50.1%
+  [24h]
+    all: n=56596  mean=+0.198%  med=+0.009%  win= 50.1%
+    train: n=35732  mean=+0.257%  med=-0.006%  win= 49.8%
+    hold: n=20864  mean=+0.097%  med=+0.045%  win= 50.7%
+
+== D score↓ px↑/flat ==
+  [6h]
+    all: n=80566  mean=+0.045%  med=+0.000%  win= 49.9%
+    train: n=50335  mean=+0.060%  med=+0.000%  win= 49.7%
+    hold: n=30231  mean=+0.019%  med=+0.008%  win= 50.2%
+  [12h]
+    all: n=80566  mean=+0.071%  med=-0.004%  win= 49.7%
+    train: n=50335  mean=+0.101%  med=-0.016%  win= 49.4%
+    hold: n=30231  mean=+0.021%  med=+0.012%  win= 50.3%
+  [24h]
+    all: n=80566  mean=+0.168%  med=+0.016%  win= 50.2%
+    train: n=50335  mean=+0.221%  med=+0.000%  win= 49.9%
+    hold: n=30231  mean=+0.080%  med=+0.048%  win= 50.8%
+
+== D score↓ 2bar px↑ish ==
+  [6h]
+    all: n=105157  mean=+0.067%  med=+0.004%  win= 50.1%
+    train: n=67171  mean=+0.085%  med=+0.000%  win= 49.9%
+    hold: n=37986  mean=+0.033%  med=+0.012%  win= 50.4%
+  [12h]
+    all: n=105157  mean=+0.094%  med=-0.011%  win= 49.6%
+    train: n=67171  mean=+0.123%  med=-0.022%  win= 49.3%
+    hold: n=37986  mean=+0.042%  med=+0.008%  win= 50.2%
+  [24h]
+    all: n=105157  mean=+0.211%  med=+0.000%  win= 49.9%
+    train: n=67171  mean=+0.266%  med=-0.019%  win= 49.5%
+    hold: n=37986  mean=+0.112%  med=+0.036%  win= 50.6%
+
+== D near-high + score↓ ==
+  [6h]
+    all: n= 5512  mean=+0.102%  med=-0.030%  win= 47.8%
+    train: n= 2682  mean=+0.128%  med=-0.064%  win= 45.3%
+    hold: n= 2830  mean=+0.077%  med=+0.002%  win= 50.1%
+  [12h]
+    all: n= 5512  mean=+0.093%  med=-0.037%  win= 48.1%
+    train: n= 2682  mean=+0.136%  med=-0.079%  win= 45.7%
+    hold: n= 2830  mean=+0.052%  med=+0.011%  win= 50.3%
+  [24h]
+    all: n= 5512  mean=+0.173%  med=-0.013%  win= 49.5%
+    train: n= 2682  mean=+0.259%  med=-0.078%  win= 47.1%
+    hold: n= 2830  mean=+0.091%  med=+0.063%  win= 51.8%
+
+== D near-high + score↓ + tape↓ ==
+  [6h]
+    all: n= 4660  mean=+0.099%  med=-0.020%  win= 48.3%
+    train: n= 2275  mean=+0.126%  med=-0.054%  win= 45.9%
+    hold: n= 2385  mean=+0.073%  med=+0.008%  win= 50.5%
+  [12h]
+    all: n= 4660  mean=+0.083%  med=-0.033%  win= 48.2%
+    train: n= 2275  mean=+0.124%  med=-0.081%  win= 45.4%
+    hold: n= 2385  mean=+0.044%  med=+0.021%  win= 50.9%
+  [24h]
+    all: n= 4660  mean=+0.162%  med=+0.000%  win= 49.8%
+    train: n= 2275  mean=+0.232%  med=-0.081%  win= 47.1%
+    hold: n= 2385  mean=+0.095%  med=+0.091%  win= 52.5%
+
+== D 0-cross + px↑ + tape↓ ==
+  [6h]
+    all: n= 1620  mean=+0.046%  med=-0.024%  win= 49.1%
+    train: n= 1003  mean=+0.003%  med=-0.048%  win= 47.5%
+    hold: n=  617  mean=+0.116%  med=+0.037%  win= 51.7%
+  [12h]
+    all: n= 1620  mean=+0.063%  med=-0.051%  win= 48.7%
+    train: n= 1003  mean=+0.028%  med=-0.090%  win= 47.9%
+    hold: n=  617  mean=+0.120%  med=+0.005%  win= 50.1%
+  [24h]
+    all: n= 1620  mean=+0.068%  med=-0.027%  win= 49.3%
+    train: n= 1003  mean=+0.000%  med=-0.095%  win= 47.8%
+    hold: n=  617  mean=+0.179%  med=+0.072%  win= 51.9%
+

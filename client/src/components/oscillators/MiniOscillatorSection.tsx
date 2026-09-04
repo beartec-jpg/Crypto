@@ -6,6 +6,7 @@ import type { SystemEvaluation } from '@/types/systemScoring';
 import type { SMCTrendEnginePanelData } from '@/components/trading/SMCTrendEngine/types';
 import { TOP_TOOLBAR_HEIGHT } from '@/lib/constants/layout';
 import { useShowOwnerOnlyTools } from '@/hooks/useShowOwnerOnlyTools';
+import { type TideZoneKind } from '@/lib/indicators/tideZone';
 
 const VOLUME_UP_COLOR = '#26a69a';
 
@@ -106,6 +107,12 @@ function getTSIStatus(tsi: number, signal: number): { label: string; value: stri
   if (tsi > signal) return { label: 'TSI', value: tsi.toFixed(1), color: 'text-green-400', zone: 'Bull' };
   if (tsi < signal) return { label: 'TSI', value: tsi.toFixed(1), color: 'text-red-400', zone: 'Bear' };
   return { label: 'TSI', value: tsi.toFixed(1), color: 'text-yellow-400', zone: 'NEU' };
+}
+
+function getTideZoneStatus(kind: TideZoneKind, score: number): { label: string; value: string; color: string; zone: string } {
+  const zone = kind === 'follow_buy' ? 'UP' : kind === 'bounce_buy' ? 'BNC' : kind === 'sell' ? 'DN' : 'NEU';
+  const color = kind === 'follow_buy' ? 'text-green-400' : kind === 'bounce_buy' ? 'text-amber-400' : kind === 'sell' ? 'text-red-400' : 'text-slate-400';
+  return { label: 'TIDE', value: score.toFixed(0), color, zone };
 }
 
 function getKlingerStatus(klinger: number, signal: number): { label: string; value: string; color: string; zone: string } {
@@ -345,6 +352,12 @@ export function MiniOscillatorSection({
     const last = oscillatorData.mfi[oscillatorData.mfi.length - 1].value;
     const s = getMFIStatus(last);
     newMiniItems.push({ id: 'mfi', label: s.label, value: s.value, color: s.color, zone: s.zone });
+  }
+
+  if (miniOscillators.has('tideZone') && oscillatorData.tideZone.length > 0) {
+    const last = oscillatorData.tideZone[oscillatorData.tideZone.length - 1];
+    const s = getTideZoneStatus(last.kind, last.score);
+    newMiniItems.push({ id: 'tideZone', label: s.label, value: s.value, color: s.color, zone: s.zone });
   }
 
   if (miniOscillators.has('klinger') && oscillatorData.klinger.klinger.length > 0) {

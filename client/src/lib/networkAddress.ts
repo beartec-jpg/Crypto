@@ -45,6 +45,10 @@ export function getChainNetworkAddress(
       : addresses.solana;
   }
 
+  if (chain === 'bsc' || chain === 'bsc_testnet') {
+    return addresses.bsc;
+  }
+
   return addresses[chain];
 }
 

@@ -36,6 +36,8 @@ import { FullscreenChartIndicatorLayer } from '@/components/chart/FullscreenChar
 import { FullscreenChartModals } from '@/components/chart/FullscreenChartModals';
 import { FullscreenChartViewportLayer } from '@/components/chart/FullscreenChartViewportLayer';
 import { FullscreenOscillatorLayout } from '@/components/oscillators/FullscreenOscillatorLayout';
+import { TideAccumRenderer } from '@/components/indicators/TideAccumRenderer';
+import { useTideZoneSettings } from '@/hooks/useTideZoneSettings';
 
 import { useSuperTrendSettings } from '@/hooks/useSuperTrendSettings';
 import { useSuperTrendCalculation } from '@/hooks/useSuperTrendCalculation';
@@ -60,6 +62,8 @@ import { useAutoFibSettings } from '@/hooks/useAutoFibSettings';
 import { useAutoFibDetection } from '@/hooks/useAutoFibDetection';
 import { useAutoTrendlineSettings } from '@/hooks/useAutoTrendlineSettings';
 import { useAutoTrendlineDetection } from '@/hooks/useAutoTrendlineDetection';
+import { useSwoopSettings } from '@/hooks/useSwoopSettings';
+import { useSwoopDetection } from '@/hooks/useSwoopDetection';
 import { useVolumeEmaSettings } from '@/hooks/useVolumeEmaSettings';
 import { DrawingRenderer } from '@/components/drawings/DrawingRenderer';
 import { calculateEMA } from '@/lib/indicators';
@@ -129,7 +133,7 @@ const FREE_MODE_POINT_INTERVAL = 3;
 // All possible oscillator panel IDs (must match OscillatorSelectorModal)
 const ALL_OSCILLATOR_IDS = [
   'rsi', 'macd', 'waddah', 'cmf', 'volume', 'stochRsi', 'tsi',
-  'williamsR', 'cci', 'adx', 'obv', 'mfi', 'klinger', 'smartMoney', 'smcTrendEngine',
+  'williamsR', 'cci', 'adx', 'obv', 'mfi', 'klinger', 'tideZone', 'smartMoney', 'smcTrendEngine',
 ];
 
 // Minimum number of candles required for meaningful indicator calculations during rewind
@@ -282,6 +286,7 @@ export function ChartFullscreenPage({
   const [chartEpoch, setChartEpoch] = useState(0);
   const [showVolumeEmaModal, setShowVolumeEmaModal] = useState(false);
   const [showAutoTrendlineModal, setShowAutoTrendlineModal] = useState(false);
+  const [showSwoopModal, setShowSwoopModal] = useState(false);
   const [divergenceScannerEnabled, setDivergenceScannerEnabled] = useState(false);
   const [selectedDivergencePoint, setSelectedDivergencePoint] = useState<DivergencePoint | null>(null);
   const [showDivergenceSettings, setShowDivergenceSettings] = useState(false);
@@ -465,6 +470,7 @@ export function ChartFullscreenPage({
 
   // Hooks - Oscillator panel (needed first for totalHeight)
   const oscillatorPanel = useOscillatorPanel();
+  const tideZoneSettings = useTideZoneSettings();
 
   // Hooks - Chart instance
   const { chartRef, candleSeriesRef, isReady: chartReady, fitContent } = useChartInstance({
@@ -553,6 +559,7 @@ export function ChartFullscreenPage({
   const {
     externalMetrics: gdsExternalMetrics,
     cvdData: gdsCvdData,
+    oiHistory: gdsOiHistory,
     isLoading: isGdsMetricsLoading,
   } = useGDSMarketMetrics({
     symbol,
@@ -649,7 +656,9 @@ export function ChartFullscreenPage({
   );
 
   // Hooks - Oscillator data
-  const oscillatorData = useOscillatorData(effectiveCandles, oscillatorSettings);
+  const oscillatorData = useOscillatorData(effectiveCandles, oscillatorSettings, {
+    oiHistory: gdsOiHistory,
+  });
 
   const oscillatorModalConfigs = useMemo<Record<string, OscillatorModalConfig>>(
     () => ({
@@ -798,14 +807,20 @@ export function ChartFullscreenPage({
 
   // Hooks - Auto-Fibonacci detection
   const autoFibSettings = useAutoFibSettings();
-  const autoFibVisibleRange = useVisibleRange(chartRef.current, chartReady);
-  const autoFibResult = useAutoFibDetection(effectiveCandles, autoFibVisibleRange, autoFibSettings.settings);
+  const chartVisibleRange = useVisibleRange(chartRef.current, chartReady);
+  const autoFibResult = useAutoFibDetection(effectiveCandles, chartVisibleRange, autoFibSettings.settings);
 
   // Hooks - Auto Trendlines (macro / mid / LTF)
   const autoTrendlineSettings = useAutoTrendlineSettings();
   const autoTrendlineResult = useAutoTrendlineDetection(
     effectiveCandles as Array<{ time: number; open: number; high: number; low: number; close: number; volume?: number }>,
     autoTrendlineSettings.settings,
+  );
+  const swoopSettings = useSwoopSettings();
+  const swoopResult = useSwoopDetection(
+    effectiveCandles as Array<{ time: number; open: number; high: number; low: number; close: number; volume?: number }>,
+    swoopSettings.settings,
+    chartVisibleRange,
   );
 
   // Hooks - Volume EMA overlay (display settings)
@@ -2232,6 +2247,7 @@ export function ChartFullscreenPage({
     setDivergenceScannerEnabled(false);
     volumeEmaSettings.updateSettings({ enabled: false });
     autoTrendlineSettings.updateSettings({ enabled: false });
+    swoopSettings.updateSettings({ enabled: false });
     fvgSettings.updateSetting('enabled', false);
     obSettings.updateSetting('enabled', false);
     breakerSettings.updateSetting('enabled', false);
@@ -2265,6 +2281,7 @@ export function ChartFullscreenPage({
     pdZoneSettings,
     autoFibSettings,
     autoTrendlineSettings,
+    swoopSettings,
     volumeEmaSettings,
     superTrendSettings,
     vpSettings,
@@ -2506,7 +2523,7 @@ export function ChartFullscreenPage({
             const logical = chartRef.current!.timeScale().coordinateToLogical(px.x);
             const price = candleSeriesRef.current!.coordinateToPrice(px.y);
             if (logical === null || price === null) return null;
-            return { time: logicalToTime(logical), price };
+            return { time: logicalToTime(logical), price: Number(price) };
           })
           .filter((p): p is { time: number; price: number } => p !== null);
       } else if (currentMode === 'line_assisted') {
@@ -3012,6 +3029,9 @@ export function ChartFullscreenPage({
           autoTrendlineEnabled={showOwnerOnlyTools && autoTrendlineSettings.settings.enabled}
           onToggleAutoTrendline={(enabled) => autoTrendlineSettings.updateSettings({ enabled })}
           onOpenAutoTrendlineSettings={() => setShowAutoTrendlineModal(true)}
+          swoopEnabled={showOwnerOnlyTools && swoopSettings.settings.enabled}
+          onToggleSwoop={(enabled) => swoopSettings.updateSettings({ enabled })}
+          onOpenSwoopSettings={() => setShowSwoopModal(true)}
           liquidityHeatmapEnabled={showOwnerOnlyTools && lhSettings.settings.enabled}
           onToggleLiquidityHeatmap={(enabled) => lhSettings.updateSettings({ enabled })}
           onOpenLiquidityHeatmapSettings={() => setShowLHModal(true)}
@@ -3057,7 +3077,7 @@ export function ChartFullscreenPage({
             onWeightsChanged={() => setConditionWeightsVersion(v => v + 1)}
             scoringInput={activeSystemDetails.scoringInput}
             structureBreaks={structureBreaks}
-            visibleRange={autoFibVisibleRange ?? undefined}
+            visibleRange={chartVisibleRange ?? undefined}
             historicalSignalEvents={historicalSystemSignalEvents}
             onLockToViewport={handleSystemLockToViewport}
             canLockToViewport={candles.length >= 2}
@@ -3072,7 +3092,9 @@ export function ChartFullscreenPage({
 
         <FullscreenChartViewportLayer
           miniOscillators={oscillatorPanel.miniOscillators}
+          selectedOscillators={oscillatorPanel.selectedOscillators}
           oscillatorData={oscillatorData}
+          candles={effectiveCandles}
           onCycleMiniMode={oscillatorPanel.cycleMode}
           smartMoneyPanelData={smartMoneyPanelData}
           smcTrendEnginePanelData={smcTrendEnginePanelData}
@@ -3158,6 +3180,16 @@ export function ChartFullscreenPage({
           onAutoTrendlineSettingsChange={autoTrendlineSettings.updateSettings}
           onAutoTrendlineTierChange={autoTrendlineSettings.updateTier}
           onAutoTrendlineReset={autoTrendlineSettings.resetToDefaults}
+          swoopSettings={
+            showOwnerOnlyTools
+              ? swoopSettings.settings
+              : { ...swoopSettings.settings, enabled: false }
+          }
+          swoopResult={swoopResult}
+          showSwoopModal={showOwnerOnlyTools && showSwoopModal}
+          onCloseSwoopModal={() => setShowSwoopModal(false)}
+          onSwoopSettingsChange={swoopSettings.updateSettings}
+          onSwoopReset={swoopSettings.resetToDefaults}
           divergenceScannerEnabled={divergenceScannerEnabled}
           filteredDivergencePoints={filteredDivergencePoints}
           onSelectDivergencePoint={setSelectedDivergencePoint}
@@ -3239,6 +3271,15 @@ export function ChartFullscreenPage({
           timeframe={timeframe}
         />
 
+        <TideAccumRenderer
+          chart={chartRef.current}
+          candleSeries={candleSeriesRef.current}
+          candles={effectiveCandles}
+          tideZone={oscillatorData.tideZone}
+          settings={tideZoneSettings.settings}
+          enabled={oscillatorPanel.selectedOscillators.has('tideZone')}
+        />
+
         {/* Trade panel popup */}
         {showTradePanel && (
           <div className="absolute bottom-16 left-2 z-50">
@@ -3286,6 +3327,7 @@ export function ChartFullscreenPage({
         totalPercentage={oscillatorPanel.totalPercentage}
         perOscillatorPercentage={oscillatorPanel.perOscillatorPercentage}
           mainChartVisibleRange={syncedOscillatorRange}
+          mainChart={chartReady ? chartRef.current : null}
           smartMoneyPanelData={smartMoneyPanelData}
           smcTrendEnginePanelData={smcTrendEnginePanelData}
         />

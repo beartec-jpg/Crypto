@@ -48,8 +48,11 @@ function logicalLooksSane(logical: LogicalVisibleRange): boolean {
 
 /**
  * Apply the main chart viewport to an oscillator chart.
- * Prefer **time** range so panes stay aligned when bar counts differ
- * (RSI warmup, missing whitespace). Logical is a fallback only.
+ *
+ * Prefer **logical** range. `setVisibleRange` (time) clamps `to` to the last
+ * datapoint, so empty space past the last candle (main-chart rightOffset /
+ * pan-left whitespace) is dropped and panes stay glued to the right edge.
+ * Time is the fallback when logical is missing or looks like a leftover TF.
  */
 export function applyMainChartVisibleRange(
   chart: IChartApi | null | undefined,
@@ -80,18 +83,18 @@ export function applyMainChartVisibleRange(
       logical: LogicalVisibleRange | null;
     };
 
-    if (packed.time?.from != null && packed.time?.to != null) {
-      try {
-        ts.setVisibleRange(packed.time);
-        return true;
-      } catch {
-        // fall through to logical
-      }
-    }
-
     if (packed.logical && logicalLooksSane(packed.logical)) {
       try {
         ts.setVisibleLogicalRange(packed.logical);
+        return true;
+      } catch {
+        // fall through to time
+      }
+    }
+
+    if (packed.time?.from != null && packed.time?.to != null) {
+      try {
+        ts.setVisibleRange(packed.time);
         return true;
       } catch {
         return false;

@@ -1,0 +1,773 @@
+TIDE EMA DIVERGENCE vs ABSORB / DISTRO
+Causal pivots: confirm W bars after the EMA turn.
+Holdout = 2024+. Six coins. Research only.
+
+FINDINGS (do not wire into the oscillator from this alone)
+- Regular bull div (price LL, hist HL) on 1h is the only clean lift.
+  Best: RAW score pivots, wait 13 bars to confirm. Hold 12h +0.48% / 55.6%
+  (train +0.42% / 54.9%). EMA5 w13 is close. Live absorb is +0.08% / 53.4%.
+  Complementary to absorb: later, after the second trough confirms — not an
+  early absorb. Stacking with absorb did not help (n small, mixed sign).
+- EMA 0-cross up + price still down: EMA8 is a bit cleaner than raw 0-cross
+  on 1h hold (+0.24% / 56% vs +0.18% / 54%). EMA34+tape looks great on hold
+  and rotten on train — ignore.
+- Regular/hidden bear div is not distro. Dump ~52–54% vs 16-bar-high 51%
+  vs all-bar 49%. Live OI-flush distro still the dump tell (70% on n=20 1h,
+  60% on n=375 15m). Bear∩OI n is too small to promote.
+- 15m: same shape, smaller edge. Best bull EMA5 w13 hold +0.16% vs absorb
+  +0.03%; bear still ~52% dump.
+- Default chart EMA 8 is a fair visual; W=13 confirm is what made pivots
+  usable. Do not treat every EMA peak as distro.
+
+
+== 1h live absorb/distro vs control ==
+-- CTRL all 6h
+   all: n=384044  mean=+0.058%  med=+0.016%  win= 50.5%  dump= 49.2%
+   train: n=243590  mean=+0.076%  med=+0.014%  win= 50.4%  dump= 49.3%
+   hold: n=140454  mean=+0.026%  med=+0.018%  win= 50.6%  dump= 49.2%
+-- CTRL 16h-high 6h
+   all: n=44072  mean=+0.089%  med=-0.087%  win= 46.9%  dump= 52.8%
+   train: n=26993  mean=+0.099%  med=-0.112%  win= 46.1%  dump= 53.5%
+   hold: n=17079  mean=+0.074%  med=-0.047%  win= 48.2%  dump= 51.6%
+-- ABSORB live 6h
+   all: n= 3327  mean=+0.069%  med=+0.066%  win= 53.1%  dump= 46.4%
+   train: n= 1858  mean=+0.092%  med=+0.059%  win= 53.0%  dump= 46.4%
+   hold: n= 1469  mean=+0.041%  med=+0.077%  win= 53.2%  dump= 46.4%
+-- ABSORB 0-cross 6h
+   all: n= 1292  mean=+0.086%  med=+0.038%  win= 51.2%  dump= 48.5%
+   train: n=  805  mean=+0.102%  med=+0.014%  win= 50.6%  dump= 49.1%
+   hold: n=  487  mean=+0.059%  med=+0.084%  win= 52.4%  dump= 47.6%
+-- DISTRO live 6h
+   all: n=   20  mean=-0.049%  med=-0.256%  win= 35.0%  dump= 65.0%
+   train: n=0
+   hold: n=   20  mean=-0.049%  med=-0.256%  win= 35.0%  dump= 65.0%
+-- CTRL all 12h
+   all: n=384044  mean=+0.116%  med=+0.021%  win= 50.5%  dump= 49.3%
+   train: n=243590  mean=+0.152%  med=+0.016%  win= 50.3%  dump= 49.4%
+   hold: n=140454  mean=+0.053%  med=+0.029%  win= 50.7%  dump= 49.2%
+-- CTRL 16h-high 12h
+   all: n=44072  mean=+0.220%  med=-0.059%  win= 48.5%  dump= 51.4%
+   train: n=26993  mean=+0.280%  med=-0.071%  win= 48.2%  dump= 51.6%
+   hold: n=17079  mean=+0.125%  med=-0.044%  win= 48.8%  dump= 51.0%
+-- ABSORB live 12h
+   all: n= 3327  mean=+0.109%  med=+0.091%  win= 52.9%  dump= 46.7%
+   train: n= 1858  mean=+0.134%  med=+0.072%  win= 52.5%  dump= 47.0%
+   hold: n= 1469  mean=+0.077%  med=+0.123%  win= 53.4%  dump= 46.4%
+-- ABSORB 0-cross 12h
+   all: n= 1292  mean=+0.234%  med=+0.103%  win= 52.9%  dump= 46.7%
+   train: n=  805  mean=+0.268%  med=+0.070%  win= 52.2%  dump= 47.5%
+   hold: n=  487  mean=+0.177%  med=+0.169%  win= 54.2%  dump= 45.6%
+-- DISTRO live 12h
+   all: n=   20  mean=-0.301%  med=-0.731%  win= 30.0%  dump= 70.0%
+   train: n=0
+   hold: n=   20  mean=-0.301%  med=-0.731%  win= 30.0%  dump= 70.0%
+-- CTRL all 24h
+   all: n=384044  mean=+0.244%  med=+0.042%  win= 50.6%  dump= 49.2%
+   train: n=243590  mean=+0.323%  med=+0.044%  win= 50.7%  dump= 49.2%
+   hold: n=140454  mean=+0.105%  med=+0.037%  win= 50.6%  dump= 49.3%
+-- CTRL 16h-high 24h
+   all: n=44072  mean=+0.364%  med=-0.111%  win= 48.3%  dump= 51.6%
+   train: n=26993  mean=+0.462%  med=-0.148%  win= 47.7%  dump= 52.1%
+   hold: n=17079  mean=+0.210%  med=-0.050%  win= 49.2%  dump= 50.7%
+-- ABSORB live 24h
+   all: n= 3327  mean=+0.188%  med=+0.157%  win= 53.2%  dump= 46.7%
+   train: n= 1858  mean=+0.224%  med=+0.129%  win= 52.8%  dump= 47.0%
+   hold: n= 1469  mean=+0.143%  med=+0.178%  win= 53.7%  dump= 46.3%
+-- ABSORB 0-cross 24h
+   all: n= 1292  mean=+0.281%  med=+0.207%  win= 53.4%  dump= 46.5%
+   train: n=  805  mean=+0.310%  med=+0.167%  win= 52.0%  dump= 47.8%
+   hold: n=  487  mean=+0.233%  med=+0.267%  win= 55.6%  dump= 44.4%
+-- DISTRO live 24h
+   all: n=   20  mean=-0.705%  med=-0.991%  win= 35.0%  dump= 65.0%
+   train: n=0
+   hold: n=   20  mean=-0.705%  med=-0.991%  win= 35.0%  dump= 65.0%
+
+== 1h 0-cross variants @ 12h (sorted later by hold mean in rank) ==
+-- 0x ema34 px↓ tape↑ 12h
+   all: n=  213  mean=+0.502%  med=+0.125%  win= 52.1%  dump= 47.9%
+   train: n=  116  mean=+0.367%  med=-0.077%  win= 45.7%  dump= 54.3%
+   hold: n=   97  mean=+0.664%  med=+0.315%  win= 59.8%  dump= 40.2%
+-- 0x ema5 px↓ tape↑ 12h
+   all: n=  755  mean=+0.096%  med=+0.129%  win= 53.0%  dump= 46.8%
+   train: n=  476  mean=-0.012%  med=+0.045%  win= 51.1%  dump= 48.7%
+   hold: n=  279  mean=+0.281%  med=+0.273%  win= 56.3%  dump= 43.4%
+-- 0x ema8 px↓ 12h
+   all: n= 1814  mean=+0.321%  med=+0.150%  win= 54.3%  dump= 45.6%
+   train: n= 1177  mean=+0.363%  med=+0.111%  win= 53.3%  dump= 46.6%
+   hold: n=  637  mean=+0.243%  med=+0.224%  win= 56.2%  dump= 43.8%
+-- 0x ema34 px↓ 12h
+   all: n= 1069  mean=+0.223%  med=+0.049%  win= 51.5%  dump= 48.4%
+   train: n=  658  mean=+0.236%  med=+0.022%  win= 50.6%  dump= 49.2%
+   hold: n=  411  mean=+0.201%  med=+0.145%  win= 53.0%  dump= 47.0%
+-- 0x ema8 px↓ tape↑ 12h
+   all: n=  567  mean=+0.232%  med=+0.184%  win= 54.3%  dump= 45.7%
+   train: n=  368  mean=+0.252%  med=+0.120%  win= 53.3%  dump= 46.7%
+   hold: n=  199  mean=+0.194%  med=+0.317%  win= 56.3%  dump= 43.7%
+-- 0x raw px↓ 12h
+   all: n= 1960  mean=+0.143%  med=+0.073%  win= 51.6%  dump= 48.1%
+   train: n= 1221  mean=+0.117%  med=+0.013%  win= 50.4%  dump= 49.1%
+   hold: n=  739  mean=+0.185%  med=+0.161%  win= 53.6%  dump= 46.3%
+-- 0x raw px↓ tape↑ 12h
+   all: n= 1292  mean=+0.234%  med=+0.103%  win= 52.9%  dump= 46.7%
+   train: n=  805  mean=+0.268%  med=+0.070%  win= 52.2%  dump= 47.5%
+   hold: n=  487  mean=+0.177%  med=+0.169%  win= 54.2%  dump= 45.6%
+-- 0x ema13 px↓ 12h
+   all: n= 1621  mean=+0.191%  med=+0.066%  win= 51.6%  dump= 48.4%
+   train: n= 1012  mean=+0.214%  med=+0.022%  win= 50.4%  dump= 49.5%
+   hold: n=  609  mean=+0.151%  med=+0.168%  win= 53.5%  dump= 46.5%
+-- 0x ema5 px↓ 12h
+   all: n= 2020  mean=+0.168%  med=+0.112%  win= 52.7%  dump= 47.0%
+   train: n= 1257  mean=+0.210%  med=+0.078%  win= 52.3%  dump= 47.5%
+   hold: n=  763  mean=+0.098%  med=+0.167%  win= 53.5%  dump= 46.3%
+-- 0x ema21 px↓ 12h
+   all: n= 1292  mean=+0.193%  med=+0.057%  win= 51.5%  dump= 48.1%
+   train: n=  809  mean=+0.264%  med=+0.094%  win= 52.5%  dump= 47.1%
+   hold: n=  483  mean=+0.076%  med=+0.000%  win= 49.9%  dump= 49.9%
+-- 0x ema13 px↓ tape↑ 12h
+   all: n=  409  mean=+0.098%  med=+0.041%  win= 50.6%  dump= 49.4%
+   train: n=  264  mean=+0.124%  med=-0.063%  win= 47.3%  dump= 52.7%
+   hold: n=  145  mean=+0.051%  med=+0.304%  win= 56.6%  dump= 43.4%
+-- 0x ema21 px↓ tape↑ 12h
+   all: n=  281  mean=+0.141%  med=-0.010%  win= 49.1%  dump= 50.5%
+   train: n=  167  mean=+0.254%  med=-0.011%  win= 49.1%  dump= 50.3%
+   hold: n=  114  mean=-0.024%  med=-0.008%  win= 49.1%  dump= 50.9%
+
+== 1h HOLD 12h rank: regular BULL (want +mean) ==
+  reg_bull raw w13 12h  n= 525  mean=+0.479%  med=+0.346%  win= 55.6%  dump= 44.2%
+  reg_bull ema5 w13 12h  n= 487  mean=+0.399%  med=+0.312%  win= 56.3%  dump= 43.7%
+  reg_bull ema13 w13 12h  n= 405  mean=+0.290%  med=+0.105%  win= 52.3%  dump= 47.7%
+  reg_bull ema5 w8 12h  n= 577  mean=+0.283%  med=+0.241%  win= 54.8%  dump= 45.2%
+  reg_bull ema21 w8 12h  n= 399  mean=+0.281%  med=+0.212%  win= 55.4%  dump= 44.6%
+  reg_bull ema8 w13 12h  n= 453  mean=+0.223%  med=+0.125%  win= 52.8%  dump= 47.2%
+  reg_bull ema13 w8 12h  n= 465  mean=+0.218%  med=+0.190%  win= 54.8%  dump= 44.9%
+  reg_bull ema34 w8 12h  n= 332  mean=+0.195%  med=+0.190%  win= 53.6%  dump= 46.4%
+  reg_bull ema8 w8 12h  n= 539  mean=+0.175%  med=+0.181%  win= 54.0%  dump= 45.8%
+  reg_bull ema34 w5 12h  n= 374  mean=+0.168%  med=+0.156%  win= 52.1%  dump= 47.9%
+  reg_bull raw w8 12h  n= 653  mean=+0.135%  med=+0.195%  win= 53.4%  dump= 46.6%
+  reg_bull ema21 w13 12h  n= 345  mean=+0.082%  med=-0.041%  win= 47.8%  dump= 51.9%
+
+== 1h HOLD 12h rank: regular BEAR (want dump) ==
+  reg_bear ema34 w5 12h  n= 365  mean=+0.058%  med=-0.136%  win= 45.2%  dump= 54.5%
+  reg_bear raw w13 12h  n= 378  mean=-0.032%  med=-0.126%  win= 46.3%  dump= 53.7%
+  reg_bear ema34 w8 12h  n= 308  mean=-0.090%  med=-0.173%  win= 46.1%  dump= 53.6%
+  reg_bear ema21 w5 12h  n= 454  mean=+0.043%  med=-0.098%  win= 46.0%  dump= 53.5%
+  reg_bear ema5 w8 12h  n= 550  mean=+0.127%  med=-0.077%  win= 47.8%  dump= 52.0%
+  reg_bear ema21 w8 12h  n= 370  mean=+0.004%  med=-0.045%  win= 48.1%  dump= 51.6%
+  reg_bear raw w8 12h  n= 520  mean=+0.212%  med=-0.020%  win= 48.3%  dump= 51.2%
+  reg_bear ema8 w8 12h  n= 507  mean=+0.138%  med=-0.026%  win= 49.1%  dump= 50.9%
+  reg_bear ema34 w13 12h  n= 252  mean=-0.029%  med=-0.006%  win= 49.2%  dump= 50.8%
+  reg_bear ema5 w13 12h  n= 420  mean=+0.075%  med=-0.043%  win= 49.0%  dump= 50.7%
+  reg_bear ema8 w5 12h  n= 626  mean=+0.114%  med=-0.010%  win= 49.0%  dump= 50.5%
+  reg_bear ema5 w5 12h  n= 714  mean=+0.111%  med=+0.012%  win= 50.1%  dump= 49.7%
+
+== 1h HOLD 12h rank: hidden BULL ==
+  hid_bull ema8 w13 12h  n= 608  mean=+0.303%  med=+0.071%  win= 52.5%
+  hid_bull ema13 w13 12h  n= 549  mean=+0.121%  med=+0.027%  win= 50.8%
+  hid_bull ema5 w13 12h  n= 667  mean=+0.112%  med=-0.029%  win= 49.3%
+  hid_bull raw w13 12h  n= 765  mean=+0.087%  med=+0.000%  win= 49.8%
+  hid_bull raw w8 12h  n= 968  mean=+0.081%  med=+0.006%  win= 50.0%
+  hid_bull ema21 w13 12h  n= 489  mean=+0.079%  med=+0.033%  win= 50.7%
+  hid_bull ema21 w8 12h  n= 585  mean=+0.052%  med=+0.040%  win= 51.3%
+  hid_bull ema13 w8 12h  n= 657  mean=+0.050%  med=+0.040%  win= 50.8%
+
+== 1h HOLD 12h rank: hidden BEAR ==
+  hid_bear ema34 w8 12h  n= 311  mean=-0.017%  dump= 52.1%
+  hid_bear ema21 w8 12h  n= 371  mean=-0.130%  dump= 52.0%
+  hid_bear ema13 w8 12h  n= 443  mean=-0.002%  dump= 51.9%
+  hid_bear ema8 w8 12h  n= 518  mean=+0.085%  dump= 50.6%
+  hid_bear ema21 w5 12h  n= 427  mean=-0.012%  dump= 50.4%
+  hid_bear raw w13 12h  n= 492  mean=+0.007%  dump= 49.6%
+  hid_bear ema13 w5 12h  n= 534  mean=+0.027%  dump= 49.3%
+  hid_bear ema5 w8 12h  n= 547  mean=+0.065%  dump= 49.2%
+
+== 1h stacks @ 12h ==
+-- reg_bear∩16high ema13 w13 12h
+   all: n=   71  mean=+0.297%  med=-0.428%  win= 36.6%  dump= 63.4%
+   train: n=   46  mean=+0.502%  med=-0.268%  win= 39.1%  dump= 60.9%
+   hold: n=   25  mean=-0.081%  med=-1.234%  win= 32.0%  dump= 68.0%
+-- reg_bear∩16high ema13 w5 12h
+   all: n=   90  mean=-0.125%  med=-0.017%  win= 48.9%  dump= 51.1%
+   train: n=   59  mean=-0.320%  med=-0.078%  win= 47.5%  dump= 52.5%
+   hold: n=   31  mean=+0.246%  med=+0.201%  win= 51.6%  dump= 48.4%
+-- reg_bear∩16high ema13 w8 12h
+   all: n=   61  mean=+0.455%  med=-0.044%  win= 47.5%  dump= 52.5%
+   train: n=   41  mean=+0.143%  med=-0.408%  win= 43.9%  dump= 56.1%
+   hold: n=   20  mean=+1.095%  med=+0.412%  win= 55.0%  dump= 45.0%
+-- reg_bear∩16high ema21 w13 12h
+   all: n=   64  mean=+0.256%  med=-0.404%  win= 45.3%  dump= 54.7%
+   train: n=   40  mean=+0.732%  med=+0.081%  win= 52.5%  dump= 47.5%
+   hold: n=   24  mean=-0.537%  med=-0.804%  win= 33.3%  dump= 66.7%
+-- reg_bear∩16high ema21 w5 12h
+   all: n=   62  mean=+0.060%  med=+0.161%  win= 51.6%  dump= 48.4%
+   train: n=   37  mean=-0.284%  med=-0.217%  win= 48.6%  dump= 51.4%
+   hold: n=   25  mean=+0.569%  med=+0.725%  win= 56.0%  dump= 44.0%
+-- reg_bear∩16high ema21 w8 12h
+   all: n=   43  mean=-0.732%  med=-0.832%  win= 34.9%  dump= 65.1%
+   train: n=   32  mean=-0.731%  med=-0.832%  win= 34.4%  dump= 65.6%
+   hold: n=   11  mean=-0.732%  med=-0.449%  win= 36.4%  dump= 63.6%
+-- reg_bear∩16high ema34 w13 12h
+   all: n=   55  mean=+0.704%  med=-0.356%  win= 47.3%  dump= 52.7%
+   train: n=   40  mean=+1.549%  med=+0.012%  win= 52.5%  dump= 47.5%
+   hold: n=   15  mean=-1.551%  med=-0.682%  win= 33.3%  dump= 66.7%
+-- reg_bear∩16high ema34 w5 12h
+   all: n=   40  mean=+0.436%  med=+0.387%  win= 52.5%  dump= 47.5%
+   train: n=   26  mean=+0.070%  med=+0.351%  win= 50.0%  dump= 50.0%
+   hold: n=   14  mean=+1.117%  med=+1.522%  win= 57.1%  dump= 42.9%
+-- reg_bear∩16high ema34 w8 12h
+   all: n=   42  mean=-0.051%  med=-0.449%  win= 35.7%  dump= 64.3%
+   train: n=   32  mean=+0.048%  med=-0.807%  win= 40.6%  dump= 59.4%
+   hold: n=   10  mean=-0.364%  med=-0.388%  win= 20.0%  dump= 80.0%
+-- reg_bear∩16high ema5 w13 12h
+   all: n=   84  mean=+0.493%  med=-0.150%  win= 48.8%  dump= 51.2%
+   train: n=   55  mean=+0.528%  med=-0.615%  win= 45.5%  dump= 54.5%
+   hold: n=   29  mean=+0.425%  med=+0.192%  win= 55.2%  dump= 44.8%
+-- reg_bear∩16high ema5 w5 12h
+   all: n=   89  mean=+0.704%  med=+0.129%  win= 51.7%  dump= 48.3%
+   train: n=   46  mean=+0.763%  med=-0.025%  win= 47.8%  dump= 52.2%
+   hold: n=   43  mean=+0.642%  med=+0.305%  win= 55.8%  dump= 44.2%
+-- reg_bear∩16high ema5 w8 12h
+   all: n=   76  mean=+0.445%  med=-0.354%  win= 44.7%  dump= 55.3%
+   train: n=   46  mean=-0.187%  med=-0.579%  win= 32.6%  dump= 67.4%
+   hold: n=   30  mean=+1.414%  med=+0.677%  win= 63.3%  dump= 36.7%
+-- reg_bear∩16high ema8 w13 12h
+   all: n=   83  mean=+0.411%  med=-0.150%  win= 45.8%  dump= 53.0%
+   train: n=   55  mean=+0.427%  med=-0.035%  win= 45.5%  dump= 52.7%
+   hold: n=   28  mean=+0.380%  med=-0.150%  win= 46.4%  dump= 53.6%
+-- reg_bear∩16high ema8 w5 12h
+   all: n=   83  mean=+0.088%  med=-0.252%  win= 44.6%  dump= 55.4%
+   train: n=   49  mean=-0.005%  med=-0.252%  win= 42.9%  dump= 57.1%
+   hold: n=   34  mean=+0.223%  med=-0.017%  win= 47.1%  dump= 52.9%
+-- reg_bear∩16high ema8 w8 12h
+   all: n=   67  mean=+0.367%  med=-0.273%  win= 44.8%  dump= 55.2%
+   train: n=   44  mean=-0.014%  med=-0.629%  win= 38.6%  dump= 61.4%
+   hold: n=   23  mean=+1.095%  med=+0.270%  win= 56.5%  dump= 43.5%
+-- reg_bear∩16high raw w13 12h
+   all: n=   61  mean=+0.023%  med=-0.366%  win= 44.3%  dump= 55.7%
+   train: n=   37  mean=+0.729%  med=+0.454%  win= 54.1%  dump= 45.9%
+   hold: n=   24  mean=-1.065%  med=-0.649%  win= 29.2%  dump= 70.8%
+-- reg_bear∩16high raw w5 12h
+   all: n=   98  mean=+0.529%  med=+0.297%  win= 57.1%  dump= 42.9%
+   train: n=   57  mean=+0.486%  med=+0.098%  win= 54.4%  dump= 45.6%
+   hold: n=   41  mean=+0.589%  med=+0.504%  win= 61.0%  dump= 39.0%
+-- reg_bear∩16high raw w8 12h
+   all: n=   56  mean=+0.269%  med=-0.123%  win= 42.9%  dump= 55.4%
+   train: n=   34  mean=-0.232%  med=-0.614%  win= 35.3%  dump= 64.7%
+   hold: n=   22  mean=+1.044%  med=+0.051%  win= 54.5%  dump= 40.9%
+-- reg_bear∩OI raw w5 12h
+   all: n=    1  mean=+1.665%  med=+1.665%  win=100.0%  dump=  0.0%
+   train: n=0
+   hold: n=    1  mean=+1.665%  med=+1.665%  win=100.0%  dump=  0.0%
+-- reg_bear∩distro raw w5 12h
+   all: n=    1  mean=+1.665%  med=+1.665%  win=100.0%  dump=  0.0%
+   train: n=0
+   hold: n=    1  mean=+1.665%  med=+1.665%  win=100.0%  dump=  0.0%
+-- reg_bull∩absorb ema13 w13 12h
+   all: n=    2  mean=+1.900%  med=+2.485%  win=100.0%  dump=  0.0%
+   train: n=    1  mean=+1.315%  med=+1.315%  win=100.0%  dump=  0.0%
+   hold: n=    1  mean=+2.485%  med=+2.485%  win=100.0%  dump=  0.0%
+-- reg_bull∩absorb ema13 w5 12h
+   all: n=   11  mean=+0.736%  med=-0.102%  win= 45.5%  dump= 54.5%
+   train: n=    6  mean=+0.741%  med=-0.102%  win= 33.3%  dump= 66.7%
+   hold: n=    5  mean=+0.730%  med=+0.586%  win= 60.0%  dump= 40.0%
+-- reg_bull∩absorb ema13 w8 12h
+   all: n=   10  mean=+2.201%  med=+0.462%  win= 90.0%  dump= 10.0%
+   train: n=    3  mean=+3.755%  med=+0.462%  win=100.0%  dump=  0.0%
+   hold: n=    7  mean=+1.534%  med=+0.440%  win= 85.7%  dump= 14.3%
+-- reg_bull∩absorb ema21 w13 12h
+   all: n=    2  mean=+0.754%  med=+2.485%  win= 50.0%  dump= 50.0%
+   train: n=0
+   hold: n=    2  mean=+0.754%  med=+2.485%  win= 50.0%  dump= 50.0%
+-- reg_bull∩absorb ema21 w5 12h
+   all: n=   12  mean=-0.017%  med=+0.257%  win= 50.0%  dump= 50.0%
+   train: n=    8  mean=+0.149%  med=+0.257%  win= 50.0%  dump= 50.0%
+   hold: n=    4  mean=-0.350%  med=+3.150%  win= 50.0%  dump= 50.0%
+-- reg_bull∩absorb ema21 w8 12h
+   all: n=    9  mean=+1.071%  med=+0.440%  win= 66.7%  dump= 33.3%
+   train: n=    1  mean=+0.462%  med=+0.462%  win=100.0%  dump=  0.0%
+   hold: n=    8  mean=+1.147%  med=+0.440%  win= 62.5%  dump= 37.5%
+-- reg_bull∩absorb ema34 w13 12h
+   all: n=    3  mean=-3.612%  med=-0.977%  win=  0.0%  dump=100.0%
+   train: n=    1  mean=-0.527%  med=-0.527%  win=  0.0%  dump=100.0%
+   hold: n=    2  mean=-5.154%  med=-0.977%  win=  0.0%  dump=100.0%
+-- reg_bull∩absorb ema34 w5 12h
+   all: n=   11  mean=+1.109%  med=+0.805%  win= 63.6%  dump= 36.4%
+   train: n=    5  mean=+0.154%  med=-1.397%  win= 40.0%  dump= 60.0%
+   hold: n=    6  mean=+1.905%  med=+3.150%  win= 83.3%  dump= 16.7%
+-- reg_bull∩absorb ema34 w8 12h
+   all: n=    5  mean=-0.164%  med=+0.425%  win= 60.0%  dump= 40.0%
+   train: n=    1  mean=+0.462%  med=+0.462%  win=100.0%  dump=  0.0%
+   hold: n=    4  mean=-0.320%  med=+0.425%  win= 50.0%  dump= 50.0%
+-- reg_bull∩absorb ema5 w13 12h
+   all: n=    5  mean=+0.112%  med=-0.527%  win= 40.0%  dump= 60.0%
+   train: n=    3  mean=+0.253%  med=-0.527%  win= 33.3%  dump= 66.7%
+   hold: n=    2  mean=-0.101%  med=+1.590%  win= 50.0%  dump= 50.0%
+-- reg_bull∩absorb ema5 w5 12h
+   all: n=   22  mean=+0.502%  med=+0.418%  win= 68.2%  dump= 31.8%
+   train: n=   13  mean=+0.143%  med=+0.300%  win= 69.2%  dump= 30.8%
+   hold: n=    9  mean=+1.022%  med=+0.864%  win= 66.7%  dump= 33.3%
+-- reg_bull∩absorb ema5 w8 12h
+   all: n=   12  mean=+1.135%  med=+1.237%  win= 58.3%  dump= 41.7%
+   train: n=    7  mean=+0.666%  med=+0.198%  win= 57.1%  dump= 42.9%
+   hold: n=    5  mean=+1.792%  med=+1.773%  win= 60.0%  dump= 40.0%
+-- reg_bull∩absorb ema8 w13 12h
+   all: n=    3  mean=-0.248%  med=-0.527%  win= 33.3%  dump= 66.7%
+   train: n=    3  mean=-0.248%  med=-0.527%  win= 33.3%  dump= 66.7%
+   hold: n=0
+-- reg_bull∩absorb ema8 w5 12h
+   all: n=   15  mean=+0.803%  med=+0.548%  win= 60.0%  dump= 40.0%
+   train: n=    9  mean=+0.753%  med=+0.548%  win= 55.6%  dump= 44.4%
+   hold: n=    6  mean=+0.878%  med=+0.586%  win= 66.7%  dump= 33.3%
+-- reg_bull∩absorb ema8 w8 12h
+   all: n=   14  mean=+0.216%  med=+0.257%  win= 50.0%  dump= 50.0%
+   train: n=    6  mean=-1.024%  med=+0.257%  win= 50.0%  dump= 50.0%
+   hold: n=    8  mean=+1.146%  med=+0.425%  win= 50.0%  dump= 50.0%
+-- reg_bull∩absorb raw w13 12h
+   all: n=    6  mean=+0.034%  med=+1.564%  win= 50.0%  dump= 50.0%
+   train: n=    2  mean=-1.906%  med=+2.648%  win= 50.0%  dump= 50.0%
+   hold: n=    4  mean=+1.005%  med=+1.564%  win= 50.0%  dump= 50.0%
+-- reg_bull∩absorb raw w5 12h
+   all: n=   20  mean=-0.832%  med=-1.136%  win= 35.0%  dump= 65.0%
+   train: n=    9  mean=-0.155%  med=-0.731%  win= 44.4%  dump= 55.6%
+   hold: n=   11  mean=-1.386%  med=-1.459%  win= 27.3%  dump= 72.7%
+-- reg_bull∩absorb raw w8 12h
+   all: n=   12  mean=-0.530%  med=-0.193%  win= 41.7%  dump= 58.3%
+   train: n=    7  mean=-0.277%  med=+0.300%  win= 57.1%  dump= 42.9%
+   hold: n=    5  mean=-0.885%  med=-1.997%  win= 20.0%  dump= 80.0%
+
+== 1h compact vs live tells @ 12h hold ==
+  ABSORB live 12h: n= 1469  mean=+0.077%  med=+0.123%  win= 53.4%  dump= 46.4%
+  DISTRO live 12h: n=   20  mean=-0.301%  med=-0.731%  win= 30.0%  dump= 70.0%
+  CTRL all 12h: n=140454  mean=+0.053%  med=+0.029%  win= 50.7%  dump= 49.2%
+  CTRL 16h-high 12h: n=17079  mean=+0.125%  med=-0.044%  win= 48.8%  dump= 51.0%
+  BEST bull reg_bull raw w13 12h: n=  525  mean=+0.479%  med=+0.346%  win= 55.6%  dump= 44.2%
+  BEST bull TRAIN reg_bull raw w13 12h: n=  889  mean=+0.419%  med=+0.221%  win= 54.9%  dump= 45.0%
+  BEST bear reg_bear ema34 w5 12h: n=  365  mean=+0.058%  med=-0.136%  win= 45.2%  dump= 54.5%
+  BEST bear TRAIN reg_bear ema34 w5 12h: n=  654  mean=+0.014%  med=-0.061%  win= 48.0%  dump= 52.0%
+
+== 15m live absorb/distro vs control ==
+-- CTRL all 4h
+   all: n=1537450  mean=+0.039%  med=+0.014%  win= 50.5%  dump= 49.1%
+   train: n=975640  mean=+0.051%  med=+0.014%  win= 50.4%  dump= 49.1%
+   hold: n=561810  mean=+0.018%  med=+0.015%  win= 50.6%  dump= 49.1%
+-- CTRL 16h-high 4h
+   all: n=188425  mean=+0.016%  med=-0.070%  win= 46.6%  dump= 53.0%
+   train: n=118028  mean=+0.026%  med=-0.088%  win= 46.0%  dump= 53.5%
+   hold: n=70397  mean=-0.001%  med=-0.046%  win= 47.5%  dump= 52.2%
+-- ABSORB live 4h
+   all: n=37848  mean=+0.014%  med=+0.044%  win= 52.8%  dump= 46.6%
+   train: n=21930  mean=+0.010%  med=+0.047%  win= 52.9%  dump= 46.3%
+   hold: n=15918  mean=+0.018%  med=+0.040%  win= 52.7%  dump= 47.0%
+-- ABSORB 0-cross 4h
+   all: n= 4568  mean=-0.013%  med=+0.039%  win= 51.9%  dump= 47.6%
+   train: n= 2887  mean=-0.024%  med=+0.029%  win= 51.4%  dump= 48.0%
+   hold: n= 1681  mean=+0.006%  med=+0.051%  win= 52.8%  dump= 47.0%
+-- DISTRO live 4h
+   all: n=  375  mean=-0.268%  med=-0.270%  win= 32.0%  dump= 68.0%
+   train: n=0
+   hold: n=  375  mean=-0.268%  med=-0.270%  win= 32.0%  dump= 68.0%
+-- CTRL all 12h
+   all: n=1537450  mean=+0.116%  med=+0.022%  win= 50.5%  dump= 49.3%
+   train: n=975640  mean=+0.153%  med=+0.018%  win= 50.3%  dump= 49.4%
+   hold: n=561810  mean=+0.053%  med=+0.028%  win= 50.7%  dump= 49.2%
+-- CTRL 16h-high 12h
+   all: n=188425  mean=+0.137%  med=-0.047%  win= 48.7%  dump= 51.1%
+   train: n=118028  mean=+0.194%  med=-0.060%  win= 48.3%  dump= 51.4%
+   hold: n=70397  mean=+0.041%  med=-0.027%  win= 49.2%  dump= 50.7%
+-- ABSORB live 12h
+   all: n=37848  mean=+0.033%  med=+0.049%  win= 51.6%  dump= 48.1%
+   train: n=21930  mean=+0.033%  med=+0.046%  win= 51.4%  dump= 48.2%
+   hold: n=15918  mean=+0.032%  med=+0.055%  win= 51.9%  dump= 47.9%
+-- ABSORB 0-cross 12h
+   all: n= 4568  mean=-0.021%  med=+0.041%  win= 51.1%  dump= 48.8%
+   train: n= 2887  mean=-0.008%  med=+0.036%  win= 51.0%  dump= 48.8%
+   hold: n= 1681  mean=-0.043%  med=+0.047%  win= 51.3%  dump= 48.7%
+-- DISTRO live 12h
+   all: n=  375  mean=-0.433%  med=-0.424%  win= 40.0%  dump= 60.0%
+   train: n=0
+   hold: n=  375  mean=-0.433%  med=-0.424%  win= 40.0%  dump= 60.0%
+-- CTRL all 24h
+   all: n=1537450  mean=+0.244%  med=+0.042%  win= 50.7%  dump= 49.2%
+   train: n=975640  mean=+0.323%  med=+0.046%  win= 50.7%  dump= 49.1%
+   hold: n=561810  mean=+0.105%  med=+0.036%  win= 50.6%  dump= 49.3%
+-- CTRL 16h-high 24h
+   all: n=188425  mean=+0.284%  med=-0.068%  win= 48.8%  dump= 51.1%
+   train: n=118028  mean=+0.406%  med=-0.079%  win= 48.6%  dump= 51.2%
+   hold: n=70397  mean=+0.080%  med=-0.054%  win= 49.0%  dump= 50.9%
+-- ABSORB live 24h
+   all: n=37848  mean=+0.072%  med=+0.043%  win= 51.0%  dump= 48.8%
+   train: n=21930  mean=+0.103%  med=+0.037%  win= 50.7%  dump= 48.9%
+   hold: n=15918  mean=+0.029%  med=+0.054%  win= 51.3%  dump= 48.6%
+-- ABSORB 0-cross 24h
+   all: n= 4568  mean=+0.025%  med=+0.020%  win= 50.2%  dump= 49.6%
+   train: n= 2887  mean=+0.078%  med=+0.036%  win= 50.6%  dump= 49.2%
+   hold: n= 1681  mean=-0.068%  med=-0.024%  win= 49.6%  dump= 50.4%
+-- DISTRO live 24h
+   all: n=  375  mean=-0.542%  med=-0.438%  win= 39.5%  dump= 60.5%
+   train: n=0
+   hold: n=  375  mean=-0.542%  med=-0.438%  win= 39.5%  dump= 60.5%
+
+== 15m 0-cross variants @ 12h (sorted later by hold mean in rank) ==
+-- 0x ema34 px↓ tape↑ 12h
+   all: n=  470  mean=+0.115%  med=+0.128%  win= 54.5%  dump= 45.3%
+   train: n=  287  mean=+0.003%  med=+0.034%  win= 50.9%  dump= 48.8%
+   hold: n=  183  mean=+0.290%  med=+0.232%  win= 60.1%  dump= 39.9%
+-- 0x ema5 px↓ 12h
+   all: n= 4520  mean=+0.117%  med=+0.020%  win= 50.6%  dump= 49.1%
+   train: n= 2878  mean=+0.141%  med=+0.000%  win= 50.0%  dump= 49.5%
+   hold: n= 1642  mean=+0.075%  med=+0.043%  win= 51.5%  dump= 48.3%
+-- 0x ema5 px↓ tape↑ 12h
+   all: n= 2013  mean=-0.007%  med=-0.012%  win= 49.6%  dump= 50.2%
+   train: n= 1271  mean=-0.051%  med=-0.037%  win= 48.7%  dump= 51.1%
+   hold: n=  742  mean=+0.067%  med=+0.061%  win= 51.2%  dump= 48.7%
+-- 0x ema8 px↓ tape↑ 12h
+   all: n= 1495  mean=+0.010%  med=-0.040%  win= 49.1%  dump= 50.9%
+   train: n=  938  mean=+0.011%  med=-0.005%  win= 49.8%  dump= 50.2%
+   hold: n=  557  mean=+0.008%  med=-0.051%  win= 47.9%  dump= 52.1%
+-- 0x ema8 px↓ 12h
+   all: n= 4138  mean=+0.002%  med=-0.048%  win= 48.7%  dump= 51.1%
+   train: n= 2652  mean=+0.000%  med=-0.092%  win= 47.5%  dump= 52.3%
+   hold: n= 1486  mean=+0.005%  med=+0.045%  win= 50.9%  dump= 48.9%
+-- 0x raw px↓ 12h
+   all: n= 5898  mean=+0.017%  med=+0.043%  win= 51.1%  dump= 48.7%
+   train: n= 3748  mean=+0.026%  med=+0.033%  win= 50.8%  dump= 48.9%
+   hold: n= 2150  mean=+0.001%  med=+0.051%  win= 51.5%  dump= 48.5%
+-- 0x ema34 px↓ 12h
+   all: n= 2094  mean=+0.138%  med=-0.005%  win= 49.6%  dump= 50.2%
+   train: n= 1324  mean=+0.230%  med=+0.000%  win= 49.8%  dump= 50.0%
+   hold: n=  770  mean=-0.021%  med=-0.017%  win= 49.1%  dump= 50.6%
+-- 0x ema21 px↓ tape↑ 12h
+   all: n=  741  mean=+0.086%  med=+0.046%  win= 51.7%  dump= 48.3%
+   train: n=  479  mean=+0.149%  med=+0.029%  win= 51.1%  dump= 48.9%
+   hold: n=  262  mean=-0.028%  med=+0.108%  win= 52.7%  dump= 47.3%
+-- 0x raw px↓ tape↑ 12h
+   all: n= 4568  mean=-0.021%  med=+0.041%  win= 51.1%  dump= 48.8%
+   train: n= 2887  mean=-0.008%  med=+0.036%  win= 51.0%  dump= 48.8%
+   hold: n= 1681  mean=-0.043%  med=+0.047%  win= 51.3%  dump= 48.7%
+-- 0x ema21 px↓ 12h
+   all: n= 2798  mean=+0.098%  med=+0.013%  win= 50.2%  dump= 49.6%
+   train: n= 1810  mean=+0.187%  med=+0.031%  win= 50.9%  dump= 48.9%
+   hold: n=  988  mean=-0.065%  med=-0.050%  win= 49.0%  dump= 51.0%
+-- 0x ema13 px↓ 12h
+   all: n= 3503  mean=-0.020%  med=-0.051%  win= 48.3%  dump= 51.4%
+   train: n= 2288  mean=+0.007%  med=-0.072%  win= 47.7%  dump= 52.0%
+   hold: n= 1215  mean=-0.069%  med=-0.017%  win= 49.4%  dump= 50.5%
+-- 0x ema13 px↓ tape↑ 12h
+   all: n= 1010  mean=-0.296%  med=-0.155%  win= 45.1%  dump= 54.9%
+   train: n=  623  mean=-0.361%  med=-0.173%  win= 44.5%  dump= 55.5%
+   hold: n=  387  mean=-0.191%  med=-0.138%  win= 46.3%  dump= 53.7%
+
+== 15m HOLD 12h rank: regular BULL (want +mean) ==
+  reg_bull ema5 w13 12h  n=1906  mean=+0.164%  med=+0.130%  win= 52.8%  dump= 47.0%
+  reg_bull ema8 w13 12h  n=1795  mean=+0.146%  med=+0.143%  win= 52.9%  dump= 46.9%
+  reg_bull ema13 w13 12h  n=1580  mean=+0.134%  med=+0.105%  win= 52.1%  dump= 47.7%
+  reg_bull ema34 w13 12h  n=1093  mean=+0.127%  med=+0.170%  win= 54.2%  dump= 45.7%
+  reg_bull ema21 w13 12h  n=1365  mean=+0.080%  med=+0.093%  win= 52.7%  dump= 47.2%
+  reg_bull raw w13 12h  n=2056  mean=+0.075%  med=+0.111%  win= 52.5%  dump= 47.3%
+  reg_bull ema5 w5 12h  n=3316  mean=+0.072%  med=+0.125%  win= 52.7%  dump= 47.2%
+  reg_bull ema5 w8 12h  n=2482  mean=+0.068%  med=+0.140%  win= 52.9%  dump= 46.9%
+  reg_bull raw w5 12h  n=4421  mean=+0.062%  med=+0.122%  win= 52.9%  dump= 47.0%
+  reg_bull ema34 w5 12h  n=1651  mean=+0.058%  med=+0.147%  win= 53.4%  dump= 46.3%
+  reg_bull raw w8 12h  n=2903  mean=+0.058%  med=+0.121%  win= 53.3%  dump= 46.6%
+  reg_bull ema8 w5 12h  n=2897  mean=+0.053%  med=+0.101%  win= 51.5%  dump= 48.3%
+
+== 15m HOLD 12h rank: regular BEAR (want dump) ==
+  reg_bear ema34 w13 12h  n=1106  mean=-0.014%  med=-0.106%  win= 47.1%  dump= 52.6%
+  reg_bear ema13 w13 12h  n=1553  mean=-0.018%  med=-0.110%  win= 47.4%  dump= 52.6%
+  reg_bear ema8 w13 12h  n=1753  mean=+0.007%  med=-0.086%  win= 48.1%  dump= 51.9%
+  reg_bear ema21 w13 12h  n=1345  mean=+0.008%  med=-0.070%  win= 48.0%  dump= 51.9%
+  reg_bear ema13 w8 12h  n=2015  mean=-0.036%  med=-0.076%  win= 48.2%  dump= 51.6%
+  reg_bear ema5 w13 12h  n=1888  mean=+0.019%  med=-0.067%  win= 48.4%  dump= 51.5%
+  reg_bear ema21 w8 12h  n=1729  mean=-0.036%  med=-0.063%  win= 48.2%  dump= 51.5%
+  reg_bear ema34 w8 12h  n=1436  mean=-0.068%  med=-0.056%  win= 48.3%  dump= 51.5%
+  reg_bear raw w13 12h  n=1947  mean=-0.011%  med=-0.050%  win= 48.3%  dump= 51.4%
+  reg_bear ema13 w5 12h  n=2547  mean=-0.029%  med=-0.055%  win= 48.6%  dump= 51.2%
+  reg_bear ema21 w5 12h  n=2207  mean=-0.004%  med=-0.021%  win= 49.4%  dump= 50.5%
+  reg_bear ema8 w8 12h  n=2330  mean=+0.049%  med=-0.030%  win= 49.4%  dump= 50.5%
+
+== 15m HOLD 12h rank: hidden BULL ==
+  hid_bull raw w5 12h  n=5677  mean=+0.077%  med=+0.048%  win= 51.3%
+  hid_bull ema13 w8 12h  n=2712  mean=+0.070%  med=+0.025%  win= 50.7%
+  hid_bull ema34 w13 12h  n=1551  mean=+0.066%  med=+0.045%  win= 51.3%
+  hid_bull ema5 w8 12h  n=3476  mean=+0.047%  med=-0.004%  win= 49.7%
+  hid_bull ema5 w13 12h  n=2797  mean=+0.033%  med=+0.034%  win= 50.8%
+  hid_bull ema8 w8 12h  n=3154  mean=+0.032%  med=-0.019%  win= 49.3%
+  hid_bull ema8 w13 12h  n=2516  mean=+0.027%  med=+0.017%  win= 50.5%
+  hid_bull raw w8 12h  n=3931  mean=+0.026%  med=-0.021%  win= 49.2%
+
+== 15m HOLD 12h rank: hidden BEAR ==
+  hid_bear ema5 w5 12h  n=2991  mean=-0.055%  dump= 47.4%
+  hid_bear raw w5 12h  n=4409  mean=+0.011%  dump= 47.2%
+  hid_bear ema34 w8 12h  n=1231  mean=+0.073%  dump= 47.1%
+  hid_bear raw w8 12h  n=2708  mean=-0.020%  dump= 47.0%
+  hid_bear ema8 w8 12h  n=2057  mean=+0.026%  dump= 46.9%
+  hid_bear ema21 w8 12h  n=1525  mean=+0.066%  dump= 46.8%
+  hid_bear ema34 w5 12h  n=1481  mean=+0.128%  dump= 46.8%
+  hid_bear ema5 w8 12h  n=2296  mean=+0.028%  dump= 46.6%
+
+== 15m stacks @ 12h ==
+-- reg_bear∩16high ema13 w13 12h
+   all: n=  355  mean=-0.154%  med=-0.083%  win= 46.8%  dump= 53.2%
+   train: n=  221  mean=-0.048%  med=-0.034%  win= 49.3%  dump= 50.7%
+   hold: n=  134  mean=-0.329%  med=-0.230%  win= 42.5%  dump= 57.5%
+-- reg_bear∩16high ema13 w5 12h
+   all: n=  502  mean=+0.209%  med=-0.102%  win= 47.4%  dump= 52.2%
+   train: n=  302  mean=+0.330%  med=-0.119%  win= 46.7%  dump= 53.0%
+   hold: n=  200  mean=+0.026%  med=-0.052%  win= 48.5%  dump= 51.0%
+-- reg_bear∩16high ema13 w8 12h
+   all: n=  367  mean=+0.287%  med=-0.168%  win= 46.0%  dump= 53.7%
+   train: n=  218  mean=+0.282%  med=-0.119%  win= 47.2%  dump= 52.8%
+   hold: n=  149  mean=+0.295%  med=-0.232%  win= 44.3%  dump= 55.0%
+-- reg_bear∩16high ema21 w13 12h
+   all: n=  317  mean=+0.021%  med=-0.096%  win= 47.6%  dump= 52.4%
+   train: n=  199  mean=+0.107%  med=-0.066%  win= 48.7%  dump= 51.3%
+   hold: n=  118  mean=-0.125%  med=-0.140%  win= 45.8%  dump= 54.2%
+-- reg_bear∩16high ema21 w5 12h
+   all: n=  405  mean=+0.136%  med=-0.226%  win= 46.4%  dump= 53.6%
+   train: n=  246  mean=+0.123%  med=-0.296%  win= 42.7%  dump= 57.3%
+   hold: n=  159  mean=+0.157%  med=+0.059%  win= 52.2%  dump= 47.8%
+-- reg_bear∩16high ema21 w8 12h
+   all: n=  317  mean=-0.155%  med=-0.148%  win= 45.7%  dump= 53.9%
+   train: n=  193  mean=-0.283%  med=-0.119%  win= 48.2%  dump= 51.8%
+   hold: n=  124  mean=+0.045%  med=-0.148%  win= 41.9%  dump= 57.3%
+-- reg_bear∩16high ema34 w13 12h
+   all: n=  241  mean=+0.167%  med=-0.073%  win= 47.3%  dump= 51.9%
+   train: n=  148  mean=+0.424%  med=+0.006%  win= 50.0%  dump= 49.3%
+   hold: n=   93  mean=-0.241%  med=-0.213%  win= 43.0%  dump= 55.9%
+-- reg_bear∩16high ema34 w5 12h
+   all: n=  303  mean=-0.103%  med=-0.253%  win= 44.9%  dump= 54.8%
+   train: n=  197  mean=-0.371%  med=-0.304%  win= 41.6%  dump= 57.9%
+   hold: n=  106  mean=+0.394%  med=+0.059%  win= 50.9%  dump= 49.1%
+-- reg_bear∩16high ema34 w8 12h
+   all: n=  256  mean=-0.226%  med=-0.199%  win= 45.3%  dump= 54.7%
+   train: n=  158  mean=-0.310%  med=-0.298%  win= 43.7%  dump= 56.3%
+   hold: n=   98  mean=-0.089%  med=-0.013%  win= 48.0%  dump= 52.0%
+-- reg_bear∩16high ema5 w13 12h
+   all: n=  373  mean=+0.257%  med=+0.071%  win= 52.3%  dump= 47.7%
+   train: n=  228  mean=+0.379%  med=+0.171%  win= 53.1%  dump= 46.9%
+   hold: n=  145  mean=+0.065%  med=+0.014%  win= 51.0%  dump= 49.0%
+-- reg_bear∩16high ema5 w5 12h
+   all: n=  665  mean=+0.398%  med=+0.037%  win= 50.8%  dump= 48.9%
+   train: n=  399  mean=+0.674%  med=+0.066%  win= 52.1%  dump= 47.4%
+   hold: n=  266  mean=-0.016%  med=-0.051%  win= 48.9%  dump= 51.1%
+-- reg_bear∩16high ema5 w8 12h
+   all: n=  430  mean=+0.173%  med=-0.191%  win= 45.3%  dump= 54.7%
+   train: n=  267  mean=+0.116%  med=-0.291%  win= 42.7%  dump= 57.3%
+   hold: n=  163  mean=+0.267%  med=-0.016%  win= 49.7%  dump= 50.3%
+-- reg_bear∩16high ema8 w13 12h
+   all: n=  391  mean=+0.045%  med=-0.143%  win= 46.8%  dump= 53.2%
+   train: n=  241  mean=+0.005%  med=-0.214%  win= 46.5%  dump= 53.5%
+   hold: n=  150  mean=+0.109%  med=-0.049%  win= 47.3%  dump= 52.7%
+-- reg_bear∩16high ema8 w5 12h
+   all: n=  553  mean=+0.416%  med=+0.072%  win= 52.6%  dump= 47.0%
+   train: n=  327  mean=+0.639%  med=+0.072%  win= 53.2%  dump= 46.2%
+   hold: n=  226  mean=+0.094%  med=+0.072%  win= 51.8%  dump= 48.2%
+-- reg_bear∩16high ema8 w8 12h
+   all: n=  410  mean=+0.256%  med=-0.110%  win= 46.8%  dump= 52.9%
+   train: n=  250  mean=+0.282%  med=-0.132%  win= 46.4%  dump= 53.6%
+   hold: n=  160  mean=+0.216%  med=-0.064%  win= 47.5%  dump= 51.9%
+-- reg_bear∩16high raw w13 12h
+   all: n=  312  mean=+0.360%  med=+0.092%  win= 51.0%  dump= 49.0%
+   train: n=  191  mean=+0.288%  med=+0.066%  win= 50.8%  dump= 49.2%
+   hold: n=  121  mean=+0.473%  med=+0.124%  win= 51.2%  dump= 48.8%
+-- reg_bear∩16high raw w5 12h
+   all: n=  923  mean=+0.033%  med=-0.073%  win= 48.0%  dump= 51.7%
+   train: n=  516  mean=+0.194%  med=-0.037%  win= 48.6%  dump= 50.8%
+   hold: n=  407  mean=-0.170%  med=-0.149%  win= 47.2%  dump= 52.8%
+-- reg_bear∩16high raw w8 12h
+   all: n=  448  mean=-0.081%  med=-0.125%  win= 46.9%  dump= 52.9%
+   train: n=  261  mean=+0.121%  med=-0.157%  win= 46.7%  dump= 52.9%
+   hold: n=  187  mean=-0.364%  med=-0.112%  win= 47.1%  dump= 52.9%
+-- reg_bear∩OI ema13 w13 12h
+   all: n=    3  mean=-0.678%  med=-0.748%  win=  0.0%  dump=100.0%
+   train: n=0
+   hold: n=    3  mean=-0.678%  med=-0.748%  win=  0.0%  dump=100.0%
+-- reg_bear∩OI ema13 w5 12h
+   all: n=    9  mean=-0.533%  med=-0.473%  win= 22.2%  dump= 77.8%
+   train: n=0
+   hold: n=    9  mean=-0.533%  med=-0.473%  win= 22.2%  dump= 77.8%
+-- reg_bear∩OI ema13 w8 12h
+   all: n=    6  mean=-1.412%  med=-0.749%  win=  0.0%  dump=100.0%
+   train: n=0
+   hold: n=    6  mean=-1.412%  med=-0.749%  win=  0.0%  dump=100.0%
+-- reg_bear∩OI ema21 w13 12h
+   all: n=    3  mean=+0.870%  med=-0.612%  win= 33.3%  dump= 66.7%
+   train: n=0
+   hold: n=    3  mean=+0.870%  med=-0.612%  win= 33.3%  dump= 66.7%
+-- reg_bear∩OI ema21 w5 12h
+   all: n=    6  mean=-0.907%  med=-0.659%  win= 16.7%  dump= 83.3%
+   train: n=0
+   hold: n=    6  mean=-0.907%  med=-0.659%  win= 16.7%  dump= 83.3%
+-- reg_bear∩OI ema21 w8 12h
+   all: n=    3  mean=-1.463%  med=-0.749%  win= 33.3%  dump= 66.7%
+   train: n=0
+   hold: n=    3  mean=-1.463%  med=-0.749%  win= 33.3%  dump= 66.7%
+-- reg_bear∩OI ema34 w13 12h
+   all: n=    2  mean=+1.610%  med=+4.208%  win= 50.0%  dump= 50.0%
+   train: n=0
+   hold: n=    2  mean=+1.610%  med=+4.208%  win= 50.0%  dump= 50.0%
+-- reg_bear∩OI ema34 w5 12h
+   all: n=    3  mean=-0.767%  med=-0.659%  win=  0.0%  dump=100.0%
+   train: n=0
+   hold: n=    3  mean=-0.767%  med=-0.659%  win=  0.0%  dump=100.0%
+-- reg_bear∩OI ema34 w8 12h
+   all: n=    3  mean=-0.641%  med=-0.749%  win=  0.0%  dump=100.0%
+   train: n=0
+   hold: n=    3  mean=-0.641%  med=-0.749%  win=  0.0%  dump=100.0%
+-- reg_bear∩OI ema5 w13 12h
+   all: n=    5  mean=-1.434%  med=-0.748%  win= 20.0%  dump= 80.0%
+   train: n=0
+   hold: n=    5  mean=-1.434%  med=-0.748%  win= 20.0%  dump= 80.0%
+-- reg_bear∩OI ema5 w5 12h
+   all: n=   14  mean=-0.467%  med=-0.392%  win= 21.4%  dump= 78.6%
+   train: n=0
+   hold: n=   14  mean=-0.467%  med=-0.392%  win= 21.4%  dump= 78.6%
+-- reg_bear∩OI ema5 w8 12h
+   all: n=    5  mean=-0.433%  med=-0.274%  win=  0.0%  dump=100.0%
+   train: n=0
+   hold: n=    5  mean=-0.433%  med=-0.274%  win=  0.0%  dump=100.0%
+-- reg_bear∩OI ema8 w13 12h
+   all: n=    4  mean=-0.447%  med=-0.367%  win= 25.0%  dump= 75.0%
+   train: n=0
+   hold: n=    4  mean=-0.447%  med=-0.367%  win= 25.0%  dump= 75.0%
+-- reg_bear∩OI ema8 w5 12h
+   all: n=   12  mean=-0.737%  med=-0.412%  win= 16.7%  dump= 83.3%
+   train: n=0
+   hold: n=   12  mean=-0.737%  med=-0.412%  win= 16.7%  dump= 83.3%
+-- reg_bear∩OI ema8 w8 12h
+   all: n=    6  mean=-1.062%  med=-0.274%  win=  0.0%  dump=100.0%
+   train: n=0
+   hold: n=    6  mean=-1.062%  med=-0.274%  win=  0.0%  dump=100.0%
+-- reg_bear∩OI raw w13 12h
+   all: n=    5  mean=-1.792%  med=-1.256%  win=  0.0%  dump=100.0%
+   train: n=0
+   hold: n=    5  mean=-1.792%  med=-1.256%  win=  0.0%  dump=100.0%
+-- reg_bear∩OI raw w5 12h
+   all: n=   33  mean=-0.539%  med=-0.442%  win= 33.3%  dump= 66.7%
+   train: n=0
+   hold: n=   33  mean=-0.539%  med=-0.442%  win= 33.3%  dump= 66.7%
+-- reg_bear∩OI raw w8 12h
+   all: n=    9  mean=-0.969%  med=-0.333%  win= 22.2%  dump= 77.8%
+   train: n=0
+   hold: n=    9  mean=-0.969%  med=-0.333%  win= 22.2%  dump= 77.8%
+-- reg_bear∩distro ema13 w5 12h
+   all: n=    2  mean=+0.749%  med=+2.157%  win= 50.0%  dump= 50.0%
+   train: n=0
+   hold: n=    2  mean=+0.749%  med=+2.157%  win= 50.0%  dump= 50.0%
+-- reg_bear∩distro ema21 w5 12h
+   all: n=    1  mean=-0.659%  med=-0.659%  win=  0.0%  dump=100.0%
+   train: n=0
+   hold: n=    1  mean=-0.659%  med=-0.659%  win=  0.0%  dump=100.0%
+-- reg_bear∩distro ema21 w8 12h
+   all: n=    1  mean=+0.563%  med=+0.563%  win=100.0%  dump=  0.0%
+   train: n=0
+   hold: n=    1  mean=+0.563%  med=+0.563%  win=100.0%  dump=  0.0%
+-- reg_bear∩distro ema34 w5 12h
+   all: n=    1  mean=-0.659%  med=-0.659%  win=  0.0%  dump=100.0%
+   train: n=0
+   hold: n=    1  mean=-0.659%  med=-0.659%  win=  0.0%  dump=100.0%
+-- reg_bear∩distro ema5 w13 12h
+   all: n=    1  mean=+0.179%  med=+0.179%  win=100.0%  dump=  0.0%
+   train: n=0
+   hold: n=    1  mean=+0.179%  med=+0.179%  win=100.0%  dump=  0.0%
+-- reg_bear∩distro ema5 w5 12h
+   all: n=    2  mean=-0.240%  med=+0.179%  win= 50.0%  dump= 50.0%
+   train: n=0
+   hold: n=    2  mean=-0.240%  med=+0.179%  win= 50.0%  dump= 50.0%
+-- reg_bear∩distro ema8 w13 12h
+   all: n=    1  mean=+0.179%  med=+0.179%  win=100.0%  dump=  0.0%
+   train: n=0
+   hold: n=    1  mean=+0.179%  med=+0.179%  win=100.0%  dump=  0.0%
+-- reg_bear∩distro ema8 w5 12h
+   all: n=    2  mean=-0.240%  med=+0.179%  win= 50.0%  dump= 50.0%
+   train: n=0
+   hold: n=    2  mean=-0.240%  med=+0.179%  win= 50.0%  dump= 50.0%
+-- reg_bear∩distro raw w13 12h
+   all: n=    1  mean=-1.256%  med=-1.256%  win=  0.0%  dump=100.0%
+   train: n=0
+   hold: n=    1  mean=-1.256%  med=-1.256%  win=  0.0%  dump=100.0%
+-- reg_bear∩distro raw w5 12h
+   all: n=    2  mean=-0.985%  med=-0.224%  win=  0.0%  dump=100.0%
+   train: n=0
+   hold: n=    2  mean=-0.985%  med=-0.224%  win=  0.0%  dump=100.0%
+-- reg_bull∩absorb ema13 w13 12h
+   all: n=   21  mean=-1.883%  med=-0.803%  win= 33.3%  dump= 66.7%
+   train: n=   15  mean=-2.156%  med=-1.026%  win= 26.7%  dump= 73.3%
+   hold: n=    6  mean=-1.200%  med=+1.550%  win= 50.0%  dump= 50.0%
+-- reg_bull∩absorb ema13 w5 12h
+   all: n=   86  mean=+0.108%  med=+0.215%  win= 58.1%  dump= 41.9%
+   train: n=   42  mean=+0.063%  med=+0.137%  win= 57.1%  dump= 42.9%
+   hold: n=   44  mean=+0.151%  med=+0.257%  win= 59.1%  dump= 40.9%
+-- reg_bull∩absorb ema13 w8 12h
+   all: n=   81  mean=+0.066%  med=+0.023%  win= 50.6%  dump= 49.4%
+   train: n=   34  mean=+0.411%  med=+0.083%  win= 55.9%  dump= 44.1%
+   hold: n=   47  mean=-0.184%  med=-0.071%  win= 46.8%  dump= 53.2%
+-- reg_bull∩absorb ema21 w13 12h
+   all: n=   20  mean=-1.190%  med=-0.337%  win= 40.0%  dump= 60.0%
+   train: n=   12  mean=-0.385%  med=-0.337%  win= 41.7%  dump= 58.3%
+   hold: n=    8  mean=-2.398%  med=-0.299%  win= 37.5%  dump= 62.5%
+-- reg_bull∩absorb ema21 w5 12h
+   all: n=   80  mean=-0.229%  med=+0.139%  win= 53.8%  dump= 46.2%
+   train: n=   40  mean=-0.333%  med=+0.066%  win= 50.0%  dump= 50.0%
+   hold: n=   40  mean=-0.124%  med=+0.247%  win= 57.5%  dump= 42.5%
+-- reg_bull∩absorb ema21 w8 12h
+   all: n=   66  mean=+0.822%  med=+0.023%  win= 50.0%  dump= 50.0%
+   train: n=   32  mean=+2.162%  med=+0.443%  win= 62.5%  dump= 37.5%
+   hold: n=   34  mean=-0.440%  med=-0.435%  win= 38.2%  dump= 61.8%
+-- reg_bull∩absorb ema34 w13 12h
+   all: n=   10  mean=+0.013%  med=-0.284%  win= 40.0%  dump= 60.0%
+   train: n=    7  mean=-0.341%  med=-0.580%  win= 28.6%  dump= 71.4%
+   hold: n=    3  mean=+0.837%  med=+1.550%  win= 66.7%  dump= 33.3%
+-- reg_bull∩absorb ema34 w5 12h
+   all: n=   60  mean=-0.473%  med=+0.066%  win= 50.0%  dump= 50.0%
+   train: n=   25  mean=-0.796%  med=-0.027%  win= 48.0%  dump= 52.0%
+   hold: n=   35  mean=-0.242%  med=+0.104%  win= 51.4%  dump= 48.6%
+-- reg_bull∩absorb ema34 w8 12h
+   all: n=   51  mean=+0.417%  med=-0.220%  win= 47.1%  dump= 52.9%
+   train: n=   26  mean=+1.722%  med=+0.413%  win= 61.5%  dump= 38.5%
+   hold: n=   25  mean=-0.941%  med=-0.920%  win= 32.0%  dump= 68.0%
+-- reg_bull∩absorb ema5 w13 12h
+   all: n=   35  mean=-0.767%  med=+0.000%  win= 48.6%  dump= 48.6%
+   train: n=   23  mean=-1.003%  med=-0.260%  win= 43.5%  dump= 56.5%
+   hold: n=   12  mean=-0.314%  med=+0.190%  win= 58.3%  dump= 33.3%
+-- reg_bull∩absorb ema5 w5 12h
+   all: n=  143  mean=-0.114%  med=+0.138%  win= 51.7%  dump= 48.3%
+   train: n=   73  mean=-0.198%  med=-0.060%  win= 46.6%  dump= 53.4%
+   hold: n=   70  mean=-0.026%  med=+0.282%  win= 57.1%  dump= 42.9%
+-- reg_bull∩absorb ema5 w8 12h
+   all: n=   98  mean=-0.348%  med=+0.035%  win= 51.0%  dump= 49.0%
+   train: n=   53  mean=-0.629%  med=-0.025%  win= 49.1%  dump= 50.9%
+   hold: n=   45  mean=-0.016%  med=+0.169%  win= 53.3%  dump= 46.7%
+-- reg_bull∩absorb ema8 w13 12h
+   all: n=   32  mean=-0.876%  med=+0.375%  win= 53.1%  dump= 46.9%
+   train: n=   24  mean=-0.837%  med=+0.839%  win= 58.3%  dump= 41.7%
+   hold: n=    8  mean=-0.995%  med=-0.092%  win= 37.5%  dump= 62.5%
+-- reg_bull∩absorb ema8 w5 12h
+   all: n=  115  mean=-0.010%  med=+0.121%  win= 53.0%  dump= 47.0%
+   train: n=   59  mean=-0.346%  med=+0.065%  win= 50.8%  dump= 49.2%
+   hold: n=   56  mean=+0.345%  med=+0.257%  win= 55.4%  dump= 44.6%
+-- reg_bull∩absorb ema8 w8 12h
+   all: n=   93  mean=+0.020%  med=+0.122%  win= 58.1%  dump= 41.9%
+   train: n=   43  mean=+0.157%  med=+0.122%  win= 60.5%  dump= 39.5%
+   hold: n=   50  mean=-0.097%  med=+0.200%  win= 56.0%  dump= 44.0%
+-- reg_bull∩absorb raw w13 12h
+   all: n=   78  mean=-0.713%  med=-0.073%  win= 47.4%  dump= 52.6%
+   train: n=   39  mean=-1.554%  med=-0.051%  win= 48.7%  dump= 51.3%
+   hold: n=   39  mean=+0.129%  med=-0.073%  win= 46.2%  dump= 53.8%
+-- reg_bull∩absorb raw w5 12h
+   all: n=  247  mean=+0.036%  med=+0.173%  win= 55.1%  dump= 44.9%
+   train: n=  149  mean=+0.140%  med=+0.144%  win= 55.0%  dump= 45.0%
+   hold: n=   98  mean=-0.122%  med=+0.303%  win= 55.1%  dump= 44.9%
+-- reg_bull∩absorb raw w8 12h
+   all: n=  109  mean=-0.175%  med=+0.131%  win= 55.0%  dump= 45.0%
+   train: n=   63  mean=-0.213%  med=+0.025%  win= 50.8%  dump= 49.2%
+   hold: n=   46  mean=-0.123%  med=+0.377%  win= 60.9%  dump= 39.1%
+
+== 15m compact vs live tells @ 12h hold ==
+  ABSORB live 12h: n=15918  mean=+0.032%  med=+0.055%  win= 51.9%  dump= 47.9%
+  DISTRO live 12h: n=  375  mean=-0.433%  med=-0.424%  win= 40.0%  dump= 60.0%
+  CTRL all 12h: n=561810  mean=+0.053%  med=+0.028%  win= 50.7%  dump= 49.2%
+  CTRL 16h-high 12h: n=70397  mean=+0.041%  med=-0.027%  win= 49.2%  dump= 50.7%
+  BEST bull reg_bull ema5 w13 12h: n= 1906  mean=+0.164%  med=+0.130%  win= 52.8%  dump= 47.0%
+  BEST bull TRAIN reg_bull ema5 w13 12h: n= 3267  mean=+0.071%  med=+0.079%  win= 52.0%  dump= 47.8%
+  BEST bear reg_bear ema34 w13 12h: n= 1106  mean=-0.014%  med=-0.106%  win= 47.1%  dump= 52.6%
+  BEST bear TRAIN reg_bear ema34 w13 12h: n= 2028  mean=+0.086%  med=-0.023%  win= 49.2%  dump= 50.5%

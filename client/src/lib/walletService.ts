@@ -74,7 +74,7 @@ interface WalletDB extends DBSchema {
   };
 }
 
-interface Wallet {
+export interface Wallet {
   id: string;
   addresses: {
     ethereum: string;
@@ -495,11 +495,11 @@ export async function deriveAddressesFromMnemonic(mnemonic: string): Promise<{
     qbtcVaultMainnet: '',
   };
   
-  const publicKeys: Record<Chain, string> = {
+  const publicKeys: NonNullable<Wallet['publicKeys']> = {
     ethereum: '',
     bitcoin: '',
+    bitcoinTestnet: '',
     bsc: '',
-    bsc_testnet: '',
     xrp: '',
     solana: '',
     qbtc: '',
@@ -878,7 +878,7 @@ export async function verifyMnemonicBackup(
     const db = await getDB();
     const wallet = await db.get('wallets', walletId);
     
-    if (!wallet) {
+    if (!wallet || !wallet.salt || !wallet.encryptedMnemonic) {
       return false;
     }
     
@@ -939,7 +939,7 @@ export async function unlockWallet(walletId: string, password: string): Promise<
     const db = await getDB();
     const wallet = await db.get('wallets', walletId);
     
-    if (!wallet) {
+    if (!wallet || !wallet.salt || !wallet.encryptedMnemonic) {
       throw new Error('Wallet not found');
     }
     
@@ -1646,7 +1646,7 @@ function deriveChainKey(masterSeed: Uint8Array, label: string): Uint8Array {
  */
 export async function deriveAddressesFromPRFSeed(masterSeed: Uint8Array): Promise<{
   addresses: Wallet['addresses'];
-  publicKeys: Record<string, string>;
+  publicKeys: NonNullable<Wallet['publicKeys']>;
   privateKeys: UnlockedWallet['privateKeys'];
 }> {
   // ETH / BSC
@@ -1690,7 +1690,7 @@ export async function deriveAddressesFromPRFSeed(masterSeed: Uint8Array): Promis
     qbtcVaultMainnet: qbtcVaultKeyPair.getAddress('mainnet'),
   };
 
-  const publicKeys: Record<string, string> = {
+  const publicKeys: NonNullable<Wallet['publicKeys']> = {
     ethereum: Buffer.from(secp256k1.getPublicKey(ethPriv, false)).toString('hex'),
     bitcoin: Buffer.from(secp256k1.getPublicKey(btcPriv, true)).toString('hex'),
     bitcoinTestnet: Buffer.from(secp256k1.getPublicKey(btcTestPriv, true)).toString('hex'),
@@ -1760,7 +1760,7 @@ export async function createWalletFromPasskey(
 export async function createWatchOnlyWallet(
   userId: string,
   addresses: Wallet['addresses'],
-  publicKeys: Record<string, string>,
+  publicKeys: NonNullable<Wallet['publicKeys']>,
 ): Promise<Wallet> {
   const existing = await getCurrentWallet(userId);
   if (existing) {

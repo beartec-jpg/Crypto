@@ -23,7 +23,7 @@ function toLevels(raw: unknown): StoredLevel[] {
     .map((row: any) => ({
       price: Number(row?.price || 0),
       liquidationValue: Number(row?.liquidationValue || 0),
-      side: (row?.side === 'short' ? 'short' : 'long') as const,
+      side: (row?.side === 'short' ? 'short' : 'long') as StoredLevel['side'],
       score: Number.isFinite(Number(row?.score)) ? Number(row.score) : undefined,
       type: row?.type === 'primary' || row?.type === 'secondary' ? row.type : undefined,
     }))

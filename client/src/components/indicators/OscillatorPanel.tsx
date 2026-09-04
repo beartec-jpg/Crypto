@@ -22,6 +22,7 @@ interface IndicatorState {
   williamsR: { show: boolean; period: number; setShow: (val: boolean) => void };
   cci: { show: boolean; period: number; setShow: (val: boolean) => void };
   adx: { show: boolean; period: number; setShow: (val: boolean) => void };
+  tideZone?: { show: boolean; setShow: (val: boolean) => void };
 }
 
 interface OscillatorPanelProps {
@@ -53,6 +54,7 @@ export function OscillatorPanel({
     { name: 'Williams %R', key: 'williamsR', free: false },
     { name: 'CCI', key: 'cci', free: false },
     { name: 'ADX', key: 'adx', free: false },
+    { name: 'Tide Zone', key: 'tideZone', free: false },
   ] as const;
 
   return (
@@ -68,6 +70,7 @@ export function OscillatorPanel({
       <CardContent className="space-y-3">
         {oscillators.map(({ name, key, free }) => {
           const indicator = indicators[key];
+          if (!indicator) return null;
           const isLocked = !free && !isPaidTier;
 
           return (

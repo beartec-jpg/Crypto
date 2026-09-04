@@ -302,8 +302,13 @@ export interface Drawing {
     /** For elliott_wave drawings: font size of the label */
     /** For elliott_wave drawings: color of impulse waves */
     impulseColor?: string;
+    impulseOpacity?: number;
+    impulseWidth?: number;
+    impulseStyle?: 'solid' | 'dashed' | 'dotted';
     /** For elliott_wave drawings: color of corrective/zigzag waves */
     zigzagColor?: string;
+    zigzagOpacity?: number;
+    zigzagStyle?: 'solid' | 'dashed' | 'dotted';
     showPointLabels?: boolean;
     /** For elliott_wave drawings: whether to display future wave prediction fibonacci levels */
     showFuturePredictions?: boolean;

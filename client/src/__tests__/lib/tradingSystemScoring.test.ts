@@ -29,6 +29,17 @@ const baseInput: ScoringInput = {
 // A bullish FVG that price is currently inside, having entered from above (previousClose > high)
 const BULLISH_FVG_INSIDE = { high: 100.5, low: 99.5, filled: false, type: 'bullish' as const };
 
+/** Bullish primary fib covering typical test timestamps so BOS/MSS in-range multipliers apply. */
+const COVERING_BULL_FIB: FibSetResult = {
+  start: { index: 0, time: 0, price: 90 },
+  end: { index: 20, time: 2000, price: 110 },
+  levels: [],
+  color: '#FF8C00',
+  showLabels: true,
+  labelPosition: 'right',
+  extendRight: true,
+};
+
 function createSecondaryFib(levelPrice: number): FibSetResult {
   return {
     start: { index: 0, time: 0, price: 95 },
@@ -430,20 +441,20 @@ describe('SMC Scoring - Trend Strength Multiplier', () => {
     expect(multiplier).toBe(1.5);
   });
 
-  it('should return 0.9x multiplier when no MSS/CHoCH present (only BOS)', () => {
-    // No mss/choch → consecutiveCount = 0 → 1.0 + (0-1)*0.1 = 0.9
+  it('should return 1.0x multiplier when only a BOS is present (BOS counts as a shift)', () => {
     const multiplier = getTrendStrengthMultiplier(
       [{ breakTime: 1000, direction: 'bullish', type: 'bos' }],
       'bullish',
       2000,
     );
-    expect(multiplier).toBeCloseTo(0.9);
+    expect(multiplier).toBeCloseTo(1.0);
   });
 
   it('should apply higher trend multiplier for 3 MSS vs 1 MSS via scoreSmartMoney', () => {
     const input1: ScoringInput = {
       ...baseInput,
       fvgs: [BULLISH_FVG_INSIDE],
+      autoFibResult: { primary: COVERING_BULL_FIB, secondary: null },
       structureBreaks: [
         { breakTime: 1500, breakIndex: 15, direction: 'bullish', type: 'mss', confirmed: true, swept: false, brokenLevel: 98 },
       ],
@@ -452,6 +463,7 @@ describe('SMC Scoring - Trend Strength Multiplier', () => {
     const input3: ScoringInput = {
       ...baseInput,
       fvgs: [BULLISH_FVG_INSIDE],
+      autoFibResult: { primary: COVERING_BULL_FIB, secondary: null },
       structureBreaks: [
         { breakTime: 1900, breakIndex: 19, direction: 'bullish', type: 'mss', confirmed: true, swept: false, brokenLevel: 98 },
         { breakTime: 1700, breakIndex: 17, direction: 'bullish', type: 'mss', confirmed: true, swept: false, brokenLevel: 96 },
@@ -470,6 +482,7 @@ describe('SMC Scoring - Trend Strength Multiplier', () => {
     const input: ScoringInput = {
       ...baseInput,
       fvgs: [BULLISH_FVG_INSIDE],
+      autoFibResult: { primary: COVERING_BULL_FIB, secondary: null },
       structureBreaks: [
         { breakTime: 1900, breakIndex: 19, direction: 'bullish', type: 'mss', confirmed: true, swept: false, brokenLevel: 98 },
         { breakTime: 1500, breakIndex: 15, direction: 'bullish', type: 'mss', confirmed: true, swept: false, brokenLevel: 96 },
@@ -486,6 +499,7 @@ describe('SMC Scoring - Trend Strength Multiplier', () => {
     const input: ScoringInput = {
       ...baseInput,
       fvgs: [BULLISH_FVG_INSIDE],
+      autoFibResult: { primary: COVERING_BULL_FIB, secondary: null },
       structureBreaks: Array.from({ length: 6 }, (_, i) => ({
         breakTime: 2000 - i * 100,
         breakIndex: 20 - i,
@@ -562,13 +576,14 @@ describe('SMC Scoring - Uncapped Scores', () => {
 // ─── New additive scoring model tests ─────────────────────────────────────────
 
 describe('SMC Scoring - Additive Zone Model', () => {
-  // Fib levels: 0%=93.82, 100%=103.82 → price 100 is at 61.8% (OTE)
+  // Scoring uses 0% = end (swing extreme) and 100% = start.
+  // start=90, end=120 → price 100 is ~66.7% (OTE 61.8–78.6 → bonus).
   const FIB_PRICE_AT_618: FibSetResult = {
-    start: { index: 0, time: 0, price: 93.82 },
-    end: { index: 1, time: 2000, price: 103.82 },
+    start: { index: 0, time: 0, price: 90 },
+    end: { index: 1, time: 2000, price: 120 },
     levels: [
-      { level: '0',   percentage: '0%',   price: 93.82,  isExtension: false, isGolden: false, isFrozen: false },
-      { level: '100', percentage: '100%', price: 103.82, isExtension: false, isGolden: false, isFrozen: false },
+      { level: '0',   percentage: '0%',   price: 120,  isExtension: false, isGolden: false, isFrozen: false },
+      { level: '100', percentage: '100%', price: 90, isExtension: false, isGolden: false, isFrozen: false },
     ],
     color: '#FF8C00',
     showLabels: true,
@@ -576,13 +591,13 @@ describe('SMC Scoring - Additive Zone Model', () => {
     extendRight: true,
   };
 
-  // Fib levels where price 100 is at ~10% (above 50% penalty zone → pct < 50%)
+  // start=90, end=105 → price 100 is ~33% (below 50% → penalty).
   const FIB_PRICE_PENALTY: FibSetResult = {
-    start: { index: 0, time: 0, price: 99 },
-    end: { index: 1, time: 2000, price: 109 },
+    start: { index: 0, time: 0, price: 90 },
+    end: { index: 1, time: 2000, price: 105 },
     levels: [
-      { level: '0',   percentage: '0%',   price: 99,  isExtension: false, isGolden: false, isFrozen: false },
-      { level: '100', percentage: '100%', price: 109, isExtension: false, isGolden: false, isFrozen: false },
+      { level: '0',   percentage: '0%',   price: 105,  isExtension: false, isGolden: false, isFrozen: false },
+      { level: '100', percentage: '100%', price: 90, isExtension: false, isGolden: false, isFrozen: false },
     ],
     color: '#FF8C00',
     showLabels: true,
@@ -773,12 +788,12 @@ describe('SMC Scoring - Extended Signal Labels', () => {
 });
 
 describe('getConsecutiveMSSCount', () => {
-  it('should return 0 when no mss/choch breaks exist', () => {
+  it('should count BOS as a structure shift', () => {
     expect(getConsecutiveMSSCount(
       [{ breakTime: 1000, direction: 'bullish', type: 'bos' }],
       'bullish',
       2000,
-    )).toBe(0);
+    )).toBe(1);
   });
 
   it('should filter out breaks after currentTime', () => {

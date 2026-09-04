@@ -7,8 +7,9 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { CryptoAuthGate } from '@/components/CryptoAuthGate';
 import { InstallPrompt } from '@/components/InstallPrompt';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { RedirectTo } from '@/components/marketing/RedirectTo';
+import { isDevelopment } from '@/hooks/useCryptoAuth';
 import { lazy, Suspense } from 'react';
-import { SHOW_QBTC } from '@/constants/featureFlags';
 import '@/utils/sandboxBootstrap';
 
 // Lazy load all route components for code splitting
@@ -16,6 +17,8 @@ const CryptoLanding = lazy(() => import('@/pages/CryptoLanding'));
 const CryptoLogin = lazy(() => import('@/pages/CryptoLogin'));
 const CryptoPrivacy = lazy(() => import('@/pages/CryptoPrivacy'));
 const CryptoTerms = lazy(() => import('@/pages/CryptoTerms'));
+const CryptoPricing = lazy(() => import('@/pages/CryptoPricing'));
+const CryptoContact = lazy(() => import('@/pages/CryptoContact'));
 const CryptoIndicators = lazy(() => import('@/pages/CryptoIndicatorsClean'));
 const CryptoAI = lazy(() => import('@/pages/CryptoAI'));
 const CryptoElliottWave = lazy(() => import('@/pages/CryptoElliottWave'));
@@ -28,15 +31,7 @@ const DevAnalytics = lazy(() => import('@/pages/DevAnalytics'));
 const CryptoSandbox = lazy(() => import('@/pages/CryptoSandbox'));
 const AdminPanel = lazy(() => import('@/pages/AdminPanel'));
 const NotFound = lazy(() => import('@/pages/not-found'));
-// 1. Add with other lazy imports (around line 22)
-const Wallet = lazy(() => import('@/pages/Wallet'));
 const ChartPage = lazy(() => import('@/pages/ChartPage'));
-// QBTC pages kept (not deleted) — gated by SHOW_QBTC
-const QBTCFaucet = lazy(() => import('@/pages/QBTCFaucet'));
-const QBTCScan = lazy(() => import('@/pages/QBTCScan'));
-const QBTCHomePage = lazy(() => import('@/pages/QBTCHomePage'));
-const QBTCMining = lazy(() => import('@/pages/QBTCMining'));
-const QBTCMarketplace = lazy(() => import('@/pages/QBTCMarketplace'));
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   return (
@@ -46,6 +41,17 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
       </Suspense>
     </CryptoAuthGate>
   );
+}
+
+function InternalOnlyRoute({ component: Component }: { component: React.ComponentType }) {
+  if (!isDevelopment) {
+    return (
+      <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+        <NotFound />
+      </Suspense>
+    );
+  }
+  return <ProtectedRoute component={Component} />;
 }
 
 function App() {
@@ -65,66 +71,42 @@ function App() {
                 <CryptoLanding />
               </Suspense>
             </Route>
+            <Route path="/login">
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+                <CryptoLogin />
+              </Suspense>
+            </Route>
             <Route path="/cryptologin">
               <Suspense fallback={<LoadingSpinner message="Loading..." />}>
                 <CryptoLogin />
               </Suspense>
             </Route>
-            <Route path="/cryptoprivacy">
+            <Route path="/pricing">
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+                <CryptoPricing />
+              </Suspense>
+            </Route>
+            <Route path="/privacy">
               <Suspense fallback={<LoadingSpinner message="Loading..." />}>
                 <CryptoPrivacy />
               </Suspense>
             </Route>
-            <Route path="/cryptoterms">
+            <Route path="/terms">
               <Suspense fallback={<LoadingSpinner message="Loading..." />}>
                 <CryptoTerms />
               </Suspense>
             </Route>
-            {/* QBTC public routes — hidden when SHOW_QBTC is false (pages not deleted) */}
-            {SHOW_QBTC && (
-              <>
-                <Route path="/qbtc-faucet">
-                  <Suspense fallback={<LoadingSpinner message="Loading faucet..." />}>
-                    <QBTCFaucet />
-                  </Suspense>
-                </Route>
-                <Route path="/crypto/qbtc-faucet">
-                  <Suspense fallback={<LoadingSpinner message="Loading faucet..." />}>
-                    <QBTCFaucet />
-                  </Suspense>
-                </Route>
-                <Route path="/qbtc-scan">
-                  <Suspense fallback={<LoadingSpinner message="Loading scanner..." />}>
-                    <QBTCScan />
-                  </Suspense>
-                </Route>
-                <Route path="/crypto/qbtc-scan">
-                  <Suspense fallback={<LoadingSpinner message="Loading scanner..." />}>
-                    <QBTCScan />
-                  </Suspense>
-                </Route>
-                <Route path="/qbtc">
-                  <Suspense fallback={<LoadingSpinner message="Loading QBTC..." />}>
-                    <QBTCHomePage />
-                  </Suspense>
-                </Route>
-                <Route path="/qbtc-mine">
-                  <Suspense fallback={<LoadingSpinner message="Loading mining..." />}>
-                    <QBTCMining />
-                  </Suspense>
-                </Route>
-                <Route path="/crypto/qbtc-mine">
-                  <Suspense fallback={<LoadingSpinner message="Loading mining..." />}>
-                    <QBTCMining />
-                  </Suspense>
-                </Route>
-                <Route path="/marketplace">
-                  <Suspense fallback={<LoadingSpinner message="Loading marketplace..." />}>
-                    <QBTCMarketplace />
-                  </Suspense>
-                </Route>
-              </>
-            )}
+            <Route path="/contact">
+              <Suspense fallback={<LoadingSpinner message="Loading..." />}>
+                <CryptoContact />
+              </Suspense>
+            </Route>
+            <Route path="/cryptoprivacy">
+              <RedirectTo to="/privacy" />
+            </Route>
+            <Route path="/cryptoterms">
+              <RedirectTo to="/terms" />
+            </Route>
             
             {/* Protected routes - require authentication */}
             <Route path="/cryptoindicators">
@@ -158,19 +140,16 @@ function App() {
               <ProtectedRoute component={CryptoElliottWaveLessons} />
             </Route>
             <Route path="/dev/analytics">
-              <ProtectedRoute component={DevAnalytics} />
+              <InternalOnlyRoute component={DevAnalytics} />
             </Route>
             <Route path="/admin">
-              <ProtectedRoute component={DevAnalytics} />
+              <InternalOnlyRoute component={DevAnalytics} />
             </Route>
             <Route path="/admin/users">
-              <ProtectedRoute component={AdminPanel} />
+              <InternalOnlyRoute component={AdminPanel} />
             </Route>
             <Route path="/dev/sandbox">
-              <ProtectedRoute component={CryptoSandbox} />
-            </Route>
-            <Route path="/wallet">
-              <ProtectedRoute component={Wallet} />
+              <InternalOnlyRoute component={CryptoSandbox} />
             </Route>
             
             <Route>

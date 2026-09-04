@@ -7,6 +7,7 @@ import type {
   IChartApi,
   ISeriesApi,
   SeriesType,
+  Coordinate,
 } from 'lightweight-charts';
 import type { AutoTrendlineSegment } from '@/types/autoTrendline';
 
@@ -71,7 +72,7 @@ class AutoTrendlineRenderer implements IPrimitivePaneRenderer {
             if (Math.abs(dx) > 0.5) {
               const screenSlope = (yLast - y1) / dx;
               x2 = chartWidth;
-              y2 = y1 + screenSlope * (chartWidth - x1);
+              y2 = (Number(y1) + screenSlope * (chartWidth - Number(x1))) as Coordinate;
             } else if (xTouchEnd !== null && yTouchEnd !== null) {
               x2 = chartWidth;
               y2 = yTouchEnd;

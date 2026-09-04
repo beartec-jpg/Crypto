@@ -22,6 +22,11 @@ import {
   calculateCCI,
   calculateADX,
 } from '@/lib/indicators';
+import { calculateTideZone, type TideZonePoint } from '@/lib/indicators/tideZone';
+
+export interface TideZoneExtras {
+  oiHistory?: Array<{ timestamp: number; value: number }>;
+}
 
 interface CandleData {
   time: number;
@@ -60,6 +65,7 @@ export interface OscillatorData {
     histogram: Array<{ time: number; value: number; color: string }>;
     explosion: Array<{ time: number; value: number }>;
   };
+  tideZone: TideZonePoint[];
 }
 
 export interface OscillatorCalculationSettings {
@@ -97,9 +103,16 @@ const VOLUME_AVERAGE_PERIOD = 20;
 export function useOscillatorData(
   candles: CandleData[],
   settings: OscillatorCalculationSettings = DEFAULT_SETTINGS,
+  extras: TideZoneExtras = {},
 ): OscillatorData {
   return useMemo(() => {
     const resolved = { ...DEFAULT_SETTINGS, ...settings };
+    const oi = (extras.oiHistory || [])
+      .map((p) => ({
+        time: p.timestamp > 1e12 ? Math.floor(p.timestamp / 1000) : p.timestamp,
+        value: p.value,
+      }))
+      .filter((p) => p.time > 0 && Number.isFinite(p.value));
 
     if (candles.length === 0) {
       return {
@@ -117,6 +130,7 @@ export function useOscillatorData(
         tsi: { tsi: [], signal: [] },
         klinger: { klinger: [], signal: [] },
         waddah: { histogram: [], explosion: [] },
+        tideZone: [],
       };
     }
 
@@ -151,6 +165,7 @@ export function useOscillatorData(
       tsi: calculateTSI(candles, 25, 13, 7),
       klinger: calculateKlingerOscillator(candles, 34, 55, 13),
       waddah: calculateWaddahAttarExplosion(candles, 150, 20, 2),
+      tideZone: calculateTideZone(candles, { oi }),
     };
-  }, [candles, settings]);
+  }, [candles, settings, extras.oiHistory]);
 }

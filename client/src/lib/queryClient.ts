@@ -9,8 +9,7 @@ export function setAuthTokenGetter(fn: () => Promise<string | null>) {
 const isDevelopmentMode = typeof window !== 'undefined' && 
   (window.location.hostname.includes('replit') || 
    window.location.hostname.includes('localhost') ||
-   window. location.hostname.includes('127.0.0.1') ||
-   window.location.pathname.includes('/dev'));
+   window.location.hostname.includes('127.0.0.1'));
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {

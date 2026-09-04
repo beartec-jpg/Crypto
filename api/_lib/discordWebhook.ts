@@ -30,9 +30,9 @@ export async function postDiscordWebhook(options: {
       allowed_mentions: { parse: [] as string[] },
     };
     form.append('payload_json', JSON.stringify(payload));
-    // Node 18+ FormData accepts Blob; wrap Buffer as Uint8Array for broad runtime support
-    const bytes = new Uint8Array(fileBuffer.buffer, fileBuffer.byteOffset, fileBuffer.byteLength);
-    const blob = new Blob([bytes], { type: fileContentType || 'image/png' });
+    const copy = new Uint8Array(fileBuffer.byteLength);
+    copy.set(fileBuffer);
+    const blob = new Blob([copy.buffer as ArrayBuffer], { type: fileContentType || 'image/png' });
     form.append('files[0]', blob, filename);
 
     const res = await fetch(webhookUrl, { method: 'POST', body: form });

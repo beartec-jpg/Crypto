@@ -12,6 +12,7 @@ import { WaddahExplosionPanel } from '@/components/indicators/oscillators/Waddah
 import { CMFPanel } from '@/components/indicators/oscillators/CMFPanel';
 import { TSIPanel } from '@/components/indicators/oscillators/TSIPanel';
 import { KlingerPanel } from '@/components/indicators/oscillators/KlingerPanel';
+import { TideZonePanel } from '@/components/indicators/oscillators/TideZonePanel';
 import { SMCDebugTable } from '@/components/tradingSystems/SMCDebugTable';
 import { SMCTrendEnginePanel } from '@/components/trading/SMCTrendEngine/SMCTrendEnginePanel';
 import { useShowOwnerOnlyTools } from '@/hooks/useShowOwnerOnlyTools';
@@ -66,6 +67,7 @@ const OSCILLATOR_CONFIG = [
   { id: 'obv', title: 'OBV', storageKey: 'oscillator-obv' },
   { id: 'mfi', title: 'MFI (14)', storageKey: 'oscillator-mfi' },
   { id: 'klinger', title: 'Klinger (34,55,13)', storageKey: 'oscillator-klinger' },
+  { id: 'tideZone', title: 'Tide Zone', storageKey: 'oscillator-tide-zone' },
   { id: 'smartMoney', title: 'Smart Money Tracker', storageKey: 'oscillator-smart-money' },
   { id: 'smcTrendEngine', title: 'SMC Trend Engine', storageKey: 'oscillator-smc-trend-engine' },
 ];
@@ -146,6 +148,8 @@ export function PoppedOutOscillators({
             syncWithMainChart mainChartVisibleRange={mainChartVisibleRange}
           />
         );
+      case 'tideZone':
+        return <TideZonePanel data={oscillatorData.tideZone} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />;
       case 'smartMoney':
         if (!smartMoneyPanelData?.evaluation || !smartMoneyPanelData.scoringInput) {
           return <div className="h-full w-full rounded border border-slate-700 bg-slate-900/70 p-3 text-xs text-slate-400">Waiting for SMC data...</div>;

@@ -39,6 +39,7 @@ const OSCILLATORS = [
   { id: 'obv', name: 'OBV', description: 'On Balance Volume' },
   { id: 'mfi', name: 'MFI', description: 'Money Flow Index (14)' },
   { id: 'klinger', name: 'Klinger', description: 'Klinger Oscillator (34,55,13)' },
+  { id: 'tideZone', name: 'Tide Zone', description: '4h tide + local energy/tape buy-sell zones' },
   { id: 'smartMoney', name: 'Smart Money Tracker', description: 'Standalone SMC system score and debug panel' },
   { id: 'smcTrendEngine', name: 'SMC Trend Engine', description: 'Trend-focused SMC score and debug panel' },
 ];
@@ -116,7 +117,7 @@ export function OscillatorSelectorModal({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-[400px] bg-slate-900 border-slate-700 text-white">
+        <DialogContent className="sm:max-w-[400px] max-h-[85dvh] overflow-hidden flex flex-col bg-slate-900 border-slate-700 text-white">
           <DialogHeader className="flex flex-row items-center justify-between">
             <DialogTitle className="text-white">Oscillator Settings</DialogTitle>
             <Button
@@ -128,7 +129,7 @@ export function OscillatorSelectorModal({
               <X className="h-4 w-4" />
             </Button>
           </DialogHeader>
-          <div className="space-y-3 py-4 max-h-[60vh] overflow-y-auto pr-1">
+          <div className="space-y-3 py-4 min-h-0 flex-1 max-h-[min(60dvh,calc(85dvh-8rem))] overflow-y-auto overscroll-contain pr-1">
             {visibleOscillators.map((osc) => {
               const isEnabled = selectedOscillators.has(osc.id);
 

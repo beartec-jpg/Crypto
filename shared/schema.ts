@@ -226,7 +226,7 @@ export const userOscillatorPreferences = pgTable("user_oscillator_preferences", 
 
 export const insertUserOscillatorPreferencesSchema = z.object({
   userId: z.string(),
-  favoriteOscillators: z.array(z.enum(['rsi', 'macd', 'stochRSI', 'obv', 'mfi', 'williamsR', 'cci', 'adx'])).default([]),
+  favoriteOscillators: z.array(z.enum(['rsi', 'macd', 'stochRSI', 'obv', 'mfi', 'williamsR', 'cci', 'adx', 'tideZone'])).default([]),
 });
 
 export type InsertUserOscillatorPreferences = z.infer<typeof insertUserOscillatorPreferencesSchema>;
@@ -234,7 +234,7 @@ export type UserOscillatorPreferences = typeof userOscillatorPreferences.$inferS
 
 // Oscillator Preferences - DTO for GET/PUT /api/crypto/oscillator-preferences
 export const oscillatorPreferencesSchema = z.object({
-  favoriteOscillators: z.array(z.enum(['rsi', 'macd', 'stochRSI', 'obv', 'mfi', 'williamsR', 'cci', 'adx'])),
+  favoriteOscillators: z.array(z.enum(['rsi', 'macd', 'stochRSI', 'obv', 'mfi', 'williamsR', 'cci', 'adx', 'tideZone'])),
 });
 
 export type OscillatorPreferences = z.infer<typeof oscillatorPreferencesSchema>;

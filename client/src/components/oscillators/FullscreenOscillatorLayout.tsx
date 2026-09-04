@@ -4,6 +4,7 @@ import type { OscillatorData } from '@/hooks/useOscillatorData';
 import type { ScoringInput } from '@/lib/tradingSystemScoring';
 import type { SystemEvaluation } from '@/types/systemScoring';
 import type { SMCTrendEnginePanelData } from '@/components/trading/SMCTrendEngine/types';
+import type { IChartApi } from 'lightweight-charts';
 
 interface FullscreenOscillatorLayoutProps {
   selectedOscillators: Set<string>;
@@ -17,6 +18,7 @@ interface FullscreenOscillatorLayoutProps {
   totalPercentage: number;
   perOscillatorPercentage: number;
   mainChartVisibleRange: any;
+  mainChart?: IChartApi | null;
   smartMoneyPanelData?: {
     scoringInput: ScoringInput | null;
     evaluation: SystemEvaluation | null;
@@ -36,6 +38,7 @@ export function FullscreenOscillatorLayout({
   totalPercentage,
   perOscillatorPercentage,
   mainChartVisibleRange,
+  mainChart,
   smartMoneyPanelData,
   smcTrendEnginePanelData,
 }: FullscreenOscillatorLayoutProps) {
@@ -55,6 +58,7 @@ export function FullscreenOscillatorLayout({
         totalPercentage={totalPercentage}
         perOscillatorPercentage={perOscillatorPercentage}
         mainChartVisibleRange={mainChartVisibleRange}
+        mainChart={mainChart}
         smartMoneyPanelData={smartMoneyPanelData}
         smcTrendEnginePanelData={smcTrendEnginePanelData}
       />
