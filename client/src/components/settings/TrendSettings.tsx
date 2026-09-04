@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Save } from 'lucide-react';
+import { useShowOwnerOnlyTools } from '@/hooks/useShowOwnerOnlyTools';
 
 const MA_COLORS = ['#3b82f6', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899'];
 const MA_TIMEFRAMES = [
@@ -31,6 +32,7 @@ export function TrendSettings({
   saveToTimeframe,
   makeTimeframeDefault,
 }: TrendSettingsProps) {
+  const showOwnerOnlyTools = useShowOwnerOnlyTools();
   return (
     <div className="space-y-3">
       {/* Tier restriction notice */}
@@ -61,10 +63,12 @@ export function TrendSettings({
           <Switch checked={indicators.parabolicSAR.show} onCheckedChange={() => handleTrendToolToggle('Parabolic SAR', indicators.parabolicSAR.show, indicators.parabolicSAR.setShow)} id="show-sar" data-testid="switch-sar" disabled={!isPaidTier && !indicators.parabolicSAR.show} />
           <Label htmlFor="show-sar" className="text-sm text-white cursor-pointer">Parabolic SAR {!isPaidTier && '🔒'}</Label>
         </div>
+        {showOwnerOnlyTools && (
         <div className={`flex items-center gap-2 ${!isPaidTier ? 'opacity-50' : ''}`}>
           <Switch checked={indicators.smc.showAutoTrendlines} onCheckedChange={() => handleTrendToolToggle('Auto Trendlines', indicators.smc.showAutoTrendlines, indicators.smc.setShowAutoTrendlines)} id="show-trendlines" data-testid="switch-trendlines" disabled={!isPaidTier && !indicators.smc.showAutoTrendlines} />
           <Label htmlFor="show-trendlines" className="text-sm text-white cursor-pointer">Auto Trendlines {!isPaidTier && '🔒'}</Label>
         </div>
+        )}
       </div>
       
       {/* EMA Settings - Dynamic List */}
@@ -181,7 +185,7 @@ export function TrendSettings({
       )}
       
       {/* Auto Trendlines Settings */}
-      {indicators.smc.showAutoTrendlines && (
+      {showOwnerOnlyTools && indicators.smc.showAutoTrendlines && (
         <div className="bg-slate-800/50 rounded-lg p-3">
           <div className="text-xs font-semibold text-blue-400 mb-2">Auto Trendline Settings</div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

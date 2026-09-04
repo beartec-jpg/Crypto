@@ -5,6 +5,8 @@ import { Label } from '@/components/ui/label';
 import { Settings, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useMemo, useState } from 'react';
+import { useShowOwnerOnlyTools } from '@/hooks/useShowOwnerOnlyTools';
+import { OWNER_ONLY_OSCILLATOR_IDS } from '@/constants/ownerOnlyFeatures';
 
 export interface OscillatorModalConfig {
   enabled?: boolean;
@@ -51,6 +53,16 @@ export function OscillatorSelectorModal({
 }: OscillatorSelectorModalProps) {
   const [editingOscillator, setEditingOscillator] = useState<string | null>(null);
   const [draftConfig, setDraftConfig] = useState<OscillatorModalConfig>({});
+  const showOwnerOnlyTools = useShowOwnerOnlyTools();
+  const visibleOscillators = useMemo(
+    () =>
+      OSCILLATORS.filter(
+        (osc) =>
+          showOwnerOnlyTools ||
+          !(OWNER_ONLY_OSCILLATOR_IDS as readonly string[]).includes(osc.id),
+      ),
+    [showOwnerOnlyTools],
+  );
 
   const editingMeta = useMemo(
     () => OSCILLATORS.find(osc => osc.id === editingOscillator) ?? null,
@@ -117,7 +129,7 @@ export function OscillatorSelectorModal({
             </Button>
           </DialogHeader>
           <div className="space-y-3 py-4 max-h-[60vh] overflow-y-auto pr-1">
-            {OSCILLATORS.map((osc) => {
+            {visibleOscillators.map((osc) => {
               const isEnabled = selectedOscillators.has(osc.id);
 
               return (

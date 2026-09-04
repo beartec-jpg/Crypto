@@ -29,6 +29,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
+import { isOwnerOnlyEmail } from '@/constants/ownerOnlyFeatures';
 import { authenticatedApiRequest } from '@/lib/apiAuth';
 import { useLocation } from 'wouter';
 import { useChartGestures, type GesturePoint } from '@/hooks/useChartGestures';
@@ -284,6 +285,7 @@ export default function CryptoIndicators() {
   const { toast } = useToast();
 
   const { isAuthenticated, isLoading: authLoading, getToken, user } = useCryptoAuth();
+  const showOwnerOnlyTools = isOwnerOnlyEmail(user?.email);
   
   usePageViewTracking('crypto-indicators');
   const [, setLocation] = useLocation();
@@ -2793,7 +2795,7 @@ const handleAIMarketReview = () => {
     }
     
     // Trendlines
-    if (indicators.smc.showAutoTrendlines) {
+    if (showOwnerOnlyTools && indicators.smc.showAutoTrendlines) {
       active.add('trendlines');
     }
     
@@ -2810,7 +2812,7 @@ const handleAIMarketReview = () => {
     if (cvdSettings.enabled) active.add('cvd');
     
     return active;
-  }, [indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showFVG, indicators.smc.showSwingPivots, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.smc.showAutoTrendlines, indicators.rsi.show, indicators.macd.show, indicators.mfi.show, indicators.obv.show, indicators.bb.show, cvdSettings.enabled]);
+  }, [showOwnerOnlyTools, indicators.smc.showBOS, indicators.smc.showCHoCH, indicators.smc.showFVG, indicators.smc.showSwingPivots, indicators.vwap.showDaily, indicators.vwap.showWeekly, indicators.vwap.showMonthly, indicators.vwap.showRolling, indicators.smc.showAutoTrendlines, indicators.rsi.show, indicators.macd.show, indicators.mfi.show, indicators.obv.show, indicators.bb.show, cvdSettings.enabled]);
 
   // Run backtest on historical data
   // Handle strategy generation
@@ -3254,7 +3256,7 @@ const handleAIMarketReview = () => {
       trendlineSeriesRefs.current = [];
     }
     
-    if (!indicators.smc.showAutoTrendlines) return;
+    if (!showOwnerOnlyTools || !indicators.smc.showAutoTrendlines) return;
 
     try {
       // Adaptive pivot length based on number of visible candles
@@ -3308,7 +3310,7 @@ const handleAIMarketReview = () => {
     } catch (e) {
       console.error('Error drawing auto trendlines:', e);
     }
-  }, [chartControls.chartReady, candles, indicators.smc.showAutoTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectTrendlines]);
+  }, [chartControls.chartReady, candles, showOwnerOnlyTools, indicators.smc.showAutoTrendlines, indicators.smc.trendlineMinTouches, indicators.smc.trendlineTolerance, indicators.smc.trendlinePivotLength, detectTrendlines]);
 
   // NOTE: BOS/CHoCH text labels have been removed in Phase 4G-3
   // The BOSCHoCHMarkers component currently handles only horizontal lines

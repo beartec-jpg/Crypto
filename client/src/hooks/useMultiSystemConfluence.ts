@@ -69,6 +69,7 @@ export function useMultiSystemConfluence(
   weightsVersion?: number,
   autoFibResult?: { primary: FibSetResult | null; secondary: FibSetResult | null },
   swingPoints?: Array<{ type: 'high' | 'low'; price: number; time: number; index: number }>,
+  excludeSystemIds?: readonly TradingSystemId[],
 ): ConfluenceResult | null {
   const previousScoreRef = useRef<number | undefined>(undefined);
 
@@ -152,7 +153,9 @@ export function useMultiSystemConfluence(
       autoFibResult,
     };
 
-    const systemIds = Object.keys(TRADING_SYSTEMS) as TradingSystemId[];
+    const systemIds = (Object.keys(TRADING_SYSTEMS) as TradingSystemId[]).filter(
+      (id) => !excludeSystemIds?.includes(id),
+    );
     let longCount = 0;
     let shortCount = 0;
     let neutralCount = 0;
@@ -203,7 +206,7 @@ export function useMultiSystemConfluence(
       systemDetails,
       patterns,
     };
-  }, [candles, oscillatorData, superTrendData.standard, structureBreaks, htfBiasEntries, divergencePoints, fvgs, orderBlocks, liquidityZones, volumeProfileData, weightsVersion, autoFibResult, swingPoints]);
+  }, [candles, oscillatorData, superTrendData.standard, structureBreaks, htfBiasEntries, divergencePoints, fvgs, orderBlocks, liquidityZones, volumeProfileData, weightsVersion, autoFibResult, swingPoints, excludeSystemIds]);
 
   useEffect(() => {
     if (result !== null) {

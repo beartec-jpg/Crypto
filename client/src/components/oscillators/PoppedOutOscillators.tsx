@@ -14,6 +14,7 @@ import { TSIPanel } from '@/components/indicators/oscillators/TSIPanel';
 import { KlingerPanel } from '@/components/indicators/oscillators/KlingerPanel';
 import { SMCDebugTable } from '@/components/tradingSystems/SMCDebugTable';
 import { SMCTrendEnginePanel } from '@/components/trading/SMCTrendEngine/SMCTrendEnginePanel';
+import { useShowOwnerOnlyTools } from '@/hooks/useShowOwnerOnlyTools';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
 import type { ScoringInput } from '@/lib/tradingSystemScoring';
 import type { SystemEvaluation } from '@/types/systemScoring';
@@ -88,6 +89,7 @@ export function PoppedOutOscillators({
   smartMoneyPanelData,
   smcTrendEnginePanelData,
 }: PoppedOutOscillatorsProps) {
+  const showOwnerOnlyTools = useShowOwnerOnlyTools();
   const renderOscillatorContent = (id: string) => {
     switch (id) {
       case 'rsi':
@@ -208,6 +210,7 @@ export function PoppedOutOscillators({
     <>
       {OSCILLATOR_CONFIG.map(({ id, title, storageKey }, index) => {
         if (!poppedOutOscillators.has(id) || !selectedOscillators.has(id)) return null;
+        if (id === 'smartMoney' && !showOwnerOnlyTools) return null;
         
         return (
           <DraggableOscillatorWindow

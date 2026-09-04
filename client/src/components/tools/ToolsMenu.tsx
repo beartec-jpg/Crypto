@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
+import { useShowOwnerOnlyTools } from '@/hooks/useShowOwnerOnlyTools';
 
 interface ToolsMenuProps {
   highLowEnabled: boolean;
@@ -69,6 +70,7 @@ export function ToolsMenu({
   className,
 }: ToolsMenuProps) {
   const [open, setOpen] = useState(false);
+  const showOwnerOnlyTools = useShowOwnerOnlyTools();
 
   const hasActiveTools =
     highLowEnabled ||
@@ -77,10 +79,10 @@ export function ToolsMenu({
     vpEnabled ||
     volumeEnabled ||
     volumeEmaEnabled ||
-    autoTrendlineEnabled ||
-    liquidityHeatmapEnabled ||
-    gdsMiniBadgeEnabled ||
-    rewindEnabled;
+    (showOwnerOnlyTools && autoTrendlineEnabled) ||
+    (showOwnerOnlyTools && liquidityHeatmapEnabled) ||
+    (showOwnerOnlyTools && gdsMiniBadgeEnabled) ||
+    (showOwnerOnlyTools && rewindEnabled);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -267,6 +269,8 @@ export function ToolsMenu({
             </div>
           </div>
 
+          {showOwnerOnlyTools && (
+          <>
           <div className="flex items-center justify-between py-1.5 px-1">
             <div className="min-w-0 mr-3">
               <div className="text-sm font-medium text-slate-100 leading-tight">
@@ -376,6 +380,8 @@ export function ToolsMenu({
               </Button>
             </div>
           </div>
+          </>
+          )}
 
           {onOpenTrade && (
             <div className="pt-1 border-t border-slate-700 mt-1">

@@ -5,6 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import { useShowOwnerOnlyTools } from '@/hooks/useShowOwnerOnlyTools';
 import type { FVGSettings } from '@/types/fvg';
 import type { OrderBlockSettings } from '@/types/orderBlock';
 import type { BreakerSettings } from '@/types/breaker';
@@ -133,6 +134,7 @@ export function IndicatorMenu({
   className,
 }: IndicatorMenuProps) {
   const [open, setOpen] = useState(false);
+  const showOwnerOnlyTools = useShowOwnerOnlyTools();
 
   const activeCount =
     selectedOscillators.size +
@@ -140,7 +142,7 @@ export function IndicatorMenu({
     (smaShow ? 1 : 0) +
     (vwapShow ? 1 : 0) +
     (superTrendEnabled ? 1 : 0) +
-    (elderImpulseShow ? 1 : 0) +
+    (showOwnerOnlyTools && elderImpulseShow ? 1 : 0) +
     (fvgSettings.enabled ? 1 : 0) +
     (obSettings.enabled ? 1 : 0) +
     (bosSettings.enabled ? 1 : 0) +
@@ -315,12 +317,14 @@ export function IndicatorMenu({
                   <Settings className="h-3 w-3" />
                 </Button>
               </div>
-              <IndicatorRow
-                label="Elder Impulse"
-                description="Trend impulse bars (MACD + EMA)"
-                checked={elderImpulseShow}
-                onCheckedChange={onElderImpulseToggle}
-              />
+              {showOwnerOnlyTools && (
+                <IndicatorRow
+                  label="Elder Impulse"
+                  description="Trend impulse bars (MACD + EMA)"
+                  checked={elderImpulseShow}
+                  onCheckedChange={onElderImpulseToggle}
+                />
+              )}
             </div>
           </TabsContent>
 

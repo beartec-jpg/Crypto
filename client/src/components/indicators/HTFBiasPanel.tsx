@@ -6,6 +6,7 @@
 import { TrendingUp, TrendingDown, Minus, Loader2 } from 'lucide-react';
 import type { HTFBiasEntry } from '@/types/htfBias';
 import type { Bias } from '@/types/candle';
+import { TOP_TOOLBAR_HEIGHT } from '@/lib/constants/layout';
 
 interface HTFBiasPanelProps {
   entries: HTFBiasEntry[];
@@ -53,7 +54,10 @@ export function HTFBiasPanel({ entries }: HTFBiasPanelProps) {
   if (entries.length === 0) return null;
 
   return (
-    <div className="absolute top-2 right-16 z-20 flex flex-col gap-1 pointer-events-none select-none">
+    <div
+      className="absolute right-16 z-20 flex flex-col gap-1 pointer-events-none select-none"
+      style={{ top: TOP_TOOLBAR_HEIGHT }}
+    >
       {entries.map((entry) => (
         <div
           key={entry.timeframe}

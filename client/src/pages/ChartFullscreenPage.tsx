@@ -72,6 +72,8 @@ import { useHTFBias } from '@/hooks/useHTFBias';
 import { useHTFBiasSettings } from '@/hooks/useHTFBiasSettings';
 import { useTradingSystem, type TradingSystemCallbacks } from '@/hooks/useTradingSystem';
 import { TRADING_SYSTEMS, type TradingSystemId } from '@/types/tradingSystems';
+import { OWNER_ONLY_TRADING_SYSTEM_IDS, isOwnerOnlyTradingSystem } from '@/constants/ownerOnlyFeatures';
+import { useShowOwnerOnlyTools } from '@/hooks/useShowOwnerOnlyTools';
 import { useMultiSystemConfluence, type ConfluenceResult } from '@/hooks/useMultiSystemConfluence';
 import { FloatingConfluenceMonitor } from '@/components/tradingSystems/FloatingConfluenceMonitor';
 import { DraggableSystemInfoBox } from '@/components/tradingSystems/DraggableSystemInfoBox';
@@ -226,6 +228,7 @@ export function ChartFullscreenPage({
   initialTimeframe,
   watchlistTickers,
 }: ChartFullscreenPageProps) {
+  const showOwnerOnlyTools = useShowOwnerOnlyTools();
   // Core state
   const [symbol, setSymbol] = useState(initialSymbol);
   const [timeframe, setTimeframe] = useState(initialTimeframe);
@@ -564,7 +567,7 @@ export function ChartFullscreenPage({
   });
 
   // Determine effective candle slice for indicator calculations
-  const effectiveCandleCount = rewindPosition ?? candles.length;
+  const effectiveCandleCount = (showOwnerOnlyTools ? rewindPosition : null) ?? candles.length;
   const effectiveCandles = useMemo(
     () => candles.slice(0, effectiveCandleCount),
     [candles, effectiveCandleCount],
@@ -931,6 +934,13 @@ export function ChartFullscreenPage({
   };
   
   const tradingSystem = useTradingSystem(tradingSystemCallbacks);
+
+  useEffect(() => {
+    if (showOwnerOnlyTools) return;
+    if (isOwnerOnlyTradingSystem(tradingSystem.activeSystem)) {
+      tradingSystem.deactivateSystem();
+    }
+  }, [showOwnerOnlyTools, tradingSystem.activeSystem, tradingSystem.deactivateSystem]);
 
   const historicalSystemSignalEvents = useMemo(() => {
     if (!tradingSystem.activeSystem || effectiveCandles.length < 3) return [];
@@ -1735,6 +1745,7 @@ export function ChartFullscreenPage({
     conditionWeightsVersion,
     autoFibResult,
     swingPoints,
+    showOwnerOnlyTools ? undefined : OWNER_ONLY_TRADING_SYSTEM_IDS,
   );
 
   const totalConfluenceNowRef = useRef(totalConfluenceNow);
@@ -2891,7 +2902,7 @@ export function ChartFullscreenPage({
           vwapShow={indicators.vwap.showSession}
           onVwapToggle={indicators.vwap.setShowSession}
           onOpenVwapSettings={() => setShowVwapModal(true)}
-          elderImpulseShow={indicators.elderImpulse.show}
+          elderImpulseShow={showOwnerOnlyTools && indicators.elderImpulse.show}
           onElderImpulseToggle={indicators.elderImpulse.setShow}
           onOpenEmaSma={() => setShowEmaSmaModal(true)}
           fvgSettings={fvgSettings.settings}
@@ -2998,15 +3009,15 @@ export function ChartFullscreenPage({
           volumeEmaEnabled={volumeEmaSettings.settings.enabled}
           onToggleVolumeEma={(enabled) => volumeEmaSettings.updateSettings({ enabled })}
           onOpenVolumeEmaSettings={() => setShowVolumeEmaModal(true)}
-          autoTrendlineEnabled={autoTrendlineSettings.settings.enabled}
+          autoTrendlineEnabled={showOwnerOnlyTools && autoTrendlineSettings.settings.enabled}
           onToggleAutoTrendline={(enabled) => autoTrendlineSettings.updateSettings({ enabled })}
           onOpenAutoTrendlineSettings={() => setShowAutoTrendlineModal(true)}
-          liquidityHeatmapEnabled={lhSettings.settings.enabled}
+          liquidityHeatmapEnabled={showOwnerOnlyTools && lhSettings.settings.enabled}
           onToggleLiquidityHeatmap={(enabled) => lhSettings.updateSettings({ enabled })}
           onOpenLiquidityHeatmapSettings={() => setShowLHModal(true)}
-          gdsMiniBadgeEnabled={showGdsMiniBadge}
+          gdsMiniBadgeEnabled={showOwnerOnlyTools && showGdsMiniBadge}
           onToggleGdsMiniBadge={setShowGdsMiniBadge}
-          rewindEnabled={rewindSettings.settings.enabled}
+          rewindEnabled={showOwnerOnlyTools && rewindSettings.settings.enabled}
           onToggleRewind={handleToggleRewind}
           onOpenRewindSettings={() => setShowRewindModal(true)}
           onOpenTrade={() => setShowTradePanel(v => !v)}
@@ -3034,7 +3045,7 @@ export function ChartFullscreenPage({
           </div>
         )}
 
-        {showGdsMiniBadge && (
+        {showOwnerOnlyTools && showGdsMiniBadge && (
           <GDSMiniBadge score={latestScore} gds={gds} isLoading={isGdsMetricsLoading} />
         )}
 
@@ -3084,7 +3095,7 @@ export function ChartFullscreenPage({
           emaHTFDataCache={htfDataCache}
           symbol={symbol}
           interval={renderedTimeframe}
-          elderImpulseEnabled={indicators.elderImpulse.show}
+          elderImpulseEnabled={showOwnerOnlyTools && indicators.elderImpulse.show}
           vwapShowSession={indicators.vwap.showSession}
           vwapShowDaily={indicators.vwap.showDaily}
           vwapShowWeekly={indicators.vwap.showWeekly}
@@ -3113,9 +3124,13 @@ export function ChartFullscreenPage({
           onCloseVPModal={() => setShowVPModal(false)}
           onVPSettingsChange={vpSettings.setSettings}
           liquidityHeatmapData={liquidityHeatmapDataResult.data}
-          lhSettings={lhSettings.settings}
+          lhSettings={
+            showOwnerOnlyTools
+              ? lhSettings.settings
+              : { ...lhSettings.settings, enabled: false }
+          }
           lhEffectiveRange={liquidityHeatmapDataResult.effectiveRange}
-          showLHModal={showLHModal}
+          showLHModal={showOwnerOnlyTools && showLHModal}
           onCloseLHModal={() => setShowLHModal(false)}
           onLHSettingsChange={lhSettings.setSettings}
           lhIsLoading={liquidityHeatmapDataResult.isLoading}
@@ -3132,9 +3147,13 @@ export function ChartFullscreenPage({
           onCloseVolumeEmaModal={() => setShowVolumeEmaModal(false)}
           onVolumeEmaSettingsChange={volumeEmaSettings.updateSettings}
           onVolumeEmaReset={volumeEmaSettings.resetToDefaults}
-          autoTrendlineSettings={autoTrendlineSettings.settings}
+          autoTrendlineSettings={
+            showOwnerOnlyTools
+              ? autoTrendlineSettings.settings
+              : { ...autoTrendlineSettings.settings, enabled: false }
+          }
           autoTrendlineResult={autoTrendlineResult}
-          showAutoTrendlineModal={showAutoTrendlineModal}
+          showAutoTrendlineModal={showOwnerOnlyTools && showAutoTrendlineModal}
           onCloseAutoTrendlineModal={() => setShowAutoTrendlineModal(false)}
           onAutoTrendlineSettingsChange={autoTrendlineSettings.updateSettings}
           onAutoTrendlineTierChange={autoTrendlineSettings.updateTier}
@@ -3354,7 +3373,7 @@ export function ChartFullscreenPage({
       )}
 
       {/* Rewind Controls - show when rewind is active OR when controls are enabled and in rewind mode */}
-      {rewindSettings.settings.showControls && (
+      {showOwnerOnlyTools && rewindSettings.settings.showControls && (
         <RewindControls
           currentPosition={rewindPosition}
           totalCandles={candles.length}
@@ -3365,12 +3384,14 @@ export function ChartFullscreenPage({
       )}
 
       {/* Rewind Settings Modal */}
+      {showOwnerOnlyTools && (
       <RewindSettingsModal
         isOpen={showRewindModal}
         onClose={() => setShowRewindModal(false)}
         settings={rewindSettings.settings}
         onSettingsChange={rewindSettings.setSettings}
       />
+      )}
     </div>
   );
 }

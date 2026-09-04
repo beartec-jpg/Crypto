@@ -1,12 +1,9 @@
 import { useState } from 'react';
 import { X, Activity, ChevronDown, ChevronUp, Target } from 'lucide-react';
 import { useDraggable } from '@/hooks/useDraggable';
-import { TRADING_SYSTEMS } from '@/types/tradingSystems';
 import { getSignalLabel } from '@/lib/tradingSystemScoring';
 import { type MarketPattern } from '@/lib/confluencePatterns';
 import { cn } from '@/lib/utils';
-
-const TOTAL_SYSTEMS = Object.keys(TRADING_SYSTEMS).length;
 
 interface SystemDetail {
   systemId: string;
@@ -257,7 +254,7 @@ export function FloatingConfluenceMonitor({
           )}
 
           <div className="px-2 pb-1.5 text-[9px] text-slate-500">
-            {TOTAL_SYSTEMS} systems monitored
+            {confluenceSnapshot?.systemDetails?.length ?? 0} systems monitored
           </div>
         </div>
       )}

@@ -5,6 +5,7 @@ import type { ScoringInput } from '@/lib/tradingSystemScoring';
 import type { SystemEvaluation } from '@/types/systemScoring';
 import type { SMCTrendEnginePanelData } from '@/components/trading/SMCTrendEngine/types';
 import { TOP_TOOLBAR_HEIGHT } from '@/lib/constants/layout';
+import { useShowOwnerOnlyTools } from '@/hooks/useShowOwnerOnlyTools';
 
 const VOLUME_UP_COLOR = '#26a69a';
 
@@ -250,6 +251,7 @@ export function MiniOscillatorSection({
   smartMoneyPanelData,
   smcTrendEnginePanelData,
 }: MiniOscillatorSectionProps) {
+  const showOwnerOnlyTools = useShowOwnerOnlyTools();
   if (miniOscillators.size === 0) return null;
 
   const newMiniItems: Array<{ id: string; label: string; value: string; color: string; zone: string }> = [];
@@ -354,7 +356,7 @@ export function MiniOscillatorSection({
     newMiniItems.push({ id: 'klinger', label: s.label, value: s.value, color: s.color, zone: s.zone });
   }
 
-  if (miniOscillators.has('smartMoney') && smartMoneyPanelData?.evaluation) {
+  if (showOwnerOnlyTools && miniOscillators.has('smartMoney') && smartMoneyPanelData?.evaluation) {
     const score = smartMoneyPanelData.evaluation.score ?? 0;
     const zone = score >= 20 ? 'BULL' : score <= -20 ? 'BEAR' : 'NEU';
     const color = score >= 20 ? 'text-green-400' : score <= -20 ? 'text-red-400' : 'text-yellow-400';

@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { TRADING_SYSTEMS, type TradingSystemId, type TradingSystem } from '@/types/tradingSystems';
+import { isOwnerOnlyTradingSystem } from '@/constants/ownerOnlyFeatures';
+import { useShowOwnerOnlyTools } from '@/hooks/useShowOwnerOnlyTools';
 
 interface TradingSystemsMenuProps {
   activeSystem: TradingSystemId | null;
@@ -114,6 +116,7 @@ export function TradingSystemsMenu({
   const [open, setOpen] = useState(false);
   const [expandedSystemId, setExpandedSystemId] = useState<TradingSystemId | null>(null);
   const popoverContentRef = useRef<HTMLDivElement>(null);
+  const showOwnerOnlyTools = useShowOwnerOnlyTools();
 
   // Close menu when chart is clicked
   useEffect(() => {
@@ -148,7 +151,9 @@ export function TradingSystemsMenu({
     };
   }, [open]);
 
-  const systems = Object.values(TRADING_SYSTEMS);
+  const systems = Object.values(TRADING_SYSTEMS).filter(
+    (s) => showOwnerOnlyTools || !isOwnerOnlyTradingSystem(s.id),
+  );
   const trendSystems = systems.filter(s => s.category === 'trend');
   const reversalSystems = systems.filter(s => s.category === 'reversal');
   const breakoutSystems = systems.filter(s => s.category === 'breakout');
@@ -183,23 +188,26 @@ export function TradingSystemsMenu({
     icon: string,
     headerClass: string,
     categorySystems: TradingSystem[]
-  ) => (
-    <div className="space-y-0.5">
-      <h4 className={cn('text-xs font-bold uppercase tracking-wider px-3 py-2', headerClass)}>
-        {icon} {label}
-      </h4>
-      {categorySystems.map((system) => (
-        <AccordionSystem
-          key={system.id}
-          system={system}
-          isActive={activeSystem === system.id}
-          isExpanded={expandedSystemId === system.id}
-          onToggle={() => toggleExpand(system.id)}
-          onActivate={() => handleActivateSystem(system.id)}
-        />
-      ))}
-    </div>
-  );
+  ) => {
+    if (categorySystems.length === 0) return null;
+    return (
+      <div className="space-y-0.5">
+        <h4 className={cn('text-xs font-bold uppercase tracking-wider px-3 py-2', headerClass)}>
+          {icon} {label}
+        </h4>
+        {categorySystems.map((system) => (
+          <AccordionSystem
+            key={system.id}
+            system={system}
+            isActive={activeSystem === system.id}
+            isExpanded={expandedSystemId === system.id}
+            onToggle={() => toggleExpand(system.id)}
+            onActivate={() => handleActivateSystem(system.id)}
+          />
+        ))}
+      </div>
+    );
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

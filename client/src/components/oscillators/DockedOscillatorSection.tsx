@@ -14,6 +14,7 @@ import { KlingerPanel } from '@/components/indicators/oscillators/KlingerPanel';
 import { SMCDebugTable } from '@/components/tradingSystems/SMCDebugTable';
 import { SMCTrendEnginePanel } from '@/components/trading/SMCTrendEngine/SMCTrendEnginePanel';
 import { OSCILLATOR_PANEL_HEIGHT_PER, MOBILE_NAV_HEIGHT, TOP_TOOLBAR_HEIGHT } from '@/lib/constants/layout';
+import { useShowOwnerOnlyTools } from '@/hooks/useShowOwnerOnlyTools';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
 import type { ScoringInput } from '@/lib/tradingSystemScoring';
 import type { SystemEvaluation } from '@/types/systemScoring';
@@ -66,8 +67,10 @@ export function DockedOscillatorSection({
   smartMoneyPanelData,
   smcTrendEnginePanelData,
 }: DockedOscillatorSectionProps) {
+  const showOwnerOnlyTools = useShowOwnerOnlyTools();
+  const showSmartMoney = showOwnerOnlyTools && selectedOscillators.has('smartMoney');
   const dockedOscillatorsCount = Array.from(selectedOscillators).filter(
-    osc => !poppedOutOscillators.has(osc) && !miniOscillators?.has(osc)
+    osc => !poppedOutOscillators.has(osc) && !miniOscillators?.has(osc) && (osc !== 'smartMoney' || showOwnerOnlyTools)
   ).length;
 
   if (dockedOscillatorsCount === 0) return null;
@@ -276,7 +279,7 @@ export function DockedOscillatorSection({
           </div>
         )}
 
-        {selectedOscillators.has('smartMoney') && !poppedOutOscillators.has('smartMoney') && !miniOscillators?.has('smartMoney') && (
+        {showSmartMoney && !poppedOutOscillators.has('smartMoney') && !miniOscillators?.has('smartMoney') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2">
             <div
               onClick={() => onCycleMode?.('smartMoney')}

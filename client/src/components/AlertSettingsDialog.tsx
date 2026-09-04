@@ -12,6 +12,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
 import type { CryptoPreferences } from '@shared/schema';
 import { TRADING_SYSTEMS, type TradingSystem } from '@/types/tradingSystems';
+import { isOwnerOnlyTradingSystem } from '@/constants/ownerOnlyFeatures';
+import { useShowOwnerOnlyTools } from '@/hooks/useShowOwnerOnlyTools';
 
 interface AlertSettingsDialogProps {
   open: boolean;
@@ -88,6 +90,7 @@ const ALERT_GRADES = [
 export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogProps) {
   const { toast } = useToast();
   const { getToken } = useCryptoAuth();
+  const showOwnerOnlyTools = useShowOwnerOnlyTools();
   const [alertsEnabled, setAlertsEnabled] = useState(false);
   const [selectedTickers, setSelectedTickers] = useState<string[]>([]);
   const [selectedTimeframes, setSelectedTimeframes] = useState<string[]>([]);
@@ -960,7 +963,9 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
                       
                       {!selectedSystem ? (
                         <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
-                          {Object.values(TRADING_SYSTEMS).map((system) => (
+                          {Object.values(TRADING_SYSTEMS)
+                            .filter((system) => showOwnerOnlyTools || !isOwnerOnlyTradingSystem(system.id))
+                            .map((system) => (
                             <button
                               key={system.id}
                               onClick={() => setSelectedSystem(system)}
