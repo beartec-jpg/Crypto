@@ -468,11 +468,21 @@ export function zigzagPrice(
     const lo = candles[i].low;
     let isHigh = true;
     let isLow = true;
+    let highTied = false;
+    let lowTied = false;
     for (let j = i - len; j <= i + len; j++) {
       if (j === i) continue;
-      // Strict unique wick: a unique low that only ties for high is still a low.
-      if ((candles[j].high ?? candles[j].low) >= hi) isHigh = false;
-      if (candles[j].low <= lo) isLow = false;
+      const jh = candles[j].high ?? candles[j].low;
+      const jl = candles[j].low;
+      if (jh > hi) isHigh = false;
+      else if (jh === hi) highTied = true;
+      if (jl < lo) isLow = false;
+      else if (jl === lo) lowTied = true;
+    }
+    // Unique wick on one side + a tie on the other is still that unique pivot.
+    if (isHigh && isLow) {
+      if (!lowTied && highTied) isHigh = false;
+      else if (!highTied && lowTied) isLow = false;
     }
     if (isHigh === isLow) continue;
     raw.push({
