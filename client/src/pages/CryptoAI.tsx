@@ -274,7 +274,7 @@ export default function CryptoAI() {
         mode: analysisType === 'deep' ? aiTraderMode : undefined,
         tradeHorizon: analysisType === 'deep' ? aiTradeHorizon : undefined,
       },
-      { timeout: analysisType === 'deep' ? 180000 : 90000 },
+      { timeout: analysisType === 'deep' ? 290000 : 90000 },
     );
 
     return await response.json();
