@@ -470,8 +470,9 @@ export function zigzagPrice(
     let isLow = true;
     for (let j = i - len; j <= i + len; j++) {
       if (j === i) continue;
-      if ((candles[j].high ?? candles[j].low) > hi) isHigh = false;
-      if (candles[j].low < lo) isLow = false;
+      // Strict unique wick: a unique low that only ties for high is still a low.
+      if ((candles[j].high ?? candles[j].low) >= hi) isHigh = false;
+      if (candles[j].low <= lo) isLow = false;
     }
     if (isHigh === isLow) continue;
     raw.push({
