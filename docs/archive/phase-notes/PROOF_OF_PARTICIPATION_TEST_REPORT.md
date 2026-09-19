@@ -225,8 +225,8 @@ The proof-of-participation reward system has **three layers**, only one of which
 - [ ] Test end-to-end reward distribution
 
 ### For Documentation:
-- Update [QXRP_OPTIMISATIONS.md](QXRP_OPTIMISATIONS.md) to reflect that OPT-2 (RewardPool impl) is BLOCKED until this is done
-- Add test results to [QXRP_TESTNET_V1_REPORT.md](QXRP_TESTNET_V1_REPORT.md)
+- Update [QXRP_OPTIMISATIONS.md — not in this archive](./README.md#missing-historical-links) to reflect that OPT-2 (RewardPool impl) is BLOCKED until this is done
+- Add test results to [QXRP_TESTNET_V1_REPORT.md — not in this archive](./README.md#missing-historical-links)
 
 ---
 
