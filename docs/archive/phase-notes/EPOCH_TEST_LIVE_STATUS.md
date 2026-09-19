@@ -120,8 +120,8 @@ curl -X POST http://127.0.0.1:5005 \
 ## Updated Documentation
 
 **Files Modified:**
-- ✅ [QXRP_TESTNET_V1_REPORT.md](/home/scott/Crypto/QXRP_TESTNET_V1_REPORT.md) — Added May 20 continuation section
-- ✅ [TESTNET_CONTINUATION_SUMMARY.md](/home/scott/Crypto/TESTNET_CONTINUATION_SUMMARY.md) — Executive summary with findings
+- ✅ [QXRP_TESTNET_V1_REPORT.md — not in this archive](./README.md#missing-historical-links) — Added May 20 continuation section
+- ✅ [TESTNET_CONTINUATION_SUMMARY.md](./TESTNET_CONTINUATION_SUMMARY.md) — Executive summary with findings
 
 **Files to Update After Test:**
 - 📋 Final report: All RewardEpoch data + ClaimReward test results

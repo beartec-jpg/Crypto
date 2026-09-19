@@ -62,7 +62,7 @@ applyRewardEpoch: epoch
 
 ### Call Graph
 
-File: [/home/scott/Crypto/qXRP/src/xrpld/app/ledger/detail/BuildLedger.cpp](qXRP/src/xrpld/app/ledger/detail/BuildLedger.cpp#L64)
+File: [/home/scott/Crypto/qXRP/src/xrpld/app/ledger/detail/BuildLedger.cpp](./README.md#missing-historical-links)
 
 ```cpp
 // Called during ledger build, AFTER all txs applied:
@@ -197,8 +197,8 @@ curl -X POST http://127.0.0.1:5005 \
 ```
 
 ### Files Created
-- [PROOF_OF_PARTICIPATION_TEST_REPORT.md](/home/scott/Crypto/PROOF_OF_PARTICIPATION_TEST_REPORT.md) — Initial diagnostic
-- [This report](/home/scott/Crypto/EPOCH_AND_REWARDS_TEST_REPORT.md) — Current findings
+- [PROOF_OF_PARTICIPATION_TEST_REPORT.md](./PROOF_OF_PARTICIPATION_TEST_REPORT.md) — Initial diagnostic
+- [This report](./EPOCH_AND_REWARDS_TEST_REPORT.md) — Current findings
 
 ---
 

@@ -22,7 +22,7 @@
 - **Ledger history pruned** — only recent ~900 ledgers retained (epochs 1–23 deleted)
 
 ### 📋 Deliverables
-- ✅ Test report updated with continuation findings: [QXRP_TESTNET_V1_REPORT.md](QXRP_TESTNET_V1_REPORT.md)
+- ✅ Test report updated with continuation findings: [QXRP_TESTNET_V1_REPORT.md — not in this archive](./README.md#missing-historical-links)
 - ✅ Detailed epoch/rewards analysis: [EPOCH_AND_REWARDS_TEST_REPORT.md](EPOCH_AND_REWARDS_TEST_REPORT.md)
 - ✅ Node4 deployment completed and operational
 - ⏳ Pending: First RewardEpoch SLE creation (ledger 86,400)
@@ -134,7 +134,7 @@ Time to boundary:  ~1.5 hours @ 3.5 s/ledger
    - Ready to fire at epoch boundaries
 
 3. ✅ **Updated test reports** with current findings
-   - [QXRP_TESTNET_V1_REPORT.md](QXRP_TESTNET_V1_REPORT.md) — Added May 20 continuation
+   - [QXRP_TESTNET_V1_REPORT.md — not in this archive](./README.md#missing-historical-links) — Added May 20 continuation
    - [EPOCH_AND_REWARDS_TEST_REPORT.md](EPOCH_AND_REWARDS_TEST_REPORT.md) — Full analysis
 
 4. ⏳ **Rebuild in progress**
