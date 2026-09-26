@@ -383,7 +383,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       tradeHorizon,
       minRiskReward,
       minConfluence,
-      softGates: true,
+      softGates: false,
       openTrades,
     });
 

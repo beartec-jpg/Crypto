@@ -593,6 +593,65 @@ function buildTargetsRule(higherTimeframe: string, lowerTimeframe: string): stri
   );
 }
 
+
+function describeOpenZones(bars: any[]) {
+  const recent = bars.slice(-100);
+  const swings = detectSwingPivots(recent, 5);
+  const zones: Array<{ low: number; high: number; index: number; side: 'bull' | 'bear' }> = [];
+  const bullFvg: typeof zones = [];
+  const bearFvg: typeof zones = [];
+  const bullOb: typeof zones = [];
+  const bearOb: typeof zones = [];
+  for (let i = 2; i < recent.length; i++) {
+    if (recent[i].low > recent[i - 2].high) {
+      bullFvg.push({ low: recent[i - 2].high, high: recent[i].low, index: i, side: 'bull' });
+    }
+    if (recent[i].high < recent[i - 2].low) {
+      bearFvg.push({ low: recent[i].high, high: recent[i - 2].low, index: i, side: 'bear' });
+    }
+  }
+  for (let i = 1; i < recent.length - 3; i++) {
+    const bullImpulse = recent[i + 1].close > recent[i].high && recent[i + 2].close > recent[i].high;
+    const bearImpulse = recent[i + 1].close < recent[i].low && recent[i + 2].close < recent[i].low;
+    if (recent[i].close > recent[i].open && bearImpulse) {
+      bearOb.push({ low: recent[i].low, high: recent[i].high, index: i, side: 'bear' });
+    }
+    if (recent[i].close < recent[i].open && bullImpulse) {
+      bullOb.push({ low: recent[i].low, high: recent[i].high, index: i, side: 'bull' });
+    }
+  }
+  const stillOpen = (zone: (typeof zones)[number]) => {
+    for (let j = zone.index + 1; j < recent.length; j++) {
+      if (zone.side === 'bull' && recent[j].close < zone.low) return false;
+      if (zone.side === 'bear' && recent[j].close > zone.high) return false;
+    }
+    return true;
+  };
+  const originOf = (zone: (typeof zones)[number]) => {
+    if (zone.side === 'bull') {
+      const lows = swings.lows.filter((v) => v <= zone.low * 1.001);
+      if (!lows.length) return recent[Math.max(0, zone.index - 2)].low;
+      return lows.reduce((best, v) => (Math.abs(v - zone.low) < Math.abs(best - zone.low) ? v : best));
+    }
+    const highs = swings.highs.filter((v) => v >= zone.high * 0.999);
+    if (!highs.length) return recent[Math.max(0, zone.index - 2)].high;
+    return highs.reduce((best, v) => (Math.abs(v - zone.high) < Math.abs(best - zone.high) ? v : best));
+  };
+  const fmt = (list: typeof zones) => {
+    const kept = list.filter(stillOpen).slice(-3);
+    if (!kept.length) return 'None';
+    return kept
+      .map((zone) => `$${zone.low.toFixed(4)}-$${zone.high.toFixed(4)} origin $${originOf(zone).toFixed(4)}`)
+      .join(' | ');
+  };
+  return {
+    bullFVGs: fmt(bullFvg),
+    bearFVGs: fmt(bearFvg),
+    bullOBs: fmt(bullOb),
+    bearOBs: fmt(bearOb),
+  };
+}
+
 function computeIndicators(bars: any[]) {
   const currentPrice = bars[bars.length - 1].close;
   const rsi = calculateRSI(bars, 14);
@@ -604,8 +663,7 @@ function computeIndicators(bars: any[]) {
   const vwapCalc = calculateVWAP(bars);
   const obv = calculateOBV(bars);
   const boschoch = detectBOSCHoCH(bars);
-  const fvgs = detectFVGs(bars);
-  const obs = detectOrderBlocks(bars);
+  const openZones = describeOpenZones(bars);
   const volProfile = calculateVolumeProfile(bars);
   const swings = detectSwingPivots(bars);
   const recentHigh = Math.max(...bars.slice(-20).map(b => b.high));
@@ -647,10 +705,10 @@ function computeIndicators(bars: any[]) {
     poc: volProfile.poc.toFixed(4),
     vah: volProfile.vah.toFixed(4),
     val: volProfile.val.toFixed(4),
-    bullFVGs: fvgs.bullish.map(f => `$${f.low.toFixed(4)}-$${f.high.toFixed(4)}`).join(' | ') || 'None',
-    bearFVGs: fvgs.bearish.map(f => `$${f.low.toFixed(4)}-$${f.high.toFixed(4)}`).join(' | ') || 'None',
-    bullOBs: obs.bullish.map(o => `$${o.low.toFixed(4)}-$${o.high.toFixed(4)}`).join(' | ') || 'None',
-    bearOBs: obs.bearish.map(o => `$${o.low.toFixed(4)}-$${o.high.toFixed(4)}`).join(' | ') || 'None',
+    bullFVGs: openZones.bullFVGs,
+    bearFVGs: openZones.bearFVGs,
+    bullOBs: openZones.bullOBs,
+    bearOBs: openZones.bearOBs,
     swingHighs: swings.highs.map(h => `$${h.toFixed(4)}`).join(' → ') || 'None',
     swingLows: swings.lows.map(l => `$${l.toFixed(4)}`).join(' → ') || 'None',
     recentHigh: recentHigh.toFixed(4),
@@ -667,7 +725,7 @@ function computeIndicators(bars: any[]) {
 function buildGeneralPrompt(symbol: string, higherTimeframe: string, lowerTimeframe: string, higherData: ReturnType<typeof computeIndicators>, lowerData: ReturnType<typeof computeIndicators>) {
   const fmtTF = (label: string, d: ReturnType<typeof computeIndicators>) => `
 **${label} (${label === higherTimeframe ? 'Higher TF bias' : 'Lower TF execution'}):**
-- Price: $${d.currentPrice}, RSI: ${d.rsi}, MACD hist: ${d.macd.histogram}${d.macd.crossover !== 'none' ? ` (${d.macd.crossover})` : ''}
+- Price: $${d.currentPrice}, ATR(14): $${d.atr}, RSI: ${d.rsi}, MACD hist: ${d.macd.histogram}${d.macd.crossover !== 'none' ? ` (${d.macd.crossover})` : ''}
 - Stoch: %K ${d.stoch.k}, %D ${d.stoch.d}${d.stoch.crossover !== 'none' ? ` (${d.stoch.crossover})` : ''} | ADX: ${d.adx}
 - Volume Profile: POC $${d.poc} | VAH $${d.vah} | VAL $${d.val}
 - VWAP: $${d.vwap} | OBV: ${d.obv} | BOS: ${d.bos} | CHoCH: ${d.choch}
@@ -919,7 +977,7 @@ export async function runSystemDeepDive(options: {
 
   const fmtTF = (label: string, d: ReturnType<typeof computeIndicators>) => `
 **${label} (${label === higherTimeframe ? 'Higher TF bias' : 'Lower TF execution'}):**
-- Price: $${d.currentPrice}, RSI: ${d.rsi}, MACD hist: ${d.macd.histogram}${d.macd.crossover !== 'none' ? ` (${d.macd.crossover})` : ''}
+- Price: $${d.currentPrice}, ATR(14): $${d.atr}, RSI: ${d.rsi}, MACD hist: ${d.macd.histogram}${d.macd.crossover !== 'none' ? ` (${d.macd.crossover})` : ''}
 - Stoch: %K ${d.stoch.k}, %D ${d.stoch.d}${d.stoch.crossover !== 'none' ? ` (${d.stoch.crossover})` : ''} | ADX: ${d.adx}
 - Volume Profile: POC $${d.poc} | VAH $${d.vah} | VAL $${d.val}
 - VWAP: $${d.vwap} | OBV: ${d.obv} | BOS: ${d.bos} | CHoCH: ${d.choch}
@@ -973,10 +1031,9 @@ For EVERY setup listed above with an id, decide keep or cancel against CURRENT s
    - entryConfirmLevel: after the entry zone is tagged, price must reclaim this level before the trade is OPEN (LONG: trade back above this price; SHORT: trade back below). Often equal to entry, or slightly past entry (e.g. close above wick high of the zone / break of the micro-swing that formed the entry).
    - entryConfirmRationale: technique-specific rule in plain language (e.g. "tag FVG then close back above zone high", "sweep liquidity then reclaim prior low").
    - A wick through the entry zone is the sweep, not a cancel. Stay pending/armed until reclaim.
-   - On reclaim the live SL becomes the sweep extreme (e.g. LONG entry 60200, sweep 60100, reclaim >60200 → open, SL 60100).
-   - stopLoss in JSON is a HINT for R:R / thesis cap only — do not treat it as "cancel if tagged before entry".
-   - Invalid only if the sweep runs far beyond that hint (thesis dead) or the target already printed before confirm.
-8. STOP LOSS: publish a structural hint behind the zone for planning. The tracker replaces it with the actual sweep wick on confirm. Below structural low for LONGs, above structural high for SHORTs. No arbitrary ATR padding.
+   - stopLoss is the live stop. The tracker keeps that price. It does not move the stop to the wick.
+   - The idea is invalid only if price closes through that stop, or the target already printed before confirm.
+8. STOP LOSS: stopLoss goes beyond the origin swing of the unmitigated zone named in the data. LONG: below that origin. SHORT: above that origin. If the only valid stop is inside half the lower-timeframe ATR, return an empty bestTrades array. Do not use a nearby wick or a percent of price.
 ${buildTargetsRule(higherTimeframe, lowerTimeframe)}
 10. STOP LIFT (MANDATORY on every trade): AFTER confirmed open and BEFORE TP1, pick a structural proof level — then move the stop. Fields: stopLiftTrigger + stopLiftTo + stopLiftRationale.
    - stopLiftTrigger: between confirmed entry and TP1 (LONG above entry; SHORT below entry).
@@ -1029,7 +1086,7 @@ Respond with ONLY valid JSON:
 }`;
 
   const systemContent =
-    `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Weekly/monthly magnets only matter if they are NEAR or APPROACHING and price can reach them without first reversing the other way; far-away history must be ignored. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Stop-loss goes just behind the horizon-appropriate invalidation structure (not automatically the nearest LTF wick) — no arbitrary ATR padding. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. When an OPEN BOOK is provided, re-validate every id with openTradeReviews (keep|cancel) before proposing new bestTrades; cancel stale/broken zones. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
+    `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Weekly/monthly magnets only matter if they are NEAR or APPROACHING and price can reach them without first reversing the other way; far-away history must be ignored. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. The stop you publish is the live invalidation, beyond the origin swing of the unmitigated zone. If that stop is inside half the lower-timeframe ATR, do not return the trade. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. When an OPEN BOOK is provided, re-validate every id with openTradeReviews (keep|cancel) before proposing new bestTrades; cancel stale/broken zones. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
 
   const openai = new OpenAI({
     baseURL: 'https://api.x.ai/v1',
@@ -1157,6 +1214,19 @@ Respond with ONLY valid JSON:
       console.warn(
         `System deep-dive: ${rawTradeCount} raw / ${scored.length} priced / 0 gated — soft-posting top ${chosen.length}`,
       );
+    }
+
+    const minStopDist = (parseFloat(lowerData.atr) || 0) * 0.5;
+    if (minStopDist > 0) {
+      const before = chosen.length;
+      chosen = chosen.filter((t: any) => {
+        const entryNum = parseFloat(String(t.entry).replace(/[^0-9.-]/g, '')) || 0;
+        const slNum = parseFloat(String(t.stopLoss).replace(/[^0-9.-]/g, '')) || 0;
+        return Math.abs(entryNum - slNum) >= minStopDist;
+      });
+      if (before && !chosen.length) {
+        console.warn(`System deep-dive: dropped ${before} setup(s) inside half an ATR (${minStopDist})`);
+      }
     }
 
     bestTrades = chosen
@@ -1476,7 +1546,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const fmtTF = (label: string, d: ReturnType<typeof computeIndicators>) => `
 **${label} (${label === higherTimeframe ? 'Higher TF bias' : 'Lower TF execution'}):**
-- Price: $${d.currentPrice}, RSI: ${d.rsi}, MACD hist: ${d.macd.histogram}${d.macd.crossover !== 'none' ? ` (${d.macd.crossover})` : ''}
+- Price: $${d.currentPrice}, ATR(14): $${d.atr}, RSI: ${d.rsi}, MACD hist: ${d.macd.histogram}${d.macd.crossover !== 'none' ? ` (${d.macd.crossover})` : ''}
 - Stoch: %K ${d.stoch.k}, %D ${d.stoch.d}${d.stoch.crossover !== 'none' ? ` (${d.stoch.crossover})` : ''} | ADX: ${d.adx}
 - Volume Profile: POC $${d.poc} | VAH $${d.vah} | VAL $${d.val}
 - VWAP: $${d.vwap} | OBV: ${d.obv} | BOS: ${d.bos} | CHoCH: ${d.choch}
@@ -1541,10 +1611,9 @@ ${fmtTF(lowerTimeframe, lowerData)}
    - entryConfirmLevel: after the entry zone is tagged, price must reclaim this level before the trade is OPEN (LONG: trade back above this price; SHORT: trade back below). Often equal to entry, or slightly past entry (e.g. close above wick high of the zone / break of the micro-swing that formed the entry).
    - entryConfirmRationale: technique-specific rule in plain language (e.g. "tag FVG then close back above zone high", "sweep liquidity then reclaim prior low").
    - A wick through the entry zone is the sweep, not a cancel. Stay pending/armed until reclaim.
-   - On reclaim the live SL becomes the sweep extreme (e.g. LONG entry 60200, sweep 60100, reclaim >60200 → open, SL 60100).
-   - stopLoss in JSON is a HINT for R:R / thesis cap only — do not treat it as "cancel if tagged before entry".
-   - Invalid only if the sweep runs far beyond that hint (thesis dead) or the target already printed before confirm.
-8. STOP LOSS: publish a structural hint behind the zone for planning. The tracker replaces it with the actual sweep wick on confirm. Below structural low for LONGs, above structural high for SHORTs. No arbitrary ATR padding.
+   - stopLoss is the live stop. The tracker keeps that price. It does not move the stop to the wick.
+   - The idea is invalid only if price closes through that stop, or the target already printed before confirm.
+8. STOP LOSS: stopLoss goes beyond the origin swing of the unmitigated zone named in the data. LONG: below that origin. SHORT: above that origin. If the only valid stop is inside half the lower-timeframe ATR, return an empty bestTrades array. Do not use a nearby wick or a percent of price.
 9. TARGETS: level-to-level at the horizon's scale. TP1 nearest valid opposing level for this horizon; TP2 next major level. On swing/position prefer ${higherTimeframe} levels. Min R/R is measured to TP1 (not TP2).
 10. STOP LIFT (MANDATORY on every trade): AFTER confirmed open and BEFORE TP1, pick a structural proof level — then move the stop. Fields: stopLiftTrigger + stopLiftTo + stopLiftRationale.
    - stopLiftTrigger: between confirmed entry and TP1 (LONG above entry; SHORT below entry).
@@ -1602,7 +1671,7 @@ Respond with ONLY valid JSON:
     let completion: any;
     const systemContent = analysisType === 'general'
       ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Always respond with valid JSON only.`
-      : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Stop-loss goes just behind the horizon-appropriate invalidation structure (not automatically the nearest LTF wick) — no arbitrary ATR padding. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
+      : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. The stop you publish is the live invalidation, beyond the origin swing of the unmitigated zone. If that stop is inside half the lower-timeframe ATR, do not return the trade. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
     try {
       completion = await (openai.chat.completions.create as any)({
         model: XAI_PRIMARY_MODEL,
