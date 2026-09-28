@@ -79,7 +79,8 @@ function ema(xs: number[], p: number): number[] {
   return out;
 }
 
-function rsi(closes: number[], p = 14): number[] {
+/** Wilder RSI (same seeding as the research scripts). */
+export function rsiWilder(closes: number[], p = 14): number[] {
   const n = closes.length;
   const out = new Array<number>(n).fill(NaN);
   if (n <= p) return out;
@@ -197,7 +198,14 @@ function resampleHtf(candles: TideZoneCandle[], factor: number): HtfBar[] {
       cur.time = c.time;
     }
   }
-  if (cur) out.push(cur);
+  // Only keep the trailing bucket once it is complete. A partial 4h bucket would give the
+  // newest bar a value that changes when the next bar lands in the same bucket (repaint).
+  // Earlier bars already read the previous completed bucket, so this keeps every bar causal.
+  if (cur) {
+    const barSec = medianDt(candles);
+    const lastTime = candles[candles.length - 1].time;
+    if (lastTime + barSec >= curKey + bucket) out.push(cur);
+  }
   return out;
 }
 
@@ -240,7 +248,7 @@ export function calculateTideZone(candles: TideZoneCandle[], options: TideZoneOp
 
   const htf = resampleHtf(candles, factor);
   const htfCloses = htf.map((c) => c.close);
-  const htfRsi = rsi(htfCloses, 14);
+  const htfRsi = rsiWilder(htfCloses, 14);
   const htfEma50 = ema(htfCloses, 50);
   const htfRsiPct = rollingPct(htfRsi, 80);
   const htfDist = htf.map((c, i) => (htfEma50[i] ? c.close / htfEma50[i] - 1 : NaN));
@@ -279,22 +287,11 @@ export function calculateTideZone(candles: TideZoneCandle[], options: TideZoneOp
     const h = lastLe(htfSeries, candles[i].time);
     const tideR = h && Number.isFinite(h.rsiPct) ? h.rsiPct : NaN;
     const tideE = h && Number.isFinite(h.distPct) ? h.distPct : NaN;
-    const tide =
-      Number.isFinite(tideR) && Number.isFinite(tideE)
-        ? 0.6 * tideR + 0.4 * tideE
-        : Number.isFinite(tideR)
-          ? tideR
-          : Number.isFinite(tideE)
-            ? tideE
-            : NaN;
+    // Both halves required (matches the research scripts; only affects warm-up bars).
+    const tide = Number.isFinite(tideR) && Number.isFinite(tideE) ? 0.6 * tideR + 0.4 * tideE : NaN;
     const eA = energyA[i];
     const eB = energyB[i];
-    const energy =
-      Number.isFinite(eA) && Number.isFinite(eB)
-        ? 0.5 * eA + 0.5 * eB
-        : Number.isFinite(eA)
-          ? eA
-          : eB;
+    const energy = Number.isFinite(eA) && Number.isFinite(eB) ? 0.5 * eA + 0.5 * eB : NaN;
     const tape = tapePct[i];
     if (!Number.isFinite(tide) || !Number.isFinite(energy) || !Number.isFinite(tape)) continue;
 
@@ -537,6 +534,10 @@ function emaAt(ema: { time: number; value: number }[], time: number): number | n
 }
 
 /**
+ * @deprecated Repaints: the zigzag collapse drops a DIV once a lower low replaces its pivot, and
+ * the "forming" box moves. The chart uses the point-in-time `computeTideV2` (tideSignals.ts).
+ * Kept for the legacy absorb helpers/tests only.
+ *
  * DIV = price zigzag lower low vs Tide-EMA zigzag higher low.
  * Absorb = same two price pivots, price flat/down and Tide EMA rising.
  * No min-gap / EMA-lift / % filters — N is the only structure size.

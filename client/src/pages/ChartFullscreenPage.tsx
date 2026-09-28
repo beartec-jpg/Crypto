@@ -38,6 +38,7 @@ import { FullscreenChartViewportLayer } from '@/components/chart/FullscreenChart
 import { FullscreenOscillatorLayout } from '@/components/oscillators/FullscreenOscillatorLayout';
 import { TideAccumRenderer } from '@/components/indicators/TideAccumRenderer';
 import { useTideZoneSettings } from '@/hooks/useTideZoneSettings';
+import { useTideV2 } from '@/hooks/useTideV2';
 
 import { useSuperTrendSettings } from '@/hooks/useSuperTrendSettings';
 import { useSuperTrendCalculation } from '@/hooks/useSuperTrendCalculation';
@@ -658,6 +659,15 @@ export function ChartFullscreenPage({
   // Hooks - Oscillator data
   const oscillatorData = useOscillatorData(effectiveCandles, oscillatorSettings, {
     oiHistory: gdsOiHistory,
+    timeframe: renderedTimeframe,
+  });
+  const tideV2 = useTideV2({
+    candles: effectiveCandles,
+    tideZone: oscillatorData.tideZone,
+    timeframe: oscillatorData.tideTimeframe,
+    settings: tideZoneSettings.settings,
+    seriesKey: candlesKey,
+    enabled: oscillatorPanel.selectedOscillators.has('tideZone'),
   });
 
   const oscillatorModalConfigs = useMemo<Record<string, OscillatorModalConfig>>(
@@ -3095,6 +3105,7 @@ export function ChartFullscreenPage({
           selectedOscillators={oscillatorPanel.selectedOscillators}
           oscillatorData={oscillatorData}
           candles={effectiveCandles}
+          tide={tideV2}
           onCycleMiniMode={oscillatorPanel.cycleMode}
           smartMoneyPanelData={smartMoneyPanelData}
           smcTrendEnginePanelData={smcTrendEnginePanelData}
@@ -3276,6 +3287,8 @@ export function ChartFullscreenPage({
           candleSeries={candleSeriesRef.current}
           candles={effectiveCandles}
           tideZone={oscillatorData.tideZone}
+          timeframe={oscillatorData.tideTimeframe}
+          tide={tideV2}
           settings={tideZoneSettings.settings}
           enabled={oscillatorPanel.selectedOscillators.has('tideZone')}
         />

@@ -266,7 +266,7 @@ export function DockedOscillatorSection({
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2 flex flex-col">
             <OscillatorDockHeader id="tideZone" title="Tide Zone" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <div className="min-h-0 flex-1">
-              <TideZonePanel data={oscillatorData.tideZone} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} showHud={false} />
+              <TideZonePanel data={oscillatorData.tideZone} candles={candles} tideTimeframe={oscillatorData.tideTimeframe} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} showHud={false} />
             </div>
           </div>
         )}

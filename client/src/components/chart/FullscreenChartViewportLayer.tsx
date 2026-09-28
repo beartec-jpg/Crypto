@@ -7,15 +7,19 @@ import type { OscillatorData } from '@/hooks/useOscillatorData';
 import type { ScoringInput } from '@/lib/tradingSystemScoring';
 import type { SystemEvaluation } from '@/types/systemScoring';
 import type { SMCTrendEnginePanelData } from '@/components/trading/SMCTrendEngine/types';
-import { TideZoneHud } from '@/components/indicators/TideZoneHud';
-import { emaTideScore, findTideDivZones } from '@/lib/indicators/tideZone';
+import { TideOffNote, TideZoneHud } from '@/components/indicators/TideZoneHud';
+import { emaTideScore } from '@/lib/indicators/tideZone';
+import type { TideV2Result } from '@/lib/indicators/tideSignals';
 import { useTideZoneSettings } from '@/hooks/useTideZoneSettings';
+import { summarizeTide } from '@/hooks/useTideV2';
 
 interface FullscreenChartViewportLayerProps {
   miniOscillators: Set<string>;
   selectedOscillators?: Set<string>;
   oscillatorData: OscillatorData;
   candles?: { time: number; low: number }[];
+  /** Point-in-time Tide v2 result for the main chart (null off 1h/4h). */
+  tide?: TideV2Result | null;
   onCycleMiniMode: (oscillatorId: string) => void;
   showHtfBiasPanel: boolean;
   htfBiasEntries: any[];
@@ -36,6 +40,7 @@ export function FullscreenChartViewportLayer({
   selectedOscillators,
   oscillatorData,
   candles = [],
+  tide = null,
   onCycleMiniMode,
   showHtfBiasPanel,
   htfBiasEntries,
@@ -48,19 +53,12 @@ export function FullscreenChartViewportLayer({
   smcTrendEnginePanelData,
 }: FullscreenChartViewportLayerProps) {
   const { settings: tideSettings } = useTideZoneSettings();
-  const tideEmaPeriod = tideSettings.emaPeriod;
-  const tideEma = selectedOscillators?.has('tideZone')
-    ? emaTideScore(oscillatorData.tideZone, tideEmaPeriod)
-    : [];
+  const tideOn = Boolean(selectedOscillators?.has('tideZone'));
+  const tideTf = oscillatorData.tideTimeframe;
+  const tideEmaPeriod = tideTf ? tideSettings.byTimeframe[tideTf].emaPeriod : undefined;
+  const tideEma = tideOn && tideEmaPeriod ? emaTideScore(oscillatorData.tideZone, tideEmaPeriod) : [];
   const tideEmaLast = tideEma.length ? tideEma[tideEma.length - 1].value : undefined;
-  const tideDiv = selectedOscillators?.has('tideZone')
-    ? findTideDivZones(candles, oscillatorData.tideZone, tideSettings)
-    : [];
-  const lastDiv = tideDiv.length ? tideDiv[tideDiv.length - 1] : null;
-  const recentTimes = new Set(candles.slice(-4).map((c) => c.time));
-  const divLive = Boolean(
-    lastDiv && (lastDiv.status === 'forming' || recentTimes.has(lastDiv.t2)),
-  );
+  const tideStatus = tideOn ? summarizeTide(tide, candles) : undefined;
 
   return (
     <>
@@ -74,17 +72,23 @@ export function FullscreenChartViewportLayer({
 
       {showHtfBiasPanel && <HTFBiasPanel entries={htfBiasEntries} />}
 
-      {selectedOscillators?.has('tideZone') && oscillatorData.tideZone.length > 0 && (
+      {tideOn && tideTf && oscillatorData.tideZone.length > 0 && (
         <div className="absolute top-16 left-2 z-20 max-w-[calc(100%-5.5rem)]">
           <TideZoneHud
             last={oscillatorData.tideZone[oscillatorData.tideZone.length - 1]}
+            timeframe={tideTf}
+            status={tideStatus}
             absorb={oscillatorData.tideZone.slice(-3).some((d) => d.tell === 'absorb')}
             distro={oscillatorData.tideZone.slice(-3).some((d) => d.tell === 'distro')}
             reacc={oscillatorData.tideZone.slice(-3).some((d) => d.tell === 'reacc')}
             emaPeriod={tideEmaPeriod}
             emaValue={tideEmaLast}
-            div={divLive}
           />
+        </div>
+      )}
+      {tideOn && !tideTf && candles.length > 0 && (
+        <div className="absolute top-16 left-2 z-20">
+          <TideOffNote />
         </div>
       )}
 

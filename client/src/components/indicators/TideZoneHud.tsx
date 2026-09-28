@@ -3,19 +3,22 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { TideZonePoint } from '@/lib/indicators/tideZone';
 import { tideZoneLabel } from '@/lib/indicators/tideZone';
 import { TideHistEmaControl } from '@/components/indicators/TideHistEmaControl';
-import { TideZoneSettingsModal } from '@/components/modals/TideZoneSettingsModal';
-import { useTideZoneSettings } from '@/hooks/useTideZoneSettings';
+import { ConnectedTideZoneSettingsModal } from '@/components/modals/TideZoneSettingsModal';
+import type { TideStatus } from '@/hooks/useTideV2';
+import type { TideTimeframe } from '@/types/tideZoneSettings';
 
 interface TideZoneHudProps {
   last: TideZonePoint;
+  /** Chart timeframe ('1h' | '4h'). */
+  timeframe: TideTimeframe;
+  /** Point-in-time Tide v2 status (fresh print, open stop). */
+  status?: TideStatus;
   absorb?: boolean;
   distro?: boolean;
   reacc?: boolean;
   className?: string;
   emaPeriod?: number;
   emaValue?: number;
-  accum?: boolean;
-  div?: boolean;
 }
 
 const COMPONENTS = [
@@ -43,25 +46,44 @@ function kindClass(kind: TideZonePoint['kind']): string {
   return 'text-slate-300 border-slate-600/60 bg-slate-900/85';
 }
 
+function fmtPrice(p: number): string {
+  return p >= 100 ? p.toFixed(1) : p.toPrecision(5);
+}
+
+/** Shown instead of the HUD on timeframes where Tide does not run. */
+export function TideOffNote({ className }: { className?: string }) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  return (
+    <div
+      className={`pointer-events-auto inline-flex items-center gap-2 rounded-lg border border-slate-600/60 bg-slate-900/85 px-2 py-1 text-[11px] text-slate-300 backdrop-blur-sm ${className ?? ''}`}
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <span className="font-semibold">Tide: 1h/4h only</span>
+      <TideHistEmaControl timeframe={null} onOpenSettings={() => setSettingsOpen(true)} className="border-0 bg-transparent px-0" />
+      <ConnectedTideZoneSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+    </div>
+  );
+}
+
 export function TideZoneHud({
   last,
+  timeframe,
+  status,
   absorb = false,
   distro = false,
   reacc = false,
   className,
   emaPeriod,
   emaValue,
-  accum = false,
-  div = false,
 }: TideZoneHudProps) {
   const [open, setOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { settings, updateSettings, resetToDefaults } = useTideZoneSettings();
   const pct = (v: number) => Math.round(v * 100);
   const showAbsorb = absorb || last.tell === 'absorb';
   const showDistro = !showAbsorb && (distro || last.tell === 'distro');
   const showReacc = !showAbsorb && !showDistro && (reacc || last.tell === 'reacc');
-  const showDiv = div || accum;
+  const fresh = status?.fresh ?? null;
 
   return (
     <div
@@ -92,9 +114,23 @@ export function TideZoneHud({
                 Reacc
               </span>
             )}
-            {showDiv && (
-              <span className="mr-1 rounded bg-violet-500/30 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-200">
-                Div
+            {(fresh === 'out' || fresh === 'out_plus') && (
+              <span
+                className={`mr-1 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
+                  fresh === 'out_plus' ? 'bg-emerald-500/30 text-emerald-200' : 'bg-violet-500/30 text-violet-200'
+                }`}
+              >
+                {fresh === 'out_plus' ? 'Tide out +' : 'Tide out'}
+              </span>
+            )}
+            {fresh === 'in' && (
+              <span className="mr-1 rounded bg-amber-500/30 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-200">
+                Tide in
+              </span>
+            )}
+            {fresh === 'stop' && (
+              <span className="mr-1 rounded bg-red-500/30 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-red-200">
+                Stop hit
               </span>
             )}
             {tideZoneLabel(last.kind)}
@@ -105,6 +141,10 @@ export function TideZoneHud({
             {emaPeriod != null && emaValue != null && Number.isFinite(emaValue) && (
               <span className="text-sky-200"> · EMA{emaPeriod} {emaValue.toFixed(0)}</span>
             )}
+            {status?.activeStop != null && (
+              <span className="text-red-200"> · SL {fmtPrice(status.activeStop)}</span>
+            )}
+            <span className="opacity-60"> · {timeframe}</span>
           </div>
         </div>
         {open ? <ChevronUp className="h-3.5 w-3.5 shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0" />}
@@ -112,7 +152,7 @@ export function TideZoneHud({
 
       {open && (
         <div className="border-t border-white/10 px-2 py-2 space-y-2">
-          <TideHistEmaControl onOpenSettings={() => setSettingsOpen(true)} />
+          <TideHistEmaControl timeframe={timeframe} onOpenSettings={() => setSettingsOpen(true)} />
           {COMPONENTS.map((c) => (
             <div key={c.key}>
               <div className="text-[10px] font-semibold uppercase tracking-wide">
@@ -142,27 +182,20 @@ export function TideZoneHud({
               Reacc watch: high in an up-tide and OI is not flushing. Pause in trend, not OI-leave distro.
             </p>
           )}
-          {showDiv && (
-            <p className="text-[10px] leading-snug text-violet-200">
-              Div watch: price lower low vs Tide EMA higher low, both troughs below the
-              below-score line. Same print as absorb, later than the 0-cross. Not a buy.
-            </p>
-          )}
+          <p className="text-[10px] leading-snug text-violet-200">
+            Tide out: price lower low vs Tide-EMA higher low (both under the threshold), printed on the
+            bar it confirms and never removed. Tide out + (green) = RSI(14) under 30 between the low and
+            that bar. Dashed red line = stop under the low; it ends at the Tide in exit or when hit.
+          </p>
           <p className="text-[10px] leading-snug text-slate-400">
             Green +40 = 4h tide is up (where you are, not a buy). Amber = bounce vs down tide.
             Red −40 = 4h tide is down. Sky line is an EMA of the hist — use it to ignore 1–2 bar
-            early flips. Exit longs at 0, not −40. Distro/Reacc need OI; they stay off if the
+            early flips. Exit on Tide in (amber). Distro/Reacc need OI; they stay off if the
             book feed is missing.
           </p>
         </div>
       )}
-      <TideZoneSettingsModal
-        isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        settings={settings}
-        onSettingsChange={updateSettings}
-        onReset={resetToDefaults}
-      />
+      <ConnectedTideZoneSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} timeframe={timeframe} />
     </div>
   );
 }
