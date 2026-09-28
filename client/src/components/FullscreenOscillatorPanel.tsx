@@ -4,7 +4,7 @@ import type { CandleData } from '@/types/chart.types';
 import { DraggableToolbar } from '@/components/draggable/DraggableToolbar';
 import { X } from 'lucide-react';
 import { TideZonePanel } from '@/components/indicators/oscillators/TideZonePanel';
-import { calculateTideZone } from '@/lib/indicators/tideZone';
+import { calculateTideZoneForTimeframe } from '@/lib/indicators/tideTimeframe';
 import { applyMainChartVisibleRange, readMainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 
 // Height of the mobile navigation bar at the bottom of the screen
@@ -563,7 +563,10 @@ export function FullscreenOscillatorPanel({
                 </button>
               </div>
               <div className="w-full h-[180px]">
-                <TideZonePanel data={calculateTideZone(candles)} candles={candles} />
+                {(() => {
+                  const tide = calculateTideZoneForTimeframe(candles, undefined);
+                  return <TideZonePanel data={tide.data} candles={candles} tideTimeframe={tide.timeframe} />;
+                })()}
               </div>
             </div>
           )}

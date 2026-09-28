@@ -21,7 +21,8 @@ import {
   calculateCCI, 
   calculateADX 
 } from '@/lib/indicators';
-import { calculateTideZone, tideZoneLabel } from '@/lib/indicators/tideZone';
+import { tideZoneLabel } from '@/lib/indicators/tideZone';
+import { calculateTideZoneForTimeframe } from '@/lib/indicators/tideTimeframe';
 
 // For divergence detection
 import { detectDivergence } from '@/lib/calculations';
@@ -99,6 +100,9 @@ export function OscillatorsPanel({
   const [internalOscillators, setInternalOscillators] = useState<string[]>(['rsi', 'macd']);
   const activeOscillators = controlledOscillators ?? internalOscillators;
 
+  // Tide only runs on 1h/4h candles (interval inferred from bar spacing here).
+  const tide = candles.length > 0 ? calculateTideZoneForTimeframe(candles, undefined) : { timeframe: null, data: [] };
+
   // Calculate all oscillators from candles
   const calculatedData = {
     rsi: candles.length > 0 ? calculateRSI(candles, 14) : [],
@@ -109,7 +113,7 @@ export function OscillatorsPanel({
     williamsR: candles.length > 0 ? calculateWilliamsR(candles, 14) : [],
     cci: candles.length > 0 ? calculateCCI(candles, 20) : [],
     adx: candles.length > 0 ? calculateADX(candles, 14) : [],
-    tideZone: candles.length > 0 ? calculateTideZone(candles) : [],
+    tideZone: tide.data,
   };
 
   const toggleOscillator = (id: string) => {
@@ -537,7 +541,7 @@ export function OscillatorsPanel({
                 </button>
               </div>
               <div className="h-[220px]">
-                <TideZonePanel data={calculatedData.tideZone} candles={candles} />
+                <TideZonePanel data={calculatedData.tideZone} candles={candles} tideTimeframe={tide.timeframe} />
               </div>
             </div>
           )}

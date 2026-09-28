@@ -22,10 +22,14 @@ import {
   calculateCCI,
   calculateADX,
 } from '@/lib/indicators';
-import { calculateTideZone, type TideZonePoint } from '@/lib/indicators/tideZone';
+import type { TideZonePoint } from '@/lib/indicators/tideZone';
+import type { TideTimeframe } from '@/lib/indicators/tideSignals';
+import { calculateTideZoneForTimeframe } from '@/lib/indicators/tideTimeframe';
 
 export interface TideZoneExtras {
   oiHistory?: Array<{ timestamp: number; value: number }>;
+  /** Interval of `candles` (e.g. '1h'). Tide only runs on 1h/4h; omitted = infer from bar spacing. */
+  timeframe?: string | null;
 }
 
 interface CandleData {
@@ -66,6 +70,8 @@ export interface OscillatorData {
     explosion: Array<{ time: number; value: number }>;
   };
   tideZone: TideZonePoint[];
+  /** '1h' | '4h' when Tide ran on these candles; null = Tide is blank on this timeframe. */
+  tideTimeframe: TideTimeframe | null;
 }
 
 export interface OscillatorCalculationSettings {
@@ -131,6 +137,7 @@ export function useOscillatorData(
         klinger: { klinger: [], signal: [] },
         waddah: { histogram: [], explosion: [] },
         tideZone: [],
+        tideTimeframe: null,
       };
     }
 
@@ -150,6 +157,8 @@ export function useOscillatorData(
       color: c.close >= c.open ? '#26a69a' : '#ef5350',
     }));
 
+    const tide = calculateTideZoneForTimeframe(candles, extras.timeframe, { oi });
+
     return {
       rsi: rsiData,
       macd: macdData,
@@ -165,7 +174,8 @@ export function useOscillatorData(
       tsi: calculateTSI(candles, 25, 13, 7),
       klinger: calculateKlingerOscillator(candles, 34, 55, 13),
       waddah: calculateWaddahAttarExplosion(candles, 150, 20, 2),
-      tideZone: calculateTideZone(candles, { oi }),
+      tideZone: tide.data,
+      tideTimeframe: tide.timeframe,
     };
-  }, [candles, settings, extras.oiHistory]);
+  }, [candles, settings, extras.oiHistory, extras.timeframe]);
 }

@@ -149,7 +149,7 @@ export function PoppedOutOscillators({
           />
         );
       case 'tideZone':
-        return <TideZonePanel data={oscillatorData.tideZone} candles={candles} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />;
+        return <TideZonePanel data={oscillatorData.tideZone} candles={candles} tideTimeframe={oscillatorData.tideTimeframe} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />;
       case 'smartMoney':
         if (!smartMoneyPanelData?.evaluation || !smartMoneyPanelData.scoringInput) {
           return <div className="h-full w-full rounded border border-slate-700 bg-slate-900/70 p-3 text-xs text-slate-400">Waiting for SMC data...</div>;
