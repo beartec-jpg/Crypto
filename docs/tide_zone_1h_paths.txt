@@ -1,0 +1,72 @@
+TIDE ZONE 1h PATH STUDY  (no stop — same bar close → later close)
+Positive mean after +40 = longs work. Negative after fade0 = shorts/exits work.
+
+-- entry+40 12h --
+  all: n= 9445  mean=+0.237%  med=-0.079%  win= 47.9%
+  train: n= 5994  mean=+0.333%  med=-0.064%  win= 48.4%
+  hold: n= 3451  mean=+0.070%  med=-0.108%  win= 47.0%
+
+-- entry+40 24h --
+  all: n= 9445  mean=+0.453%  med=-0.143%  win= 47.8%
+  train: n= 5994  mean=+0.649%  med=-0.123%  win= 48.1%
+  hold: n= 3451  mean=+0.112%  med=-0.174%  win= 47.2%
+
+-- entry+40 exit@0 --
+  all: n= 7835  mean=-1.122%  med=-1.229%  win= 22.2%
+  train: n= 4966  mean=-1.085%  med=-1.237%  win= 22.9%
+  hold: n= 2869  mean=-1.185%  med=-1.216%  win= 21.1%
+
+-- entry+40 exit@-40 --
+  all: n= 3334  mean=-3.960%  med=-3.227%  win=  4.8%
+  train: n= 2085  mean=-4.167%  med=-3.342%  win=  5.0%
+  hold: n= 1249  mean=-3.613%  med=-3.019%  win=  4.4%
+
+-- fade0 then 12h --
+  all: n= 3280  mean=+0.075%  med=+0.021%  win= 50.6%
+  train: n= 2061  mean=+0.149%  med=+0.074%  win= 51.6%
+  hold: n= 1219  mean=-0.048%  med=-0.038%  win= 48.9%
+
+-- fade0 then 24h --
+  all: n= 3280  mean=+0.319%  med=+0.131%  win= 52.0%
+  train: n= 2061  mean=+0.520%  med=+0.270%  win= 54.3%
+  hold: n= 1219  mean=-0.022%  med=-0.117%  win= 48.2%
+
+-- absorb then 12h --
+  all: n=  537  mean=+0.258%  med=+0.206%  win= 54.4%
+  train: n=  340  mean=+0.223%  med=+0.109%  win= 52.9%
+  hold: n=  197  mean=+0.317%  med=+0.319%  win= 56.9%
+
+-- absorb then 24h --
+  all: n=  537  mean=+0.293%  med=+0.142%  win= 51.4%
+  train: n=  340  mean=+0.359%  med=+0.064%  win= 51.2%
+  hold: n=  197  mean=+0.178%  med=+0.204%  win= 51.8%
+
+-- bounce then 12h --
+  all: n=  703  mean=+0.291%  med=+0.163%  win= 53.8%
+  train: n=  430  mean=+0.284%  med=+0.099%  win= 52.1%
+  hold: n=  273  mean=+0.301%  med=+0.354%  win= 56.4%
+
+-- bounce then 24h --
+  all: n=  703  mean=+0.350%  med=-0.184%  win= 47.2%
+  train: n=  430  mean=+0.699%  med=-0.239%  win= 45.8%
+  hold: n=  273  mean=-0.200%  med=-0.029%  win= 49.5%
+
+-- any 0-cross down 12h --
+  all: n=12329  mean=+0.037%  med=+0.021%  win= 50.6%
+  train: n= 7851  mean=+0.073%  med=+0.036%  win= 50.9%
+  hold: n= 4478  mean=-0.028%  med=+0.000%  win= 50.0%
+
+-- any 0-cross down 24h --
+  all: n=12329  mean=+0.090%  med=+0.057%  win= 51.0%
+  train: n= 7851  mean=+0.124%  med=+0.073%  win= 51.2%
+  hold: n= 4478  mean=+0.030%  med=+0.027%  win= 50.6%
+
+-- paired: (exit@0 ret) minus (exit@-40 ret) on SAME +40 longs --
+  positive => exiting at 0 beat waiting for -40
+  all: n= 3334  mean=+2.243%  med=+1.616%  win= 87.7%
+       share exit@0 better: 87.7%
+  train: n= 2085  mean=+2.364%  med=+1.675%  win= 87.5%
+       share exit@0 better: 87.5%
+  hold: n= 1249  mean=+2.041%  med=+1.587%  win= 87.9%
+       share exit@0 better: 87.9%
+

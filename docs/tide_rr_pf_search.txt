@@ -1,0 +1,114 @@
+TIDE RR / PROFIT-FACTOR SEARCH
+workers=28 jobs=24304
+host=beartec-brain (32-core CPU; AMD iGPU — no CUDA path for this zigzag/sim workload)
+Tide IN = bear_div | ema_peak | zero_down (indicator only).
+Stops = structure under pivot (ATR/%) or fixed %. Targets = Tide IN and/or +R.
+min_rr gate skips entries where 1.5*ATR / risk < gate.
+
+STRONG (+PF hold>=1.15 & train>=1.05, n>=25): 7307
+SOFT   (+PF hold>=1.05 & train mean>0): 9142
+
+======== TOP 40 STRONG ========
+4h  OUT ema8_n3_below-20_gap0_sep0_l IN emaPeak_ema8_n5_ab0    fixed2%        tp_tide          gate=1.5 H n=  51 wr= 43.1% mean= +2.327% pf= 3.03 avgR=+1.20 dd= -17.1% T mean= +0.162% pf= 1.11 why={'sl': 28, 'time': 8, 'tide_in': 15}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN emaPeak_ema8_n5_ab0    fixed2%        tp_tide          gate=1.5 H n=  38 wr= 42.1% mean= +2.211% pf= 2.84 avgR=+1.15 dd= -17.8% T mean= +0.188% pf= 1.13 why={'sl': 22, 'time': 5, 'tide_in': 11}
+4h  OUT ema8_n3_below-20_gap0_sep0_l IN emaPeak_ema13_n5_ab0   fixed2%        tp_tide          gate=1.5 H n=  51 wr= 41.2% mean= +2.240% pf= 2.83 avgR=+1.16 dd= -19.5% T mean= +0.097% pf= 1.06 why={'sl': 30, 'time': 11, 'tide_in': 10}
+4h  OUT ema8_n3_below-20_gap0_sep0_l IN zero_down              fixed2%        tp_tide          gate=1.5 H n=  51 wr= 41.2% mean= +1.792% pf= 2.77 avgR=+0.94 dd= -13.4% T mean= +0.243% pf= 1.19 why={'sl': 23, 'tide_in': 16, 'time': 12}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN zero_down              fixed2%        tp_tide_or_2R    gate=1.5 H n=  38 wr= 55.3% mean= +1.385% pf= 2.77 avgR=+0.73 dd=  -4.3% T mean= +0.434% pf= 1.40 why={'tp': 21, 'sl': 14, 'tide_in': 3}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN zero_down              fixed2%        tp_tide          gate=1.5 H n=  38 wr= 42.1% mean= +1.860% pf= 2.76 avgR=+0.97 dd= -12.2% T mean= +0.360% pf= 1.29 why={'sl': 19, 'tide_in': 10, 'time': 9}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN emaPeak_ema13_n5_ab0   fixed2%        tp_tide          gate=1.5 H n=  38 wr= 39.5% mean= +2.174% pf= 2.73 avgR=+1.13 dd= -17.8% T mean= +0.106% pf= 1.07 why={'sl': 23, 'time': 7, 'tide_in': 8}
+4h  OUT ema8_n3_below-10_gap0_sep0_l IN zero_down              fixed2%        tp_tide          gate=1.5 H n=  59 wr= 40.7% mean= +1.606% pf= 2.68 avgR=+0.84 dd= -13.2% T mean= +0.189% pf= 1.15 why={'sl': 25, 'tide_in': 20, 'time': 14}
+4h  OUT ema8_n3_below-20_gap0_sep0_l IN zero_down              fixed2%        tp_tide_or_2R    gate=1.5 H n=  51 wr= 54.9% mean= +1.259% pf= 2.66 avgR=+0.67 dd=  -4.3% T mean= +0.343% pf= 1.31 why={'tp': 26, 'sl': 17, 'tide_in': 8}
+4h  OUT ema8_n3_below-10_gap0_sep0_l IN emaPeak_ema8_n5_ab0    fixed2%        tp_tide          gate=1.5 H n=  59 wr= 40.7% mean= +1.934% pf= 2.61 avgR=+1.01 dd= -16.9% T mean= +0.117% pf= 1.08 why={'sl': 34, 'time': 10, 'tide_in': 15}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN emaPeak_ema8_n8_ab0    fixed1.5%      tp_tide          gate=1.5 H n=  54 wr= 33.3% mean= +1.587% pf= 2.59 avgR=+1.11 dd= -19.6% T mean= +0.062% pf= 1.05 why={'sl': 33, 'time': 12, 'tide_in': 9}
+4h  OUT ema8_n3_below-10_gap0_sep0_l IN zero_down              fixed2%        tp_tide_or_2R    gate=1.5 H n=  59 wr= 52.5% mean= +1.145% pf= 2.55 avgR=+0.61 dd=  -6.3% T mean= +0.337% pf= 1.31 why={'tp': 28, 'sl': 19, 'tide_in': 12}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN emaPeak_ema13_n5_ab0   fixed1.5%      tp_tide          gate=0.0 H n=  83 wr= 37.3% mean= +1.441% pf= 2.52 avgR=+1.01 dd= -22.5% T mean= +0.119% pf= 1.10 why={'tide_in': 13, 'sl': 48, 'time': 22}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN emaPeak_ema13_n5_ab0   fixed1.5%      tp_tide          gate=1.5 H n=  54 wr= 33.3% mean= +1.538% pf= 2.51 avgR=+1.08 dd= -17.6% T mean= +0.157% pf= 1.13 why={'sl': 34, 'time': 10, 'tide_in': 10}
+4h  OUT ema8_n3_below-20_gap0_sep0_l IN emaPeak_ema13_n5_ab0   fixed2%        tp_tide          gate=0.0 H n= 108 wr= 39.8% mean= +1.735% pf= 2.50 avgR=+0.91 dd= -12.6% T mean= +0.099% pf= 1.07 why={'tide_in': 19, 'sl': 58, 'time': 31}
+4h  OUT ema8_n3_below-20_gap0_sep0_l IN emaPeak_ema8_n5_ab0    fixed2%        tp_tide          gate=0.0 H n= 108 wr= 40.7% mean= +1.662% pf= 2.49 avgR=+0.87 dd= -13.9% T mean= +0.132% pf= 1.10 why={'tide_in': 30, 'sl': 55, 'time': 23}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN zero_down              fixed2%        tp_tide          gate=0.0 H n=  82 wr= 46.3% mean= +1.235% pf= 2.48 avgR=+0.66 dd= -14.5% T mean= +0.142% pf= 1.12 why={'sl': 29, 'tide_in': 36, 'time': 17}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN emaPeak_ema8_n5_ab0    fixed1.5%      tp_tide          gate=0.0 H n=  83 wr= 38.6% mean= +1.350% pf= 2.47 avgR=+0.95 dd= -22.0% T mean= +0.090% pf= 1.08 why={'tide_in': 20, 'sl': 47, 'time': 16}
+4h  OUT ema8_n3_below-20_gap0_sep0_l IN emaPeak_ema8_n5_ab0    fixed1.5%      tp_tide          gate=1.5 H n=  72 wr= 34.7% mean= +1.468% pf= 2.47 avgR=+1.03 dd= -21.8% T mean= +0.135% pf= 1.11 why={'sl': 45, 'time': 9, 'tide_in': 18}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN emaPeak_ema8_n5_ab0    fixed1.5%      tp_tide          gate=1.5 H n=  54 wr= 35.2% mean= +1.431% pf= 2.45 avgR=+1.01 dd= -17.6% T mean= +0.141% pf= 1.12 why={'sl': 33, 'time': 6, 'tide_in': 15}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN zero_down              fixed2%        tp_tide_or_1.5R  gate=1.5 H n=  38 wr= 60.5% mean= +1.047% pf= 2.45 avgR=+0.56 dd=  -4.3% T mean= +0.341% pf= 1.34 why={'tp': 23, 'sl': 13, 'tide_in': 2}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN emaPeak_ema21_n5_ab0   fixed1.5%      tp_tide          gate=0.0 H n=  83 wr= 34.9% mean= +1.414% pf= 2.43 avgR=+1.00 dd= -24.7% T mean= +0.097% pf= 1.08 why={'tide_in': 7, 'sl': 50, 'time': 26}
+4h  OUT ema8_n3_below-20_gap0_sep0_l IN emaPeak_ema13_n5_ab0   fixed1.5%      tp_tide          gate=1.5 H n=  72 wr= 31.9% mean= +1.500% pf= 2.43 avgR=+1.05 dd= -23.9% T mean= +0.144% pf= 1.12 why={'sl': 47, 'time': 14, 'tide_in': 11}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN emaPeak_ema8_n5_ab0    fixed2%        tp_tide          gate=0.0 H n=  82 wr= 41.5% mean= +1.575% pf= 2.42 avgR=+0.83 dd= -23.5% T mean= +0.086% pf= 1.06 why={'tide_in': 23, 'sl': 42, 'time': 17}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN emaPeak_ema21_n5_ab0   fixed1.5%      tp_tide          gate=1.5 H n=  54 wr= 31.5% mean= +1.512% pf= 2.42 avgR=+1.06 dd= -20.0% T mean= +0.135% pf= 1.11 why={'sl': 36, 'time': 14, 'tide_in': 4}
+4h  OUT ema8_n3_below-20_gap0_sep0_l IN emaPeak_ema8_n5_ab0    fixed1.5%      tp_tide          gate=0.0 H n= 109 wr= 37.6% mean= +1.327% pf= 2.41 avgR=+0.94 dd= -21.1% T mean= +0.128% pf= 1.11 why={'tide_in': 24, 'sl': 64, 'time': 21}
+4h  OUT ema8_n3_below-20_gap0_sep0_l IN zero_down              fixed2%        tp_tide_or_1.5R  gate=1.5 H n=  51 wr= 58.8% mean= +1.003% pf= 2.40 avgR=+0.54 dd=  -4.3% T mean= +0.257% pf= 1.25 why={'tp': 30, 'sl': 16, 'tide_in': 5}
+4h  OUT ema8_n3_below-20_gap0_sep0_l IN emaPeak_ema21_n5_ab0   fixed1.5%      tp_tide          gate=1.5 H n=  72 wr= 30.6% mean= +1.521% pf= 2.40 avgR=+1.07 dd= -26.1% T mean= +0.121% pf= 1.10 why={'sl': 49, 'time': 19, 'tide_in': 4}
+4h  OUT ema8_n3_below-20_gap0_sep0_l IN emaPeak_ema13_n5_ab0   fixed1.5%      tp_tide          gate=0.0 H n= 109 wr= 35.8% mean= +1.368% pf= 2.40 avgR=+0.97 dd= -22.0% T mean= +0.148% pf= 1.13 why={'tide_in': 15, 'sl': 66, 'time': 28}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN emaPeak_ema13_n5_ab0   struct_atr0.5  tp_tide          gate=0.0 H n=  81 wr= 49.4% mean= +1.987% pf= 2.39 avgR=+0.76 dd= -25.1% T mean= +0.565% pf= 1.26 why={'tide_in': 32, 'time': 33, 'sl': 16}
+4h  OUT ema8_n3_below-20_gap0_sep0_l IN emaPeak_ema21_n8_ab0   fixed1.5%      tp_tide          gate=0.0 H n= 108 wr= 35.2% mean= +1.392% pf= 2.38 avgR=+0.98 dd= -23.0% T mean= +0.078% pf= 1.07 why={'sl': 68, 'time': 35, 'tide_in': 5}
+4h  OUT ema8_n3_below-20_gap0_sep0_l IN emaPeak_ema8_n5_ab0    fixed2%        tp_tide_or_2R    gate=1.5 H n=  51 wr= 56.9% mean= +1.228% pf= 2.37 avgR=+0.65 dd=  -6.8% T mean= +0.367% pf= 1.31 why={'tp': 27, 'sl': 22, 'tide_in': 2}
+4h  OUT ema8_n3_below-20_gap0_sep0_l IN emaPeak_ema21_n5_ab0   fixed1.5%      tp_tide          gate=0.0 H n= 109 wr= 33.9% mean= +1.373% pf= 2.36 avgR=+0.97 dd= -24.5% T mean= +0.125% pf= 1.11 why={'tide_in': 8, 'sl': 68, 'time': 33}
+4h  OUT ema8_n3_below-20_gap0_sep0_l IN emaPeak_ema8_n5_ab0    struct_atr0.5  tp_tide          gate=0.0 H n= 107 wr= 51.4% mean= +1.879% pf= 2.33 avgR=+0.62 dd= -22.2% T mean= +0.728% pf= 1.38 why={'tide_in': 52, 'sl': 22, 'time': 33}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN emaPeak_ema8_n5_ab0    struct_atr0.5  tp_tide          gate=0.0 H n=  81 wr= 50.6% mean= +1.857% pf= 2.33 avgR=+0.73 dd= -25.9% T mean= +0.763% pf= 1.39 why={'tide_in': 40, 'sl': 16, 'time': 25}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN emaPeak_ema13_n5_ab0   struct_buf1%   tp_tide          gate=0.0 H n=  81 wr= 49.4% mean= +1.949% pf= 2.33 avgR=+0.71 dd= -26.5% T mean= +0.615% pf= 1.29 why={'tide_in': 31, 'time': 33, 'sl': 17}
+4h  OUT ema8_n3_below-20_gap0_sep0_l IN emaPeak_ema8_n8_ab10   fixed1.5%      tp_tide          gate=0.0 H n= 108 wr= 35.2% mean= +1.361% pf= 2.33 avgR=+0.96 dd= -22.3% T mean= +0.077% pf= 1.06 why={'sl': 70, 'time': 32, 'tide_in': 6}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN bear_ema8_n3_ab0       fixed2%        tp_tide_or_2R    gate=1.5 H n=  38 wr= 55.3% mean= +1.236% pf= 2.33 avgR=+0.66 dd=  -6.1% T mean= +0.398% pf= 1.33 why={'tp': 21, 'sl': 17}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN bear_ema8_n3_ab10      fixed2%        tp_tide_or_2R    gate=1.5 H n=  38 wr= 55.3% mean= +1.236% pf= 2.33 avgR=+0.66 dd=  -6.1% T mean= +0.398% pf= 1.33 why={'tp': 21, 'sl': 17}
+4h  OUT ema8_n3_below-30_gap0_sep0_l IN bear_ema8_n5_ab0       fixed2%        tp_tide_or_2R    gate=1.5 H n=  38 wr= 55.3% mean= +1.236% pf= 2.33 avgR=+0.66 dd=  -6.1% T mean= +0.398% pf= 1.33 why={'tp': 21, 'sl': 17}
+
+======== BEST PER TF (strong else soft) ========
+
+15m:
+  15m OUT ema8_n5_below-10_gap0_sep0_l IN zero_down              struct_buf0.5% tp_tide          gate=1.5 H n=  37 wr= 16.2% mean= +0.267% pf= 1.54 avgR=+1.01 dd=  -8.5% T mean= +0.117% pf= 1.23 why={'tide_in': 3, 'sl': 30, 'time': 4}
+  15m OUT ema8_n5_below-10_gap0_sep0_l IN emaPeak_ema21_n8_ab0   struct_buf0.5% tp_tide          gate=1.5 H n=  37 wr= 24.3% mean= +0.235% pf= 1.50 avgR=+0.87 dd=  -5.6% T mean= +0.205% pf= 1.49 why={'tide_in': 9, 'sl': 28}
+  15m OUT ema8_n5_below-10_gap0_sep0_l IN zero_down              struct_atr1    tp_tide_or_3R    gate=1.5 H n=  37 wr= 32.4% mean= +0.127% pf= 1.44 avgR=+0.30 dd=  -4.3% T mean= +0.046% pf= 1.13 why={'tp': 12, 'sl': 25}
+  15m OUT ema8_n5_below-10_gap0_sep0_l IN bear_ema8_n3_ab10      struct_atr1    tp_tide_or_3R    gate=1.5 H n=  37 wr= 32.4% mean= +0.127% pf= 1.44 avgR=+0.30 dd=  -4.3% T mean= +0.027% pf= 1.07 why={'tp': 12, 'sl': 25}
+  15m OUT ema8_n5_below-10_gap0_sep0_l IN bear_ema8_n5_ab10      struct_atr1    tp_tide_or_3R    gate=1.5 H n=  37 wr= 32.4% mean= +0.127% pf= 1.44 avgR=+0.30 dd=  -4.3% T mean= +0.027% pf= 1.07 why={'tp': 12, 'sl': 25}
+  15m OUT ema8_n5_below-10_gap0_sep0_l IN bear_ema8_n8_ab0       struct_atr1    tp_tide_or_3R    gate=1.5 H n=  37 wr= 32.4% mean= +0.127% pf= 1.44 avgR=+0.30 dd=  -4.3% T mean= +0.027% pf= 1.07 why={'tp': 12, 'sl': 25}
+  15m OUT ema8_n5_below-10_gap0_sep0_l IN bear_ema8_n8_ab10      struct_atr1    tp_tide_or_3R    gate=1.5 H n=  37 wr= 32.4% mean= +0.127% pf= 1.44 avgR=+0.30 dd=  -4.3% T mean= +0.027% pf= 1.07 why={'tp': 12, 'sl': 25}
+  15m OUT ema8_n5_below-10_gap0_sep0_l IN bear_ema13_n3_ab10     struct_atr1    tp_tide_or_3R    gate=1.5 H n=  37 wr= 32.4% mean= +0.127% pf= 1.44 avgR=+0.30 dd=  -4.3% T mean= +0.027% pf= 1.07 why={'tp': 12, 'sl': 25}
+
+1h:
+  1h  OUT ema21_n8_below-10_gap0_sep0_ IN emaPeak_ema8_n8_ab0    fixed1.5%      tp_tide          gate=1.5 H n=  48 wr= 45.8% mean= +0.991% pf= 2.29 avgR=+0.71 dd= -10.5% T mean= +0.426% pf= 1.42 why={'tide_in': 25, 'sl': 22, 'time': 1}
+  1h  OUT ema21_n8_below-10_gap0_sep0_ IN emaPeak_ema8_n8_ab10   fixed1.5%      tp_tide          gate=1.5 H n=  48 wr= 39.6% mean= +1.167% pf= 2.29 avgR=+0.83 dd= -13.5% T mean= +0.559% pf= 1.46 why={'sl': 27, 'tide_in': 18, 'time': 3}
+  1h  OUT ema21_n8_below-10_gap0_sep0_ IN emaPeak_ema21_n8_ab10  fixed1.5%      tp_tide          gate=1.5 H n=  48 wr= 37.5% mean= +1.142% pf= 2.16 avgR=+0.81 dd= -14.0% T mean= +0.414% pf= 1.32 why={'sl': 30, 'time': 8, 'tide_in': 10}
+  1h  OUT ema21_n8_below-10_gap0_sep0_ IN bear_ema21_n5_ab0      fixed1.5%      tp_tide_or_2R    gate=1.5 H n=  48 wr= 54.2% mean= +0.834% pf= 2.15 avgR=+0.61 dd= -10.5% T mean= +0.199% pf= 1.21 why={'sl': 22, 'tp': 25, 'tide_in': 1}
+  1h  OUT ema21_n8_below-10_gap0_sep0_ IN emaPeak_ema13_n8_ab10  fixed1.5%      tp_tide          gate=1.5 H n=  48 wr= 37.5% mean= +1.136% pf= 2.15 avgR=+0.81 dd= -14.5% T mean= +0.329% pf= 1.26 why={'sl': 30, 'tide_in': 12, 'time': 6}
+  1h  OUT ema21_n8_below-10_gap0_sep0_ IN bear_ema21_n3_ab0      fixed1.5%      tp_tide_or_2R    gate=1.5 H n=  48 wr= 54.2% mean= +0.830% pf= 2.15 avgR=+0.61 dd= -10.5% T mean= +0.220% pf= 1.23 why={'sl': 22, 'tp': 25, 'tide_in': 1}
+  1h  OUT ema21_n8_below-10_gap0_sep0_ IN bear_ema13_n3_ab0      fixed1.5%      tp_tide_or_2R    gate=1.5 H n=  48 wr= 54.2% mean= +0.828% pf= 2.14 avgR=+0.61 dd= -10.5% T mean= +0.230% pf= 1.25 why={'sl': 22, 'tp': 25, 'tide_in': 1}
+  1h  OUT ema21_n8_below-10_gap0_sep0_ IN emaPeak_ema8_n8_ab10   fixed1.5%      tp_tide_or_2R    gate=1.5 H n=  48 wr= 54.2% mean= +0.822% pf= 2.14 avgR=+0.60 dd= -10.5% T mean= +0.231% pf= 1.25 why={'sl': 22, 'tp': 25, 'tide_in': 1}
+
+4h:
+  4h  OUT ema8_n3_below-20_gap0_sep0_l IN emaPeak_ema8_n5_ab0    fixed2%        tp_tide          gate=1.5 H n=  51 wr= 43.1% mean= +2.327% pf= 3.03 avgR=+1.20 dd= -17.1% T mean= +0.162% pf= 1.11 why={'sl': 28, 'time': 8, 'tide_in': 15}
+  4h  OUT ema8_n3_below-30_gap0_sep0_l IN emaPeak_ema8_n5_ab0    fixed2%        tp_tide          gate=1.5 H n=  38 wr= 42.1% mean= +2.211% pf= 2.84 avgR=+1.15 dd= -17.8% T mean= +0.188% pf= 1.13 why={'sl': 22, 'time': 5, 'tide_in': 11}
+  4h  OUT ema8_n3_below-20_gap0_sep0_l IN emaPeak_ema13_n5_ab0   fixed2%        tp_tide          gate=1.5 H n=  51 wr= 41.2% mean= +2.240% pf= 2.83 avgR=+1.16 dd= -19.5% T mean= +0.097% pf= 1.06 why={'sl': 30, 'time': 11, 'tide_in': 10}
+  4h  OUT ema8_n3_below-20_gap0_sep0_l IN zero_down              fixed2%        tp_tide          gate=1.5 H n=  51 wr= 41.2% mean= +1.792% pf= 2.77 avgR=+0.94 dd= -13.4% T mean= +0.243% pf= 1.19 why={'sl': 23, 'tide_in': 16, 'time': 12}
+  4h  OUT ema8_n3_below-30_gap0_sep0_l IN zero_down              fixed2%        tp_tide_or_2R    gate=1.5 H n=  38 wr= 55.3% mean= +1.385% pf= 2.77 avgR=+0.73 dd=  -4.3% T mean= +0.434% pf= 1.40 why={'tp': 21, 'sl': 14, 'tide_in': 3}
+  4h  OUT ema8_n3_below-30_gap0_sep0_l IN zero_down              fixed2%        tp_tide          gate=1.5 H n=  38 wr= 42.1% mean= +1.860% pf= 2.76 avgR=+0.97 dd= -12.2% T mean= +0.360% pf= 1.29 why={'sl': 19, 'tide_in': 10, 'time': 9}
+  4h  OUT ema8_n3_below-30_gap0_sep0_l IN emaPeak_ema13_n5_ab0   fixed2%        tp_tide          gate=1.5 H n=  38 wr= 39.5% mean= +2.174% pf= 2.73 avgR=+1.13 dd= -17.8% T mean= +0.106% pf= 1.07 why={'sl': 23, 'time': 7, 'tide_in': 8}
+  4h  OUT ema8_n3_below-10_gap0_sep0_l IN zero_down              fixed2%        tp_tide          gate=1.5 H n=  59 wr= 40.7% mean= +1.606% pf= 2.68 avgR=+0.84 dd= -13.2% T mean= +0.189% pf= 1.15 why={'sl': 25, 'tide_in': 20, 'time': 14}
+
+======== BEST STOP / TP STYLE (avg of top hits) ========
+
+by stop:
+  fixed1.5%                    mean_pf=2.298 n=52
+  fixed2%                      mean_pf=2.296 n=119
+  struct_atr0.5                mean_pf=2.278 n=6
+  struct_buf0.5%               mean_pf=2.246 n=6
+  struct_buf1%                 mean_pf=2.227 n=7
+  struct_atr0.25               mean_pf=2.208 n=6
+  struct_atr1                  mean_pf=2.139 n=4
+
+by tp:
+  tp_tide                      mean_pf=2.339 n=87
+  tp_tide_or_2R                mean_pf=2.280 n=79
+  tp_tide_or_1.5R              mean_pf=2.168 n=33
+  tp_tide_or_3R                mean_pf=2.095 n=1
+
+by inn:
+  zero_down                    mean_pf=2.484 n=13
+  emaPeak_ema8_n5_ab0          mean_pf=2.354 n=25
+  emaPeak_ema13_n5_ab0         mean_pf=2.350 n=21
+  emaPeak_ema8_n8_ab0          mean_pf=2.298 n=4
+  bear_ema8_n8_ab10            mean_pf=2.267 n=4
+  bear_ema13_n3_ab10           mean_pf=2.267 n=4
+  bear_ema13_n5_ab10           mean_pf=2.267 n=4
+  bear_ema13_n8_ab0            mean_pf=2.267 n=4
+  bear_ema13_n8_ab10           mean_pf=2.267 n=4
+  bear_ema21_n3_ab10           mean_pf=2.267 n=4
+  bear_ema21_n5_ab10           mean_pf=2.267 n=4
+  bear_ema21_n8_ab0            mean_pf=2.267 n=4
