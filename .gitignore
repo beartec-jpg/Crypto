@@ -47,3 +47,4 @@ trade-tracker/node_modules/
 .env.*.local
 !.env.example
 !trade-tracker/.env.example
+.aider*
