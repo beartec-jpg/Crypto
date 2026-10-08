@@ -78,6 +78,33 @@ docs/         # current docs + archive/phase-notes
 
 GitHub Actions runs the test suite on push/PR (see `.github/workflows`). Prefer `npm run test:run` locally before pushing.
 
+## Troubleshooting
+
+### npm install fails
+
+**Fix:** Ensure you have the correct version of Node.js installed. You can use `nvm` to switch versions.
+
+```bash
+nvm install 18
+nvm use 18
+```
+
+### Tests fail on a fresh clone
+
+**Fix:** Ensure all dependencies are installed correctly.
+
+```bash
+npm install
+```
+
+### The build runs out of memory
+
+**Fix:** Increase the memory limit for Node.js.
+
+```bash
+export NODE_OPTIONS=--max-old-space-size=4096
+```
+
 ## License
 
 MIT
