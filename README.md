@@ -6,28 +6,28 @@ Cryptocurrency analysis app: real-time charting, technical indicators, Elliott W
 
 **Prerequisites:** Node.js 18+ or 20+ (CI also covers these), npm, PostgreSQL (e.g. Neon).
 
-```bash
+bash
 npm install
 npm run dev          # http://localhost:3000 (or the port Vite prints)
-```
+
 
 ### Tests
 
-```bash
+bash
 npm test             # watch
 npm run test:run     # CI / once
 npm run test:coverage
 npm run test:ui
-```
+
 
 ### Build / quality
 
-```bash
+bash
 npm run build
 npm run check        # TypeScript
 npm run analyze      # bundle
 npm run check:bundle
-```
+
 
 ## Configuration (high level)
 
@@ -66,13 +66,13 @@ Phase diaries, old summaries, and the obsolete `DISABLED_FEATURES.txt` live in *
 
 ## Repo layout (sketch)
 
-```
+
 api/          # Vercel-style serverless handlers (crypto, stripe, cron, users)
 server/       # Express app, Stripe + subscription services, routes
 client/       # Vite React UI (charts, Clerk gates)
 shared/       # schema, AI usage tiers, shared config
 docs/         # current docs + archive/phase-notes
-```
+
 
 ## CI
 
@@ -84,27 +84,32 @@ GitHub Actions runs the test suite on push/PR (see `.github/workflows`). Prefer 
 
 **Fix:** Ensure you have the correct version of Node.js installed. You can use `nvm` to switch versions.
 
-```bash
+bash
 nvm install 18
 nvm use 18
-```
+
 
 ### Tests fail on a fresh clone
 
 **Fix:** Ensure all dependencies are installed correctly.
 
-```bash
+bash
 npm install
-```
+
 
 ### The build runs out of memory
 
 **Fix:** Increase the memory limit for Node.js.
 
-```bash
+bash
 export NODE_OPTIONS=--max-old-space-size=4096
-```
+
 
 ## License
 
 MIT
+
+## FAQ
+
+1. **Where do the docs live?** - Docs are located in the `/docs` directory.
+2. **How do I run the tests?** - Run tests using the command: `npm test`.
