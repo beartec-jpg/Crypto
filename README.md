@@ -108,3 +108,8 @@ export NODE_OPTIONS=--max-old-space-size=4096
 ## License
 
 MIT
+
+## FAQ
+
+- **Where do the docs live?** The docs are located in the `docs/` folder.
+- **How to run the tests?** Use the command `npm test`.
