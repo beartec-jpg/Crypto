@@ -455,7 +455,7 @@ export default function CryptoAI() {
 
   if (authLoading || preferencesLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white pb-32">
+      <div className="bt-dark-surface min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white pb-32">
         <div className="mx-auto max-w-7xl space-y-6 px-4 py-6">
           <Skeleton className="h-20 w-40 bg-slate-800" />
           <Skeleton className="h-10 w-80 bg-slate-800" />
@@ -531,7 +531,7 @@ export default function CryptoAI() {
                   </Pill>
                 ))}
               </div>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-400">
                 Hold window ~{getCryptoAiTradeHorizon(aiTradeHorizon).expectedHold}. Scales stop/target structure independently of the chart pair.
               </p>
             </div>
@@ -636,25 +636,25 @@ export default function CryptoAI() {
             <p className="mb-4 text-sm text-slate-400">Admin-only spend and cache health.</p>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
               <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-4">
-                <div className="text-xs uppercase text-slate-500">Active combos</div>
+                <div className="text-xs uppercase text-slate-400">Active combos</div>
                 <div className="mt-1 text-2xl font-semibold">{adminUsage.activeCombos ?? adminUsage.activePairs ?? 0}</div>
               </div>
               <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-4">
-                <div className="text-xs uppercase text-slate-500">Calls / day</div>
+                <div className="text-xs uppercase text-slate-400">Calls / day</div>
                 <div className="mt-1 text-2xl font-semibold">{adminUsage.callsPerDay.toLocaleString()}</div>
               </div>
               <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-4">
-                <div className="text-xs uppercase text-slate-500">Avg tokens / call</div>
+                <div className="text-xs uppercase text-slate-400">Avg tokens / call</div>
                 <div className="mt-1 text-sm font-semibold">
                   {(adminUsage.averageInputTokens ?? 0).toLocaleString()} in / {(adminUsage.averageOutputTokens ?? 0).toLocaleString()} out
                 </div>
               </div>
               <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-4">
-                <div className="text-xs uppercase text-slate-500">Est. daily cost</div>
+                <div className="text-xs uppercase text-slate-400">Est. daily cost</div>
                 <div className="mt-1 text-2xl font-semibold">${(adminUsage.estimatedDailyCost ?? 0).toFixed(2)}</div>
               </div>
               <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-4">
-                <div className="text-xs uppercase text-slate-500">Cache hit rate</div>
+                <div className="text-xs uppercase text-slate-400">Cache hit rate</div>
                 <div className="mt-1 text-2xl font-semibold">{((adminUsage.cacheHitRate ?? 0) * 100).toFixed(0)}%</div>
               </div>
             </div>
@@ -981,7 +981,7 @@ export default function CryptoAI() {
 
                                   {(trade.triggerZone || trade.triggerCondition) ? (
                                     <div className="mb-3 rounded-md bg-slate-950/60 p-3">
-                                      <div className="text-xs uppercase text-slate-500">Trigger</div>
+                                      <div className="text-xs uppercase text-slate-400">Trigger</div>
                                       <div className="font-medium">{trade.triggerZone ?? trade.entryZone ?? '—'}</div>
                                       {trade.triggerCondition ? (
                                         <div className="mt-1 text-sm text-muted-foreground">{trade.triggerCondition}</div>
@@ -1118,7 +1118,7 @@ export default function CryptoAI() {
         );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
+    <div className="bt-dark-surface min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
       <Helmet>
         <title>AI Trade Ideas | BearTec</title>
         <meta name="description" content="AI-powered crypto trade ideas in a beginner-friendly workspace, alongside charts, oscillators, and indicators." />
