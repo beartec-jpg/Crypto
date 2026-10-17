@@ -114,6 +114,30 @@
 }
 
 
+/*
+ * Dark-surface token scope.
+ * The app never toggles the global `.dark` class, so token-based text
+ * (text-foreground, text-muted-foreground, outline Badge, outline
+ * Button, Select trigger via the [role="combobox"] rule) resolves to the light
+ * theme's near-black text. Pages/bars that are hard-styled dark (slate-900/950
+ * backgrounds) add `bt-dark-surface` so those tokens resolve to the dark theme's
+ * light text instead. Borders, ring, primary, secondary/warning (light pills
+ * with dark text) and destructive are left as-is so existing outlines and status pills
+ * are unchanged.
+ */
+.bt-dark-surface {
+  --background: hsl(222.2 84% 4.9%);
+  --foreground: hsl(210 40% 98%);
+  --card: hsl(222.2 84% 4.9%);
+  --card-foreground: hsl(210 40% 98%);
+  --primary-foreground: hsl(222.2 84% 4.9%);
+  --muted: hsl(217.2 32.6% 17.5%);
+  --muted-foreground: hsl(215 20.2% 65.1%);
+  --accent: hsl(217.2 32.6% 17.5%);
+  --accent-foreground: hsl(210 40% 98%);
+}
+
+
 @layer base {
   * {
     @apply border-border;
