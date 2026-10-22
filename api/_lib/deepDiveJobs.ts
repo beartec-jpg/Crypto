@@ -45,6 +45,43 @@ export async function findActiveJob(db: Queryable, key: DeepDiveJobKey): Promise
   return row ? { id: String(row.id), status: String(row.status) } : null;
 }
 
+/** Newest done job for the key within maxAgeSec (the deep-dive cache freshness window). */
+export async function findRecentDoneJob(
+  db: Queryable,
+  key: DeepDiveJobKey,
+  maxAgeSec: number,
+): Promise<{ id: string; result: unknown } | null> {
+  const r = await db.query(
+    `SELECT id, result FROM crypto_ai_deep_jobs
+     WHERE symbol = $1 AND higher_timeframe = $2 AND lower_timeframe = $3 AND mode = $4
+       AND status = 'done' AND result IS NOT NULL
+       AND updated_at >= NOW() - make_interval(secs => $5)
+     ORDER BY updated_at DESC LIMIT 1`,
+    [key.symbol, key.higherTimeframe, key.lowerTimeframe, key.mode, Math.max(0, Math.floor(maxAgeSec))],
+  );
+  const row = r.rows[0];
+  if (!row) return null;
+  return { id: String(row.id), result: typeof row.result === 'string' ? JSON.parse(row.result) : row.result };
+}
+
+/**
+ * Serve a recent done job to a user: join as waiter and charge once (idempotent).
+ * Returns the stored result, or null when there is no recent done job.
+ */
+export async function serveRecentDoneJob(
+  db: Queryable,
+  key: DeepDiveJobKey,
+  userId: string,
+  exempt: boolean,
+  maxAgeSec: number,
+): Promise<{ jobId: string; result: unknown; charged: boolean } | null> {
+  const done = await findRecentDoneJob(db, key, maxAgeSec);
+  if (!done) return null;
+  await addWaiter(db, done.id, userId, exempt);
+  const charged = await chargeWaiter(db, done.id, userId);
+  return { jobId: done.id, result: done.result, charged };
+}
+
 export async function addWaiter(db: Queryable, jobId: string, userId: string, exempt: boolean): Promise<void> {
   await db.query(
     `INSERT INTO crypto_ai_deep_job_waiters (job_id, user_id, exempt)
@@ -87,22 +124,25 @@ export async function startOrJoinDeepDiveJob(
   return { jobId: raced.id, status: raced.status, created: false };
 }
 
-/** Flip one waiter to charged; consume a token only if this call did the flip. Idempotent. */
+/**
+ * Flip one waiter to charged and consume one credit (unless exempt) in a single
+ * statement, so the flag and the credit commit or fail together. Idempotent.
+ */
 export async function chargeWaiter(db: Queryable, jobId: string, userId: string): Promise<boolean> {
   const r = await db.query(
-    `UPDATE crypto_ai_deep_job_waiters SET charged = true
-     WHERE job_id = $1 AND user_id = $2 AND charged = false
-     RETURNING exempt`,
+    `WITH w AS (
+       UPDATE crypto_ai_deep_job_waiters SET charged = true
+       WHERE job_id = $1 AND user_id = $2 AND charged = false
+       RETURNING user_id, exempt
+     ), s AS (
+       UPDATE crypto_subscriptions SET ai_credits = ai_credits + 1, updated_at = NOW()
+       WHERE user_id IN (SELECT user_id FROM w WHERE NOT exempt)
+       RETURNING user_id
+     )
+     SELECT (SELECT count(*) FROM w)::int AS flipped`,
     [jobId, userId],
   );
-  if (r.rowCount !== 1) return false;
-  if (!r.rows[0]?.exempt) {
-    await db.query(
-      'UPDATE crypto_subscriptions SET ai_credits = ai_credits + 1, updated_at = NOW() WHERE user_id = $1',
-      [userId],
-    );
-  }
-  return true;
+  return Number(r.rows[0]?.flipped ?? 0) === 1;
 }
 
 export async function chargeAllWaiters(db: Queryable, jobId: string): Promise<number> {

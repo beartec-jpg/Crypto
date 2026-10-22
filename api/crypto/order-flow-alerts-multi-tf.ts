@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
 import { waitUntil } from '@vercel/functions';
-import { startOrJoinDeepDiveJob, markJobDone, markJobError, chargeAllWaiters } from '../_lib/deepDiveJobs.js';
+import { startOrJoinDeepDiveJob, markJobDone, markJobError, chargeAllWaiters, serveRecentDoneJob } from '../_lib/deepDiveJobs.js';
 import {
   DEEP_DIVE_DEADLINE_MS,
   fallbackCallTimeoutMs,
@@ -1741,6 +1741,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       getCryptoAiTradeHorizon,
       isCryptoAiCacheFresh,
       isCryptoAiDeepDiveCacheFresh,
+      getCryptoAiDeepDiveTtlMinutes,
     } = await import('../_lib/cryptoAiConfig.js');
 
     const {
@@ -1838,6 +1839,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log(`📊 Multi-TF Analysis for ${symbol}: ${higherTimeframe}/${lowerTimeframe} (${analysisType}, horizon=${tradeHorizon})`);
 
     if (analysisType === 'deep') {
+      // A recent done job is the source of truth for anyone re-POSTing (e.g. after a lost 202)
+      // and covers the window between the done write and the cache write. Charge via the
+      // idempotent waiter flag so a waiter already charged by the worker is never charged again.
+      const jobKey = { symbol, higherTimeframe, lowerTimeframe, mode: deepDiveCacheMode };
+      const recentDone = await serveRecentDoneJob(
+        pool,
+        jobKey,
+        cryptoUserId,
+        isAdmin,
+        getCryptoAiDeepDiveTtlMinutes(lowerTimeframe) * 60,
+      );
+      if (recentDone) {
+        await pool.end();
+        pool = null;
+        const r: any = recentDone.result || {};
+        return res.json({
+          ...r,
+          success: true,
+          cached: true,
+          creditsRemaining: isAdmin ? 999 : Math.max(0, creditsRemaining - (recentDone.charged ? 1 : 0)),
+        });
+      }
+
       const cachedResult = await pool.query(
         `SELECT ai_narration, updated_at
          FROM crypto_scan_cache
@@ -1871,7 +1895,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      const jobKey = { symbol, higherTimeframe, lowerTimeframe, mode: deepDiveCacheMode };
       const joined = await startOrJoinDeepDiveJob(pool, jobKey, cryptoUserId, isAdmin);
       const jobId = joined.jobId;
       if (!joined.created) {

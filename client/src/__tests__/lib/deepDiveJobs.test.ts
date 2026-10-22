@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   chargeAllWaiters,
   chargeWaiter,
+  serveRecentDoneJob,
   markJobDone,
   readJobForWaiter,
   startOrJoinDeepDiveJob,
@@ -45,13 +46,17 @@ function fakeDb() {
         waiters.push({ job_id: p[0] as string, user_id: p[1] as string, charged: false, exempt: Boolean(p[2]) });
         return { rows: [], rowCount: 1 };
       }
-      if (s.startsWith('UPDATE crypto_ai_deep_job_waiters SET charged = true')) {
+      if (s.startsWith('WITH w AS ( UPDATE crypto_ai_deep_job_waiters SET charged = true')) {
         const w = waiters.find((x) => x.job_id === p[0] && x.user_id === p[1] && !x.charged);
-        if (!w) return { rows: [], rowCount: 0 };
+        if (!w) return { rows: [{ flipped: 0 }], rowCount: 1 };
         w.charged = true;
-        return { rows: [{ exempt: w.exempt }], rowCount: 1 };
+        if (!w.exempt) charges.push(w.user_id);
+        return { rows: [{ flipped: 1 }], rowCount: 1 };
       }
-      if (s.startsWith('UPDATE crypto_subscriptions')) { charges.push(p[0] as string); return { rows: [], rowCount: 1 }; }
+      if (s.startsWith('SELECT id, result FROM crypto_ai_deep_jobs')) {
+        const j = [...jobs].reverse().find((x) => x.key === k(p) && x.status === 'done' && x.result != null && !x.old);
+        return { rows: j ? [{ id: j.id, result: j.result }] : [], rowCount: j ? 1 : 0 };
+      }
       if (s.startsWith('SELECT user_id FROM crypto_ai_deep_job_waiters')) {
         return { rows: waiters.filter((w) => w.job_id === p[0] && !w.charged), rowCount: null };
       }
@@ -145,5 +150,46 @@ describe('shared deep-dive jobs', () => {
     const s = await startOrJoinDeepDiveJob(g.db, key, 'u1', false);
     g.jobs[0].old = true;
     expect(await readJobForWaiter(g.db, s.jobId, 'u1')).toEqual({ status: 'error', error: 'Deep-dive timed out' });
+  });
+
+  describe('recent done job (lost 202 / done-but-not-cached window)', () => {
+    async function doneJob() {
+      const f = fakeDb();
+      const { jobId } = await startOrJoinDeepDiveJob(f.db, key, 'u1', false);
+      f.jobs[0].status = 'running';
+      await markJobDone(f.db, jobId, { bestTrades: ['t'] });
+      await chargeAllWaiters(f.db, jobId);
+      return { f, jobId };
+    }
+
+    it('an already-charged waiter re-POSTing gets the result with no second charge', async () => {
+      const { f, jobId } = await doneJob();
+      const r = await serveRecentDoneJob(f.db, key, 'u1', false, 900);
+      expect(r).toEqual({ jobId, result: { bestTrades: ['t'] }, charged: false });
+      expect(f.charges).toEqual(['u1']);
+    });
+
+    it('done-but-not-cached window serves the done job and starts no new job', async () => {
+      const { f } = await doneJob();
+      const r = await serveRecentDoneJob(f.db, key, 'u1', false, 900);
+      expect(r).not.toBeNull();
+      expect(f.inserts).toHaveLength(1);
+    });
+
+    it('a different user on the done job is charged exactly once', async () => {
+      const { f, jobId } = await doneJob();
+      const a = await serveRecentDoneJob(f.db, key, 'u2', false, 900);
+      const b = await serveRecentDoneJob(f.db, key, 'u2', false, 900);
+      expect(a?.charged).toBe(true);
+      expect(b?.charged).toBe(false);
+      expect(await chargeWaiter(f.db, jobId, 'u2')).toBe(false);
+      expect(f.charges).toEqual(['u1', 'u2']);
+    });
+
+    it('returns null when no fresh done job exists', async () => {
+      const { f } = await doneJob();
+      f.jobs[0].old = true;
+      expect(await serveRecentDoneJob(f.db, key, 'u2', false, 900)).toBeNull();
+    });
   });
 });
