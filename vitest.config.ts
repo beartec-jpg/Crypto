@@ -46,6 +46,9 @@ export default defineConfig({
         'client/src/components/menus/MenuButton.tsx',
         'client/src/components/menus/MenuDragHandle.tsx',
         'client/src/lib/errorHandler.ts',
+        'client/src/lib/cryptoAiDeepJob.ts',
+        'api/_lib/deepDiveJobBudget.ts',
+        'api/_lib/deepDiveJobs.ts',
       ],
       // Exclude patterns
       exclude: [

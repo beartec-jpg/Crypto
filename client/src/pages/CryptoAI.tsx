@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { Link, useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
@@ -16,7 +16,20 @@ import { useToast } from '@/hooks/use-toast';
 import { useWatchlistState } from '@/hooks/useWatchlistState';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
 import { useLoadingMessages } from '@/hooks/useLoadingMessages';
-import { authenticatedApiRequest } from '@/lib/apiAuth';
+import { ApiError, authenticatedApiRequest } from '@/lib/apiAuth';
+import {
+  DEEP_DIVE_POLL_INTERVAL_MS,
+  DEEP_DIVE_STILL_WORKING_MESSAGE,
+  clearSavedDeepDiveJob,
+  clearSavedDeepDiveJobsForUser,
+  deepDiveJobStorageKey,
+  isDeepDiveClientCapReached,
+  isResumableDeepDiveError,
+  mapDeepDiveClientError,
+  readSavedDeepDiveJob,
+  writeSavedDeepDiveJob,
+  type SavedDeepDiveJob,
+} from '@/lib/cryptoAiDeepJob';
 import { cn } from '@/lib/utils';
 import {
   collectWatchLevels,
@@ -156,7 +169,8 @@ const labelClass = 'text-xs font-semibold uppercase tracking-wide text-slate-400
 export default function CryptoAI() {
   usePageViewTracking('crypto-ai');
 
-  const { isAuthenticated, isLoading: authLoading, isAdmin } = useCryptoAuth();
+  const { isAuthenticated, isLoading: authLoading, isAdmin, user: authUser } = useCryptoAuth();
+  const authUserId = authUser?.id ? String(authUser.id) : '';
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { watchlistTickers } = useWatchlistState();
@@ -172,6 +186,8 @@ export default function CryptoAI() {
   const [deepDiveStates, setDeepDiveStates] = useState<Record<string, RequestState>>({});
   const [sessionCandles, setSessionCandles] = useState<Record<string, ReturnType<typeof parseKlinesToCandles>>>({});
   const [pageSection, setPageSection] = useState<AiPageSection>('analysis');
+  const [prefsReady, setPrefsReady] = useState(false);
+  const deepDivePollTokens = useRef<Record<string, number>>({});
 
   const { data: preferences, isLoading: preferencesLoading } = useQuery<AiPreferences>({
     queryKey: ['/api/crypto/preferences'],
@@ -219,6 +235,7 @@ export default function CryptoAI() {
 
     setMinRiskReward(String(preferences.minRiskReward ?? 1.5));
     setMinConfluence(String(preferences.minConfluence ?? 3));
+    setPrefsReady(true);
   }, [preferences]);
 
   const watchlistOptions = useMemo(
@@ -363,6 +380,122 @@ export default function CryptoAI() {
     setDeepDiveStates({});
   }, [timeframeKey, aiTraderMode, aiTradeHorizon]);
 
+  // Sign-out: drop every saved deep-dive job so the next user can't resume them.
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) clearSavedDeepDiveJobsForUser();
+  }, [authLoading, isAuthenticated]);
+
+  const deepDiveKeyFor = useCallback((ticker: string) => deepDiveJobStorageKey({
+    userId: authUserId || 'anon',
+    ticker,
+    mode: aiTraderMode,
+    horizon: aiTradeHorizon,
+    higherTimeframe: aiHigherTimeframe,
+    lowerTimeframe: aiLowerTimeframe,
+  }), [aiHigherTimeframe, aiLowerTimeframe, aiTradeHorizon, aiTraderMode, authUserId]);
+
+  const stopDeepDivePoll = useCallback((ticker: string) => {
+    deepDivePollTokens.current[ticker] = (deepDivePollTokens.current[ticker] ?? 0) + 1;
+  }, []);
+
+  const beginDeepDivePoll = useCallback((ticker: string, job: SavedDeepDiveJob) => {
+    const key = deepDiveKeyFor(ticker);
+    const token = (deepDivePollTokens.current[ticker] ?? 0) + 1;
+    deepDivePollTokens.current[ticker] = token;
+    const stillCurrent = () => deepDivePollTokens.current[ticker] === token;
+    setDeepDiveStates((current) => ({ ...current, [ticker]: { status: 'loading' } }));
+
+    const run = async () => {
+      while (stillCurrent()) {
+        try {
+          const response = await authenticatedApiRequest(
+            'GET',
+            `/api/crypto/ai-deep-job?id=${encodeURIComponent(job.jobId)}`,
+            undefined,
+            { timeout: 20000 },
+          );
+          const payload = await response.json() as {
+            status?: string;
+            result?: AnalysisResponse;
+            error?: string;
+          };
+          if (!stillCurrent()) return;
+          if (payload.status === 'done') {
+            clearSavedDeepDiveJob(key);
+            if (payload.result) {
+              setDeepDiveStates((current) => ({ ...current, [ticker]: { status: 'success', data: payload.result! } }));
+            } else {
+              setDeepDiveStates((current) => ({
+                ...current,
+                [ticker]: { status: 'error', error: 'Deep-dive finished without a result.' },
+              }));
+            }
+            return;
+          }
+          if (payload.status === 'error') {
+            clearSavedDeepDiveJob(key);
+            setDeepDiveStates((current) => ({
+              ...current,
+              [ticker]: { status: 'error', error: payload.error || 'Deep-dive trade search failed.' },
+            }));
+            return;
+          }
+        } catch (error: unknown) {
+          if (!stillCurrent()) return;
+          if (error instanceof ApiError && error.status === 404) {
+            clearSavedDeepDiveJob(key);
+          }
+          setDeepDiveStates((current) => ({
+            ...current,
+            [ticker]: { status: 'error', error: mapDeepDiveClientError(error) },
+          }));
+          return;
+        }
+        if (!stillCurrent()) return;
+        if (isDeepDiveClientCapReached(job.startedAt, Date.now())) {
+          setDeepDiveStates((current) => ({
+            ...current,
+            [ticker]: { status: 'error', error: DEEP_DIVE_STILL_WORKING_MESSAGE },
+          }));
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, DEEP_DIVE_POLL_INTERVAL_MS));
+      }
+    };
+
+    void run();
+  }, [deepDiveKeyFor]);
+
+  useEffect(() => {
+    if (!prefsReady || authLoading || !isAuthenticated || !canUseAi) return;
+
+    const resumeSaved = () => {
+      for (const ticker of trackedTickers) {
+        const saved = readSavedDeepDiveJob(deepDiveKeyFor(ticker));
+        if (saved) beginDeepDivePoll(ticker, saved);
+      }
+    };
+
+    resumeSaved();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') resumeSaved();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      for (const ticker of trackedTickers) stopDeepDivePoll(ticker);
+    };
+  }, [
+    authLoading,
+    beginDeepDivePoll,
+    canUseAi,
+    deepDiveKeyFor,
+    isAuthenticated,
+    prefsReady,
+    stopDeepDivePoll,
+    trackedTickers,
+  ]);
+
   const handleHigherTimeframeChange = async (nextHigherTimeframe: string) => {
     if (!(CRYPTO_AI_HIGHER_TIMEFRAMES as readonly string[]).includes(nextHigherTimeframe)) return;
     const nextHigher = nextHigherTimeframe as CryptoAiHigherTimeframe;
@@ -440,15 +573,41 @@ export default function CryptoAI() {
   };
 
   const handleDeepDive = async (ticker: string) => {
+    const key = deepDiveKeyFor(ticker);
+    const existing = readSavedDeepDiveJob(key);
+    if (existing) {
+      beginDeepDivePoll(ticker, existing);
+      return;
+    }
+
     setDeepDiveStates((current) => ({ ...current, [ticker]: { status: 'loading' } }));
 
     try {
-      const data = await fetchAnalysis(ticker, 'deep');
+      const response = await authenticatedApiRequest(
+        'POST',
+        '/api/crypto/order-flow-alerts-multi-tf',
+        {
+          symbol: ticker,
+          higherTimeframe: aiHigherTimeframe,
+          lowerTimeframe: aiLowerTimeframe,
+          analysisType: 'deep',
+          mode: aiTraderMode,
+          tradeHorizon: aiTradeHorizon,
+        },
+        { timeout: 90000 },
+      );
+      const data = await response.json();
+      if (data?.jobId) {
+        const saved: SavedDeepDiveJob = { jobId: String(data.jobId), startedAt: Date.now() };
+        writeSavedDeepDiveJob(key, saved);
+        beginDeepDivePoll(ticker, saved);
+        return;
+      }
       setDeepDiveStates((current) => ({ ...current, [ticker]: { status: 'success', data } }));
-    } catch (error: any) {
+    } catch (error: unknown) {
       setDeepDiveStates((current) => ({
         ...current,
-        [ticker]: { status: 'error', error: error.message || 'Deep-dive trade search failed.' },
+        [ticker]: { status: 'error', error: mapDeepDiveClientError(error) },
       }));
     }
   };
@@ -692,6 +851,8 @@ export default function CryptoAI() {
               const deepInsights = deepDiveState.status === 'success' ? deepDiveState.data.multiTFInsights : null;
               const tradeIdeas = deepDiveState.status === 'success' ? (deepDiveState.data.bestTrades ?? []) : [];
               const deepDiveWatchLevels = collectWatchLevels(deepInsights, [aiLowerTimeframe, aiHigherTimeframe]);
+              const savedDeepJob = readSavedDeepDiveJob(deepDiveKeyFor(ticker));
+              const deepDiveCheckInstead = Boolean(savedDeepJob) && deepDiveState.status !== 'loading';
 
               const canPrintTotal =
                 generalState.status === 'success' || deepDiveState.status === 'success';
@@ -882,6 +1043,11 @@ export default function CryptoAI() {
                               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                               {loadingMessage}
                             </>
+                          ) : deepDiveCheckInstead ? (
+                            <>
+                              <Search className="mr-2 h-4 w-4" />
+                              Check
+                            </>
                           ) : (
                             <>
                               <Search className="mr-2 h-4 w-4" />
@@ -894,8 +1060,23 @@ export default function CryptoAI() {
                       {deepDiveState.status === 'error' ? (
                         <Alert variant="destructive">
                           <AlertCircle className="h-4 w-4" />
-                          <AlertTitle>Trade search failed</AlertTitle>
-                          <AlertDescription>{deepDiveState.error}</AlertDescription>
+                          <AlertTitle>
+                            {isResumableDeepDiveError(deepDiveState.error) ? 'Trade search still running' : 'Trade search failed'}
+                          </AlertTitle>
+                          <AlertDescription>
+                            <p>{deepDiveState.error}</p>
+                            {savedDeepJob ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="mt-3"
+                                onClick={() => handleDeepDive(ticker)}
+                              >
+                                Check
+                              </Button>
+                            ) : null}
+                          </AlertDescription>
                         </Alert>
                       ) : null}
 

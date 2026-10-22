@@ -1,6 +1,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
+import { waitUntil } from '@vercel/functions';
+import { startOrJoinDeepDiveJob, markJobDone, markJobError, chargeAllWaiters, serveRecentDoneJob } from '../_lib/deepDiveJobs.js';
+import {
+  DEEP_DIVE_DEADLINE_MS,
+  fallbackCallTimeoutMs,
+  primaryCallTimeoutMs,
+} from '../_lib/deepDiveJobBudget.js';
 
 const ADMIN_EMAIL = 'beartec@beartec.uk';
 const AI_MIN_RISK_REWARD_RATIO = 1.5;
@@ -1296,243 +1303,64 @@ Respond with ONLY valid JSON:
   };
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+type ChatDeepDiveInput = {
+  pool: any;
+  apiKey: string;
+  symbol: string;
+  higherTimeframe: string;
+  lowerTimeframe: string;
+  analysisType: string;
+  traderMode: { id: string; label: string; systemPrompt: string; validityCriteria: string };
+  tradeHorizon: string;
+  tradeHorizonMeta: { label: string; expectedHold: string };
+  horizonPrompt: string;
+  minRiskReward: number;
+  minConfluence: number;
+  deepDiveCacheMode: string;
+  pairInterval: string;
+  cryptoUserId: string;
+  isAdmin: boolean;
+  creditsRemaining: number;
+  deadlineAtMs: number;
+  /** Job path: skip charging and cache writes; caller does them after the done transition. */
+  jobMode?: boolean;
+};
 
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+function jobErrorText(error: unknown): string {
+  const raw = error instanceof Error ? error.message : 'Deep-dive failed';
+  return raw.replace(/sk-[A-Za-z0-9_-]+/g, '[redacted]').slice(0, 500);
+}
 
-  const auth = await verifyAuth(req);
-  if (!auth) return res.status(401).json({ error: 'Authentication required' });
+async function runChatDeepDive(input: ChatDeepDiveInput) {
+  const {
+    pool,
+    apiKey,
+    symbol,
+    higherTimeframe,
+    lowerTimeframe,
+    analysisType,
+    traderMode,
+    tradeHorizon,
+    tradeHorizonMeta,
+    horizonPrompt,
+    minRiskReward,
+    minConfluence,
+    deepDiveCacheMode,
+    pairInterval,
+    cryptoUserId,
+    isAdmin,
+    creditsRemaining,
+    deadlineAtMs,
+  } = input;
 
-  const { email } = auth;
-  const isAdmin = email === ADMIN_EMAIL;
-  let pool: any = null;
-
-  console.log('📥 Multi-TF Order flow alerts API called for:', email);
-
-  try {
-    const apiKey = process.env.XAI_API_KEY;
-    if (!apiKey) {
-      return res.status(503).json({ error: 'AI service not configured', available: false });
-    }
-    const {
-      DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
-      DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
-      DEFAULT_CRYPTO_AI_TRADE_HORIZON,
-      normalizeCryptoAiPair,
-      encodeCryptoAiPairInterval,
-      encodeCryptoAiDeepDiveMode,
-      buildCryptoAiHorizonPromptBlock,
-      getCryptoAiTradeHorizon,
-      isCryptoAiCacheFresh,
-      isCryptoAiDeepDiveCacheFresh,
-    } = await import('../_lib/cryptoAiConfig.js');
-
-    const {
-      symbol,
-      timeframes = ['15m', '1d'],
-      higherTimeframe: requestedHigherTimeframe,
-      lowerTimeframe: requestedLowerTimeframe,
-      analysisType = 'deep',
-      mode: requestedMode,
-      tradeHorizon: requestedTradeHorizon,
-    } = req.body;
-    if (!symbol) {
-      return res.status(400).json({ error: 'Symbol is required' });
-    }
-    const fallbackFrames = Array.isArray(timeframes) ? timeframes : [];
-    const normalizedPair = normalizeCryptoAiPair(
-      requestedHigherTimeframe || fallbackFrames[1] || DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
-      requestedLowerTimeframe || fallbackFrames[0] || DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+  const consumeAiToken = async () => {
+    if (isAdmin) return 999;
+    await pool.query(
+      'UPDATE crypto_subscriptions SET ai_credits = ai_credits + 1, updated_at = NOW() WHERE user_id = $1',
+      [cryptoUserId],
     );
-    const lowerTimeframe = normalizedPair.lowerTimeframe;
-    const higherTimeframe = normalizedPair.higherTimeframe;
-
-    // Resolve the selected AI trader mode so multi-TF analysis uses the same lens.
-    const { getAiTraderMode } = await import('../_lib/aiTraderModes.js');
-    const traderMode = getAiTraderMode(requestedMode);
-
-    pool = await getDb();
-
-    const userResult = await pool.query('SELECT id FROM crypto_users WHERE email = $1', [email]);
-    if (userResult.rows.length === 0) {
-      await pool.end();
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    const cryptoUserId = userResult.rows[0].id;
-
-    const subResult = await pool.query(
-      `SELECT tier, ai_credits, ai_credits_reset_at, min_risk_reward, min_confluence, ai_trade_horizon
-       FROM crypto_subscriptions WHERE user_id = $1`,
-      [cryptoUserId]
-    );
-
-    const subscription = subResult.rows[0];
-    const tier = subscription?.tier || 'free';
-
-    if (tier === 'free' || tier === 'beginner') {
-      await pool.end();
-      return res.status(403).json({ 
-        error: 'Upgrade required',
-        message: 'AI Analysis is on Core, Pro, and Elite. Charts and indicators stay free — upgrade only if you want AI trade ideas.',
-        requireUpgrade: true
-      });
-    }
-
-    const { MONTHLY_AI_CREDITS } = await import('../../shared/aiUsageTiers.js');
-    const aiLimit = MONTHLY_AI_CREDITS[tier] || 0;
-    let aiCreditsUsed = subscription?.ai_credits || 0;
-
-    const now = new Date();
-    const resetAt = subscription?.ai_credits_reset_at ? new Date(subscription.ai_credits_reset_at) : null;
-    const shouldReset = !resetAt || (resetAt.getMonth() !== now.getMonth() || resetAt.getFullYear() !== now.getFullYear());
-    
-    if (shouldReset && subscription) {
-      aiCreditsUsed = 0;
-      await pool.query('UPDATE crypto_subscriptions SET ai_credits = 0, ai_credits_reset_at = NOW() WHERE user_id = $1', [cryptoUserId]);
-    }
-
-    const creditsRemaining = isAdmin ? 999 : (aiLimit - aiCreditsUsed);
-    const consumeAiToken = async () => {
-      if (isAdmin) return 999;
-      await pool.query(
-        'UPDATE crypto_subscriptions SET ai_credits = ai_credits + 1, updated_at = NOW() WHERE user_id = $1',
-        [cryptoUserId],
-      );
-      return Math.max(0, creditsRemaining - 1);
-    };
-    const minRiskReward = Number(subscription?.min_risk_reward ?? AI_MIN_RISK_REWARD_RATIO);
-    const minConfluence = Number(subscription?.min_confluence ?? 3);
-    const tradeHorizonMeta = getCryptoAiTradeHorizon(
-      requestedTradeHorizon ?? subscription?.ai_trade_horizon ?? DEFAULT_CRYPTO_AI_TRADE_HORIZON,
-    );
-    const tradeHorizon = tradeHorizonMeta.id;
-    const deepDiveCacheMode = encodeCryptoAiDeepDiveMode(traderMode.id, tradeHorizon);
-    const horizonPrompt = buildCryptoAiHorizonPromptBlock(tradeHorizon, higherTimeframe, lowerTimeframe);
-    if (!isAdmin && creditsRemaining <= 0) {
-      await pool.end();
-      return res.status(403).json({ 
-        error: 'No AI credits remaining',
-        message: 'You have used all your monthly AI tokens. Each general analysis or deep dive uses 1 token.',
-        creditsRemaining: 0
-      });
-    }
-
-    const pairInterval = encodeCryptoAiPairInterval(higherTimeframe, lowerTimeframe);
-    console.log(`📊 Multi-TF Analysis for ${symbol}: ${higherTimeframe}/${lowerTimeframe} (${analysisType}, horizon=${tradeHorizon})`);
-
-    if (analysisType === 'deep') {
-      const cachedResult = await pool.query(
-        `SELECT ai_narration, updated_at
-         FROM crypto_scan_cache
-         WHERE symbol = $1
-           AND higher_timeframe = $2
-           AND lower_timeframe = $3
-           AND mode = $4
-         LIMIT 1`,
-        [symbol, higherTimeframe, lowerTimeframe, deepDiveCacheMode],
-      );
-
-      const cachedRow = cachedResult.rows[0];
-      if (cachedRow && isCryptoAiDeepDiveCacheFresh(cachedRow.updated_at, lowerTimeframe)) {
-        if (!isAdmin) {
-          await pool.query('UPDATE crypto_subscriptions SET ai_credits = ai_credits + 1, updated_at = NOW() WHERE user_id = $1', [cryptoUserId]);
-        }
-
-        const aiNarration = typeof cachedRow.ai_narration === 'string'
-          ? JSON.parse(cachedRow.ai_narration)
-          : (cachedRow.ai_narration || {});
-
-        await pool.end();
-        return res.json({
-          success: true,
-          cached: true,
-          multiTFInsights: aiNarration.multiTFInsights || null,
-          bestTrades: Array.isArray(aiNarration.bestTrades) ? aiNarration.bestTrades : [],
-          estimatedCost: Number(aiNarration.estimatedCost ?? 0),
-          tokens: aiNarration.tokens || { input: 0, output: 0 },
-          creditsRemaining: isAdmin ? 999 : Math.max(0, creditsRemaining - 1),
-        });
-      }
-    }
-
-    if (analysisType === 'general') {
-      const cachedResult = await pool.query(
-        `SELECT ai_narration, snapshots, updated_at
-         FROM crypto_scan_cache
-         WHERE symbol = $1 AND interval = $2 AND mode = 'general'
-         LIMIT 1`,
-        [symbol, pairInterval],
-      );
-
-      const cachedRow = cachedResult.rows[0];
-      if (cachedRow && isCryptoAiCacheFresh(cachedRow.updated_at)) {
-        const snapshots = Array.isArray(cachedRow.snapshots) ? cachedRow.snapshots : [];
-        const aiNarration = typeof cachedRow.ai_narration === 'string' ? JSON.parse(cachedRow.ai_narration) : (cachedRow.ai_narration || {});
-        const remaining = await consumeAiToken();
-        await pool.end();
-        return res.json({
-          success: true,
-          cached: true,
-          multiTFInsights: aiNarration.multiTFInsights || null,
-          bestTrades: [],
-          estimatedCost: 0,
-          tokens: { input: 0, output: 0 },
-          creditsRemaining: remaining,
-          sessionBoard: {
-            session: aiNarration.session || null,
-            refreshedAt: cachedRow.updated_at,
-            snapshots,
-          },
-        });
-      }
-
-      try {
-        const generated = await runGeneralPairRefresh(pool, apiKey, symbol, higherTimeframe, lowerTimeframe);
-        const remaining = await consumeAiToken();
-        await pool.end();
-        return res.json({
-          success: true,
-          cached: false,
-          multiTFInsights: generated.multiTFInsights,
-          bestTrades: [],
-          estimatedCost: generated.estimatedCost,
-          tokens: generated.tokens,
-          creditsRemaining: remaining,
-          sessionBoard: {
-            session: generated.session,
-            refreshedAt: generated.refreshedAt,
-            snapshots: generated.snapshots,
-          },
-        });
-      } catch (generalError: any) {
-        if (cachedRow) {
-          const snapshots = Array.isArray(cachedRow.snapshots) ? cachedRow.snapshots : [];
-          const aiNarration = typeof cachedRow.ai_narration === 'string' ? JSON.parse(cachedRow.ai_narration) : (cachedRow.ai_narration || {});
-          const remaining = await consumeAiToken();
-          await pool.end();
-          return res.json({
-            success: true,
-            cached: true,
-            multiTFInsights: aiNarration.multiTFInsights || null,
-            bestTrades: [],
-            estimatedCost: 0,
-            tokens: { input: 0, output: 0 },
-            creditsRemaining: remaining,
-            sessionBoard: {
-              session: aiNarration.session || null,
-              refreshedAt: cachedRow.updated_at,
-              snapshots,
-            },
-          });
-        }
-        throw generalError;
-      }
-    }
+    return Math.max(0, creditsRemaining - 1);
+  };
 
     const requestedFrames = Array.from(new Set([lowerTimeframe, higherTimeframe]));
     const barsByTimeframe = Object.fromEntries(
@@ -1661,11 +1489,16 @@ Respond with ONLY valid JSON:
 
     console.log(`🤖 Calling xAI ${XAI_PRIMARY_MODEL} (thinking enabled) for multi-TF analysis...`);
     const startTime = Date.now();
+    const primaryTimeoutMs = primaryCallTimeoutMs(deadlineAtMs, startTime);
+    if (primaryTimeoutMs <= 0) {
+      throw new Error('Deep-dive deadline exceeded before the model call');
+    }
 
     const openai = new OpenAI({
       baseURL: 'https://api.x.ai/v1',
       apiKey: apiKey,
-      timeout: 250000,
+      timeout: primaryTimeoutMs,
+      maxRetries: 0,
     });
 
     let completion: any;
@@ -1682,9 +1515,14 @@ Respond with ONLY valid JSON:
         ...(analysisType === 'general' ? {} : { thinking: { type: 'enabled', budget_tokens: XAI_THINKING_BUDGET } }),
         temperature: analysisType === 'general' ? 0.2 : 1,
         max_tokens: analysisType === 'general' ? 1200 : 16000
-      });
+      }, { timeout: primaryTimeoutMs, maxRetries: 0, signal: AbortSignal.timeout(primaryTimeoutMs) });
     } catch (primaryModelError: any) {
-      console.warn(`⚠️ ${XAI_PRIMARY_MODEL} failed (${primaryModelError.message}), falling back to ${XAI_FALLBACK_MODEL}`);
+      const fallbackTimeoutMs = fallbackCallTimeoutMs(deadlineAtMs, Date.now());
+      if (fallbackTimeoutMs == null) {
+        const reason = primaryModelError?.message || 'unknown error';
+        throw new Error(`${XAI_PRIMARY_MODEL} failed and fallback skipped (deadline): ${reason}`);
+      }
+      console.warn(`⚠️ ${XAI_PRIMARY_MODEL} failed (${primaryModelError.message}), falling back to ${XAI_FALLBACK_MODEL} (${fallbackTimeoutMs}ms)`);
       completion = await openai.chat.completions.create({
         model: XAI_FALLBACK_MODEL,
         messages: [
@@ -1693,7 +1531,7 @@ Respond with ONLY valid JSON:
         ],
         temperature: 0.3,
         max_tokens: analysisType === 'general' ? 1200 : 8000
-      });
+      }, { timeout: fallbackTimeoutMs, maxRetries: 0, signal: AbortSignal.timeout(fallbackTimeoutMs) });
     }
 
     const duration = Date.now() - startTime;
@@ -1749,11 +1587,13 @@ Respond with ONLY valid JSON:
       parsedResult = { multiTFInsights: null, bestTrades: [] };
     }
 
-    const remainingAfterRun = analysisType === 'deep' || analysisType === 'general'
-      ? await consumeAiToken()
-      : creditsRemaining;
+    const remainingAfterRun = input.jobMode
+      ? (isAdmin ? 999 : Math.max(0, creditsRemaining - 1))
+      : analysisType === 'deep' || analysisType === 'general'
+        ? await consumeAiToken()
+        : creditsRemaining;
 
-    if (analysisType === 'deep') {
+    const writeDeepCache = async () => {
       try {
       await pool.query(
         `INSERT INTO crypto_scan_cache (
@@ -1809,18 +1649,392 @@ Respond with ONLY valid JSON:
     } catch (cacheError) {
       console.error('Failed to cache multi-TF analysis:', cacheError);
     }
-    }
+    };
+    if (analysisType === 'deep' && !input.jobMode) await writeDeepCache();
 
-    await pool.end();
-
-    res.json({
-      success: true,
+    const body = {
+      success: true as const,
       multiTFInsights: parsedResult.multiTFInsights,
       bestTrades: parsedResult.bestTrades || [],
       estimatedCost,
       tokens: { input: inputTokens, output: outputTokens },
-      creditsRemaining: remainingAfterRun
+      creditsRemaining: remainingAfterRun,
+    };
+    return { body, writeDeepCache };
+}
+
+const DEEP_DIVE_WRITE_MIN_MS = 3_000;
+
+async function runDeepDiveJob(jobId: string, input: Omit<ChatDeepDiveInput, 'pool'>): Promise<void> {
+  let pool: any = null;
+  try {
+    pool = await getDb();
+    await pool.query(
+      `UPDATE crypto_ai_deep_jobs
+       SET status = 'running', updated_at = NOW()
+       WHERE id = $1 AND status IN ('pending', 'running')`,
+      [jobId],
+    );
+    const { body, writeDeepCache } = await runChatDeepDive({ ...input, pool, jobMode: true });
+    // 1) result + done transition (always attempted), 2) charge waiters once, 3) best-effort cache.
+    const transitioned = await markJobDone(pool, jobId, body);
+    if (transitioned) {
+      try {
+        await chargeAllWaiters(pool, jobId);
+      } catch (chargeError: any) {
+        // GET charges the caller idempotently on read, so a miss here is recovered later.
+        console.error('Deep-dive waiter charge failed:', chargeError?.message || 'unknown error');
+      }
+      if (input.deadlineAtMs - Date.now() >= DEEP_DIVE_WRITE_MIN_MS) {
+        await writeDeepCache();
+      } else {
+        console.warn('Deep-dive cache write skipped: budget nearly spent');
+      }
+    } else {
+      console.warn(`Deep-dive job ${jobId} was no longer running at completion (expired?); no charge.`);
+    }
+  } catch (error: any) {
+    console.error('Deep-dive job failed:', error?.message || 'unknown error');
+    if (pool) {
+      try {
+        await markJobError(pool, jobId, jobErrorText(error));
+      } catch (writeError: any) {
+        console.error('Failed to record deep-dive job error:', writeError?.message || 'unknown error');
+      }
+    }
+  } finally {
+    try { await pool?.end(); } catch { /* worker pool already closed */ }
+  }
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const requestStartedAt = Date.now();
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const auth = await verifyAuth(req);
+  if (!auth) return res.status(401).json({ error: 'Authentication required' });
+
+  const { email } = auth;
+  const isAdmin = email === ADMIN_EMAIL;
+  let pool: any = null;
+
+  console.log('📥 Multi-TF Order flow alerts API called for:', email);
+
+  try {
+    const apiKey = process.env.XAI_API_KEY;
+    if (!apiKey) {
+      return res.status(503).json({ error: 'AI service not configured', available: false });
+    }
+    const {
+      DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
+      DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+      DEFAULT_CRYPTO_AI_TRADE_HORIZON,
+      normalizeCryptoAiPair,
+      encodeCryptoAiPairInterval,
+      encodeCryptoAiDeepDiveMode,
+      buildCryptoAiHorizonPromptBlock,
+      getCryptoAiTradeHorizon,
+      isCryptoAiCacheFresh,
+      isCryptoAiDeepDiveCacheFresh,
+      getCryptoAiDeepDiveTtlMinutes,
+    } = await import('../_lib/cryptoAiConfig.js');
+
+    const {
+      symbol,
+      timeframes = ['15m', '1d'],
+      higherTimeframe: requestedHigherTimeframe,
+      lowerTimeframe: requestedLowerTimeframe,
+      analysisType = 'deep',
+      mode: requestedMode,
+      tradeHorizon: requestedTradeHorizon,
+    } = req.body;
+    if (!symbol) {
+      return res.status(400).json({ error: 'Symbol is required' });
+    }
+    const fallbackFrames = Array.isArray(timeframes) ? timeframes : [];
+    const normalizedPair = normalizeCryptoAiPair(
+      requestedHigherTimeframe || fallbackFrames[1] || DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
+      requestedLowerTimeframe || fallbackFrames[0] || DEFAULT_CRYPTO_AI_LOWER_TIMEFRAME,
+    );
+    const lowerTimeframe = normalizedPair.lowerTimeframe;
+    const higherTimeframe = normalizedPair.higherTimeframe;
+
+    // Resolve the selected AI trader mode so multi-TF analysis uses the same lens.
+    const { getAiTraderMode } = await import('../_lib/aiTraderModes.js');
+    const traderMode = getAiTraderMode(requestedMode);
+
+    pool = await getDb();
+
+    const userResult = await pool.query('SELECT id FROM crypto_users WHERE email = $1', [email]);
+    if (userResult.rows.length === 0) {
+      await pool.end();
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const cryptoUserId = userResult.rows[0].id;
+
+    const subResult = await pool.query(
+      `SELECT tier, ai_credits, ai_credits_reset_at, min_risk_reward, min_confluence, ai_trade_horizon
+       FROM crypto_subscriptions WHERE user_id = $1`,
+      [cryptoUserId]
+    );
+
+    const subscription = subResult.rows[0];
+    const tier = subscription?.tier || 'free';
+
+    if (tier === 'free' || tier === 'beginner') {
+      await pool.end();
+      return res.status(403).json({ 
+        error: 'Upgrade required',
+        message: 'AI Analysis is on Core, Pro, and Elite. Charts and indicators stay free — upgrade only if you want AI trade ideas.',
+        requireUpgrade: true
+      });
+    }
+
+    const { MONTHLY_AI_CREDITS } = await import('../../shared/aiUsageTiers.js');
+    const aiLimit = MONTHLY_AI_CREDITS[tier] || 0;
+    let aiCreditsUsed = subscription?.ai_credits || 0;
+
+    const now = new Date();
+    const resetAt = subscription?.ai_credits_reset_at ? new Date(subscription.ai_credits_reset_at) : null;
+    const shouldReset = !resetAt || (resetAt.getMonth() !== now.getMonth() || resetAt.getFullYear() !== now.getFullYear());
+    
+    if (shouldReset && subscription) {
+      aiCreditsUsed = 0;
+      await pool.query('UPDATE crypto_subscriptions SET ai_credits = 0, ai_credits_reset_at = NOW() WHERE user_id = $1', [cryptoUserId]);
+    }
+
+    const creditsRemaining = isAdmin ? 999 : (aiLimit - aiCreditsUsed);
+    const consumeAiToken = async () => {
+      if (isAdmin) return 999;
+      await pool.query(
+        'UPDATE crypto_subscriptions SET ai_credits = ai_credits + 1, updated_at = NOW() WHERE user_id = $1',
+        [cryptoUserId],
+      );
+      return Math.max(0, creditsRemaining - 1);
+    };
+    const minRiskReward = Number(subscription?.min_risk_reward ?? AI_MIN_RISK_REWARD_RATIO);
+    const minConfluence = Number(subscription?.min_confluence ?? 3);
+    const tradeHorizonMeta = getCryptoAiTradeHorizon(
+      requestedTradeHorizon ?? subscription?.ai_trade_horizon ?? DEFAULT_CRYPTO_AI_TRADE_HORIZON,
+    );
+    const tradeHorizon = tradeHorizonMeta.id;
+    const deepDiveCacheMode = encodeCryptoAiDeepDiveMode(traderMode.id, tradeHorizon);
+    const horizonPrompt = buildCryptoAiHorizonPromptBlock(tradeHorizon, higherTimeframe, lowerTimeframe);
+    if (!isAdmin && creditsRemaining <= 0) {
+      await pool.end();
+      return res.status(403).json({ 
+        error: 'No AI credits remaining',
+        message: 'You have used all your monthly AI tokens. Each general analysis or deep dive uses 1 token.',
+        creditsRemaining: 0
+      });
+    }
+
+    const pairInterval = encodeCryptoAiPairInterval(higherTimeframe, lowerTimeframe);
+    console.log(`📊 Multi-TF Analysis for ${symbol}: ${higherTimeframe}/${lowerTimeframe} (${analysisType}, horizon=${tradeHorizon})`);
+
+    if (analysisType === 'deep') {
+      // A recent done job is the source of truth for anyone re-POSTing (e.g. after a lost 202)
+      // and covers the window between the done write and the cache write. Charge via the
+      // idempotent waiter flag so a waiter already charged by the worker is never charged again.
+      const jobKey = { symbol, higherTimeframe, lowerTimeframe, mode: deepDiveCacheMode };
+      const recentDone = await serveRecentDoneJob(
+        pool,
+        jobKey,
+        cryptoUserId,
+        isAdmin,
+        getCryptoAiDeepDiveTtlMinutes(lowerTimeframe) * 60,
+      );
+      if (recentDone) {
+        await pool.end();
+        pool = null;
+        const r: any = recentDone.result || {};
+        return res.json({
+          ...r,
+          success: true,
+          cached: true,
+          creditsRemaining: isAdmin ? 999 : Math.max(0, creditsRemaining - (recentDone.charged ? 1 : 0)),
+        });
+      }
+
+      const cachedResult = await pool.query(
+        `SELECT ai_narration, updated_at
+         FROM crypto_scan_cache
+         WHERE symbol = $1
+           AND higher_timeframe = $2
+           AND lower_timeframe = $3
+           AND mode = $4
+         LIMIT 1`,
+        [symbol, higherTimeframe, lowerTimeframe, deepDiveCacheMode],
+      );
+
+      const cachedRow = cachedResult.rows[0];
+      if (cachedRow && isCryptoAiDeepDiveCacheFresh(cachedRow.updated_at, lowerTimeframe)) {
+        if (!isAdmin) {
+          await pool.query('UPDATE crypto_subscriptions SET ai_credits = ai_credits + 1, updated_at = NOW() WHERE user_id = $1', [cryptoUserId]);
+        }
+
+        const aiNarration = typeof cachedRow.ai_narration === 'string'
+          ? JSON.parse(cachedRow.ai_narration)
+          : (cachedRow.ai_narration || {});
+
+        await pool.end();
+        return res.json({
+          success: true,
+          cached: true,
+          multiTFInsights: aiNarration.multiTFInsights || null,
+          bestTrades: Array.isArray(aiNarration.bestTrades) ? aiNarration.bestTrades : [],
+          estimatedCost: Number(aiNarration.estimatedCost ?? 0),
+          tokens: aiNarration.tokens || { input: 0, output: 0 },
+          creditsRemaining: isAdmin ? 999 : Math.max(0, creditsRemaining - 1),
+        });
+      }
+
+      const joined = await startOrJoinDeepDiveJob(pool, jobKey, cryptoUserId, isAdmin);
+      const jobId = joined.jobId;
+      if (!joined.created) {
+        await pool.end();
+        pool = null;
+        return res.status(202).json({ jobId, status: joined.status, deduped: true });
+      }
+      const deadlineAtMs = requestStartedAt + DEEP_DIVE_DEADLINE_MS;
+      const jobInput = {
+        apiKey,
+        symbol,
+        higherTimeframe,
+        lowerTimeframe,
+        analysisType: 'deep',
+        traderMode,
+        tradeHorizon,
+        tradeHorizonMeta,
+        horizonPrompt,
+        minRiskReward,
+        minConfluence,
+        deepDiveCacheMode,
+        pairInterval,
+        cryptoUserId,
+        isAdmin,
+        creditsRemaining,
+        deadlineAtMs,
+      };
+      // Request pool stops here. The worker opens and ends its own pool.
+      try { await pool.end(); } catch { /* request pool already closed */ }
+      pool = null;
+      try {
+        waitUntil(runDeepDiveJob(jobId, jobInput));
+      } catch (waitError: any) {
+        console.error('waitUntil unavailable:', waitError?.message || 'unknown error');
+        try {
+          const errPool = await getDb();
+          try { await markJobError(errPool, jobId, 'Could not start background job'); } finally { await errPool.end(); }
+        } catch { /* best effort */ }
+        return res.status(503).json({ error: 'Deep-dive could not start; please retry.', success: false });
+      }
+      return res.status(202).json({ jobId, status: 'pending' });
+    }
+
+    if (analysisType === 'general') {
+      const cachedResult = await pool.query(
+        `SELECT ai_narration, snapshots, updated_at
+         FROM crypto_scan_cache
+         WHERE symbol = $1 AND interval = $2 AND mode = 'general'
+         LIMIT 1`,
+        [symbol, pairInterval],
+      );
+
+      const cachedRow = cachedResult.rows[0];
+      if (cachedRow && isCryptoAiCacheFresh(cachedRow.updated_at)) {
+        const snapshots = Array.isArray(cachedRow.snapshots) ? cachedRow.snapshots : [];
+        const aiNarration = typeof cachedRow.ai_narration === 'string' ? JSON.parse(cachedRow.ai_narration) : (cachedRow.ai_narration || {});
+        const remaining = await consumeAiToken();
+        await pool.end();
+        return res.json({
+          success: true,
+          cached: true,
+          multiTFInsights: aiNarration.multiTFInsights || null,
+          bestTrades: [],
+          estimatedCost: 0,
+          tokens: { input: 0, output: 0 },
+          creditsRemaining: remaining,
+          sessionBoard: {
+            session: aiNarration.session || null,
+            refreshedAt: cachedRow.updated_at,
+            snapshots,
+          },
+        });
+      }
+
+      try {
+        const generated = await runGeneralPairRefresh(pool, apiKey, symbol, higherTimeframe, lowerTimeframe);
+        const remaining = await consumeAiToken();
+        await pool.end();
+        return res.json({
+          success: true,
+          cached: false,
+          multiTFInsights: generated.multiTFInsights,
+          bestTrades: [],
+          estimatedCost: generated.estimatedCost,
+          tokens: generated.tokens,
+          creditsRemaining: remaining,
+          sessionBoard: {
+            session: generated.session,
+            refreshedAt: generated.refreshedAt,
+            snapshots: generated.snapshots,
+          },
+        });
+      } catch (generalError: any) {
+        if (cachedRow) {
+          const snapshots = Array.isArray(cachedRow.snapshots) ? cachedRow.snapshots : [];
+          const aiNarration = typeof cachedRow.ai_narration === 'string' ? JSON.parse(cachedRow.ai_narration) : (cachedRow.ai_narration || {});
+          const remaining = await consumeAiToken();
+          await pool.end();
+          return res.json({
+            success: true,
+            cached: true,
+            multiTFInsights: aiNarration.multiTFInsights || null,
+            bestTrades: [],
+            estimatedCost: 0,
+            tokens: { input: 0, output: 0 },
+            creditsRemaining: remaining,
+            sessionBoard: {
+              session: aiNarration.session || null,
+              refreshedAt: cachedRow.updated_at,
+              snapshots,
+            },
+          });
+        }
+        throw generalError;
+      }
+    }
+
+    const { body: deepBody } = await runChatDeepDive({
+      pool,
+      apiKey,
+      symbol,
+      higherTimeframe,
+      lowerTimeframe,
+      analysisType,
+      traderMode,
+      tradeHorizon,
+      tradeHorizonMeta,
+      horizonPrompt,
+      minRiskReward,
+      minConfluence,
+      deepDiveCacheMode,
+      pairInterval,
+      cryptoUserId,
+      isAdmin,
+      creditsRemaining,
+      deadlineAtMs: requestStartedAt + DEEP_DIVE_DEADLINE_MS,
     });
+    await pool.end();
+    pool = null;
+    return res.json(deepBody);
 
   } catch (error: any) {
     console.error('❌ Multi-TF analysis error:', error);

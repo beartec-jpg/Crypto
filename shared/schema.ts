@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, timestamp, jsonb, boolean, doublePrecision } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, timestamp, jsonb, boolean, doublePrecision, uuid, index, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import {
   CRYPTO_AI_TIMEFRAMES,
@@ -185,6 +185,39 @@ export const insertCryptoScanCacheSchema = z.object({
 
 export type InsertCryptoScanCache = z.infer<typeof insertCryptoScanCacheSchema>;
 export type CryptoScanCache = typeof cryptoScanCache.$inferSelect;
+
+// Async CryptoAI deep-dive jobs (migration 015). One active job per key, shared across users.
+export const cryptoAiDeepJobs = pgTable("crypto_ai_deep_jobs", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => cryptoUsers.id, { onDelete: "cascade" }), // creator
+  symbol: varchar("symbol").notNull(),
+  higherTimeframe: varchar("higher_timeframe").notNull(),
+  lowerTimeframe: varchar("lower_timeframe").notNull(),
+  mode: varchar("mode").notNull(), // deep-dive cache mode incl. horizon
+  status: text("status").notNull().default("pending"), // pending | running | done | error
+  result: jsonb("result"),
+  error: text("error"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  userCreatedIdx: index("idx_crypto_ai_deep_jobs_user_id_created_at").on(t.userId, t.createdAt),
+  activeUq: uniqueIndex("uq_crypto_ai_deep_jobs_active")
+    .on(t.symbol, t.higherTimeframe, t.lowerTimeframe, t.mode)
+    .where(sql`status IN ('pending', 'running')`),
+}));
+
+export const cryptoAiDeepJobWaiters = pgTable("crypto_ai_deep_job_waiters", {
+  jobId: uuid("job_id").notNull().references(() => cryptoAiDeepJobs.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => cryptoUsers.id, { onDelete: "cascade" }),
+  charged: boolean("charged").notNull().default(false),
+  exempt: boolean("exempt").notNull().default(false), // admin: never consumes credits
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.jobId, t.userId] }),
+}));
+
+export type CryptoAiDeepJob = typeof cryptoAiDeepJobs.$inferSelect;
+export type CryptoAiDeepJobWaiter = typeof cryptoAiDeepJobWaiters.$inferSelect;
 
 // User Watchlists - separate table for managing user's ticker watchlist
 export const userWatchlists = pgTable("user_watchlists", {
