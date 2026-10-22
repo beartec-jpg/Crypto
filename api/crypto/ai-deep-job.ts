@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
+import { readJobForWaiter } from '../_lib/deepDiveJobs.js';
 
 async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: string } | null> {
   try {
@@ -61,28 +62,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const cryptoUserId = String(userResult.rows[0].id);
 
-    const jobResult = await pool.query(
-      `SELECT user_id, status, result, error
-       FROM crypto_ai_deep_jobs
-       WHERE id = $1
-       LIMIT 1`,
-      [id],
-    );
+    const body = await readJobForWaiter(pool, id, cryptoUserId);
     await pool.end();
     pool = null;
-
-    const row = jobResult.rows[0];
-    if (!row || String(row.user_id) !== cryptoUserId) {
-      return res.status(404).json({ error: 'Not found' });
-    }
-
-    const body: { status: string; result?: unknown; error?: string } = { status: row.status };
-    if (row.status === 'done' && row.result != null) {
-      body.result = typeof row.result === 'string' ? JSON.parse(row.result) : row.result;
-    }
-    if (row.status === 'error') {
-      body.error = row.error || 'Deep-dive failed';
-    }
+    if (!body) return res.status(404).json({ error: 'Not found' });
     return res.json(body);
   } catch (error: any) {
     try { await pool?.end(); } catch { /* already closed */ }

@@ -21,6 +21,7 @@ import {
   DEEP_DIVE_POLL_INTERVAL_MS,
   DEEP_DIVE_STILL_WORKING_MESSAGE,
   clearSavedDeepDiveJob,
+  clearSavedDeepDiveJobsForUser,
   deepDiveJobStorageKey,
   isDeepDiveClientCapReached,
   isResumableDeepDiveError,
@@ -168,7 +169,8 @@ const labelClass = 'text-xs font-semibold uppercase tracking-wide text-slate-400
 export default function CryptoAI() {
   usePageViewTracking('crypto-ai');
 
-  const { isAuthenticated, isLoading: authLoading, isAdmin } = useCryptoAuth();
+  const { isAuthenticated, isLoading: authLoading, isAdmin, user: authUser } = useCryptoAuth();
+  const authUserId = authUser?.id ? String(authUser.id) : '';
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { watchlistTickers } = useWatchlistState();
@@ -378,13 +380,19 @@ export default function CryptoAI() {
     setDeepDiveStates({});
   }, [timeframeKey, aiTraderMode, aiTradeHorizon]);
 
+  // Sign-out: drop every saved deep-dive job so the next user can't resume them.
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) clearSavedDeepDiveJobsForUser();
+  }, [authLoading, isAuthenticated]);
+
   const deepDiveKeyFor = useCallback((ticker: string) => deepDiveJobStorageKey({
+    userId: authUserId || 'anon',
     ticker,
     mode: aiTraderMode,
     horizon: aiTradeHorizon,
     higherTimeframe: aiHigherTimeframe,
     lowerTimeframe: aiLowerTimeframe,
-  }), [aiHigherTimeframe, aiLowerTimeframe, aiTradeHorizon, aiTraderMode]);
+  }), [aiHigherTimeframe, aiLowerTimeframe, aiTradeHorizon, aiTraderMode, authUserId]);
 
   const stopDeepDivePoll = useCallback((ticker: string) => {
     deepDivePollTokens.current[ticker] = (deepDivePollTokens.current[ticker] ?? 0) + 1;

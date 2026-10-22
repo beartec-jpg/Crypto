@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
 import { waitUntil } from '@vercel/functions';
+import { startOrJoinDeepDiveJob, markJobDone, markJobError, chargeAllWaiters } from '../_lib/deepDiveJobs.js';
 import {
   DEEP_DIVE_DEADLINE_MS,
   fallbackCallTimeoutMs,
@@ -1321,6 +1322,8 @@ type ChatDeepDiveInput = {
   isAdmin: boolean;
   creditsRemaining: number;
   deadlineAtMs: number;
+  /** Job path: skip charging and cache writes; caller does them after the done transition. */
+  jobMode?: boolean;
 };
 
 function jobErrorText(error: unknown): string {
@@ -1584,11 +1587,13 @@ Respond with ONLY valid JSON:
       parsedResult = { multiTFInsights: null, bestTrades: [] };
     }
 
-    const remainingAfterRun = analysisType === 'deep' || analysisType === 'general'
-      ? await consumeAiToken()
-      : creditsRemaining;
+    const remainingAfterRun = input.jobMode
+      ? (isAdmin ? 999 : Math.max(0, creditsRemaining - 1))
+      : analysisType === 'deep' || analysisType === 'general'
+        ? await consumeAiToken()
+        : creditsRemaining;
 
-    if (analysisType === 'deep') {
+    const writeDeepCache = async () => {
       try {
       await pool.query(
         `INSERT INTO crypto_scan_cache (
@@ -1644,9 +1649,10 @@ Respond with ONLY valid JSON:
     } catch (cacheError) {
       console.error('Failed to cache multi-TF analysis:', cacheError);
     }
-    }
+    };
+    if (analysisType === 'deep' && !input.jobMode) await writeDeepCache();
 
-    return {
+    const body = {
       success: true as const,
       multiTFInsights: parsedResult.multiTFInsights,
       bestTrades: parsedResult.bestTrades || [],
@@ -1654,8 +1660,10 @@ Respond with ONLY valid JSON:
       tokens: { input: inputTokens, output: outputTokens },
       creditsRemaining: remainingAfterRun,
     };
-
+    return { body, writeDeepCache };
 }
+
+const DEEP_DIVE_WRITE_MIN_MS = 3_000;
 
 async function runDeepDiveJob(jobId: string, input: Omit<ChatDeepDiveInput, 'pool'>): Promise<void> {
   let pool: any = null;
@@ -1667,23 +1675,29 @@ async function runDeepDiveJob(jobId: string, input: Omit<ChatDeepDiveInput, 'poo
        WHERE id = $1 AND status IN ('pending', 'running')`,
       [jobId],
     );
-    const result = await runChatDeepDive({ ...input, pool });
-    await pool.query(
-      `UPDATE crypto_ai_deep_jobs
-       SET status = 'done', result = $2::jsonb, error = NULL, updated_at = NOW()
-       WHERE id = $1`,
-      [jobId, JSON.stringify(result)],
-    );
+    const { body, writeDeepCache } = await runChatDeepDive({ ...input, pool, jobMode: true });
+    // 1) result + done transition (always attempted), 2) charge waiters once, 3) best-effort cache.
+    const transitioned = await markJobDone(pool, jobId, body);
+    if (transitioned) {
+      try {
+        await chargeAllWaiters(pool, jobId);
+      } catch (chargeError: any) {
+        // GET charges the caller idempotently on read, so a miss here is recovered later.
+        console.error('Deep-dive waiter charge failed:', chargeError?.message || 'unknown error');
+      }
+      if (input.deadlineAtMs - Date.now() >= DEEP_DIVE_WRITE_MIN_MS) {
+        await writeDeepCache();
+      } else {
+        console.warn('Deep-dive cache write skipped: budget nearly spent');
+      }
+    } else {
+      console.warn(`Deep-dive job ${jobId} was no longer running at completion (expired?); no charge.`);
+    }
   } catch (error: any) {
     console.error('Deep-dive job failed:', error?.message || 'unknown error');
     if (pool) {
       try {
-        await pool.query(
-          `UPDATE crypto_ai_deep_jobs
-           SET status = 'error', error = $2, updated_at = NOW()
-           WHERE id = $1 AND status <> 'done'`,
-          [jobId, jobErrorText(error)],
-        );
+        await markJobError(pool, jobId, jobErrorText(error));
       } catch (writeError: any) {
         console.error('Failed to record deep-dive job error:', writeError?.message || 'unknown error');
       }
@@ -1857,14 +1871,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      const inserted = await pool.query(
-        `INSERT INTO crypto_ai_deep_jobs (
-           user_id, symbol, higher_timeframe, lower_timeframe, mode, status
-         ) VALUES ($1, $2, $3, $4, $5, 'pending')
-         RETURNING id`,
-        [cryptoUserId, symbol, higherTimeframe, lowerTimeframe, traderMode.id],
-      );
-      const jobId = String(inserted.rows[0].id);
+      const jobKey = { symbol, higherTimeframe, lowerTimeframe, mode: deepDiveCacheMode };
+      const joined = await startOrJoinDeepDiveJob(pool, jobKey, cryptoUserId, isAdmin);
+      const jobId = joined.jobId;
+      if (!joined.created) {
+        await pool.end();
+        pool = null;
+        return res.status(202).json({ jobId, status: joined.status, deduped: true });
+      }
       const deadlineAtMs = requestStartedAt + DEEP_DIVE_DEADLINE_MS;
       const jobInput = {
         apiKey,
@@ -1888,11 +1902,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Request pool stops here. The worker opens and ends its own pool.
       try { await pool.end(); } catch { /* request pool already closed */ }
       pool = null;
-      const work = runDeepDiveJob(jobId, jobInput);
       try {
-        waitUntil(work);
+        waitUntil(runDeepDiveJob(jobId, jobInput));
       } catch (waitError: any) {
         console.error('waitUntil unavailable:', waitError?.message || 'unknown error');
+        try {
+          const errPool = await getDb();
+          try { await markJobError(errPool, jobId, 'Could not start background job'); } finally { await errPool.end(); }
+        } catch { /* best effort */ }
+        return res.status(503).json({ error: 'Deep-dive could not start; please retry.', success: false });
       }
       return res.status(202).json({ jobId, status: 'pending' });
     }
@@ -1971,7 +1989,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    const deepBody = await runChatDeepDive({
+    const { body: deepBody } = await runChatDeepDive({
       pool,
       apiKey,
       symbol,

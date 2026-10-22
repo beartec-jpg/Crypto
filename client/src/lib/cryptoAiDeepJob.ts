@@ -6,6 +6,7 @@ export const DEEP_DIVE_STILL_WORKING_MESSAGE = 'Still working, tap to check';
 const STORAGE_PREFIX = 'cryptoai-deep-job';
 
 export type DeepDiveJobKeyInput = {
+  userId: string;
   ticker: string;
   mode: string;
   horizon: string;
@@ -21,6 +22,7 @@ export type SavedDeepDiveJob = {
 export function deepDiveJobStorageKey(input: DeepDiveJobKeyInput): string {
   return [
     STORAGE_PREFIX,
+    input.userId,
     input.ticker,
     input.mode,
     input.horizon,
@@ -77,6 +79,22 @@ export function clearSavedDeepDiveJob(key: string): void {
   if (typeof localStorage === 'undefined') return;
   try {
     localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
+/** Remove saved deep-dive jobs for one user, or every user when userId is omitted (sign-out). */
+export function clearSavedDeepDiveJobsForUser(userId?: string): void {
+  if (typeof localStorage === 'undefined') return;
+  const prefix = userId ? `${STORAGE_PREFIX}|${userId}|` : `${STORAGE_PREFIX}|`;
+  try {
+    const doomed: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix)) doomed.push(k);
+    }
+    doomed.forEach((k) => localStorage.removeItem(k));
   } catch {
     // ignore
   }

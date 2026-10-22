@@ -5,6 +5,7 @@ import {
   DEEP_DIVE_CONNECTION_LOST_MESSAGE,
   DEEP_DIVE_STILL_WORKING_MESSAGE,
   clearSavedDeepDiveJob,
+  clearSavedDeepDiveJobsForUser,
   deepDiveJobStorageKey,
   isDeepDiveClientCapReached,
   isDeepDiveConnectionLostError,
@@ -15,6 +16,7 @@ import {
 } from '@/lib/cryptoAiDeepJob';
 
 const keyInput = {
+  userId: 'user_a',
   ticker: 'BTCUSDT',
   mode: 'smc',
   horizon: 'intraday',
@@ -37,6 +39,21 @@ describe('crypto AI deep-dive job client helpers', () => {
     expect(deepDiveJobStorageKey({ ...keyInput, horizon: 'swing' })).not.toBe(key);
     expect(deepDiveJobStorageKey({ ...keyInput, mode: 'indicator' })).not.toBe(key);
     expect(deepDiveJobStorageKey({ ...keyInput, lowerTimeframe: '5m' })).not.toBe(key);
+  });
+
+  it('scopes saved jobs per user and clears them on sign-out', () => {
+    const a = deepDiveJobStorageKey(keyInput);
+    const b = deepDiveJobStorageKey({ ...keyInput, userId: 'user_b' });
+    expect(a).not.toBe(b);
+    writeSavedDeepDiveJob(a, { jobId: 'ja', startedAt: 1 });
+    writeSavedDeepDiveJob(b, { jobId: 'jb', startedAt: 1 });
+    localStorage.setItem('unrelated', 'x');
+    clearSavedDeepDiveJobsForUser('user_a');
+    expect(readSavedDeepDiveJob(a)).toBeNull();
+    expect(readSavedDeepDiveJob(b)?.jobId).toBe('jb');
+    clearSavedDeepDiveJobsForUser();
+    expect(readSavedDeepDiveJob(b)).toBeNull();
+    expect(localStorage.getItem('unrelated')).toBe('x');
   });
 
   it('round-trips a saved job and clears it', () => {
