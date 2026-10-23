@@ -30,6 +30,7 @@ import {
   writeSavedDeepDiveJob,
   type SavedDeepDiveJob,
 } from '@/lib/cryptoAiDeepJob';
+import { buildDeepDiveAnalysisSections, type DeepDiveMarketAnalysisView, type DeepDiveNearMissView } from '@/lib/cryptoAiDeepAnalysis';
 import { cn } from '@/lib/utils';
 import {
   collectWatchLevels,
@@ -85,6 +86,8 @@ type AnalysisResponse = {
   success?: boolean;
   multiTFInsights?: MultiTFInsights | null;
   bestTrades?: TradeIdea[];
+  marketAnalysis?: DeepDiveMarketAnalysisView | null;
+  nearMissSetups?: DeepDiveNearMissView[] | null;
   tokens?: { input?: number; output?: number };
   estimatedCost?: number;
   creditsRemaining?: number;
@@ -851,6 +854,9 @@ export default function CryptoAI() {
               const deepInsights = deepDiveState.status === 'success' ? deepDiveState.data.multiTFInsights : null;
               const tradeIdeas = deepDiveState.status === 'success' ? (deepDiveState.data.bestTrades ?? []) : [];
               const deepDiveWatchLevels = collectWatchLevels(deepInsights, [aiLowerTimeframe, aiHigherTimeframe]);
+              const deepAnalysisSections = deepDiveState.status === 'success'
+                ? buildDeepDiveAnalysisSections(deepDiveState.data, aiHigherTimeframe, aiLowerTimeframe)
+                : [];
               const savedDeepJob = readSavedDeepDiveJob(deepDiveKeyFor(ticker));
               const deepDiveCheckInstead = Boolean(savedDeepJob) && deepDiveState.status !== 'loading';
 
@@ -1123,6 +1129,18 @@ export default function CryptoAI() {
                               </Button>
                             </div>
                             <p className="text-sm text-slate-400">{getOverallSummary(deepInsights)}</p>
+                            {deepAnalysisSections.length > 0 ? (
+                              <div className="mt-3 space-y-3" data-testid="deep-dive-analysis">
+                                {deepAnalysisSections.map((section) => (
+                                  <div key={section.title}>
+                                    <div className="text-xs font-semibold uppercase text-slate-300">{section.title}</div>
+                                    {section.lines.map((line, lineIndex) => (
+                                      <p key={`${section.title}-${lineIndex}`} className="text-sm text-slate-400">{line}</p>
+                                    ))}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
                           </div>
 
                           {tradeIdeas.length === 0 ? (
