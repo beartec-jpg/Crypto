@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
 import { waitUntil } from '@vercel/functions';
+import { normaliseMarketAnalysis, nearMissReason, toNearMissSetup } from '../_lib/deepDiveAnalysis.js';
 import { startOrJoinDeepDiveJob, markJobDone, markJobError, chargeAllWaiters, serveRecentDoneJob } from '../_lib/deepDiveJobs.js';
 import {
   DEEP_DIVE_DEADLINE_MS,
@@ -1048,7 +1049,7 @@ ${buildTargetsRule(higherTimeframe, lowerTimeframe)}
 11. CONFLUENCE SCORING: Fib OTE zone overlap, EMA proximity, OB alignment, swing pivot alignment, BOS/CHoCH, liquidity sweep, and trendline alignment each count as a confluence signal. More confluences = higher grade.
 12. Only include trades with R/R ≥ ${minRiskReward} to TP1. With-trend setups need at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}; counter-trend setups need at least ${counterTrendMinConfluence}.
 13. Return the valid standalone setup(s) you actually find. Do NOT force sequenced or linked trades. You MAY mention a natural flow into another zone in overallSummary, but never withhold a good standalone setup for lack of a second leg.
-14. If no valid trade exists yet, return an empty bestTrades array and use overallSummary plus keyLevels to explain the key zones to watch next.
+14. If no valid trade exists yet, return an empty bestTrades array. You MUST still deliver a full analysis in marketAnalysis (never leave it empty): structure, liquidity, momentum, at least one bullish and one bearish scenario with trigger/target/invalidation prices, and exactly what price must do to create a valid setup.
 15. Expected hold should match the horizon (${tradeHorizonMeta.expectedHold}).
 16. Do not re-issue a bestTrade that duplicates an open-book setup you marked keep (same direction + similar entry).
 17. MACRO RELEVANCE: only discuss NEAR/APPROACHING weekly-monthly levels. Far history is IGNORE. Use a nearby macro level as TP2 only if price can get there without first going the other way through invalidation.
@@ -1062,7 +1063,17 @@ Respond with ONLY valid JSON:
     "${higherTimeframe}": { "summary": "2 sentences on higher timeframe bias/trend", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["..."] },
     "${lowerTimeframe}": { "summary": "2 sentences on lower timeframe momentum/structure", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["..."] },
     "macro": { "summary": "1-2 sentences ONLY if a weekly/monthly level is near or approaching and reachable on this path; otherwise say none relevant", "bias": "BULLISH/BEARISH/NEUTRAL", "keyLevels": ["only NEAR/APPROACHING levels, or empty"] },
-    "overallSummary": "2 sentences on the next high-probability setup(s) or the zones to watch next"
+    "overallSummary": "2-3 sentences on the next high-probability setup(s) or the zones to watch next"
+  },
+  "marketAnalysis": {
+    "structure": "3-4 sentences: trend/structure on both timeframes, BOS/CHoCH, where price sits in the range and Fib OTE",
+    "liquidity": "2-3 sentences: resting liquidity, unmitigated FVGs/OBs above and below with prices",
+    "momentum": "2-3 sentences: RSI/MACD/Stoch/ADX/volume read and whether momentum supports continuation or reversal",
+    "scenarios": [
+      { "direction": "BULLISH", "trigger": "what price must do (with price)", "target": "next level(s)", "invalidation": "price that kills it" },
+      { "direction": "BEARISH", "trigger": "...", "target": "...", "invalidation": "..." }
+    ],
+    "whatWouldCreateSetup": "1-2 sentences: the exact condition that would turn this into a valid trade under the rules"
   },
   "bestTrades": [
     {
@@ -1541,7 +1552,7 @@ Respond with ONLY valid JSON:
 
     console.log(`✅ Multi-TF analysis complete (${duration}ms, ~$${estimatedCost.toFixed(6)})`);
 
-    let parsedResult: { multiTFInsights: any; bestTrades: any[] };
+    let parsedResult: { multiTFInsights: any; bestTrades: any[]; marketAnalysis?: any; nearMissSetups?: any[] };
     try {
       let rawContent = extractTextContent(completion.choices[0]?.message);
       rawContent = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
@@ -1549,6 +1560,7 @@ Respond with ONLY valid JSON:
       const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { multiTFInsights: null, bestTrades: [] };
 
       const rawTrades = Array.isArray(parsed.bestTrades) ? parsed.bestTrades : [];
+      const nearMissSetups: any[] = [];
       const filteredTrades = analysisType === 'general'
       ? []
       : rawTrades
@@ -1577,11 +1589,18 @@ Respond with ONLY valid JSON:
             };
           })
           .filter((t: any) => {
-            return t._rr >= minRiskReward && t.confluenceCount >= t._requiredConfluence;
+            const reason = nearMissReason(t._rr, t.confluenceCount, minRiskReward, t._requiredConfluence);
+            if (reason) nearMissSetups.push(toNearMissSetup(t, t._rr, reason));
+            return !reason;
           })
           .map(({ _rr, _requiredConfluence, ...t }: any) => t);
 
-      parsedResult = { multiTFInsights: parsed.multiTFInsights || null, bestTrades: filteredTrades };
+      parsedResult = {
+        multiTFInsights: parsed.multiTFInsights || null,
+        bestTrades: filteredTrades,
+        marketAnalysis: analysisType === 'general' ? null : normaliseMarketAnalysis(parsed.marketAnalysis),
+        nearMissSetups: nearMissSetups.slice(0, 3),
+      };
     } catch (parseError) {
       console.error('Failed to parse Grok response:', parseError);
       parsedResult = { multiTFInsights: null, bestTrades: [] };
@@ -1614,6 +1633,8 @@ Respond with ONLY valid JSON:
           JSON.stringify({
             multiTFInsights: parsedResult.multiTFInsights,
             bestTrades: parsedResult.bestTrades || [],
+            marketAnalysis: parsedResult.marketAnalysis ?? null,
+            nearMissSetups: parsedResult.nearMissSetups ?? [],
             estimatedCost,
             tokens: { input: inputTokens, output: outputTokens },
             tradeHorizon,
@@ -1656,6 +1677,8 @@ Respond with ONLY valid JSON:
       success: true as const,
       multiTFInsights: parsedResult.multiTFInsights,
       bestTrades: parsedResult.bestTrades || [],
+      marketAnalysis: parsedResult.marketAnalysis ?? null,
+      nearMissSetups: parsedResult.nearMissSetups ?? [],
       estimatedCost,
       tokens: { input: inputTokens, output: outputTokens },
       creditsRemaining: remainingAfterRun,
@@ -1889,6 +1912,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           cached: true,
           multiTFInsights: aiNarration.multiTFInsights || null,
           bestTrades: Array.isArray(aiNarration.bestTrades) ? aiNarration.bestTrades : [],
+          marketAnalysis: aiNarration.marketAnalysis ?? null,
+          nearMissSetups: Array.isArray(aiNarration.nearMissSetups) ? aiNarration.nearMissSetups : [],
           estimatedCost: Number(aiNarration.estimatedCost ?? 0),
           tokens: aiNarration.tokens || { input: 0, output: 0 },
           creditsRemaining: isAdmin ? 999 : Math.max(0, creditsRemaining - 1),
