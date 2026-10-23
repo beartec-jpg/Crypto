@@ -3,13 +3,13 @@ import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
 import { waitUntil } from '@vercel/functions';
 import { normaliseMarketAnalysis, nearMissReason, toNearMissSetup } from '../_lib/deepDiveAnalysis.js';
-import { startOrJoinDeepDiveJob, markJobDone, markJobError, chargeAllWaiters, serveRecentDoneJob } from '../_lib/deepDiveJobs.js';
+import { startOrJoinDeepDiveJob, markJobError, serveRecentDoneJob, completeDeepDiveJob, DEEP_DIVE_FAILED_MESSAGE } from '../_lib/deepDiveJobs.js';
 import {
   DEEP_DIVE_DEADLINE_MS,
   fallbackCallTimeoutMs,
   primaryCallTimeoutMs,
 } from '../_lib/deepDiveJobBudget.js';
-import { buildPrimaryResponsesRequest, resolveDeepDiveModelConfig, responsesToCompletion } from '../_lib/deepDiveModel.js';
+import { buildPrimaryResponsesRequest, deepDiveCostUsd, resolveDeepDiveModelConfig, responsesToCompletion } from '../_lib/deepDiveModel.js';
 
 const ADMIN_EMAIL = 'beartec@beartec.uk';
 const AI_MIN_RISK_REWARD_RATIO = 1.5;
@@ -808,7 +808,7 @@ async function generateGeneralPairAnalysis(apiKey: string, symbol: string, highe
 
   const inputTokens = completion.usage?.prompt_tokens || 0;
   const outputTokens = completion.usage?.completion_tokens || 0;
-  const estimatedCost = (inputTokens / 1_000_000 * 2) + (outputTokens / 1_000_000 * 10);
+  const estimatedCost = deepDiveCostUsd(inputTokens, outputTokens);
 
   let multiTFInsights: any = null;
   try {
@@ -1113,28 +1113,15 @@ Respond with ONLY valid JSON:
     timeout: 250000,
   });
 
-  let completion: any;
-  try {
-    const resp = await (openai as any).responses.create(
-      buildPrimaryResponsesRequest(DEEP_DIVE_MODEL, systemContent, deepPrompt, 16000),
-    );
-    completion = responsesToCompletion(resp);
-  } catch (primaryModelError: any) {
-    console.warn(`⚠️ System deep-dive ${DEEP_DIVE_MODEL.primaryModel} failed (${primaryModelError.message}), falling back to ${DEEP_DIVE_MODEL.fallbackModel}`);
-    completion = await openai.chat.completions.create({
-      model: DEEP_DIVE_MODEL.fallbackModel,
-      messages: [
-        { role: 'system', content: systemContent },
-        { role: 'user', content: deepPrompt },
-      ],
-      temperature: 0.3,
-      max_tokens: 8000,
-    });
-  }
+  // No fallback model: a failed primary fails the run.
+  const resp = await (openai as any).responses.create(
+    buildPrimaryResponsesRequest(DEEP_DIVE_MODEL, systemContent, deepPrompt, 16000),
+  );
+  const completion: any = responsesToCompletion(resp);
 
   const inputTokens = completion.usage?.prompt_tokens || 0;
   const outputTokens = completion.usage?.completion_tokens || 0;
-  const estimatedCost = (inputTokens / 1_000_000 * 2) + (outputTokens / 1_000_000 * 10);
+  const estimatedCost = deepDiveCostUsd(inputTokens, outputTokens);
 
   let multiTFInsights: any = null;
   let bestTrades: any[] = [];
@@ -1331,10 +1318,6 @@ type ChatDeepDiveInput = {
   jobMode?: boolean;
 };
 
-function jobErrorText(error: unknown): string {
-  const raw = error instanceof Error ? error.message : 'Deep-dive failed';
-  return raw.replace(/sk-[A-Za-z0-9_-]+/g, '[redacted]').slice(0, 500);
-}
 
 async function runChatDeepDive(input: ChatDeepDiveInput) {
   const {
@@ -1530,29 +1513,32 @@ Respond with ONLY valid JSON:
         console.log(`🧠 ${DEEP_DIVE_MODEL.primaryModel} (effort ${DEEP_DIVE_MODEL.reasoningEffort}) reasoning tokens: ${completion.usage.reasoning_tokens}`);
       }
     } catch (primaryModelError: any) {
-      const primaryLabel = analysisType === 'general' ? XAI_PRIMARY_MODEL : DEEP_DIVE_MODEL.primaryModel;
-      const fallbackLabel = analysisType === 'general' ? XAI_FALLBACK_MODEL : DEEP_DIVE_MODEL.fallbackModel;
+      if (analysisType !== 'general') {
+        // Deep dives have no fallback model: fail the run (no charge, no cache).
+        throw new Error(`${DEEP_DIVE_MODEL.primaryModel} failed: ${primaryModelError?.message || 'unknown error'}`);
+      }
       const fallbackTimeoutMs = fallbackCallTimeoutMs(deadlineAtMs, Date.now());
       if (fallbackTimeoutMs == null) {
-        const reason = primaryModelError?.message || 'unknown error';
-        throw new Error(`${primaryLabel} failed and fallback skipped (deadline): ${reason}`);
+        throw new Error(`${XAI_PRIMARY_MODEL} failed and fallback skipped (deadline): ${primaryModelError?.message || 'unknown error'}`);
       }
-      console.warn(`⚠️ ${primaryLabel} failed (${primaryModelError.message}), falling back to ${fallbackLabel} (${fallbackTimeoutMs}ms)`);
+      console.warn(`⚠️ ${XAI_PRIMARY_MODEL} failed (${primaryModelError.message}), falling back to ${XAI_FALLBACK_MODEL} (${fallbackTimeoutMs}ms)`);
       completion = await openai.chat.completions.create({
-        model: fallbackLabel,
+        model: XAI_FALLBACK_MODEL,
         messages: [
           { role: 'system', content: systemContent },
-          { role: 'user', content: analysisType === 'general' ? generalPrompt : deepPrompt }
+          { role: 'user', content: generalPrompt }
         ],
         temperature: 0.3,
-        max_tokens: analysisType === 'general' ? 1200 : 8000
+        max_tokens: 1200
       }, { timeout: fallbackTimeoutMs, maxRetries: 0, signal: AbortSignal.timeout(fallbackTimeoutMs) });
     }
 
     const duration = Date.now() - startTime;
     const inputTokens = completion.usage?.prompt_tokens || 0;
     const outputTokens = completion.usage?.completion_tokens || 0;
-    const estimatedCost = (inputTokens / 1_000_000 * 2) + (outputTokens / 1_000_000 * 10);
+    const estimatedCost = analysisType === 'general'
+      ? (inputTokens / 1_000_000 * 2) + (outputTokens / 1_000_000 * 10)
+      : deepDiveCostUsd(inputTokens, outputTokens);
 
     console.log(`✅ Multi-TF analysis complete (${duration}ms, ~$${estimatedCost.toFixed(6)})`);
 
@@ -1561,7 +1547,11 @@ Respond with ONLY valid JSON:
       let rawContent = extractTextContent(completion.choices[0]?.message);
       rawContent = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
+      if (!jsonMatch && analysisType !== 'general') throw new Error('model returned no JSON object');
       const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { multiTFInsights: null, bestTrades: [] };
+      if (analysisType !== 'general' && (!parsed || typeof parsed !== 'object' || !parsed.multiTFInsights)) {
+        throw new Error('model JSON missing multiTFInsights');
+      }
 
       const rawTrades = Array.isArray(parsed.bestTrades) ? parsed.bestTrades : [];
       const nearMissSetups: any[] = [];
@@ -1605,8 +1595,10 @@ Respond with ONLY valid JSON:
         marketAnalysis: analysisType === 'general' ? null : normaliseMarketAnalysis(parsed.marketAnalysis),
         nearMissSetups: nearMissSetups.slice(0, 3),
       };
-    } catch (parseError) {
-      console.error('Failed to parse Grok response:', parseError);
+    } catch (parseError: any) {
+      console.error('Failed to parse Grok response:', parseError?.message || parseError);
+      // Deep dive: invalid output fails the run before any credit/cache write.
+      if (analysisType !== 'general') throw new Error(`invalid model JSON: ${parseError?.message || 'parse error'}`);
       parsedResult = { multiTFInsights: null, bestTrades: [] };
     }
 
@@ -1696,38 +1688,16 @@ async function runDeepDiveJob(jobId: string, input: Omit<ChatDeepDiveInput, 'poo
   let pool: any = null;
   try {
     pool = await getDb();
-    await pool.query(
-      `UPDATE crypto_ai_deep_jobs
-       SET status = 'running', updated_at = NOW()
-       WHERE id = $1 AND status IN ('pending', 'running')`,
-      [jobId],
+    await completeDeepDiveJob(
+      pool,
+      jobId,
+      () => runChatDeepDive({ ...input, pool, jobMode: true }),
+      () => input.deadlineAtMs - Date.now() >= DEEP_DIVE_WRITE_MIN_MS,
     );
-    const { body, writeDeepCache } = await runChatDeepDive({ ...input, pool, jobMode: true });
-    // 1) result + done transition (always attempted), 2) charge waiters once, 3) best-effort cache.
-    const transitioned = await markJobDone(pool, jobId, body);
-    if (transitioned) {
-      try {
-        await chargeAllWaiters(pool, jobId);
-      } catch (chargeError: any) {
-        // GET charges the caller idempotently on read, so a miss here is recovered later.
-        console.error('Deep-dive waiter charge failed:', chargeError?.message || 'unknown error');
-      }
-      if (input.deadlineAtMs - Date.now() >= DEEP_DIVE_WRITE_MIN_MS) {
-        await writeDeepCache();
-      } else {
-        console.warn('Deep-dive cache write skipped: budget nearly spent');
-      }
-    } else {
-      console.warn(`Deep-dive job ${jobId} was no longer running at completion (expired?); no charge.`);
-    }
   } catch (error: any) {
-    console.error('Deep-dive job failed:', error?.message || 'unknown error');
+    console.error('Deep-dive job crashed:', error?.message || 'unknown error');
     if (pool) {
-      try {
-        await markJobError(pool, jobId, jobErrorText(error));
-      } catch (writeError: any) {
-        console.error('Failed to record deep-dive job error:', writeError?.message || 'unknown error');
-      }
+      try { await markJobError(pool, jobId, DEEP_DIVE_FAILED_MESSAGE); } catch { /* best effort */ }
     }
   } finally {
     try { await pool?.end(); } catch { /* worker pool already closed */ }
@@ -2068,7 +2038,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error: any) {
     console.error('❌ Multi-TF analysis error:', error);
     try { await pool?.end(); } catch {}
-    res.status(500).json({ error: error.message, success: false });
+    const isDeep = req.body?.analysisType !== 'general';
+    res.status(500).json({ error: isDeep ? DEEP_DIVE_FAILED_MESSAGE : error.message, success: false });
   }
 }
 

@@ -22,6 +22,7 @@ import {
   DEEP_DIVE_STILL_WORKING_MESSAGE,
   clearSavedDeepDiveJob,
   clearSavedDeepDiveJobsForUser,
+  deepDiveJobErrorMessage,
   deepDiveJobStorageKey,
   isDeepDiveClientCapReached,
   isResumableDeepDiveError,
@@ -439,7 +440,7 @@ export default function CryptoAI() {
             clearSavedDeepDiveJob(key);
             setDeepDiveStates((current) => ({
               ...current,
-              [ticker]: { status: 'error', error: payload.error || 'Deep-dive trade search failed.' },
+              [ticker]: { status: 'error', error: deepDiveJobErrorMessage(payload) },
             }));
             return;
           }

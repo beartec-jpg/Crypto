@@ -1,26 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildPrimaryResponsesRequest,
+  deepDiveCostUsd,
   resolveDeepDiveModelConfig,
   responsesOutputText,
   responsesToCompletion,
 } from '../../../../api/_lib/deepDiveModel';
 
 describe('deep dive model config', () => {
-  it('defaults to grok-4.7 with low reasoning and the fast reasoning fallback', () => {
-    expect(resolveDeepDiveModelConfig({})).toEqual({
-      primaryModel: 'grok-4.7',
-      reasoningEffort: 'low',
-      fallbackModel: 'grok-4-1-fast-reasoning',
-    });
+  it('defaults to grok-4.7 with low reasoning (no fallback model)', () => {
+    expect(resolveDeepDiveModelConfig({})).toEqual({ primaryModel: 'grok-4.7', reasoningEffort: 'low' });
+  });
+
+  it('prices grok-4.7 at $2 in / $6 out per 1M tokens', () => {
+    expect(deepDiveCostUsd(1_000_000, 1_000_000)).toBe(8);
+    expect(deepDiveCostUsd(10_000, 3_000)).toBeCloseTo(0.038, 6);
   });
 
   it('honours env overrides and rejects bad effort values', () => {
     expect(resolveDeepDiveModelConfig({
-      XAI_DEEP_DIVE_MODEL: 'grok-4.6', XAI_DEEP_DIVE_REASONING_EFFORT: 'MEDIUM', XAI_DEEP_DIVE_FALLBACK_MODEL: 'x',
-    })).toEqual({ primaryModel: 'grok-4.6', reasoningEffort: 'medium', fallbackModel: 'x' });
+      XAI_DEEP_DIVE_MODEL: 'grok-4.6', XAI_DEEP_DIVE_REASONING_EFFORT: 'MEDIUM',
+    })).toEqual({ primaryModel: 'grok-4.6', reasoningEffort: 'medium' });
     expect(resolveDeepDiveModelConfig({ XAI_DEEP_DIVE_REASONING_EFFORT: 'none' }).reasoningEffort).toBe('low');
-    expect(resolveDeepDiveModelConfig({ XAI_FALLBACK_MODEL: 'legacy' }).fallbackModel).toBe('legacy');
   });
 
   it('builds a Responses request with explicit effort', () => {
@@ -44,7 +45,7 @@ describe('deep dive model config', () => {
     });
   });
 
-  it('throws on empty output so the fallback runs', () => {
+  it('throws on empty output so the run fails', () => {
     expect(() => responsesToCompletion({ status: 'incomplete', output: [] })).toThrow(/empty response/);
   });
 });

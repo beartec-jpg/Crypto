@@ -8,12 +8,10 @@ const EFFORTS: ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh'];
 
 export const DEFAULT_DEEP_DIVE_MODEL = 'grok-4.7';
 export const DEFAULT_DEEP_DIVE_REASONING_EFFORT: ReasoningEffort = 'low';
-export const DEFAULT_DEEP_DIVE_FALLBACK_MODEL = 'grok-4-1-fast-reasoning';
 
 export interface DeepDiveModelConfig {
   primaryModel: string;
   reasoningEffort: ReasoningEffort;
-  fallbackModel: string;
 }
 
 export function resolveDeepDiveModelConfig(
@@ -23,10 +21,6 @@ export function resolveDeepDiveModelConfig(
   return {
     primaryModel: (env.XAI_DEEP_DIVE_MODEL || '').trim() || DEFAULT_DEEP_DIVE_MODEL,
     reasoningEffort: EFFORTS.includes(effort) ? effort : DEFAULT_DEEP_DIVE_REASONING_EFFORT,
-    fallbackModel:
-      (env.XAI_DEEP_DIVE_FALLBACK_MODEL || '').trim() ||
-      (env.XAI_FALLBACK_MODEL || '').trim() ||
-      DEFAULT_DEEP_DIVE_FALLBACK_MODEL,
   };
 }
 
@@ -59,6 +53,13 @@ export function responsesOutputText(resp: any): string {
     }
   }
   return parts.join('');
+}
+
+/** grok-4.7 list price (< 200k prompt tokens): $2 / 1M input, $6 / 1M output (reasoning billed as output). */
+export const DEEP_DIVE_INPUT_USD_PER_M = 2;
+export const DEEP_DIVE_OUTPUT_USD_PER_M = 6;
+export function deepDiveCostUsd(inputTokens: number, outputTokens: number): number {
+  return (inputTokens / 1_000_000) * DEEP_DIVE_INPUT_USD_PER_M + (outputTokens / 1_000_000) * DEEP_DIVE_OUTPUT_USD_PER_M;
 }
 
 /** Map a Responses result onto the chat-completion shape the parser already uses. */
