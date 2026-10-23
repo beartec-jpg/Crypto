@@ -1,6 +1,11 @@
 /** Shared wall-clock budget for one deep-dive model attempt pair. */
 export const DEEP_DIVE_DEADLINE_MS = 270_000;
-export const DEEP_DIVE_PRIMARY_TIMEOUT_CAP_MS = 150_000;
+/**
+ * Primary gets up to 200s; that still leaves ~65s for the fast fallback
+ * (observed 6-9s) inside the 270s budget. Was 150s, which grok-4.6 at its
+ * default (high) reasoning effort never finished within.
+ */
+export const DEEP_DIVE_PRIMARY_TIMEOUT_CAP_MS = 200_000;
 export const DEEP_DIVE_FALLBACK_SAFETY_MS = 5_000;
 export const DEEP_DIVE_MIN_FALLBACK_REMAINING_MS = 10_000;
 
