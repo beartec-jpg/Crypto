@@ -667,6 +667,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               higherTimeframe: deep.higherTimeframe,
               lowerTimeframe: deep.lowerTimeframe,
               from: 'discord-btc-pre-london',
+              // Informational only: tracker always starts trades as 'pending' and fills on price.
+              setupStatus: t.setupStatus ?? null,
               stopLiftRationale: t.stopLiftRationale || null,
             },
           })),

@@ -9,6 +9,7 @@ import {
   fallbackCallTimeoutMs,
   primaryCallTimeoutMs,
 } from '../_lib/deepDiveJobBudget.js';
+import { annotateSetupStatus, DEEP_DIVE_SETUP_STATUS_RULES } from '../_lib/deepDiveSetupStatus.js';
 import { buildPrimaryResponsesRequest, deepDiveCostUsd, resolveDeepDiveModelConfig, responsesToCompletion } from '../_lib/deepDiveModel.js';
 
 const ADMIN_EMAIL = 'beartec@beartec.uk';
@@ -1034,6 +1035,7 @@ For EVERY setup listed above with an id, decide keep or cancel against CURRENT s
 3. Explicitly detect reversal/structure-shift triggers: a higher-low after a downtrend can trigger a LONG, and a lower-high after an uptrend can trigger a SHORT, even against the HTF bias.
 4. Map the NEXT high-probability setup(s), even if price has not reached the zone yet. Pending/conditional plans are valid and should be returned.
 5. For pending setups, include triggerZone and triggerCondition that describe what price must do before the setup activates.
+5b. ${DEEP_DIVE_SETUP_STATUS_RULES}
 6. ENTRY: must be at a concrete structural/indicator level appropriate to the selected trader mode — never a blind entry at current price. Use ${lowerTimeframe} for timing/trigger even on swing/position horizons.
 7. ENTRY CONFIRMATION (MANDATORY): do NOT open on a raw spike through the level. Define how price must confirm.
    - entryConfirmType: usually "reclaim" (preferred). Use "touch" only for rare market-order style plans.
@@ -1082,6 +1084,7 @@ Respond with ONLY valid JSON:
       "primaryTF": "${lowerTimeframe}/${higherTimeframe}",
       "direction": "LONG/SHORT",
       "htfRelationship": "with-trend/counter-trend",
+      "setupStatus": "active|pending",
       "triggerZone": "e.g. 1.0800-1.0850 demand FVG",
       "triggerCondition": "e.g. price drops into the zone and reacts with local confirmation",
       "entryZone": "FVG/OB/indicator trigger zone",
@@ -1098,6 +1101,7 @@ Respond with ONLY valid JSON:
       "tp1Rationale": "nearest opposing level",
       "tp2Rationale": "next major target level",
       "confluenceSignals": ["signal1", "signal2", "signal3"],
+      "invalidation": "what cancels the idea before entry, with price",
       "riskRewardRatio": 2.1,
       "reasoning": "why the setup is valid and what activates it"
     }
@@ -1105,7 +1109,7 @@ Respond with ONLY valid JSON:
 }`;
 
   const systemContent =
-    `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Weekly/monthly magnets only matter if they are NEAR or APPROACHING and price can reach them without first reversing the other way; far-away history must be ignored. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. The stop you publish is the live invalidation, beyond the origin swing of the unmitigated zone. If that stop is inside half the lower-timeframe ATR, do not return the trade. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. When an OPEN BOOK is provided, re-validate every id with openTradeReviews (keep|cancel) before proposing new bestTrades; cancel stale/broken zones. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
+    `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Weekly/monthly magnets only matter if they are NEAR or APPROACHING and price can reach them without first reversing the other way; far-away history must be ignored. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. For this deep dive, 'approaching' an entry zone includes any unmitigated zone within reach of the horizon: return it as a pending (setupStatus "pending") plan rather than zero setups just because no zone is being tagged right now. The stop you publish is the live invalidation, beyond the origin swing of the unmitigated zone. If that stop is inside half the lower-timeframe ATR, do not return the trade. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. When an OPEN BOOK is provided, re-validate every id with openTradeReviews (keep|cancel) before proposing new bestTrades; cancel stale/broken zones. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
 
   const openai = new OpenAI({
     baseURL: 'https://api.x.ai/v1',
@@ -1228,9 +1232,13 @@ Respond with ONLY valid JSON:
       }
     }
 
-    bestTrades = chosen
-      .map(({ _rr, _requiredConfluence, _pricesValid, ...t }: any) => t)
-      .slice(0, 2);
+    bestTrades = annotateSetupStatus(
+      chosen
+        .map(({ _rr, _requiredConfluence, _pricesValid, ...t }: any) => t)
+        .slice(0, 2),
+      Number(lowerData.currentPrice),
+      parseFloat(lowerData.atr) || 0,
+    );
 
     // Ensure multiTFInsights has something readable when model returned trades only
     if (!multiTFInsights || typeof multiTFInsights !== 'object') {
@@ -1421,6 +1429,7 @@ ${fmtTF(lowerTimeframe, lowerData)}
 3. Explicitly detect reversal/structure-shift triggers: a higher-low after a downtrend can trigger a LONG, and a lower-high after an uptrend can trigger a SHORT, even against the HTF bias.
 4. Map the NEXT high-probability setup(s), even if price has not reached the zone yet. Pending/conditional plans are valid and should be returned.
 5. For pending setups, include triggerZone and triggerCondition that describe what price must do before the setup activates.
+5b. ${DEEP_DIVE_SETUP_STATUS_RULES}
 6. ENTRY: must be at a concrete structural/indicator level appropriate to the selected trader mode — never a blind entry at current price. Use ${lowerTimeframe} for timing/trigger even on swing/position horizons.
 7. ENTRY CONFIRMATION (MANDATORY): do NOT open on a raw spike through the level. Define how price must confirm.
    - entryConfirmType: usually "reclaim" (preferred). Use "touch" only for rare market-order style plans.
@@ -1453,6 +1462,7 @@ Respond with ONLY valid JSON:
       "primaryTF": "${lowerTimeframe}/${higherTimeframe}",
       "direction": "LONG/SHORT",
       "htfRelationship": "with-trend/counter-trend",
+      "setupStatus": "active|pending",
       "triggerZone": "e.g. 1.0800-1.0850 demand FVG",
       "triggerCondition": "e.g. price drops into the zone and reacts with local confirmation",
       "entryZone": "FVG/OB/indicator trigger zone",
@@ -1469,6 +1479,7 @@ Respond with ONLY valid JSON:
       "tp1Rationale": "nearest opposing level",
       "tp2Rationale": "next major target level",
       "confluenceSignals": ["signal1", "signal2", "signal3"],
+      "invalidation": "what cancels the idea before entry, with price",
       "riskRewardRatio": 2.1,
       "reasoning": "why the setup is valid and what activates it"
     }
@@ -1492,7 +1503,7 @@ Respond with ONLY valid JSON:
     let completion: any;
     const systemContent = analysisType === 'general'
       ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Always respond with valid JSON only.`
-      : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. The stop you publish is the live invalidation, beyond the origin swing of the unmitigated zone. If that stop is inside half the lower-timeframe ATR, do not return the trade. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
+      : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. For this deep dive, 'approaching' an entry zone includes any unmitigated zone within reach of the horizon: return it as a pending (setupStatus "pending") plan rather than zero setups just because no zone is being tagged right now. The stop you publish is the live invalidation, beyond the origin swing of the unmitigated zone. If that stop is inside half the lower-timeframe ATR, do not return the trade. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
     try {
       if (analysisType === 'general') {
         completion = await openai.chat.completions.create({
@@ -1588,10 +1599,15 @@ Respond with ONLY valid JSON:
             return !reason;
           })
           .map(({ _rr, _requiredConfluence, ...t }: any) => t);
+      const annotatedTrades = annotateSetupStatus(
+        filteredTrades,
+        Number(lowerData.currentPrice),
+        parseFloat(lowerData.atr) || 0,
+      );
 
       parsedResult = {
         multiTFInsights: parsed.multiTFInsights || null,
-        bestTrades: filteredTrades,
+        bestTrades: annotatedTrades,
         marketAnalysis: analysisType === 'general' ? null : normaliseMarketAnalysis(parsed.marketAnalysis),
         nearMissSetups: nearMissSetups.slice(0, 3),
       };

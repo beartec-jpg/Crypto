@@ -198,7 +198,7 @@ export async function downloadTradeImage(options: DownloadTradeImageOptions): Pr
   const badges = [
     trade.grade || 'Unrated',
     getHtfRelationshipLabel(trade.htfRelationship),
-    isPendingTradeIdea(trade) ? 'Pending' : 'Live',
+    isPendingTradeIdea(trade) ? 'Planned - waiting for price' : 'Active now',
     trade.primaryTF || `${lowerTimeframe}/${higherTimeframe}`,
   ];
   if (horizonLabel) badges.push(horizonLabel);
@@ -607,7 +607,7 @@ export async function downloadTotalAnalysisImage(
   };
   const tradeLayouts: TradeLayout[] = limitedTrades.map((trade, i) => {
     const dir = trade.direction || 'SETUP';
-    const header = `${i + 1}. ${dir}  ·  ${trade.grade || 'Unrated'}  ·  ${getHtfRelationshipLabel(trade.htfRelationship)}${isPendingTradeIdea(trade) ? '  ·  Pending' : ''}`;
+    const header = `${i + 1}. ${dir}  ·  ${trade.grade || 'Unrated'}  ·  ${getHtfRelationshipLabel(trade.htfRelationship)}${isPendingTradeIdea(trade) ? '  ·  Planned - waiting for price' : '  ·  Active now'}`;
     const trigger = [trade.triggerZone, trade.triggerCondition].filter(Boolean).join(' — ');
     const triggerLines = trigger ? wrapText(mctx, trigger, contentWidth - 24).slice(0, 3) : [];
     const rationaleLines = trade.reasoning
