@@ -48,6 +48,14 @@ export function mapDeepDiveClientError(error: unknown, fallback = 'Deep-dive tra
   return fallback;
 }
 
+export const DEEP_DIVE_FAILED_MESSAGE = 'Deep dive failed, no credit charged, please try again';
+
+/** Message for a job that ended in status 'error' (server text, else the standard failure text). */
+export function deepDiveJobErrorMessage(payload: { error?: unknown } | null | undefined): string {
+  const err = payload?.error;
+  return typeof err === 'string' && err.trim() ? err : DEEP_DIVE_FAILED_MESSAGE;
+}
+
 export function isResumableDeepDiveError(message: string): boolean {
   return message === DEEP_DIVE_CONNECTION_LOST_MESSAGE || message === DEEP_DIVE_STILL_WORKING_MESSAGE;
 }

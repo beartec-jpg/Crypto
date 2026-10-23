@@ -8,6 +8,8 @@ export type Queryable = { query: (sql: string, params?: unknown[]) => Promise<{ 
 export const DEEP_DIVE_JOB_EXPIRY_SECONDS = 320;
 export const DEEP_DIVE_DEDUPE_WINDOW_SECONDS = 360;
 export const DEEP_DIVE_TIMED_OUT_MESSAGE = 'Deep-dive timed out';
+/** User-facing text for any failed run (model error, timeout, invalid JSON). Nobody is charged. */
+export const DEEP_DIVE_FAILED_MESSAGE = 'Deep dive failed, no credit charged, please try again';
 
 export type DeepDiveJobKey = { symbol: string; higherTimeframe: string; lowerTimeframe: string; mode: string };
 
@@ -198,4 +200,57 @@ export async function readJobForWaiter(db: Queryable, jobId: string, userId: str
     body.error = row.error || 'Deep-dive failed';
   }
   return body;
+}
+
+export type DeepDiveRunOutput = { body: unknown; writeDeepCache: () => Promise<void> };
+export type DeepDiveJobOutcome = 'done' | 'error' | 'expired';
+
+/**
+ * Background job body. Order: running -> run model -> done flip -> charge -> cache.
+ * Charging and caching happen ONLY after a successful run flips running->done;
+ * any failure marks the job error with DEEP_DIVE_FAILED_MESSAGE, charges no
+ * waiter and writes no cache.
+ */
+export async function completeDeepDiveJob(
+  db: Queryable,
+  jobId: string,
+  run: () => Promise<DeepDiveRunOutput>,
+  canWriteCache: () => boolean,
+  log: Pick<Console, 'warn' | 'error'> = console,
+): Promise<DeepDiveJobOutcome> {
+  let output: DeepDiveRunOutput;
+  try {
+    await db.query(
+      `UPDATE crypto_ai_deep_jobs
+       SET status = 'running', updated_at = NOW()
+       WHERE id = $1 AND status IN ('pending', 'running')`,
+      [jobId],
+    );
+    output = await run();
+  } catch (error: any) {
+    log.error('Deep-dive job failed (no charge):', String(error?.message || 'unknown error').slice(0, 500));
+    try {
+      await markJobError(db, jobId, DEEP_DIVE_FAILED_MESSAGE);
+    } catch (writeError: any) {
+      log.error('Failed to record deep-dive job error:', writeError?.message || 'unknown error');
+    }
+    return 'error';
+  }
+  const transitioned = await markJobDone(db, jobId, output.body);
+  if (!transitioned) {
+    log.warn(`Deep-dive job ${jobId} was no longer running at completion (expired?); no charge.`);
+    return 'expired';
+  }
+  try {
+    await chargeAllWaiters(db, jobId);
+  } catch (chargeError: any) {
+    // GET charges the caller idempotently on read, so a miss here is recovered later.
+    log.error('Deep-dive waiter charge failed:', chargeError?.message || 'unknown error');
+  }
+  if (canWriteCache()) {
+    await output.writeDeepCache();
+  } else {
+    log.warn('Deep-dive cache write skipped: budget nearly spent');
+  }
+  return 'done';
 }

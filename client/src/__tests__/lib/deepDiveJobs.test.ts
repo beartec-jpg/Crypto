@@ -4,6 +4,8 @@ import {
   chargeWaiter,
   serveRecentDoneJob,
   markJobDone,
+  completeDeepDiveJob,
+  DEEP_DIVE_FAILED_MESSAGE,
   readJobForWaiter,
   startOrJoinDeepDiveJob,
   type Queryable,
@@ -65,6 +67,16 @@ function fakeDb() {
         if (!j) return { rows: [], rowCount: 0 };
         j.status = 'done'; j.result = JSON.parse(p[1] as string);
         return { rows: [], rowCount: 1 };
+      }
+      if (s.startsWith("UPDATE crypto_ai_deep_jobs SET status = 'running'")) {
+        const j = jobs.find((x) => x.id === p[0] && ['pending', 'running'].includes(x.status));
+        if (j) j.status = 'running';
+        return { rows: [], rowCount: j ? 1 : 0 };
+      }
+      if (s.startsWith("UPDATE crypto_ai_deep_jobs SET status = 'error', error = $2")) {
+        const j = jobs.find((x) => x.id === p[0] && ['pending', 'running'].includes(x.status));
+        if (j) { j.status = 'error'; j.error = p[1] as string; }
+        return { rows: [], rowCount: j ? 1 : 0 };
       }
       if (s.startsWith('SELECT j.status')) {
         const j = jobs.find((x) => x.id === p[0]);
@@ -190,6 +202,64 @@ describe('shared deep-dive jobs', () => {
       const { f } = await doneJob();
       f.jobs[0].old = true;
       expect(await serveRecentDoneJob(f.db, key, 'u2', false, 900)).toBeNull();
+    });
+  });
+
+  describe('completeDeepDiveJob (no fallback model)', () => {
+    const quiet = { warn: () => {}, error: () => {} };
+    async function twoWaiters() {
+      const f = fakeDb();
+      const { jobId } = await startOrJoinDeepDiveJob(f.db, key, 'u1', false);
+      await startOrJoinDeepDiveJob(f.db, key, 'u2', false);
+      return { f, jobId };
+    }
+
+    for (const [label, failure] of [
+      ['model error / timeout', new Error('Request was aborted.')],
+      ['invalid JSON', new Error('invalid model JSON: Unexpected token')],
+    ] as const) {
+      it(`${label}: job is error with the user message, nobody charged, nothing cached`, async () => {
+        const { f, jobId } = await twoWaiters();
+        let cached = 0;
+        const outcome = await completeDeepDiveJob(f.db, jobId, async () => { throw failure; }, () => true, quiet);
+        expect(outcome).toBe('error');
+        expect(f.jobs[0]).toMatchObject({ status: 'error', error: DEEP_DIVE_FAILED_MESSAGE });
+        expect(f.waiters.every((w) => !w.charged)).toBe(true);
+        expect(f.charges).toEqual([]);
+        expect(cached).toBe(0);
+        // Polling waiters see the message and are still not charged; no done result to serve from cache.
+        expect(await readJobForWaiter(f.db, jobId, 'u1')).toEqual({ status: 'error', error: DEEP_DIVE_FAILED_MESSAGE });
+        expect(await readJobForWaiter(f.db, jobId, 'u2')).toEqual({ status: 'error', error: DEEP_DIVE_FAILED_MESSAGE });
+        expect(f.charges).toEqual([]);
+        expect(await serveRecentDoneJob(f.db, key, 'u3', false, 900)).toBeNull();
+      });
+    }
+
+    it('success: done, each waiter charged once, cache written once', async () => {
+      const { f, jobId } = await twoWaiters();
+      let cached = 0;
+      const outcome = await completeDeepDiveJob(
+        f.db, jobId,
+        async () => ({ body: { bestTrades: [] }, writeDeepCache: async () => { cached += 1; } }),
+        () => true, quiet,
+      );
+      expect(outcome).toBe('done');
+      expect(f.jobs[0].status).toBe('done');
+      expect(f.charges.sort()).toEqual(['u1', 'u2']);
+      expect(cached).toBe(1);
+    });
+
+    it('job expired mid-run: no charge, no cache', async () => {
+      const { f, jobId } = await twoWaiters();
+      let cached = 0;
+      const outcome = await completeDeepDiveJob(
+        f.db, jobId,
+        async () => { f.jobs[0].status = 'error'; return { body: {}, writeDeepCache: async () => { cached += 1; } }; },
+        () => true, quiet,
+      );
+      expect(outcome).toBe('expired');
+      expect(f.charges).toEqual([]);
+      expect(cached).toBe(0);
     });
   });
 });

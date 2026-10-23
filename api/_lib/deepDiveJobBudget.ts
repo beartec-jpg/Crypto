@@ -1,6 +1,10 @@
 /** Shared wall-clock budget for one deep-dive model attempt pair. */
 export const DEEP_DIVE_DEADLINE_MS = 270_000;
-export const DEEP_DIVE_PRIMARY_TIMEOUT_CAP_MS = 150_000;
+/**
+ * Deep dives have no fallback model, so the primary may use most of the 270s
+ * budget; the remaining ~20s covers the job/result writes.
+ */
+export const DEEP_DIVE_PRIMARY_TIMEOUT_CAP_MS = 250_000;
 export const DEEP_DIVE_FALLBACK_SAFETY_MS = 5_000;
 export const DEEP_DIVE_MIN_FALLBACK_REMAINING_MS = 10_000;
 

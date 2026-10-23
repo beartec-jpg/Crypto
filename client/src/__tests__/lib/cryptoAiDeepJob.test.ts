@@ -98,3 +98,14 @@ describe('crypto AI deep-dive job client helpers', () => {
     expect(isDeepDiveClientCapReached(started, started + DEEP_DIVE_CLIENT_CAP_MS)).toBe(true);
   });
 });
+
+describe('deep dive failure message', () => {
+  it('shows the server error text, else the standard no-charge message', async () => {
+    const { deepDiveJobErrorMessage, DEEP_DIVE_FAILED_MESSAGE } = await import('@/lib/cryptoAiDeepJob');
+    expect(DEEP_DIVE_FAILED_MESSAGE).toBe('Deep dive failed, no credit charged, please try again');
+    expect(deepDiveJobErrorMessage({ error: DEEP_DIVE_FAILED_MESSAGE })).toBe(DEEP_DIVE_FAILED_MESSAGE);
+    expect(deepDiveJobErrorMessage({})).toBe(DEEP_DIVE_FAILED_MESSAGE);
+    expect(deepDiveJobErrorMessage({ error: '  ' })).toBe(DEEP_DIVE_FAILED_MESSAGE);
+    expect(deepDiveJobErrorMessage(null)).toBe(DEEP_DIVE_FAILED_MESSAGE);
+  });
+});
