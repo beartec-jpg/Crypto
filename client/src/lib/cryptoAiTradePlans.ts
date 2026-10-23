@@ -38,6 +38,11 @@ export type TradeIdea = {
   slRationale?: string;
   tp1Rationale?: string;
   tp2Rationale?: string;
+  /** active = price in entry zone now; pending = waiting for price to reach zone */
+  setupStatus?: 'active' | 'pending';
+  /** entry - current price at analysis time */
+  distanceFromPrice?: { price: number; percent: number } | null;
+  invalidation?: string;
 };
 
 export function getSection(insights: MultiTFInsights | null | undefined, timeframe: string): AnalysisSection | null {
@@ -51,7 +56,23 @@ export function getOverallSummary(insights: MultiTFInsights | null | undefined):
 }
 
 export function isPendingTradeIdea(trade: TradeIdea | null | undefined): boolean {
+  if (trade?.setupStatus === 'active') return false;
+  if (trade?.setupStatus === 'pending') return true;
   return Boolean(trade?.triggerZone || trade?.triggerCondition);
+}
+
+export const PENDING_SETUP_LABEL = 'Planned - waiting for price';
+export const ACTIVE_SETUP_LABEL = 'Active now';
+
+export function setupStatusLabel(trade: TradeIdea | null | undefined): string {
+  return isPendingTradeIdea(trade) ? PENDING_SETUP_LABEL : ACTIVE_SETUP_LABEL;
+}
+
+export function formatDistanceFromPrice(trade: TradeIdea | null | undefined): string | null {
+  const d = trade?.distanceFromPrice;
+  if (!d || !Number.isFinite(d.price) || !Number.isFinite(d.percent)) return null;
+  const sign = d.price > 0 ? '+' : '';
+  return `${sign}${d.price} (${sign}${d.percent.toFixed(2)}%) from current price`;
 }
 
 /** Parse a price that may include $ / commas / text. */

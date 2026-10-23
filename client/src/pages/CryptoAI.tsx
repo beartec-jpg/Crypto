@@ -41,6 +41,8 @@ import {
   getOverallSummary,
   getSection,
   isPendingTradeIdea,
+  setupStatusLabel,
+  formatDistanceFromPrice,
   type MultiTFInsights,
   type TradeIdea,
 } from '@/lib/cryptoAiTradePlans';
@@ -1175,9 +1177,22 @@ export default function CryptoAI() {
                                     <Badge variant={getHtfRelationshipBadgeVariant(trade.htfRelationship)}>
                                       {getHtfRelationshipLabel(trade.htfRelationship)}
                                     </Badge>
-                                    <Badge variant="outline">{isPendingTradeIdea(trade) ? 'Pending plan' : 'Live setup'}</Badge>
+                                    <Badge
+                                      variant={isPendingTradeIdea(trade) ? 'outline' : 'default'}
+                                      className={isPendingTradeIdea(trade) ? 'border-amber-400 text-amber-300' : 'bg-emerald-600 text-white'}
+                                      data-testid="setup-status-badge"
+                                    >
+                                      {setupStatusLabel(trade)}
+                                    </Badge>
                                     <Badge variant="outline">{trade.primaryTF ?? `${aiLowerTimeframe}/${aiHigherTimeframe}`}</Badge>
                                   </div>
+
+                                  {(formatDistanceFromPrice(trade) || trade.invalidation) ? (
+                                    <div className="mb-3 text-sm text-muted-foreground space-y-0.5">
+                                      {formatDistanceFromPrice(trade) ? <div>Entry distance: {formatDistanceFromPrice(trade)}</div> : null}
+                                      {trade.invalidation ? <div>Invalidation: {trade.invalidation}</div> : null}
+                                    </div>
+                                  ) : null}
 
                                   {(trade.triggerZone || trade.triggerCondition) ? (
                                     <div className="mb-3 rounded-md bg-slate-950/60 p-3">
