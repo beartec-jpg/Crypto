@@ -60,7 +60,7 @@ export default defineConfig({
     },
     
     // Test file patterns
-    include: ['client/src/**/*.{test,spec}.{ts,tsx}'],
+    include: ['client/src/**/*.{test,spec}.{ts,tsx}', 'api/**/__tests__/**/*.test.ts'],
     
     // Exclude patterns
     exclude: ['node_modules', 'dist', 'client/dist', '.git'],
