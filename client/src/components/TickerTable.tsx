@@ -1,3 +1,4 @@
+import { WATCHLIST_TAP_HINT } from '@/lib/watchlistHints';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -238,12 +239,24 @@ export function TickerTable({
                 return (
                   <tr
                     key={ticker}
-                    className={`border-t border-slate-700 hover:bg-slate-800 cursor-pointer transition-colors ${
-                      isSelected ? 'bg-slate-800' : ''
+                    className={`border-t border-slate-700 hover:bg-slate-800 cursor-pointer transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-400 ${
+                      isSelected ? 'bg-sky-950/60 shadow-[inset_3px_0_0_0_rgb(56,189,248)]' : ''
                     }`}
                     onClick={() => onSelectTicker(ticker)}
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget) return;
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onSelectTicker(ticker);
+                      }
+                    }}
+                    tabIndex={0}
+                    aria-selected={isSelected}
+                    aria-current={isSelected ? 'true' : undefined}
+                    aria-label={`Select ${ticker.replace('USDT', '/USDT')} to load its chart and indicators`}
+                    data-selected={isSelected ? 'true' : undefined}
                   >
-                    <td className="px-1 sm:px-2 py-3 font-medium text-white text-xs sm:text-sm w-[120px]">
+                    <td className={`px-1 sm:px-2 py-3 font-medium text-xs sm:text-sm w-[120px] ${isSelected ? 'text-sky-300' : 'text-white'}`}>
                       {ticker.replace('USDT', '/USDT')}
                     </td>
                     <td className="px-1 sm:px-2 py-3 text-right font-mono text-gray-300 text-xs sm:text-sm w-[100px]">
@@ -278,6 +291,11 @@ export function TickerTable({
           </tbody>
         </table>
       </div>
+      {tickers.length > 0 && (
+        <p className="mt-2 text-xs sm:text-sm text-slate-400" data-testid="watchlist-tap-hint">
+          👆 {WATCHLIST_TAP_HINT}
+        </p>
+      )}
     </div>
   );
 }

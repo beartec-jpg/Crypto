@@ -1,5 +1,7 @@
 import { Maximize2 } from 'lucide-react';
+import { useRef } from 'react';
 import { useSimpleChart } from '@/hooks/useSimpleChart';
+import { ChartExpandCoachmark } from '@/components/ChartExpandCoachmark';
 
 interface ChartPreviewProps {
   symbol: string;
@@ -28,6 +30,8 @@ export function ChartPreview({
     timeframe,
   });
 
+  const expandButtonRef = useRef<HTMLButtonElement>(null);
+
   return (
     <div className="relative w-full h-[500px]">
       {/* Chart canvas - takes full space */}
@@ -35,6 +39,7 @@ export function ChartPreview({
       
       {/* Floating expand button - small, discreet, top-right corner */}
       <button
+        ref={expandButtonRef}
         onClick={onExpand}
         className="absolute top-2 right-2 z-10 p-2 rounded-md bg-slate-800/80 hover:bg-slate-700/90 text-slate-300 hover:text-white transition-all shadow-lg"
         title="Expand to fullscreen"
@@ -42,6 +47,7 @@ export function ChartPreview({
       >
         <Maximize2 className="h-4 w-4" />
       </button>
+      <ChartExpandCoachmark targetRef={expandButtonRef} />
     </div>
   );
 }
