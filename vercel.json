@@ -4,6 +4,11 @@
   "buildCommand": "npx vite build && cd cold-signer && npx vite build && cp -r dist ../dist/cold-signer",
   "outputDirectory": "dist",
   "functions": {
+    "api/cron/refresh-crypto-ai-general.ts": {
+      "memory": 1024,
+      "maxDuration": 300,
+      "includeFiles": "api/_lib/**"
+    },
     "api/crypto/order-flow-alerts.ts": {
       "memory": 1024,
       "maxDuration": 300,

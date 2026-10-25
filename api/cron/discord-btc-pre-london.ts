@@ -22,6 +22,7 @@ import {
 } from '../_lib/cryptoAiConfig.js';
 import { getAiTraderMode } from '../_lib/aiTraderModes.js';
 import { postDiscordWebhook, tradeEmbeds, type DiscordEmbed } from '../_lib/discordWebhook.js';
+import { planDeskBook } from '../_lib/deskSetupValidation.js';
 import {
   normalizeBinanceSpotSymbol,
   runGeneralPairRefresh,
@@ -218,18 +219,29 @@ function resolveDeskSymbols(force?: string | string[] | null): string[] {
   return [symbol];
 }
 
-/** Per-symbol webhook override, else shared DISCORD_WEBHOOK_URL. */
-function resolveWebhookForSymbol(symbol: string, fallback: string): string {
+/**
+ * Per-symbol webhook override, else shared DISCORD_WEBHOOK_URL.
+ * Returns the env var NAME that matched (never log the URL) so the log label is accurate.
+ */
+export function resolveWebhookForSymbol(
+  symbol: string,
+  env: Record<string, string | undefined> = process.env,
+): { url: string; envName: string | null; dedicated: boolean } {
   const base = symbol.replace(/USDT$/i, '').toUpperCase(); // BTC, XRP
-  const candidates = [
-    process.env[`DISCORD_WEBHOOK_URL_${symbol}`],
-    process.env[`DISCORD_WEBHOOK_URL_${base}`],
-    process.env[`DISCORD_${base}_WEBHOOK_URL`],
+  const names = [
+    `DISCORD_WEBHOOK_URL_${symbol.toUpperCase()}`,
+    `DISCORD_WEBHOOK_URL_${base}`,
+    `DISCORD_${base}_WEBHOOK_URL`,
   ];
-  for (const c of candidates) {
-    if (c && String(c).trim()) return String(c).trim();
+  for (const name of names) {
+    const v = env[name];
+    if (v && String(v).trim()) return { url: String(v).trim(), envName: name, dedicated: true };
   }
-  return fallback;
+  const shared = env.DISCORD_WEBHOOK_URL;
+  if (shared && String(shared).trim()) {
+    return { url: String(shared).trim(), envName: 'DISCORD_WEBHOOK_URL', dedicated: false };
+  }
+  return { url: '', envName: null, dedicated: false };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -241,13 +253,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  // Prefer dedicated BTC/XRP webhooks; shared DISCORD_WEBHOOK_URL is optional fallback only
-  const defaultWebhookUrl =
-    process.env.DISCORD_WEBHOOK_URL ||
-    process.env.DISCORD_WEBHOOK_URL_BTC ||
-    process.env.DISCORD_WEBHOOK_URL_XRP ||
-    '';
-  if (!defaultWebhookUrl && !process.env.DISCORD_WEBHOOK_URL_BTC && !process.env.DISCORD_WEBHOOK_URL_XRP) {
+  // Prefer dedicated BTC/XRP webhooks; shared DISCORD_WEBHOOK_URL is optional fallback only.
+  // (Previously the "default" fell through to DISCORD_WEBHOOK_URL_BTC when no shared URL was set,
+  // so BTC's own dedicated webhook was mislabelled "fallback/shared" in logs.)
+  if (!process.env.DISCORD_WEBHOOK_URL && !process.env.DISCORD_WEBHOOK_URL_BTC && !process.env.DISCORD_WEBHOOK_URL_XRP) {
     return res.status(503).json({
       error: 'No Discord webhook configured',
       hint:
@@ -283,7 +292,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const results: any[] = [];
 
   for (const symbol of symbols) {
-    const webhookUrl = resolveWebhookForSymbol(symbol, defaultWebhookUrl || '');
+    const webhook = resolveWebhookForSymbol(symbol);
+    const webhookUrl = webhook.url;
     if (!webhookUrl) {
       console.error(`No webhook for ${symbol} — set DISCORD_WEBHOOK_URL_${symbol.replace(/USDT$/i, '')}`);
       results.push({
@@ -294,7 +304,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       continue;
     }
     console.log(
-      `📡 Desk run ${symbol} → webhook ${webhookUrl === defaultWebhookUrl ? 'fallback/shared' : 'dedicated channel'}`,
+      `📡 Desk run ${symbol} → webhook ${webhook.dedicated ? 'dedicated channel' : 'fallback/shared'} (${webhook.envName})`,
     );
 
   try {
@@ -387,6 +397,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       openTrades,
     });
 
+    // Open book: carry surviving ideas (no fixed expiry); new idea only into a free with-/counter-trend slot.
+    const bookPlan = planDeskBook(openTrades, deep.openTradeReviews || [], deep.bestTrades || [], deep.trend || 'NEUTRAL');
+    for (const b of bookPlan.blocked) {
+      console.log(`⛔ ${symbol} new ${b.trade?.direction} @ ${b.trade?.entry} not added — ${b.reason}`);
+    }
+    deep.bestTrades = bookPlan.newTrades;
+
     // Apply cancel reviews before registering new setups
     let trackerReview: {
       cancelled: number;
@@ -474,13 +491,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     const setupCount = deep.bestTrades.length;
+    const carriedCount = bookPlan.carried.length;
 
     const content =
       `**${symbol} · Pre-London open** (${htf}/${ltf})\n` +
       `Mode: **${modeMeta.label}** · Length: **${horizonMeta.label}** (~${horizonMeta.expectedHold})\n` +
-      (setupCount
-        ? `${setupCount} trade setup${setupCount === 1 ? '' : 's'} below${deep.gatesRelaxed ? ' (soft-gated — review carefully)' : ''}.`
-        : 'No priced setup this run — see deep-dive / zones below.') +
+      (carriedCount
+        ? `Open idea${carriedCount === 1 ? '' : 's'} still valid — same entry / stop / targets as before.` +
+          (setupCount ? ` Plus ${setupCount} new idea${setupCount === 1 ? '' : 's'} below.` : ' No new idea this run.')
+        : setupCount
+          ? `${setupCount} trade setup${setupCount === 1 ? '' : 's'} below${deep.gatesRelaxed ? ' (soft-gated — review carefully)' : ''}.`
+          : 'No priced setup this run — see deep-dive / zones below.') +
       `\n\n⚠️ **Not financial advice.** Educational / informational only. Always review the chart and structure yourself before acting — make your own judgement.`;
 
     // Core analysis first (what worked before session section was added), then optional context, then trades
@@ -531,11 +552,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // ② Trades
-    const tradeList = tradeEmbeds(symbol, deep.bestTrades).map((embed, i) => ({
-      ...embed,
-      title: `② ${embed.title || `Trade setup ${i + 1}`}`,
-    }));
-    if (tradeList.length) {
+    const tradeList = tradeEmbeds(symbol, deep.bestTrades).map((embed, i) => {
+      const t: any = deep.bestTrades[i] || {};
+      const counter = t.htfRelationship === 'counter-trend';
+      return {
+        ...embed,
+        title: `② ${counter ? 'Counter-trend · ' : ''}${embed.title || `Trade setup ${i + 1}`}`,
+        ...(counter
+          ? {
+              description: `${embed.description ? `${embed.description}\n` : ''}Counter-trend: lower confidence, suggested size ${t.suggestedSize ?? 0.5}×.`.slice(0, 3500),
+            }
+          : {}),
+      };
+    });
+    // Carried open ideas first, then any new idea that fits a free slot (e.g. counter-trend).
+    if (carriedCount) {
+      for (const t of bookPlan.carried) {
+        const targets = Array.isArray(t.targets) ? t.targets.join(' / ') : String(t.targets ?? '—');
+        embeds.push({
+          title: `② Still valid · ${t.direction} ${symbol} (carried)`,
+          description:
+            `Same entry / stop / targets as when posted ${t.created_at ? String(t.created_at).slice(0, 10) : 'previously'}. ` +
+            `Status: ${t.status}.`,
+          color: 0x22c55e,
+          fields: [
+            { name: 'Entry', value: String(t.entry), inline: true },
+            { name: 'Stop', value: String(t.stop_loss ?? t.stopLoss), inline: true },
+            { name: 'Targets', value: targets.slice(0, 200), inline: true },
+          ],
+        });
+      }
+      embeds.push(...tradeList);
+    } else if (tradeList.length) {
       embeds.push(...tradeList);
     } else {
       embeds.push({
@@ -669,6 +717,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               from: 'discord-btc-pre-london',
               // Informational only: tracker always starts trades as 'pending' and fills on price.
               setupStatus: t.setupStatus ?? null,
+            label: t.label ?? null,
+            htfRelationship: t.htfRelationship ?? null,
+            suggestedSize: t.suggestedSize ?? null,
+            stopAnchor: t.stopAnchor ?? null,
+            stopSource: t.stopSource ?? null,
+            modelGrade: t.modelGrade ?? null,
               stopLiftRationale: t.stopLiftRationale || null,
             },
           })),

@@ -918,6 +918,18 @@ export function normalizeBinanceSpotSymbol(raw: string): string {
 /**
  * System deep-dive (no user auth / credits) — used by Discord pre-London cron.
  */
+const DESK_MIN_MEASURED_CONFLUENCE = 2;
+
+import {
+  detectSwingLevels,
+  mergeSwings,
+  selectDeskSetups,
+  computeDeskTrend,
+  roleFor,
+  type Trend,
+  extractPrices,
+} from '../_lib/deskSetupValidation.js';
+
 export async function runSystemDeepDive(options: {
   apiKey: string;
   symbol: string;
@@ -947,6 +959,7 @@ export async function runSystemDeepDive(options: {
   gatesRelaxed?: boolean;
   rawTradeCount?: number;
   macroLevels?: string[];
+  trend?: Trend;
 }> {
   const {
     DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME,
@@ -985,6 +998,39 @@ export async function runSystemDeepDive(options: {
   const higherData = computeIndicators(barsByTimeframe[higherTimeframe]);
   const macro = await buildMacroContext(symbol);
 
+  // Structural swings (planning TF = lower, plus higher) — exact prices the model must use for stops.
+  const deskSwings = mergeSwings(
+    detectSwingLevels(barsByTimeframe[lowerTimeframe] || [], 5, 12),
+    detectSwingLevels(barsByTimeframe[higherTimeframe] || [], 5, 8),
+  );
+  const htfSwingsOnly = detectSwingLevels(barsByTimeframe[higherTimeframe] || [], 5, 8);
+  const deskTrend = computeDeskTrend({
+    upBreaks: Number(higherData.bos) || 0,
+    downBreaks: Number(higherData.choch) || 0,
+    htfSwings: htfSwingsOnly,
+    price: Number(higherData.currentPrice),
+    ema20: Number(higherData.ema20),
+    ema50: Number(higherData.ema50),
+  });
+  // Daily ATR for the entry-distance cap only (never used for stop placement).
+  let dailyAtr = 0;
+  try {
+    const dailyBars = higherTimeframe === '1d' ? barsByTimeframe[higherTimeframe] : await fetchBarsForTF(symbol, '1d', 100);
+    dailyAtr = calculateATR(dailyBars, 14);
+  } catch (atrErr: any) {
+    console.warn('Daily ATR unavailable (entry cap skipped):', atrErr?.message);
+  }
+  const fmtLevels = (xs: number[]) => xs.length ? [...xs].sort((a, b) => b - a).map((x) => `$${x}`).join(', ') : 'None';
+  const structuralLevelsBlock = `**STRUCTURAL LEVELS (computed in code — exact prices)**
+- Swing highs (SHORT stops go just ABOVE one of these): ${fmtLevels(deskSwings.highs)}
+- Swing lows (LONG stops go just BELOW one of these): ${fmtLevels(deskSwings.lows)}
+- ${lowerTimeframe} bull FVGs: ${lowerData.bullFVGs} | bear FVGs: ${lowerData.bearFVGs}
+- ${lowerTimeframe} bull OBs: ${lowerData.bullOBs} | bear OBs: ${lowerData.bearOBs}
+- ${higherTimeframe} bull FVGs: ${higherData.bullFVGs} | bear FVGs: ${higherData.bearFVGs}
+- ${higherTimeframe} bull OBs: ${higherData.bullOBs} | bear OBs: ${higherData.bearOBs}
+- Code trend (${higherTimeframe} structure + EMA): ${deskTrend.trend} (${deskTrend.notes.join(', ') || 'mixed'}). With-trend idea is primary; an opposite idea is allowed only as a counter-trend idea (one extra confluence, lower grade). Never two ideas in the same direction. If trend is NEUTRAL, do not return both a LONG and a SHORT.
+- Daily ATR(14) (entry reach only): $${dailyAtr ? dailyAtr.toPrecision(6) : 'n/a'} — entries further than 1.25× this from price are rejected.`;
+
   const fmtTF = (label: string, d: ReturnType<typeof computeIndicators>) => `
 **${label} (${label === higherTimeframe ? 'Higher TF bias' : 'Lower TF execution'}):**
 - Price: $${d.currentPrice}, ATR(14): $${d.atr}, RSI: ${d.rsi}, MACD hist: ${d.macd.histogram}${d.macd.crossover !== 'none' ? ` (${d.macd.crossover})` : ''}
@@ -1019,6 +1065,8 @@ ${fmtTF(lowerTimeframe, lowerData)}
 
 ${macro.text}
 
+${structuralLevelsBlock}
+
 **OPEN BOOK (from trade tracker — your previous desk ideas still live)**
 ${openBookBlock}
 
@@ -1044,7 +1092,7 @@ For EVERY setup listed above with an id, decide keep or cancel against CURRENT s
    - A wick through the entry zone is the sweep, not a cancel. Stay pending/armed until reclaim.
    - stopLoss is the live stop. The tracker keeps that price. It does not move the stop to the wick.
    - The idea is invalid only if price closes through that stop, or the target already printed before confirm.
-8. STOP LOSS: stopLoss goes beyond the origin swing of the unmitigated zone named in the data. LONG: below that origin. SHORT: above that origin. If the only valid stop is inside half the lower-timeframe ATR, return an empty bestTrades array. Do not use a nearby wick or a percent of price.
+8. STOP LOSS: stopLoss must sit just beyond a REAL swing from STRUCTURAL LEVELS. LONG: just below a listed swing low (below entry). SHORT: just above a listed swing high (above entry). Use the exact listed price plus a tiny buffer. No ATR padding, no percent-of-price stops, no minimum distance — a tight stop is fine if it is structurally valid. Code checks this and re-anchors or rejects any stop not at a listed swing.
 ${buildTargetsRule(higherTimeframe, lowerTimeframe)}
 10. STOP LIFT (MANDATORY on every trade): AFTER confirmed open and BEFORE TP1, pick a structural proof level — then move the stop. Fields: stopLiftTrigger + stopLiftTo + stopLiftRationale.
    - stopLiftTrigger: between confirmed entry and TP1 (LONG above entry; SHORT below entry).
@@ -1102,14 +1150,14 @@ Respond with ONLY valid JSON:
       "tp2Rationale": "next major target level",
       "confluenceSignals": ["signal1", "signal2", "signal3"],
       "invalidation": "what cancels the idea before entry, with price",
-      "riskRewardRatio": 2.1,
+      "riskRewardRatio": "optional — recomputed in code",
       "reasoning": "why the setup is valid and what activates it"
     }
   ]
 }`;
 
   const systemContent =
-    `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Weekly/monthly magnets only matter if they are NEAR or APPROACHING and price can reach them without first reversing the other way; far-away history must be ignored. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. For this deep dive, 'approaching' an entry zone includes any unmitigated zone within reach of the horizon: return it as a pending (setupStatus "pending") plan rather than zero setups just because no zone is being tagged right now. The stop you publish is the live invalidation, beyond the origin swing of the unmitigated zone. If that stop is inside half the lower-timeframe ATR, do not return the trade. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. When an OPEN BOOK is provided, re-validate every id with openTradeReviews (keep|cancel) before proposing new bestTrades; cancel stale/broken zones. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
+    `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Weekly/monthly magnets only matter if they are NEAR or APPROACHING and price can reach them without first reversing the other way; far-away history must be ignored. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. For this deep dive, 'approaching' an entry zone includes any unmitigated zone within reach of the horizon: return it as a pending (setupStatus "pending") plan rather than zero setups just because no zone is being tagged right now. The stop you publish is the live invalidation and must sit just beyond a real computed swing from STRUCTURAL LEVELS (below a swing low for LONG, above a swing high for SHORT); no ATR or percent-based stops and no minimum distance. Per symbol return at most one with-trend idea (primary) plus at most one counter-trend idea (opposite direction, needs one extra confluence, lower grade/size); never two ideas in the same direction, and never both directions when the code trend is NEUTRAL. Grade and R/R are recomputed in code. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. When an OPEN BOOK is provided, re-validate every id with openTradeReviews (keep|cancel) before proposing new bestTrades; cancel stale/broken zones. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
 
   const openai = new OpenAI({
     baseURL: 'https://api.x.ai/v1',
@@ -1172,12 +1220,8 @@ Respond with ONLY valid JSON:
         const risk = Math.abs(entryNum - slNum);
         const reward = Math.abs(tp1Num - entryNum);
         const rr = risk > 0 && reward > 0 ? reward / risk : 0;
-        const derivedRelationship =
-          t.htfRelationship === 'counter-trend' || t.htfRelationship === 'with-trend'
-            ? t.htfRelationship
-            : ((dominantBias === 'BULLISH' && t.direction === 'LONG') || (dominantBias === 'BEARISH' && t.direction === 'SHORT')
-                ? 'with-trend'
-                : 'counter-trend');
+        // Relationship from the code-computed structural trend (model label ignored).
+        const derivedRelationship = roleFor(String(t.direction || ''), deskTrend.trend);
         const confluenceCount = Array.isArray(t.confluenceSignals)
           ? t.confluenceSignals.length
           : Number(t.confluenceCount ?? 0);
@@ -1202,7 +1246,8 @@ Respond with ONLY valid JSON:
       .filter((t: any) => t._pricesValid);
 
     const gated = scored
-      .filter((t: any) => t._rr >= minRiskReward && t.confluenceCount >= t._requiredConfluence)
+      // RR gate is applied to the code-recomputed RR (structural stop) in selectDeskSetups below.
+      .filter((t: any) => t.confluenceCount >= t._requiredConfluence)
       .sort((a: any, b: any) => b._rr - a._rr);
 
     let chosen = gated;
@@ -1219,18 +1264,32 @@ Respond with ONLY valid JSON:
       );
     }
 
-    const minStopDist = (parseFloat(lowerData.atr) || 0) * 0.5;
-    if (minStopDist > 0) {
-      const before = chosen.length;
-      chosen = chosen.filter((t: any) => {
-        const entryNum = parseFloat(String(t.entry).replace(/[^0-9.-]/g, '')) || 0;
-        const slNum = parseFloat(String(t.stopLoss).replace(/[^0-9.-]/g, '')) || 0;
-        return Math.abs(entryNum - slNum) >= minStopDist;
-      });
-      if (before && !chosen.length) {
-        console.warn(`System deep-dive: dropped ${before} setup(s) inside half an ATR (${minStopDist})`);
-      }
+    // Code-side validation: structural swing stop, recomputed RR, entry cap, grade, 1 idea/symbol.
+    const fibOteParsed = extractPrices(lowerData.fibOteZone).slice(0, 2);
+    const selection = selectDeskSetups(
+      chosen.map(({ _rr, _requiredConfluence, _pricesValid, ...t }: any) => t),
+      {
+        currentPrice: Number(lowerData.currentPrice),
+        dailyAtr,
+        swings: deskSwings,
+        minRiskReward,
+        structuralLevels: [
+          ...extractPrices(lowerData.bullFVGs), ...extractPrices(lowerData.bearFVGs),
+          ...extractPrices(lowerData.bullOBs), ...extractPrices(lowerData.bearOBs),
+        ],
+        fibOte: fibOteParsed.length === 2
+          ? { low: Math.min(...fibOteParsed), high: Math.max(...fibOteParsed) }
+          : null,
+        emas: [lowerData.ema20, lowerData.ema50, lowerData.ema200].map(Number),
+        dominantBias: deskTrend.trend,
+        trend: deskTrend.trend,
+        minConfluence: DESK_MIN_MEASURED_CONFLUENCE,
+      },
+    );
+    for (const r of selection.rejected) {
+      console.warn(`System deep-dive: rejected ${r.trade?.direction} @ ${r.trade?.entry} — ${r.reason}`);
     }
+    chosen = selection.kept;
 
     bestTrades = annotateSetupStatus(
       chosen
@@ -1300,6 +1359,7 @@ Respond with ONLY valid JSON:
     gatesRelaxed,
     rawTradeCount,
     macroLevels: macro.levels,
+    trend: deskTrend.trend,
   };
 }
 
@@ -1438,7 +1498,7 @@ ${fmtTF(lowerTimeframe, lowerData)}
    - A wick through the entry zone is the sweep, not a cancel. Stay pending/armed until reclaim.
    - stopLoss is the live stop. The tracker keeps that price. It does not move the stop to the wick.
    - The idea is invalid only if price closes through that stop, or the target already printed before confirm.
-8. STOP LOSS: stopLoss goes beyond the origin swing of the unmitigated zone named in the data. LONG: below that origin. SHORT: above that origin. If the only valid stop is inside half the lower-timeframe ATR, return an empty bestTrades array. Do not use a nearby wick or a percent of price.
+8. STOP LOSS: stopLoss must sit just beyond a REAL swing from STRUCTURAL LEVELS. LONG: just below a listed swing low (below entry). SHORT: just above a listed swing high (above entry). Use the exact listed price plus a tiny buffer. No ATR padding, no percent-of-price stops, no minimum distance — a tight stop is fine if it is structurally valid. Code checks this and re-anchors or rejects any stop not at a listed swing.
 9. TARGETS: level-to-level at the horizon's scale. TP1 nearest valid opposing level for this horizon; TP2 next major level. On swing/position prefer ${higherTimeframe} levels. Min R/R is measured to TP1 (not TP2).
 10. STOP LIFT (MANDATORY on every trade): AFTER confirmed open and BEFORE TP1, pick a structural proof level — then move the stop. Fields: stopLiftTrigger + stopLiftTo + stopLiftRationale.
    - stopLiftTrigger: between confirmed entry and TP1 (LONG above entry; SHORT below entry).
@@ -1503,7 +1563,7 @@ Respond with ONLY valid JSON:
     let completion: any;
     const systemContent = analysisType === 'general'
       ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Always respond with valid JSON only.`
-      : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. For this deep dive, 'approaching' an entry zone includes any unmitigated zone within reach of the horizon: return it as a pending (setupStatus "pending") plan rather than zero setups just because no zone is being tagged right now. The stop you publish is the live invalidation, beyond the origin swing of the unmitigated zone. If that stop is inside half the lower-timeframe ATR, do not return the trade. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
+      : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. For this deep dive, 'approaching' an entry zone includes any unmitigated zone within reach of the horizon: return it as a pending (setupStatus "pending") plan rather than zero setups just because no zone is being tagged right now. The stop you publish is the live invalidation and must sit just beyond a real computed swing from STRUCTURAL LEVELS (below a swing low for LONG, above a swing high for SHORT); no ATR or percent-based stops and no minimum distance. Per symbol return at most one with-trend idea (primary) plus at most one counter-trend idea (opposite direction, needs one extra confluence, lower grade/size); never two ideas in the same direction, and never both directions when the code trend is NEUTRAL. Grade and R/R are recomputed in code. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
     try {
       if (analysisType === 'general') {
         completion = await openai.chat.completions.create({
