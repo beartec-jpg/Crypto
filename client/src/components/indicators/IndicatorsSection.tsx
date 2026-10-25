@@ -57,6 +57,8 @@ export function IndicatorsSection({
           symbol={symbol}
           showPatternBacktest={showPatternBacktest && live}
           isActive={live && candles.length > 0}
+          watchlistHasTickers={live}
+          hasSelectedTicker={Boolean(symbol)}
         />
       </div>
     </>
