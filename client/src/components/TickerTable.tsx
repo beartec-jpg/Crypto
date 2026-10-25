@@ -251,7 +251,6 @@ export function TickerTable({
                       }
                     }}
                     tabIndex={0}
-                    aria-selected={isSelected}
                     aria-current={isSelected ? 'true' : undefined}
                     aria-label={`Select ${ticker.replace('USDT', '/USDT')} to load its chart and indicators`}
                     data-selected={isSelected ? 'true' : undefined}
