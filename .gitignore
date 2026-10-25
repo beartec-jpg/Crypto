@@ -47,3 +47,7 @@ trade-tracker/node_modules/
 .env.*.local
 !.env.example
 !trade-tracker/.env.example
+
+# Google OAuth client secrets
+client_secret*.json
+attached_assets/client_secret*.json
