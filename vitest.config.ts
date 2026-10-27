@@ -49,6 +49,7 @@ export default defineConfig({
         'client/src/lib/cryptoAiDeepJob.ts',
         'api/_lib/deepDiveJobBudget.ts',
         'api/_lib/deepDiveJobs.ts',
+        'client/src/lib/watchlistHints.ts',
       ],
       // Exclude patterns
       exclude: [
