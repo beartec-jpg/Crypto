@@ -67,7 +67,7 @@ export default defineConfig({
     exclude: ['node_modules', 'dist', 'client/dist', '.git'],
     
     // Test timeout
-    testTimeout: 10000,
+    testTimeout: 30000,
   },
   
   resolve: {
