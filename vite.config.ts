@@ -60,14 +60,8 @@ export default defineConfig({
             'bitcoinjs-lib',
             '@scure/bip32',
           ],
-          'web3-vendor': [
-            'wagmi',
-            'viem',
-            'ethers',
-            '@solana/web3.js',
-            '@solana/spl-token',
-            'xrpl',
-          ],
+          // web3-vendor and charts-vendor removed: under Vite 6 they form a
+          // circular chunk import (ReferenceError: Cannot access before initialization).
           'ui-vendor': [
             '@radix-ui/react-dialog',
             '@radix-ui/react-popover',
@@ -86,7 +80,6 @@ export default defineConfig({
             'tailwind-merge',
           ],
           'd3-vendor': ['d3'],
-          'charts-vendor': ['lightweight-charts', 'recharts'],
           'query-vendor': ['@tanstack/react-query', 'react-hook-form'],
           'icons': ['lucide-react', 'react-icons'],
           'clerk': ['@clerk/clerk-react'],
