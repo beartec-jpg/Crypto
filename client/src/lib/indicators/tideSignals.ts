@@ -34,7 +34,25 @@ export interface TideSignalParams {
   stopAtrMult: number;
   /** pivot low × (1 − pct). Fraction: 0.005 = 0.5%. */
   stopPct: number;
+  // ── Optional Tide-in / Tide-out flip-flop guards. Absent = off (the research detector). ──
+  /** Tide-in must come from an exit-EMA peak that formed AFTER the Tide-out confirmation bar. */
+  exitPeakAfterEntry?: boolean;
+  /** Ignore Tide-in until this many bars after the entry fill (0 = off). */
+  minHoldBars?: number;
+  /**
+   * Tide-in only counts if the exit-EMA peak value is >= this score.
+   * `null` or omitted = off (any confirmed peak can exit). Settings presets default this to 0.
+   */
+  exitMinScore?: number | null;
+  /** After a Tide-in/stop exit, skip new Tide-out signals for this many bars (0 = off). */
+  cooldownBars?: number;
 }
+
+/** The guard subset of {@link TideSignalParams}. */
+export type TideExitGuards = Pick<
+  TideSignalParams,
+  'exitPeakAfterEntry' | 'minHoldBars' | 'exitMinScore' | 'cooldownBars'
+>;
 
 export interface TideCandle {
   time: number;
@@ -404,25 +422,40 @@ export function buildTideTrades(
   candles: TideCandle[],
   signals: TideOutSignal[],
   peaks: TideInPeak[],
-  params: Pick<TideSignalParams, 'stopKind' | 'stopAtrMult' | 'stopPct'>,
+  params: Pick<TideSignalParams, 'stopKind' | 'stopAtrMult' | 'stopPct'> & TideExitGuards,
   atr: number[] = atrWilder(candles, 14),
 ): TideTrade[] {
   const m = candles.length;
   if (!m) return [];
   const idx = new Map<number, number>();
   candles.forEach((c, i) => idx.set(c.time, i));
-  const peakIdx = peaks
-    .map((p) => idx.get(p.confirmTime))
-    .filter((i): i is number => i != null)
-    .sort((a, b) => a - b);
+  const peakList = peaks
+    .flatMap((p) => {
+      const ci = idx.get(p.confirmTime);
+      const pi = idx.get(p.peakTime);
+      return ci == null || pi == null ? [] : [{ ci, pi, value: p.value }];
+    })
+    .sort((a, b) => a.ci - b.ci);
+  const minHold = Math.max(0, Math.floor(params.minHoldBars ?? 0));
+  const cooldown = Math.max(0, Math.floor(params.cooldownBars ?? 0));
+  // null/undefined = no score filter. A number (including 0) requires peak value >= it.
+  const exitMin = params.exitMinScore;
+  let lastExitIdx = -Infinity;
   const out: TideTrade[] = [];
-  for (const s of signals) {
+  for (const s of [...signals].sort((a, b) => a.confirmTime - b.confirmTime || a.pivotTime - b.pivotTime)) {
     const ci = idx.get(s.confirmTime);
     if (ci == null) continue;
+    if (cooldown > 0 && ci - lastExitIdx < cooldown) continue;
     const fill = ci + 1;
     const entryPrice = fill < m ? candles[fill].open : null;
     const stop = tideStopLevel(s.pivotPrice, atr[ci], params, entryPrice);
-    const x = peakIdx.find((p) => p >= fill);
+    const peak = peakList.find(
+      (p) =>
+        p.ci >= fill + minHold &&
+        (!params.exitPeakAfterEntry || p.pi > ci) &&
+        (exitMin == null || p.value >= exitMin),
+    );
+    const x = peak?.ci;
     let outcome: TideTradeOutcome = 'open';
     let exitIdx: number | null = null;
     for (let j = fill; j < m; j++) {
@@ -441,6 +474,10 @@ export function buildTideTrades(
     if (outcome === 'open' && x != null) outcome = 'tide_in';
     const tideInTime = outcome === 'tide_in' && x != null ? candles[x].time : null;
     const endIdx = exitIdx ?? (outcome === 'tide_in' && x != null ? x : m - 1);
+    if (cooldown > 0) {
+      const done = exitIdx ?? (outcome === 'tide_in' && x != null ? x + 1 : null);
+      if (done != null) lastExitIdx = Math.max(lastExitIdx, done);
+    }
     out.push({
       signal: s,
       entryTime: fill < m ? candles[fill].time : null,
@@ -456,6 +493,15 @@ export function buildTideTrades(
 }
 
 /** Union by (confirm, pivot). A signal already shown keeps its first version; nothing is dropped. */
+/**
+ * Signals that survived trade building. Identical to the input unless `cooldownBars` dropped some,
+ * so the chart never prints a Tide out that has no trade behind it.
+ */
+export function tradeSignals(signals: TideOutSignal[], trades: TideTrade[], params: TideExitGuards): TideOutSignal[] {
+  if (!params.cooldownBars || params.cooldownBars <= 0) return signals;
+  return trades.map((t) => t.signal);
+}
+
 export function mergeTideSignals(prev: TideOutSignal[], next: TideOutSignal[]): TideOutSignal[] {
   const key = (s: TideOutSignal) => `${s.confirmTime}:${s.pivotTime}`;
   const map = new Map<string, TideOutSignal>();
@@ -504,7 +550,8 @@ export function computeTideV2(
   const signals = detectTideOutSignals(closed, eo, params, rsi).filter((s) => s.confirmTime >= warmupTime);
   const peaks = detectTideInPeaks(closed, ei, params.exitPivotN);
   const trades = buildTideTrades(candles, signals, peaks, params, atrWilder(candles, 14));
+  const kept = tradeSignals(signals, trades, params);
   const toLine = (xs: number[]) =>
     xs.flatMap((v, i) => (Number.isFinite(v) ? [{ time: closed[i].time, value: v }] : []));
-  return { params, emaOut: toLine(eo), emaIn: toLine(ei), signals, peaks, trades, lastBarOpen };
+  return { params, emaOut: toLine(eo), emaIn: toLine(ei), signals: kept, peaks, trades, lastBarOpen };
 }
