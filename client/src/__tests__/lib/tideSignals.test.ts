@@ -11,6 +11,7 @@ import {
   mergeTideSignals,
   resolveTideTimeframe,
   tideStopLevel,
+  tradeSignals,
   tideTimeframeOf,
   type TideOutSignal,
   type TideSignalParams,
@@ -377,5 +378,111 @@ describe('mergeTideSignals', () => {
     const merged = mergeTideSignals([s(10, 5, true), s(20, 15)], [s(20, 15, true), s(30, 25)]);
     expect(merged.map((x) => x.confirmTime)).toEqual([10, 20, 30]);
     expect(merged[1].rsiPlus).toBe(false);
+  });
+});
+
+describe('Tide exit guards (flip-flop options; all off = current behaviour)', () => {
+  const T0 = 1_700_000_000;
+  const STEP = 3600;
+  const bars: TideZoneCandle[] = Array.from({ length: 50 }, (_, i) => ({
+    time: T0 + i * STEP,
+    open: 100,
+    high: 101,
+    low: 99,
+    close: 100,
+    volume: 1,
+  }));
+  const t = (i: number) => bars[i].time;
+  const sig = (ci: number): TideOutSignal => ({
+    confirmTime: t(ci),
+    pivotTime: t(ci - 3),
+    pivotPrice: 90,
+    pivot1Time: t(Math.max(0, ci - 12)),
+    pivot1Price: 95,
+    ema1: -40,
+    ema2: -30,
+    minRsi: null,
+    rsiPlus: false,
+  });
+  const peak = (confirmIdx: number, peakIdx: number, value: number) => ({
+    confirmTime: t(confirmIdx),
+    peakTime: t(peakIdx),
+    value,
+  });
+  const base = { stopKind: 'pct' as const, stopAtrMult: 0.5, stopPct: 0.005 };
+  // Peak A formed BEFORE the entry (idx 7) but is only confirmed right after it (idx 11), deep in a down tide.
+  const peaks = [peak(11, 7, -50), peak(20, 15, 10), peak(35, 30, 20)];
+
+  it('off (absent, false, 0) is identical to the current exit rule', () => {
+    const cur = buildTideTrades(bars, [sig(10)], peaks, base);
+    expect(cur[0].tideInTime).toBe(t(11));
+    const off = buildTideTrades(bars, [sig(10)], peaks, {
+      ...base,
+      exitPeakAfterEntry: false,
+      minHoldBars: 0,
+      exitMinScore: undefined,
+      cooldownBars: 0,
+    });
+    expect(off).toEqual(cur);
+  });
+
+  it('exitPeakAfterEntry skips a peak that formed before the entry', () => {
+    const r = buildTideTrades(bars, [sig(10)], peaks, { ...base, exitPeakAfterEntry: true });
+    expect(r[0].tideInTime).toBe(t(20));
+  });
+
+  it('minHoldBars ignores an early Tide in', () => {
+    expect(buildTideTrades(bars, [sig(10)], peaks, { ...base, minHoldBars: 3 })[0].tideInTime).toBe(t(20));
+    expect(buildTideTrades(bars, [sig(10)], peaks, { ...base, minHoldBars: 1 })[0].tideInTime).toBe(t(20));
+  });
+
+  it('exitMinScore ignores shallow peaks', () => {
+    expect(buildTideTrades(bars, [sig(10)], peaks, { ...base, exitMinScore: -20 })[0].tideInTime).toBe(t(20));
+    expect(buildTideTrades(bars, [sig(10)], peaks, { ...base, exitMinScore: 15 })[0].tideInTime).toBe(t(35));
+    expect(buildTideTrades(bars, [sig(10)], peaks, { ...base, exitMinScore: -60 })[0].tideInTime).toBe(t(11));
+  });
+
+  it('cooldownBars drops a Tide out that follows an exit too closely (and its marker)', () => {
+    const sigs = [sig(10), sig(22), sig(30)];
+    const none = buildTideTrades(bars, sigs, peaks, { ...base, exitPeakAfterEntry: true });
+    expect(none).toHaveLength(3);
+    const g = { ...base, exitPeakAfterEntry: true, cooldownBars: 5 };
+    const trades = buildTideTrades(bars, sigs, peaks, g);
+    // A exits via the peak confirmed at idx 20 (exit bar 21); idx 22 is 1 bar later → dropped; idx 30 kept.
+    expect(trades.map((x) => x.signal.confirmTime)).toEqual([t(10), t(30)]);
+    expect(tradeSignals(sigs, trades, g).map((s) => s.confirmTime)).toEqual([t(10), t(30)]);
+    expect(tradeSignals(sigs, none, {})).toBe(sigs);
+  });
+
+  it('an open trade does not start a cooldown (stacked entries stay as today)', () => {
+    const r = buildTideTrades(bars, [sig(10), sig(12)], [], { ...base, cooldownBars: 10 });
+    expect(r).toHaveLength(2);
+  });
+
+  it('normalizer keeps default settings identical to the presets and only stores switched-on guards', () => {
+    const d = normalizeTideZoneSettings(null);
+    expect(d.byTimeframe['4h']).toEqual(TIDE_PRESETS['4h']);
+    expect('cooldownBars' in d.byTimeframe['4h']).toBe(false);
+    const s = normalizeTideZoneSettings({
+      byTimeframe: {
+        '4h': { ...TIDE_PRESETS['4h'], exitPeakAfterEntry: true, minHoldBars: 3.4, exitMinScore: 0, cooldownBars: 999 },
+        '1h': { ...TIDE_PRESETS['1h'], minHoldBars: 0, exitPeakAfterEntry: false, exitMinScore: undefined },
+      },
+    });
+    expect(s.byTimeframe['4h']).toMatchObject({ exitPeakAfterEntry: true, minHoldBars: 3, exitMinScore: 0, cooldownBars: 96 });
+    expect(s.byTimeframe['1h']).toEqual(TIDE_PRESETS['1h']);
+  });
+
+  it.each([
+    ['4h', fx4h as unknown as Fixture],
+    ['1h', fx1h as unknown as Fixture],
+  ])('guards off leave computeTideV2 on real %s bars untouched', (_tf, fx) => {
+    const candles = candlesOf(fx);
+    const data = calculateTideZone(candles);
+    const p = paramsOf(fx);
+    const a = computeTideV2(candles, data, p, ALL);
+    const b = computeTideV2(candles, data, { ...p, exitPeakAfterEntry: false, minHoldBars: 0, cooldownBars: 0 }, ALL);
+    expect(b.signals).toEqual(a.signals);
+    expect(b.trades).toEqual(a.trades);
   });
 });

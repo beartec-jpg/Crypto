@@ -168,6 +168,46 @@ function TimeframeFields({
         step={1}
         onChange={(exitPivotN) => onChange({ exitPivotN })}
       />
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-sky-300">Flip-flop guards (all off = validated preset)</div>
+      <SwitchRow
+        label="Exit peak must form after entry"
+        checked={values.exitPeakAfterEntry === true}
+        onChange={(exitPeakAfterEntry) => onChange({ exitPeakAfterEntry })}
+      />
+      <NumRow
+        label="Minimum hold (bars)"
+        hint="Ignore Tide in for this many bars after the entry (0 = off)"
+        value={values.minHoldBars ?? 0}
+        min={0}
+        max={48}
+        step={1}
+        onChange={(minHoldBars) => onChange({ minHoldBars })}
+      />
+      <SwitchRow
+        label="Tide in needs a minimum peak score"
+        checked={values.exitMinScore !== undefined}
+        onChange={(on) => onChange({ exitMinScore: on ? 0 : undefined })}
+      />
+      {values.exitMinScore !== undefined && (
+        <NumRow
+          label="Minimum peak score"
+          hint="Exit-EMA peak must reach this Tide score to count (stops tiny wiggles deep in a down tide from exiting)"
+          value={values.exitMinScore}
+          min={-100}
+          max={100}
+          step={1}
+          onChange={(exitMinScore) => onChange({ exitMinScore })}
+        />
+      )}
+      <NumRow
+        label="Cooldown after exit (bars)"
+        hint="After a Tide in / stop, skip new Tide out signals for this many bars (0 = off)"
+        value={values.cooldownBars ?? 0}
+        min={0}
+        max={96}
+        step={1}
+        onChange={(cooldownBars) => onChange({ cooldownBars })}
+      />
       <div className="text-[10px] font-semibold uppercase tracking-wide text-red-300">Stop</div>
       <div className="flex items-center justify-between gap-2">
         <Label className="text-xs text-slate-300">Stop under pivot low</Label>

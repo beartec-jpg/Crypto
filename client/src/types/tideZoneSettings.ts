@@ -80,7 +80,18 @@ export function normalizeTideTimeframeSettings(
 ): TideTimeframeSettings {
   const s = { ...preset, ...(raw || {}) };
   const stopKind: TideStopKind = s.stopKind === 'pct' || s.stopKind === 'atr' ? s.stopKind : preset.stopKind;
+  // Flip-flop guards: keys only exist when switched on, so default settings stay byte-identical to the presets.
+  const guards: Partial<TideSignalParams> = {};
+  if (s.exitPeakAfterEntry === true) guards.exitPeakAfterEntry = true;
+  const minHold = Math.round(clamp(s.minHoldBars, 0, 48, 0));
+  if (minHold > 0) guards.minHoldBars = minHold;
+  if (s.exitMinScore !== undefined && s.exitMinScore !== null && Number.isFinite(Number(s.exitMinScore))) {
+    guards.exitMinScore = clamp(s.exitMinScore, -100, 100, 0);
+  }
+  const cooldown = Math.round(clamp(s.cooldownBars, 0, 96, 0));
+  if (cooldown > 0) guards.cooldownBars = cooldown;
   return {
+    ...guards,
     emaPeriod: Math.round(clamp(s.emaPeriod, 2, 34, preset.emaPeriod)),
     pivotN: Math.round(clamp(s.pivotN, 2, 21, preset.pivotN)),
     belowScore: clamp(s.belowScore, -80, 0, preset.belowScore),

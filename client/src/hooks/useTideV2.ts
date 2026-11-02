@@ -3,6 +3,7 @@ import {
   buildTideTrades,
   computeTideV2,
   mergeTideSignals,
+  tradeSignals,
   type TideCandle,
   type TideOutSignal,
   type TideTimeframe,
@@ -41,7 +42,8 @@ export function useTideV2({ candles, tideZone, timeframe, settings, seriesKey, e
     const merged = mergeTideSignals(prev, res.signals);
     ledger.current = { key, signals: merged };
     if (merged.length === res.signals.length) return res;
-    return { ...res, signals: merged, trades: buildTideTrades(candles, merged, res.peaks, params) };
+    const trades = buildTideTrades(candles, merged, res.peaks, params);
+    return { ...res, signals: tradeSignals(merged, trades, params), trades };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, timeframe, paramsKey, tideZone, candles, seriesKey]);
 }
