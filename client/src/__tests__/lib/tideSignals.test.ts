@@ -94,7 +94,8 @@ describe.each([
   const lastTime = candles[candles.length - 1].time;
 
   it('uses the validated preset for this timeframe', () => {
-    expect(params).toEqual(TIDE_PRESETS[fx.interval]);
+    // Fixtures are the research detector (no score filter). The product preset adds exitMinScore 0.
+    expect({ ...params, exitMinScore: 0 }).toEqual(TIDE_PRESETS[fx.interval]);
   });
 
   it('Tide score matches bar for bar', () => {
@@ -413,17 +414,24 @@ describe('Tide exit guards (flip-flop options; all off = current behaviour)', ()
   // Peak A formed BEFORE the entry (idx 7) but is only confirmed right after it (idx 11), deep in a down tide.
   const peaks = [peak(11, 7, -50), peak(20, 15, 10), peak(35, 30, 20)];
 
-  it('off (absent, false, 0) is identical to the current exit rule', () => {
+  it('off (absent or null) is identical to the current exit rule', () => {
     const cur = buildTideTrades(bars, [sig(10)], peaks, base);
     expect(cur[0].tideInTime).toBe(t(11));
-    const off = buildTideTrades(bars, [sig(10)], peaks, {
+    const absent = buildTideTrades(bars, [sig(10)], peaks, {
       ...base,
       exitPeakAfterEntry: false,
       minHoldBars: 0,
-      exitMinScore: undefined,
       cooldownBars: 0,
     });
-    expect(off).toEqual(cur);
+    const disabled = buildTideTrades(bars, [sig(10)], peaks, {
+      ...base,
+      exitPeakAfterEntry: false,
+      minHoldBars: 0,
+      exitMinScore: null,
+      cooldownBars: 0,
+    });
+    expect(absent).toEqual(cur);
+    expect(disabled).toEqual(cur);
   });
 
   it('exitPeakAfterEntry skips a peak that formed before the entry', () => {
@@ -440,6 +448,15 @@ describe('Tide exit guards (flip-flop options; all off = current behaviour)', ()
     expect(buildTideTrades(bars, [sig(10)], peaks, { ...base, exitMinScore: -20 })[0].tideInTime).toBe(t(20));
     expect(buildTideTrades(bars, [sig(10)], peaks, { ...base, exitMinScore: 15 })[0].tideInTime).toBe(t(35));
     expect(buildTideTrades(bars, [sig(10)], peaks, { ...base, exitMinScore: -60 })[0].tideInTime).toBe(t(11));
+  });
+
+  it('default score 0 ignores a -5 peak, null counts it, and exactly 0 counts', () => {
+    const neg = [peak(11, 8, -5), peak(20, 15, 10)];
+    expect(buildTideTrades(bars, [sig(10)], neg, { ...base, exitMinScore: 0 })[0].tideInTime).toBe(t(20));
+    expect(buildTideTrades(bars, [sig(10)], neg, TIDE_PRESETS['1h'])[0].tideInTime).toBe(t(20));
+    expect(buildTideTrades(bars, [sig(10)], neg, { ...base, exitMinScore: null })[0].tideInTime).toBe(t(11));
+    const exact = [peak(11, 8, 0), peak(20, 15, 40)];
+    expect(buildTideTrades(bars, [sig(10)], exact, { ...base, exitMinScore: 0 })[0].tideInTime).toBe(t(11));
   });
 
   it('cooldownBars drops a Tide out that follows an exit too closely (and its marker)', () => {
@@ -462,7 +479,10 @@ describe('Tide exit guards (flip-flop options; all off = current behaviour)', ()
   it('normalizer keeps default settings identical to the presets and only stores switched-on guards', () => {
     const d = normalizeTideZoneSettings(null);
     expect(d.byTimeframe['4h']).toEqual(TIDE_PRESETS['4h']);
+    expect(d.byTimeframe).toEqual(TIDE_PRESETS);
     expect('cooldownBars' in d.byTimeframe['4h']).toBe(false);
+    expect('exitPeakAfterEntry' in d.byTimeframe['4h']).toBe(false);
+    expect('minHoldBars' in d.byTimeframe['4h']).toBe(false);
     const s = normalizeTideZoneSettings({
       byTimeframe: {
         '4h': { ...TIDE_PRESETS['4h'], exitPeakAfterEntry: true, minHoldBars: 3.4, exitMinScore: 0, cooldownBars: 999 },
@@ -471,6 +491,85 @@ describe('Tide exit guards (flip-flop options; all off = current behaviour)', ()
     });
     expect(s.byTimeframe['4h']).toMatchObject({ exitPeakAfterEntry: true, minHoldBars: 3, exitMinScore: 0, cooldownBars: 96 });
     expect(s.byTimeframe['1h']).toEqual(TIDE_PRESETS['1h']);
+    expect('exitPeakAfterEntry' in s.byTimeframe['1h']).toBe(false);
+    expect('minHoldBars' in s.byTimeframe['1h']).toBe(false);
+  });
+
+  it('default presets have exitMinScore 0 and normalize(null) equals them', () => {
+    expect(TIDE_PRESETS['1h'].exitMinScore).toBe(0);
+    expect(TIDE_PRESETS['4h'].exitMinScore).toBe(0);
+    expect(normalizeTideZoneSettings(null).byTimeframe).toEqual(TIDE_PRESETS);
+    expect(isTidePreset(TIDE_PRESETS['1h'], '1h')).toBe(true);
+    expect(isTidePreset(TIDE_PRESETS['4h'], '4h')).toBe(true);
+  });
+
+  it('exitMinScore null stays disabled; reset (the preset) restores 0', () => {
+    const s = normalizeTideZoneSettings({
+      byTimeframe: {
+        '1h': { ...TIDE_PRESETS['1h'], exitMinScore: null },
+        '4h': { exitMinScore: null },
+      },
+    });
+    expect(s.byTimeframe['1h'].exitMinScore).toBeNull();
+    expect(s.byTimeframe['4h'].exitMinScore).toBeNull();
+    expect(isTidePreset(s.byTimeframe['1h'], '1h')).toBe(false);
+    const reset = normalizeTideZoneSettings({ byTimeframe: { '1h': { ...TIDE_PRESETS['1h'] }, '4h': { ...TIDE_PRESETS['4h'] } } });
+    expect(reset.byTimeframe['1h']).toEqual(TIDE_PRESETS['1h']);
+    expect(reset.byTimeframe['1h'].exitMinScore).toBe(0);
+    expect(isTidePreset(reset.byTimeframe['1h'], '1h')).toBe(true);
+  });
+
+  it('clamps exitMinScore to [-100, 100] (1 decimal)', () => {
+    const s = normalizeTideZoneSettings({
+      byTimeframe: {
+        '1h': { exitMinScore: 150.2 },
+        '4h': { exitMinScore: -150.2 },
+      },
+    });
+    expect(s.byTimeframe['1h'].exitMinScore).toBe(100);
+    expect(s.byTimeframe['4h'].exitMinScore).toBe(-100);
+    const rounded = normalizeTideZoneSettings({
+      byTimeframe: { '1h': { exitMinScore: 12.26 }, '4h': { exitMinScore: -99.96 } },
+    });
+    expect(rounded.byTimeframe['1h'].exitMinScore).toBe(12.3);
+    expect(rounded.byTimeframe['4h'].exitMinScore).toBe(-100);
+  });
+
+  it('missing, undefined, or non-finite exitMinScore on persisted settings loads as 0', () => {
+    const legacy1h = {
+      emaPeriod: 21,
+      pivotN: 8,
+      belowScore: -40,
+      exitEmaPeriod: 8,
+      exitPivotN: 8,
+      stopKind: 'pct' as const,
+      stopAtrMult: 0.5,
+      stopPct: 0.005,
+    };
+    const legacy4h = {
+      emaPeriod: 8,
+      pivotN: 3,
+      belowScore: -20,
+      exitEmaPeriod: 8,
+      exitPivotN: 5,
+      stopKind: 'atr' as const,
+      stopAtrMult: 0.5,
+      stopPct: 0.005,
+    };
+    const missing = normalizeTideZoneSettings({ byTimeframe: { '1h': legacy1h, '4h': legacy4h } });
+    expect(missing.byTimeframe['1h']).toEqual(TIDE_PRESETS['1h']);
+    expect(missing.byTimeframe['4h']).toEqual(TIDE_PRESETS['4h']);
+    expect(missing.byTimeframe['1h'].exitMinScore).toBe(0);
+    const bad = normalizeTideZoneSettings({
+      byTimeframe: {
+        '1h': { exitMinScore: undefined },
+        '4h': { exitMinScore: Number.NaN },
+      },
+    });
+    expect(bad.byTimeframe['1h'].exitMinScore).toBe(0);
+    expect(bad.byTimeframe['4h'].exitMinScore).toBe(0);
+    const inf = normalizeTideZoneSettings({ byTimeframe: { '4h': { exitMinScore: Number.POSITIVE_INFINITY } } });
+    expect(inf.byTimeframe['4h'].exitMinScore).toBe(0);
   });
 
   it.each([
@@ -479,9 +578,17 @@ describe('Tide exit guards (flip-flop options; all off = current behaviour)', ()
   ])('guards off leave computeTideV2 on real %s bars untouched', (_tf, fx) => {
     const candles = candlesOf(fx);
     const data = calculateTideZone(candles);
-    const p = paramsOf(fx);
+    const legacy = paramsOf(fx);
+    const p = { ...legacy, exitMinScore: null as number | null };
     const a = computeTideV2(candles, data, p, ALL);
-    const b = computeTideV2(candles, data, { ...p, exitPeakAfterEntry: false, minHoldBars: 0, cooldownBars: 0 }, ALL);
+    const b = computeTideV2(
+      candles,
+      data,
+      { ...p, exitPeakAfterEntry: false, minHoldBars: 0, exitMinScore: null, cooldownBars: 0 },
+      ALL,
+    );
+    expect(a.signals).toEqual(computeTideV2(candles, data, legacy, ALL).signals);
+    expect(a.trades).toEqual(computeTideV2(candles, data, legacy, ALL).trades);
     expect(b.signals).toEqual(a.signals);
     expect(b.trades).toEqual(a.trades);
   });

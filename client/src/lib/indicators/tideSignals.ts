@@ -34,13 +34,16 @@ export interface TideSignalParams {
   stopAtrMult: number;
   /** pivot low × (1 − pct). Fraction: 0.005 = 0.5%. */
   stopPct: number;
-  // ── Optional Tide-in / Tide-out flip-flop guards. All OFF when absent (= validated preset behaviour). ──
+  // ── Optional Tide-in / Tide-out flip-flop guards. Absent = off (the research detector). ──
   /** Tide-in must come from an exit-EMA peak that formed AFTER the Tide-out confirmation bar. */
   exitPeakAfterEntry?: boolean;
   /** Ignore Tide-in until this many bars after the entry fill (0 = off). */
   minHoldBars?: number;
-  /** Tide-in only counts if the exit-EMA peak value is at least this score (undefined = off). */
-  exitMinScore?: number;
+  /**
+   * Tide-in only counts if the exit-EMA peak value is >= this score.
+   * `null` or omitted = off (any confirmed peak can exit). Settings presets default this to 0.
+   */
+  exitMinScore?: number | null;
   /** After a Tide-in/stop exit, skip new Tide-out signals for this many bars (0 = off). */
   cooldownBars?: number;
 }
@@ -435,6 +438,7 @@ export function buildTideTrades(
     .sort((a, b) => a.ci - b.ci);
   const minHold = Math.max(0, Math.floor(params.minHoldBars ?? 0));
   const cooldown = Math.max(0, Math.floor(params.cooldownBars ?? 0));
+  // null/undefined = no score filter. A number (including 0) requires peak value >= it.
   const exitMin = params.exitMinScore;
   let lastExitIdx = -Infinity;
   const out: TideTrade[] = [];
@@ -449,7 +453,7 @@ export function buildTideTrades(
       (p) =>
         p.ci >= fill + minHold &&
         (!params.exitPeakAfterEntry || p.pi > ci) &&
-        (exitMin === undefined || p.value >= exitMin),
+        (exitMin == null || p.value >= exitMin),
     );
     const x = peak?.ci;
     let outcome: TideTradeOutcome = 'open';
