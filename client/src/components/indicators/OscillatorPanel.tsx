@@ -23,6 +23,7 @@ interface IndicatorState {
   cci: { show: boolean; period: number; setShow: (val: boolean) => void };
   adx: { show: boolean; period: number; setShow: (val: boolean) => void };
   tideZone?: { show: boolean; setShow: (val: boolean) => void };
+  tetherDivergence?: { show: boolean; setShow: (val: boolean) => void };
 }
 
 interface OscillatorPanelProps {
@@ -55,6 +56,7 @@ export function OscillatorPanel({
     { name: 'CCI', key: 'cci', free: false },
     { name: 'ADX', key: 'adx', free: false },
     { name: 'Tide Zone', key: 'tideZone', free: false },
+    { name: 'Tether Divergence', key: 'tetherDivergence', free: false },
   ] as const;
 
   return (

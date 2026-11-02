@@ -25,6 +25,7 @@ import {
 import type { TideZonePoint } from '@/lib/indicators/tideZone';
 import type { TideTimeframe } from '@/lib/indicators/tideSignals';
 import { calculateTideZoneForTimeframe } from '@/lib/indicators/tideTimeframe';
+import type { TetherDivergenceComputeResult } from '@/lib/indicators/tetherDivergence';
 
 export interface TideZoneExtras {
   oiHistory?: Array<{ timestamp: number; value: number }>;
@@ -72,6 +73,8 @@ export interface OscillatorData {
   tideZone: TideZonePoint[];
   /** '1h' | '4h' when Tide ran on these candles; null = Tide is blank on this timeframe. */
   tideTimeframe: TideTimeframe | null;
+  /** Optional — populated by ChartFullscreenPage, not computed here. */
+  tetherDivergence?: TetherDivergenceComputeResult | null;
 }
 
 export interface OscillatorCalculationSettings {

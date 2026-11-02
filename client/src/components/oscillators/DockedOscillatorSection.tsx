@@ -12,6 +12,7 @@ import { CMFPanel } from '@/components/indicators/oscillators/CMFPanel';
 import { TSIPanel } from '@/components/indicators/oscillators/TSIPanel';
 import { KlingerPanel } from '@/components/indicators/oscillators/KlingerPanel';
 import { TideZonePanel } from '@/components/indicators/oscillators/TideZonePanel';
+import { TetherDivergencePanel } from '@/components/oscillators/TetherDivergencePanel';
 import { OscillatorVerticalCrosshair } from '@/components/oscillators/OscillatorVerticalCrosshair';
 import { OscillatorDockHeader } from '@/components/oscillators/OscillatorInfoButton';
 import { SMCDebugTable } from '@/components/tradingSystems/SMCDebugTable';
@@ -75,8 +76,13 @@ export function DockedOscillatorSection({
 }: DockedOscillatorSectionProps) {
   const showOwnerOnlyTools = useShowOwnerOnlyTools();
   const showSmartMoney = showOwnerOnlyTools && selectedOscillators.has('smartMoney');
+  const showTetherDivergence = showOwnerOnlyTools && selectedOscillators.has('tetherDivergence');
   const dockedOscillatorsCount = Array.from(selectedOscillators).filter(
-    osc => !poppedOutOscillators.has(osc) && !miniOscillators?.has(osc) && (osc !== 'smartMoney' || showOwnerOnlyTools)
+    osc =>
+      !poppedOutOscillators.has(osc) &&
+      !miniOscillators?.has(osc) &&
+      (osc !== 'smartMoney' || showOwnerOnlyTools) &&
+      (osc !== 'tetherDivergence' || showOwnerOnlyTools),
   ).length;
 
   if (dockedOscillatorsCount === 0) return null;
@@ -267,6 +273,15 @@ export function DockedOscillatorSection({
             <OscillatorDockHeader id="tideZone" title="Tide Zone" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <div className="min-h-0 flex-1">
               <TideZonePanel data={oscillatorData.tideZone} candles={candles} tideTimeframe={oscillatorData.tideTimeframe} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} showHud={false} />
+            </div>
+          </div>
+        )}
+
+        {showTetherDivergence && !poppedOutOscillators.has('tetherDivergence') && !miniOscillators?.has('tetherDivergence') && (
+          <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2 flex flex-col">
+            <OscillatorDockHeader id="tetherDivergence" title="Tether Divergence" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
+            <div className="min-h-0 flex-1">
+              <TetherDivergencePanel data={oscillatorData.tetherDivergence} candles={candles} approximate={oscillatorData.tetherDivergence?.approximate} mainChartVisibleRange={mainChartVisibleRange} showHud={false} />
             </div>
           </div>
         )}

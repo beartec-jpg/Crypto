@@ -8,10 +8,10 @@ const DEFAULT_PREFERENCES: OscillatorPreferences = {
 };
 
 // Valid oscillator IDs
-export type OscillatorId = 'rsi' | 'macd' | 'stochRSI' | 'obv' | 'mfi' | 'williamsR' | 'cci' | 'adx' | 'tideZone';
+export type OscillatorId = 'rsi' | 'macd' | 'stochRSI' | 'obv' | 'mfi' | 'williamsR' | 'cci' | 'adx' | 'tideZone' | 'tetherDivergence';
 
 export const VALID_OSCILLATOR_IDS = new Set<OscillatorId>([
-  'rsi', 'macd', 'stochRSI', 'obv', 'mfi', 'williamsR', 'cci', 'adx', 'tideZone',
+  'rsi', 'macd', 'stochRSI', 'obv', 'mfi', 'williamsR', 'cci', 'adx', 'tideZone', 'tetherDivergence',
 ]);
 
 /**

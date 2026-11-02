@@ -13,6 +13,7 @@ import { CMFPanel } from '@/components/indicators/oscillators/CMFPanel';
 import { TSIPanel } from '@/components/indicators/oscillators/TSIPanel';
 import { KlingerPanel } from '@/components/indicators/oscillators/KlingerPanel';
 import { TideZonePanel } from '@/components/indicators/oscillators/TideZonePanel';
+import { TetherDivergencePanel } from '@/components/oscillators/TetherDivergencePanel';
 import { SMCDebugTable } from '@/components/tradingSystems/SMCDebugTable';
 import { SMCTrendEnginePanel } from '@/components/trading/SMCTrendEngine/SMCTrendEnginePanel';
 import { useShowOwnerOnlyTools } from '@/hooks/useShowOwnerOnlyTools';
@@ -68,6 +69,7 @@ const OSCILLATOR_CONFIG = [
   { id: 'mfi', title: 'MFI (14)', storageKey: 'oscillator-mfi' },
   { id: 'klinger', title: 'Klinger (34,55,13)', storageKey: 'oscillator-klinger' },
   { id: 'tideZone', title: 'Tide Zone', storageKey: 'oscillator-tide-zone' },
+  { id: 'tetherDivergence', title: 'Tether Divergence', storageKey: 'oscillator-tether-divergence' },
   { id: 'smartMoney', title: 'Smart Money Tracker', storageKey: 'oscillator-smart-money' },
   { id: 'smcTrendEngine', title: 'SMC Trend Engine', storageKey: 'oscillator-smc-trend-engine' },
 ];
@@ -150,6 +152,8 @@ export function PoppedOutOscillators({
         );
       case 'tideZone':
         return <TideZonePanel data={oscillatorData.tideZone} candles={candles} tideTimeframe={oscillatorData.tideTimeframe} syncWithMainChart mainChartVisibleRange={mainChartVisibleRange} />;
+      case 'tetherDivergence':
+        return <TetherDivergencePanel data={oscillatorData.tetherDivergence} candles={candles} approximate={oscillatorData.tetherDivergence?.approximate} mainChartVisibleRange={mainChartVisibleRange} />;
       case 'smartMoney':
         if (!smartMoneyPanelData?.evaluation || !smartMoneyPanelData.scoringInput) {
           return <div className="h-full w-full rounded border border-slate-700 bg-slate-900/70 p-3 text-xs text-slate-400">Waiting for SMC data...</div>;
@@ -214,7 +218,7 @@ export function PoppedOutOscillators({
     <>
       {OSCILLATOR_CONFIG.map(({ id, title, storageKey }, index) => {
         if (!poppedOutOscillators.has(id) || !selectedOscillators.has(id)) return null;
-        if (id === 'smartMoney' && !showOwnerOnlyTools) return null;
+        if ((id === 'smartMoney' || id === 'tetherDivergence') && !showOwnerOnlyTools) return null;
         
         return (
           <DraggableOscillatorWindow

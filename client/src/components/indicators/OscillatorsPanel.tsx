@@ -11,6 +11,7 @@ import { WilliamsRPanel } from '@/components/indicators/oscillators/WilliamsRPan
 import { CCIPanel } from '@/components/indicators/oscillators/CCIPanel';
 import { ADXPanel } from '@/components/indicators/oscillators/ADXPanel';
 import { TideZonePanel } from '@/components/indicators/oscillators/TideZonePanel';
+import { TetherDivergencePanel } from '@/components/oscillators/TetherDivergencePanel';
 
 // Calculation functions
 import { calculateRSI, calculateMACD } from '@/lib/indicators/momentum';
@@ -77,6 +78,7 @@ export const OSCILLATOR_OPTIONS = [
   { id: 'cci', label: 'CCI' },
   { id: 'adx', label: 'ADX' },
   { id: 'tideZone', label: 'Tide Zone' },
+  { id: 'tetherDivergence', label: 'Tether Divergence' },
 ] as const;
 
 // Divergence meter constants
@@ -542,6 +544,26 @@ export function OscillatorsPanel({
               </div>
               <div className="h-[220px]">
                 <TideZonePanel data={calculatedData.tideZone} candles={candles} tideTimeframe={tide.timeframe} />
+              </div>
+            </div>
+          )}
+
+          {activeOscillators.includes('tetherDivergence') && (
+            <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h4 className="text-sm font-semibold text-white">Tether Divergence</h4>
+                  <p className="text-xs text-slate-400">USDT.D stretch vs coin oversold — daily bottom-zone score</p>
+                </div>
+                <button
+                  onClick={() => toggleOscillator('tetherDivergence')}
+                  className="text-gray-400 hover:text-red-400 transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="h-[220px]">
+                <TetherDivergencePanel data={null} candles={candles} />
               </div>
             </div>
           )}

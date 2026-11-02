@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useMemo, useState } from 'react';
 import { useShowOwnerOnlyTools } from '@/hooks/useShowOwnerOnlyTools';
 import { OWNER_ONLY_OSCILLATOR_IDS } from '@/constants/ownerOnlyFeatures';
+import { ConnectedTetherDivergenceSettingsModal } from '@/components/modals/TetherDivergenceSettingsModal';
 
 export interface OscillatorModalConfig {
   enabled?: boolean;
@@ -40,6 +41,7 @@ const OSCILLATORS = [
   { id: 'mfi', name: 'MFI', description: 'Money Flow Index (14)' },
   { id: 'klinger', name: 'Klinger', description: 'Klinger Oscillator (34,55,13)' },
   { id: 'tideZone', name: 'Tide Zone', description: '4h tide + local energy/tape buy-sell zones' },
+  { id: 'tetherDivergence', name: 'Tether Divergence', description: 'USDT.D stretch vs coin oversold — daily bottom-zone score' },
   { id: 'smartMoney', name: 'Smart Money Tracker', description: 'Standalone SMC system score and debug panel' },
   { id: 'smcTrendEngine', name: 'SMC Trend Engine', description: 'Trend-focused SMC score and debug panel' },
 ];
@@ -54,6 +56,7 @@ export function OscillatorSelectorModal({
 }: OscillatorSelectorModalProps) {
   const [editingOscillator, setEditingOscillator] = useState<string | null>(null);
   const [draftConfig, setDraftConfig] = useState<OscillatorModalConfig>({});
+  const [tetherSettingsOpen, setTetherSettingsOpen] = useState(false);
   const showOwnerOnlyTools = useShowOwnerOnlyTools();
   const visibleOscillators = useMemo(
     () =>
@@ -71,6 +74,10 @@ export function OscillatorSelectorModal({
   );
 
   const openSettings = (oscillatorId: string) => {
+    if (oscillatorId === 'tetherDivergence') {
+      setTetherSettingsOpen(true);
+      return;
+    }
     const existing = oscillatorConfigs?.[oscillatorId] ?? {};
     const isEnabled = existing.enabled ?? selectedOscillators.has(oscillatorId);
 
@@ -271,6 +278,11 @@ export function OscillatorSelectorModal({
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConnectedTetherDivergenceSettingsModal
+        isOpen={tetherSettingsOpen}
+        onClose={() => setTetherSettingsOpen(false)}
+      />
     </>
   );
 }

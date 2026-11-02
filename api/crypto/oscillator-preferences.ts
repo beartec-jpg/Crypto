@@ -106,7 +106,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Validate oscillator IDs
-      const validOscillators = ['rsi', 'macd', 'stochRSI', 'obv', 'mfi', 'williamsR', 'cci', 'adx'];
+      const validOscillators = ['rsi', 'macd', 'stochRSI', 'obv', 'mfi', 'williamsR', 'cci', 'adx', 'tideZone', 'tetherDivergence'];
       const invalidOscillators = favoriteOscillators.filter(id => !validOscillators.includes(id));
       if (invalidOscillators.length > 0) {
         return res.status(400).json({ 

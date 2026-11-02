@@ -1,5 +1,6 @@
 import { buildIndicatorCoach, type IndicatorCoachReport } from '@/lib/indicators/indicatorCoach';
 import { tideZoneLabel } from '@/lib/indicators/tideZone';
+import { lastDefined, tetherZoneLabel } from '@/lib/indicators/tetherDivergence';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
 
 export type OscillatorManual = {
@@ -78,6 +79,11 @@ const MANUAL: Record<string, OscillatorManual> = {
     title: 'Tide Zone',
     how: 'Tide Zone is a location score from 4h RSI/EMA50 (the tide), local energy (ATR/BB), and tape (signed volume). Green +40 is “with the 4h,” not a buy for the whole trend. The sky line is an EMA of the hist to ignore 1–2 bar flips.',
     levels: 'DIV = price zigzag lower low vs Tide-EMA zigzag higher low (below the below-score line). Absorb = price flat/down between two price zigzag lows while Tide EMA is rising. Distro/Reacc need open interest. Exit longs toward 0, not −40.',
+  },
+  tetherDivergence: {
+    title: 'Tether Divergence',
+    how: 'Daily score of how stretched USDT dominance is (RSI, distance above its 20-day EMA, upper Bollinger) versus how oversold the coin is (100 − coin RSI). High score = USDT.D stretched high while the coin is washed out — historically coincident with BTC/XRP daily bottoms, not a leading signal.',
+    levels: '80+ = Bottom zone (validated out-of-sample, ~3x lift on BTC/XRP). 60–80 = Watch. Below 60 is grey. Gap shade = USDT.D RSI ≥ 65 while coin RSI ≤ 35. Top-zone mirror is off by default and unvalidated — do not trade it as a top call.',
   },
   smartMoney: {
     title: 'Smart Money Tracker',
@@ -255,6 +261,21 @@ export function getOscillatorLiveReport(
           last.tell ? `Tell: ${last.tell}.` : 'No absorb/distro/reacc tell on this bar.'
         }`,
         lookFor: 'DIV = price LL vs EMA HL. Absorb = price flat/down, Tide EMA up. Distro needs OI flush at a high. Location is not a buy.',
+      };
+    }
+    case 'tetherDivergence': {
+      const td = data.tetherDivergence;
+      if (!td) return null;
+      const score = lastDefined(td.score);
+      const zone = lastDefined(td.zone);
+      if (score == null) return null;
+      return {
+        headline: `${tetherZoneLabel(zone)} ${score.toFixed(0)}`,
+        color:
+          zone === 'bottom' ? 'text-emerald-400' : zone === 'watch' ? 'text-amber-400' : 'text-slate-400',
+        text: '',
+        meaning: `Score ${score.toFixed(0)} from USDT.D stretch vs coin oversold. Bottoms were validated out-of-sample (~3x lift, BTC/XRP, coincident not leading). Tops were not.`,
+        lookFor: 'Bottom zone (80+) with gap shade (USDT.D RSI high, coin RSI low). Do not treat the optional top-zone mirror as a signal.',
       };
     }
     case 'smartMoney':
