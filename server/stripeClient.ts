@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // Stripe client setup using Replit's stripe-replit-sync integration
 import Stripe from 'stripe';
 

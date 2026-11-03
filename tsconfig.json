@@ -18,7 +18,7 @@
     "paths": {
       "@shared/*": ["./shared/*"],
       "@/*": ["./client/src/*"],
-      "@assets/*": ["./attached_assets/*"]
+      "@assets/*": ["./client/src/assets/media/*"]
     }
   },
   "include": ["client/src", "server", "shared", "api", "vite.config.ts"]

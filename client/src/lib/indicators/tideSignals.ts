@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Tide v2 — point-in-time Tide-out / Tide-in signals, per-timeframe presets, stop levels.
  *

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // client/src/lib/xrpSendService.ts
 // XRP native send service - STANDARD XRPL.js ONLY
 

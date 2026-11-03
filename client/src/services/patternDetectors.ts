@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { calculateBollingerBands } from '@/lib/indicators/volatility';
 import { calculateMACD, calculateRSI } from '@/lib/indicators/momentum';
 import type { Candle, CVDDataItem } from '@/types/chart';

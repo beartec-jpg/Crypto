@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // Error tracking with Sentry (optional)
 // import * as Sentry from "@sentry/react";
 

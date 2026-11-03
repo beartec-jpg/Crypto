@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * @fileoverview Chart Hotkeys
  * @description Component managing all keyboard shortcuts for the chart page.

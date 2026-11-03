@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { TideZonePoint } from '@/lib/indicators/tideZone';

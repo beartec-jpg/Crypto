@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useEffect, useRef, useState } from 'react';
 import { createChart, IChartApi, ColorType, LineStyle, LineSeries, HistogramSeries, type Time } from 'lightweight-charts';
 import type { CandleData } from '@/types/chart.types';

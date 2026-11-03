@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import { loadD3 } from '@/lib/d3Loader';
 import type * as d3Types from 'd3';

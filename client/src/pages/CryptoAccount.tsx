@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { Helmet } from 'react-helmet-async';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
 import { useCryptoAuth, isDevelopment, setDevAdminMode, ADMIN_EMAIL } from '@/hooks/useCryptoAuth';
@@ -51,7 +52,6 @@ function ClerkSignOutButton({ children }: { children: React.ReactNode }) {
 
 interface SubscriptionData {
   tier: string;
-  hasElliottAddon: boolean;
   canUseAI: boolean;
   hasUnlimitedAI: boolean;
   aiCredits: number;

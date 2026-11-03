@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // client/src/lib/tokenService.ts
 // Token management service - detect, add, remove tokens from wallet
 

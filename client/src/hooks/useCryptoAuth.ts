@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useEffect, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth, useUser } from '@clerk/clerk-react';
@@ -26,7 +27,6 @@ interface CryptoSubscription {
   stripeCustomerId?: string;
   stripeSubscriptionId?: string;
   aiCredits?: number;
-  hasElliottAddon?: boolean;
   canUseElliott?: boolean;
   canUseAI?: boolean;
   hasUnlimitedAI?: boolean;
@@ -79,7 +79,6 @@ function getDevSubscription(): CryptoSubscription {
     tier: 'elite',
     subscriptionStatus: 'active',
     aiCredits: 999999,
-    hasElliottAddon: true,
     canUseElliott: true,
     canUseAI: true,
     hasUnlimitedAI: true,
@@ -161,7 +160,6 @@ export function useCryptoAuth() {
       canUseElliott: true,
       canUseAI: true,
       hasUnlimitedAI: true,
-      hasElliottAddon: true,
     };
     return {
       user: devUser,

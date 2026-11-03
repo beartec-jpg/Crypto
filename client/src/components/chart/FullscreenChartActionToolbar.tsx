@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { ChartDrawingTool } from '@/types/drawing';
 import { DrawingMenu } from '@/components/drawings/DrawingMenu';
 import { IndicatorMenu } from '@/components/indicators/IndicatorMenu';

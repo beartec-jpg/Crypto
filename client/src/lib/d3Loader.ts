@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Dynamic D3 loader for lazy loading D3 library
  * This ensures D3 is only loaded when actually needed (i.e., when CryptoSandbox is accessed)

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useCallback } from 'react';
 import type { OrderBlockSettings } from '@/types/orderBlock';
 import { DEFAULT_OB_SETTINGS } from '@/types/orderBlock';

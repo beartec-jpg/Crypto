@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Higher Timeframe (HTF) Bias type definitions.
  * Used to display multi-timeframe trend direction on the chart.

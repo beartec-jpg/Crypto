@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Shared deep-dive jobs: one in-flight AI run per (symbol, HTF, LTF, mode incl. horizon),
  * joined by any number of users via crypto_ai_deep_job_waiters. Each waiter is charged

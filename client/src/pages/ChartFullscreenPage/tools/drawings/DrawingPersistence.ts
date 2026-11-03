@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * @fileoverview Drawing Persistence
  * @description Logic for saving and loading drawings to/from the backend.

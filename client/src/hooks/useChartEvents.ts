@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useEffect } from 'react';
 import { IChartApi, ISeriesApi, MouseEventParams } from 'lightweight-charts';
 

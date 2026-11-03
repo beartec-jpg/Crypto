@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { Settings } from 'lucide-react';
 import { useTideZoneSettings } from '@/hooks/useTideZoneSettings';
 import type { TideTimeframe } from '@/types/tideZoneSettings';

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { ElliottWaveLabel, InsertElliottWaveLabel } from "@shared/schema";
 import { storage } from "../storage";
 

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // AI Trader Modes — AI-native "trader mode" definitions for the /cryptoai analysis page.
 //
 // IMPORTANT: These modes are an AI-only concept. They are intentionally kept

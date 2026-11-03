@@ -50,4 +50,4 @@ trade-tracker/node_modules/
 
 # Google OAuth client secrets
 client_secret*.json
-attached_assets/client_secret*.json
+client_secret*.json

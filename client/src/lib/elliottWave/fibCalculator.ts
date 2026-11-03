@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Fibonacci ratio calculations for Elliott Wave pivots.
  * Used by useElliottWaveProgressive to auto-calculate ratios at each placed point.

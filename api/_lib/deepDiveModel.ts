@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Deep-dive model selection. Primary runs on the xAI Responses API with an
  * explicit reasoning effort (grok-4.7 is Responses-only and defaults to

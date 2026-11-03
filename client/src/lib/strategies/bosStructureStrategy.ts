@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * BOS (Break of Structure) Trend Following Strategy
  * Trades in direction of market structure breaks (continuation moves)

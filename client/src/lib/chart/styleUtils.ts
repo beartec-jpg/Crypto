@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Style and color utility functions for chart elements
  * Extracted from CryptoIndicators.tsx for better modularity

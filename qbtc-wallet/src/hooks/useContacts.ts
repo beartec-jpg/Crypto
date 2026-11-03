@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useEffect, useCallback } from 'react';
 import { listContacts, addContact, deleteContact } from '../storage/contactStore';
 import type { ContactRecord } from '../storage/db';

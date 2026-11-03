@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createChart, IChartApi, ISeriesApi, ColorType, CandlestickSeries, CrosshairMode } from 'lightweight-charts';
 import { formatPriceDynamic } from '@/lib/chart/priceUtils';
@@ -108,6 +109,7 @@ export function useChartInstance({
 
     const chart = createChart(container, {
       layout: {
+        attributionLogo: true,
         background: { type: ColorType.Solid, color: '#0f172a' },
         textColor: '#cbd5e1',
       },

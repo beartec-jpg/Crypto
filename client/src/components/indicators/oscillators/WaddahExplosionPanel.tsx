@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useEffect, useRef } from 'react';
 import { createChart, ColorType, IChartApi, HistogramSeries, LineSeries, Time } from 'lightweight-charts';
 import { applyMainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';

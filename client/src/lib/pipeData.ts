@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // Standard steel pipe sizes with regulation volume values per 1m (from Table 3)
 export const STEEL_PIPE_SIZES = [
   {

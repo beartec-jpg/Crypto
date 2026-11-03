@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // Stripe Checkout Service for Crypto Subscriptions
 import { getUncachableStripeClient } from './stripeClient';
 import { cryptoSubscriptionService } from './cryptoSubscriptionService';
@@ -39,7 +40,6 @@ const tierToProductName: Record<string, string> = {
   'intermediate': 'Intermediate membership',
   'pro': 'Pro membership',
   'elite': 'Elite membership',
-  'elliott_addon': 'Elliot Wave', // Match exact Stripe product name
 };
 
 // Get price ID for a tier from Stripe by product name
@@ -49,19 +49,9 @@ async function getPriceIdForTier(tier: string): Promise<string | null> {
   // Get product name for tier
   let productName = tierToProductName[tier];
   
-  // For Elliott, also try alternate spellings
-  const isElliott = tier === 'elliott_addon';
-  
   // List all active products and find by name
   const products = await stripe.products.list({ active: true, limit: 100 });
   let product = products.data.find(p => p.name === productName);
-  
-  // For Elliott, try flexible matching
-  if (!product && isElliott) {
-    product = products.data.find(p => 
-      p.name.toLowerCase().includes('elliot') || p.name.toLowerCase().includes('elliott')
-    );
-  }
   
   if (!product) {
     console.error(`No Stripe product found for tier: ${tier} (looking for: ${productName})`);
@@ -139,116 +129,6 @@ export async function createTierCheckoutSession(
   }
 }
 
-// Create checkout session for Elliott Wave add-on
-export async function createElliottAddonCheckoutSession(
-  userId: string,
-  email: string,
-  successUrl: string,
-  cancelUrl: string
-): Promise<{ url: string | null; error?: string }> {
-  try {
-    const stripe = await getUncachableStripeClient();
-    const customerId = await getOrCreateCustomer(userId, email);
-    
-    const priceId = await getPriceIdForTier('elliott_addon');
-    if (!priceId) {
-      return { url: null, error: 'Elliott Wave add-on price not found' };
-    }
-    
-    // Check if user already has Elliott addon
-    const subscription = await cryptoSubscriptionService.getUserSubscription(userId);
-    if (subscription.hasElliottAddon) {
-      return { url: null, error: 'Already subscribed to Elliott Wave add-on' };
-    }
-    
-    // If user has existing subscription, add Elliott as additional item
-    if (subscription.stripeSubscriptionId) {
-      // First check if Elliott is already on the Stripe subscription
-      const stripeSub = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId, {
-        expand: ['items.data'],
-      });
-      
-      const existingElliottItem = stripeSub.items.data.find(
-        (item: any) => item.price.id === priceId
-      );
-      
-      if (existingElliottItem) {
-        // Elliott already exists on Stripe subscription - just sync database
-        await cryptoSubscriptionService.toggleElliottAddon(userId, true);
-        return { url: successUrl };
-      }
-      
-      // Add Elliott addon to existing subscription
-      await stripe.subscriptionItems.create({
-        subscription: subscription.stripeSubscriptionId,
-        price: priceId,
-        metadata: {
-          userId,
-          type: 'elliott_addon',
-        },
-      });
-      
-      // Update database
-      await cryptoSubscriptionService.toggleElliottAddon(userId, true);
-      
-      return { url: successUrl };
-    }
-    
-    // Create new checkout session for Elliott only
-    const session = await stripe.checkout.sessions.create({
-      customer: customerId,
-      mode: 'subscription',
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      metadata: {
-        userId,
-        type: 'elliott_addon',
-      },
-      subscription_data: {
-        metadata: {
-          userId,
-          type: 'elliott_addon',
-        },
-      },
-    });
-    
-    return { url: session.url };
-  } catch (error: any) {
-    console.error('Error creating Elliott checkout:', error);
-    return { url: null, error: error.message };
-  }
-}
-
-// Cancel Elliott Wave add-on
-export async function cancelElliottAddon(userId: string): Promise<{ success: boolean; error?: string }> {
-  try {
-    const stripe = await getUncachableStripeClient();
-    const subscription = await cryptoSubscriptionService.getUserSubscription(userId);
-    
-    if (!subscription.hasElliottAddon) {
-      return { success: false, error: 'Not subscribed to Elliott Wave add-on' };
-    }
-    
-    if (!subscription.elliottStripeItemId) {
-      // Just update database if no Stripe item
-      await cryptoSubscriptionService.toggleElliottAddon(userId, false);
-      return { success: true };
-    }
-    
-    // Cancel the Elliott subscription item
-    await stripe.subscriptionItems.del(subscription.elliottStripeItemId);
-    
-    // Update database
-    await cryptoSubscriptionService.toggleElliottAddon(userId, false);
-    
-    return { success: true };
-  } catch (error: any) {
-    console.error('Error canceling Elliott addon:', error);
-    return { success: false, error: error.message };
-  }
-}
-
 // Create customer portal session for managing subscription
 export async function createPortalSession(
   userId: string,
@@ -291,33 +171,15 @@ export async function handleSubscriptionWebhook(event: any): Promise<void> {
       if (type === 'base_tier' && tier) {
         await cryptoSubscriptionService.updateSubscriptionTier(userId, tier as TierType, subId);
         console.log(`✅ Updated user ${userId} to tier: ${tier}`);
-      } else if (type === 'elliott_addon') {
-        // Get subscription item ID for Elliott
-        const stripeSub = await (await getUncachableStripeClient()).subscriptions.retrieve(subId);
-        const elliottItem = stripeSub.items.data.find(item => 
-          item.price.metadata?.tier === 'elliott_addon'
-        );
-        await cryptoSubscriptionService.toggleElliottAddon(userId, true, elliottItem?.id);
-        console.log(`✅ Added Elliott Wave addon for user ${userId}`);
       }
       break;
     }
     
     case 'customer.subscription.updated': {
-      const items = subscription.items.data;
       const tier = subscription.metadata?.tier;
       
       if (tier) {
         await cryptoSubscriptionService.updateSubscriptionTier(userId, tier as TierType, subscription.id);
-      }
-      
-      // Check for Elliott addon
-      const elliottItem = items.find((item: any) => 
-        item.price.metadata?.tier === 'elliott_addon'
-      );
-      
-      if (elliottItem) {
-        await cryptoSubscriptionService.toggleElliottAddon(userId, true, elliottItem.id);
       }
       break;
     }
@@ -327,9 +189,7 @@ export async function handleSubscriptionWebhook(event: any): Promise<void> {
       await db.update(cryptoSubscriptions)
         .set({
           tier: 'free',
-          hasElliottAddon: false,
           stripeSubscriptionId: null,
-          elliottStripeItemId: null,
           subscriptionStatus: 'canceled',
           updatedAt: new Date(),
         })

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { RSIPanel } from '@/components/indicators/oscillators/RSIPanel';
 import { MACDPanel } from '@/components/indicators/oscillators/MACDPanel';
 import { VolumePanel } from '@/components/indicators/oscillators/VolumePanel';

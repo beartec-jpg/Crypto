@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { ReactNode, useState, useRef, useCallback, useEffect } from 'react';
 import { GripVertical } from 'lucide-react';
 

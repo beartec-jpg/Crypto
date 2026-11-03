@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Hooks index - Re-export all custom hooks
  * Phase 2: State Management Hooks

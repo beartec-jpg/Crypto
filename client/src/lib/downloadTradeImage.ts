@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { MultiTFInsights, TradeIdea } from '@/lib/cryptoAiTradePlans';
 import { formatTickerDisplay } from '@/lib/chart/priceUtils';
 import {

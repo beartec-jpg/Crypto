@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * @fileoverview Elliott Wave Manager
  * @description Main manager component for Elliott Wave functionality.

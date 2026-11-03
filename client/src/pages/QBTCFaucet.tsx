@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { Pickaxe, Zap, ShieldCheck, Hourglass, CheckCircle2, AlertTriangle, ExternalLink, Lock } from 'lucide-react';

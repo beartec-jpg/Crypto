@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState } from 'react';
 import { Eye, EyeOff, Shield, AlertCircle, CheckCircle, Copy, Download, Lock, QrCode } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';

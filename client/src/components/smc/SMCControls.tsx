@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 

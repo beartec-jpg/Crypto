@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { DockedOscillatorSection } from '@/components/oscillators/DockedOscillatorSection';
 import { PoppedOutOscillators } from '@/components/oscillators/PoppedOutOscillators';
 import type { OscillatorData } from '@/hooks/useOscillatorData';
