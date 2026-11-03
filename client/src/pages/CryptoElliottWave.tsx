@@ -4024,6 +4024,7 @@ const aiAnalyze = useMutation({
     console.log('📊 Creating new chart with', chartData.length, 'data points');
     const chart = createChart(chartContainerRef.current, {
       layout: {
+        attributionLogo: true,
         background: { type: ColorType.Solid, color: '#0e0e0e' },
         textColor: '#d1d5db',
       },

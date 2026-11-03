@@ -83,6 +83,7 @@ export const ChartContainer = forwardRef<HTMLDivElement, ChartContainerProps>(fu
         width: container.clientWidth || 800,
         height: container.clientHeight || 600,
         layout: {
+          attributionLogo: true,
           background: { type: ColorType.Solid, color: '#0f172a' },
           textColor: '#d1d5db',
         },

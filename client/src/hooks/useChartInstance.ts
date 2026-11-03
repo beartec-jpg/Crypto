@@ -109,6 +109,7 @@ export function useChartInstance({
 
     const chart = createChart(container, {
       layout: {
+        attributionLogo: true,
         background: { type: ColorType.Solid, color: '#0f172a' },
         textColor: '#cbd5e1',
       },

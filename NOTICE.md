@@ -1,13 +1,13 @@
 # Third-party notices
 
-BEARTEC-written code: Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). Third-party components remain under their own licences.
+BEARTEC-written code: Copyright (c) 2025-2026 BEARTEC. All rights reserved; proprietary, see `LICENSE` (package.json `"license": "UNLICENSED"`). Third-party components remain under their own licences.
 
 ## Vendored source (unmodified headers)
 - `client/src/lib/falcon-wasm/src/falcon-padded/` — Falcon reference implementation, (c) 2017-2019 Falcon Project, MIT (see LICENSE in that folder).
-- `client/src/lib/dilithium-wasm/` — CRYSTALS-Dilithium reference implementation (pq-crystals), public domain / CC0 or Apache-2.0 per upstream. Upstream licence file not included; add it.
+- `client/src/lib/dilithium-wasm/` — CRYSTALS-Dilithium reference implementation (pq-crystals), upstream https://github.com/pq-crystals/dilithium: Public Domain (CC0) or Apache-2.0 or GPL-2.0, at the recipient's option; BEARTEC uses it under CC0/Apache-2.0. Upstream licence copied verbatim to `client/src/lib/dilithium-wasm/LICENSE`.
 
 ## Notable production dependency licences
-- lightweight-charts (TradingView) — Apache-2.0; requires NOTICE/attribution to TradingView (attribution logo or link on the site).
+- lightweight-charts (TradingView) — Apache-2.0; attribution to TradingView provided via the chart `attributionLogo` (enabled on main charts; v5 default elsewhere) and a 'Charts by TradingView' link in the marketing footer.
 - MPL-2.0 (file-level copyleft; distribute modified files' source): @edge-runtime/*, edge-runtime, @ethereumjs/rlp, @ethereumjs/tx, @ethereumjs/util, @resvg/resvg-js, web-push, webextension-polyfill.
 - LGPL-3.0-only: rpc-websockets (transitive via @solana/web3.js).
 - CC-BY-4.0: caniuse-lite (build-time data).

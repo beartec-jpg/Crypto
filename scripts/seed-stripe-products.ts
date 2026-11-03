@@ -16,35 +16,35 @@ const PRODUCTS: ProductConfig[] = [
     name: 'Beginner',
     description: 'Basic access to crypto indicators and training',
     metadata: { tier: 'beginner', type: 'base_tier' },
-    priceAmount: 500, // $5/month
+    priceAmount: 500, // £5/month
     interval: 'month',
   },
   {
     name: 'Core',
     description: '80 AI tokens per month for 1 nominated ticker. Charts stay free.',
     metadata: { tier: 'intermediate', type: 'base_tier' },
-    priceAmount: 1500, // $15/month
+    priceAmount: 1500, // £15/month
     interval: 'month',
   },
   {
     name: 'Pro',
     description: '160 AI tokens per month for 3 nominated tickers',
     metadata: { tier: 'pro', type: 'base_tier' },
-    priceAmount: 3000, // $30/month
+    priceAmount: 3000, // £30/month
     interval: 'month',
   },
   {
     name: 'Elite',
     description: '270 AI tokens per month for 5 nominated tickers',
     metadata: { tier: 'elite', type: 'base_tier' },
-    priceAmount: 5000, // $50/month
+    priceAmount: 5000, // £50/month
     interval: 'month',
   },
   {
     name: 'Elliott Wave Add-on',
     description: 'Elliott Wave pattern analysis - works with any base tier',
     metadata: { tier: 'elliott_addon', type: 'addon' },
-    priceAmount: 1000, // $10/month
+    priceAmount: 1000, // £10/month
     interval: 'month',
   },
 ];
@@ -70,7 +70,7 @@ async function seedProducts() {
       });
       
       if (prices.data.length > 0) {
-        console.log(`   Price: ${prices.data[0].id} ($${prices.data[0].unit_amount! / 100}/${prices.data[0].recurring?.interval})`);
+        console.log(`   Price: ${prices.data[0].id} (£${prices.data[0].unit_amount! / 100}/${prices.data[0].recurring?.interval})`);
       }
       continue;
     }
@@ -88,12 +88,12 @@ async function seedProducts() {
     const price = await stripe.prices.create({
       product: createdProduct.id,
       unit_amount: product.priceAmount,
-      currency: 'usd',
+      currency: 'gbp',
       recurring: { interval: product.interval },
       metadata: product.metadata,
     });
     
-    console.log(`   Created price: ${price.id} ($${product.priceAmount / 100}/${product.interval})`);
+    console.log(`   Created price: ${price.id} (£${product.priceAmount / 100}/${product.interval})`);
   }
   
   console.log('\n✨ Stripe product seed complete!');
@@ -104,7 +104,7 @@ async function seedProducts() {
   for (const prod of allProducts.data) {
     const prices = await stripe.prices.list({ product: prod.id, active: true });
     for (const price of prices.data) {
-      console.log(`  ${prod.name}: ${price.id} ($${price.unit_amount! / 100}/${price.recurring?.interval})`);
+      console.log(`  ${prod.name}: ${price.id} (£${price.unit_amount! / 100}/${price.recurring?.interval})`);
     }
   }
 }

@@ -1,5 +1,6 @@
 {
   "name": "beartec-cold-signer",
+  "license": "UNLICENSED",
   "version": "1.0.0",
   "type": "module",
   "private": true,

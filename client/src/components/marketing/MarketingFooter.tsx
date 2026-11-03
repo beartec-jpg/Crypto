@@ -21,6 +21,12 @@ export function MarketingFooter() {
           <a className="hover:text-white">Contact</a>
         </Link>
       </nav>
+      <p className="mt-3 text-xs">
+        Charts by{' '}
+        <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer" className="hover:text-white">
+          TradingView
+        </a>
+      </p>
     </footer>
   );
 }
