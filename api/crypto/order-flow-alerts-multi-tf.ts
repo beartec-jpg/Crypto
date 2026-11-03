@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
+import { logAiOutputBounded } from '../_lib/aiOutputLog.js';
 
 const ADMIN_EMAIL = 'beartec@beartec.uk';
 const AI_MIN_RISK_REWARD_RATIO = 1.5;
@@ -1447,6 +1448,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? JSON.parse(cachedRow.ai_narration)
           : (cachedRow.ai_narration || {});
 
+        await logAiOutputBounded(pool, { userId: cryptoUserId, symbol, timeframe: pairInterval, mode: deepDiveCacheMode, analysisType, channel: 'web', cached: true, output: { multiTFInsights: aiNarration.multiTFInsights || null, bestTrades: Array.isArray(aiNarration.bestTrades) ? aiNarration.bestTrades : [] } });
         await pool.end();
         return res.json({
           success: true,
@@ -1474,6 +1476,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const snapshots = Array.isArray(cachedRow.snapshots) ? cachedRow.snapshots : [];
         const aiNarration = typeof cachedRow.ai_narration === 'string' ? JSON.parse(cachedRow.ai_narration) : (cachedRow.ai_narration || {});
         const remaining = await consumeAiToken();
+        await logAiOutputBounded(pool, { userId: cryptoUserId, symbol, timeframe: pairInterval, mode: 'general', analysisType, channel: 'web', cached: true, output: { multiTFInsights: aiNarration.multiTFInsights || null } });
         await pool.end();
         return res.json({
           success: true,
@@ -1494,6 +1497,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         const generated = await runGeneralPairRefresh(pool, apiKey, symbol, higherTimeframe, lowerTimeframe);
         const remaining = await consumeAiToken();
+        await logAiOutputBounded(pool, { userId: cryptoUserId, symbol, timeframe: pairInterval, mode: 'general', analysisType, channel: 'web', cached: false, output: { multiTFInsights: generated.multiTFInsights } });
         await pool.end();
         return res.json({
           success: true,
@@ -1514,6 +1518,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const snapshots = Array.isArray(cachedRow.snapshots) ? cachedRow.snapshots : [];
           const aiNarration = typeof cachedRow.ai_narration === 'string' ? JSON.parse(cachedRow.ai_narration) : (cachedRow.ai_narration || {});
           const remaining = await consumeAiToken();
+          await logAiOutputBounded(pool, { userId: cryptoUserId, symbol, timeframe: pairInterval, mode: 'general', analysisType, channel: 'web', cached: true, output: { multiTFInsights: aiNarration.multiTFInsights || null } });
           await pool.end();
           return res.json({
             success: true,
@@ -1670,7 +1675,7 @@ Respond with ONLY valid JSON:
 
     let completion: any;
     const systemContent = analysisType === 'general'
-      ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Always respond with valid JSON only.`
+      ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Use neutral, descriptive, third-person language; never use imperative or second-person directives ("buy", "sell", "you should"), and no hype or performance claims. Always respond with valid JSON only.`
       : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. The stop you publish is the live invalidation, beyond the origin swing of the unmitigated zone. If that stop is inside half the lower-timeframe ATR, do not return the trade. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
     try {
       completion = await (openai.chat.completions.create as any)({
@@ -1811,6 +1816,7 @@ Respond with ONLY valid JSON:
     }
     }
 
+    await logAiOutputBounded(pool, { userId: cryptoUserId, symbol, timeframe: pairInterval, mode: analysisType === 'deep' ? deepDiveCacheMode : 'general', analysisType, channel: 'web', cached: false, output: { multiTFInsights: parsedResult.multiTFInsights, bestTrades: parsedResult.bestTrades || [] } });
     await pool.end();
 
     res.json({

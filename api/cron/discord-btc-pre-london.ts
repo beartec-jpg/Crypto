@@ -14,6 +14,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 import { getPool } from '../_lib/db.js';
+import { logAiOutput } from '../_lib/aiOutputLog.js';
+import { TECHNICAL_SCENARIO_DISCLAIMER } from '../_lib/scenarioDisclaimer.js';
 import {
   encodeCryptoAiPairInterval,
   getCryptoAiTradeHorizon,
@@ -525,7 +527,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         description: deepSummary.slice(0, 3500),
         color: 0xa855f7,
         fields: fields.length ? fields : undefined,
-        footer: { text: `${modeMeta.label} · ${horizonMeta.label} · Not financial advice` },
+        footer: { text: `${modeMeta.label} · ${horizonMeta.label} · ${TECHNICAL_SCENARIO_DISCLAIMER}` },
         timestamp: new Date().toISOString(),
       });
     }
@@ -568,7 +570,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         description: (crossSummary || 'Multi-TF context from general scan.').slice(0, 2000),
         color: 0xa78bfa,
         fields: fields.length ? fields : undefined,
-        footer: { text: 'General multi-TF · Not financial advice' },
+        footer: { text: `General multi-TF · ${TECHNICAL_SCENARIO_DISCLAIMER}` },
       });
     }
 
@@ -587,7 +589,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return `• CANCEL ${t ? `${t.direction} @ ${t.entry}` : r.id.slice(0, 8)} — ${r.reason || 'stale'}`;
         });
       embeds.push({
-        title: '④ Open-book review (prior ideas)',
+        title: '④ Open-book review (prior scenarios)',
         description: [
           cancelLines.length ? cancelLines.join('\n') : '• No cancels',
           keepLines.length ? keepLines.join('\n') : '• Nothing kept (empty book or all cancelled)',
@@ -614,10 +616,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     embeds.push({
       title: 'Disclaimer',
       description:
-        'This is **not financial advice**. Crypto trading involves substantial risk of loss. ' +
-        'Setups are AI-generated ideas for education and discussion only. ' +
-        '**Always inspect the chart and structure yourself** before trading, and make your own independent decisions. ' +
-        'BearTec is not responsible for trading losses.',
+        `${TECHNICAL_SCENARIO_DISCLAIMER} ` +
+        'Scenarios are AI-generated general technical analysis for education and discussion only; ' +
+        'review the chart and structure independently. BearTec is not responsible for trading losses.',
       color: 0x64748b,
     });
 
@@ -625,6 +626,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       webhookUrl,
       content,
       embeds,
+    });
+
+    void logAiOutput(pool, {
+      userId: null,
+      symbol,
+      timeframe: `${htf}/${ltf}`,
+      mode: modeMeta.id,
+      analysisType: 'discord-desk',
+      channel: 'discord',
+      output: { content, embeds, multiTFInsights: deep.multiTFInsights ?? null, bestTrades: deep.bestTrades ?? [] },
     });
 
     // Auto-register priced setups with the always-on trade tracker (spare server).

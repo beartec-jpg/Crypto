@@ -1,3 +1,4 @@
+import { TECHNICAL_SCENARIO_DISCLAIMER } from '@/components/TechnicalScenarioDisclaimer';
 import type { MultiTFInsights, TradeIdea } from '@/lib/cryptoAiTradePlans';
 import { formatTickerDisplay } from '@/lib/chart/priceUtils';
 import {
@@ -109,6 +110,29 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
  * Renders a self-contained trade card PNG and triggers a browser download.
  * Uses Canvas only — no html2canvas dependency.
  */
+/** Vertical space reserved above the footer stamp for the disclaimer (up to 3 lines). */
+const DISCLAIMER_BLOCK_H = 50;
+
+/** Draw the scenario disclaimer in small muted text, ending just above `footerY`. */
+function drawScenarioDisclaimer(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  footerY: number,
+  maxWidth: number,
+  color: string,
+): void {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.font = '11px system-ui, -apple-system, sans-serif';
+  const lines = wrapText(ctx, TECHNICAL_SCENARIO_DISCLAIMER, maxWidth).slice(0, 3);
+  let y = footerY - DISCLAIMER_BLOCK_H + 14;
+  for (const line of lines) {
+    ctx.fillText(line, x, y);
+    y += 14;
+  }
+  ctx.restore();
+}
+
 export async function downloadTradeImage(options: DownloadTradeImageOptions): Promise<void> {
   const { trade, symbol, higherTimeframe, lowerTimeframe, horizonLabel, modeLabel } = options;
   const displaySymbol = formatTickerDisplay(symbol);
@@ -152,6 +176,7 @@ export async function downloadTradeImage(options: DownloadTradeImageOptions): Pr
   height += 22 + rationaleLines.length * 22; // rationale
   if (signalLines.length) height += 18 + 22 + signalLines.length * 22;
   height += 40; // footer
+  height += DISCLAIMER_BLOCK_H; // disclaimer
   height += padding;
 
   const canvas = document.createElement('canvas');
@@ -295,6 +320,7 @@ export async function downloadTradeImage(options: DownloadTradeImageOptions): Pr
 
   // Footer
   y = height - padding - 8;
+  drawScenarioDisclaimer(ctx, padding + 12, y, contentWidth - 24, muted);
   ctx.fillStyle = muted;
   ctx.font = '12px system-ui, -apple-system, sans-serif';
   const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
@@ -391,6 +417,7 @@ export async function downloadAnalysisImage(options: DownloadAnalysisImageOption
     height += 8;
   }
   height += 40; // footer
+  height += DISCLAIMER_BLOCK_H; // disclaimer
   height += padding;
 
   const canvas = document.createElement('canvas');
@@ -500,6 +527,7 @@ export async function downloadAnalysisImage(options: DownloadAnalysisImageOption
   }
 
   y = height - padding - 8;
+  drawScenarioDisclaimer(ctx, padding + 12, y, contentWidth - 24, muted);
   ctx.fillStyle = muted;
   ctx.font = '12px system-ui, -apple-system, sans-serif';
   const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
@@ -665,6 +693,7 @@ export async function downloadTotalAnalysisImage(
     }
   }
   height += 36; // footer
+  height += DISCLAIMER_BLOCK_H; // disclaimer
   height += padding;
 
   const canvas = document.createElement('canvas');
@@ -969,6 +998,7 @@ export async function downloadTotalAnalysisImage(
   ctx.fillStyle = muted;
   ctx.font = '12px system-ui, -apple-system, sans-serif';
   const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+  drawScenarioDisclaimer(ctx, padding + 10, height - padding + 4, width - padding * 2 - 20, '#94a3b8');
   ctx.fillText(`BearTec Crypto AI  ·  Total analysis  ·  ${stamp}`, padding + 10, height - padding + 4);
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));

@@ -1,3 +1,4 @@
+import { TECHNICAL_SCENARIO_DISCLAIMER } from './scenarioDisclaimer.js';
 /**
  * High-quality server-side "total analysis" PNG for Discord.
  * Renders a polished SVG with Inter fonts → PNG via @resvg/resvg-js.
@@ -121,6 +122,8 @@ function buildSvg(input: DiscordRenderInput): { svg: string; width: number; heig
     }
   }
   height += 56; // footer
+  const disclaimerLines = wrapLines(TECHNICAL_SCENARIO_DISCLAIMER, 120, 3);
+  height += disclaimerLines.length * 20 + 12; // disclaimer
   height = Math.max(height, 900);
 
   const badges = [
@@ -310,6 +313,13 @@ function buildSvg(input: DiscordRenderInput): { svg: string; width: number; heig
     });
   }
 
+  // Disclaimer (above footer stamp)
+  disclaimerLines.forEach((line, i) => {
+    parts.push(
+      `<text x="${left}" y="${height - 56 - (disclaimerLines.length - i) * 20}" fill="#94a3b8" font-family="Inter, sans-serif" font-size="14">${escapeXml(line)}</text>`,
+    );
+  });
+
   // Footer
   const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
   parts.push(
@@ -381,6 +391,7 @@ function renderFallbackBitmap(input: DiscordRenderInput): Buffer {
       20,
     );
   }
+  c.drawWrappedText(TECHNICAL_SCENARIO_DISCLAIMER, 56, height - 120, width - 112, MUTED, 2, 18);
   c.drawText('BearTec Crypto AI', 56, height - 48, MUTED, 2);
   return c.toPngBuffer();
 }
