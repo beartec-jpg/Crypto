@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { type FeedbackBoard, type InsertFeedbackBoard, type FeedbackBoardReply, type InsertFeedbackBoardReply, type ElliottWaveLabel, type InsertElliottWaveLabel, type CachedCandles, type InsertCachedCandles, type UserOscillatorPreferences } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -10,7 +11,7 @@ export interface IStorage {
   getFeedbackBoardReplies(feedbackId: string): Promise<FeedbackBoardReply[]>;
   deleteFeedbackBoardReply(id: string): Promise<boolean>;
 
-  // Elliott Wave Labels (elite tier only)
+  // Elliott Wave Labels
   createElliottWaveLabel(label: InsertElliottWaveLabel): Promise<ElliottWaveLabel>;
   getElliottWaveLabels(userId: string, symbol: string, timeframe: string): Promise<ElliottWaveLabel[]>;
   getElliottWaveLabel(id: string): Promise<ElliottWaveLabel | undefined>;

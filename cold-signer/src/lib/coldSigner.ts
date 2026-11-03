@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Cold Signer Service - Multi-chain transaction signing
  * Ported from client/src/lib/walletService.ts

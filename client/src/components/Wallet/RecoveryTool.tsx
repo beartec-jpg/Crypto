@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useEffect } from 'react';
 import { AlertTriangle, ArrowRight, Loader2, CheckCircle } from 'lucide-react';
 import { getLegacyAddressForRecovery } from '@/lib/walletService';

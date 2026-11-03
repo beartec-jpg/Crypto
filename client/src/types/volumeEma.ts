@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Volume EMA / Delta overlay — display + tunable math (Tools settings).
  */

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Bridge to the main BearTec wallet stored in IndexedDB.
  * The PWA is same-origin, so it can read the 'beartec_wallet' database directly.

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { AlertCircle, ArrowRight, CheckCircle } from 'lucide-react';
 import { TransactionPreviewData } from '../types/coldTypes';
 

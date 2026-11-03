@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const CLAIM_AMOUNT = 0.5;

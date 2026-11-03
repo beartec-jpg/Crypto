@@ -2,7 +2,7 @@
   "name": "bear-tec-crypto-platform",
   "version": "1.0.1",
   "type": "module",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "scripts": {
     "dev": "tsx server/index.ts",
     "build": "tsc && vite build && npm run build:cold && npm run build:qbtc",

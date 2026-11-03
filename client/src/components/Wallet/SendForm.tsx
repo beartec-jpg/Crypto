@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // client/src/components/Wallet/SendForm.tsx
 // Secure send form with native + token support, transaction preview and passkey confirmation
 

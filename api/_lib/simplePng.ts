@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Minimal pure-JS PNG writer + drawing helpers (no native deps — Vercel-safe).
  * Used for Discord analysis image attachments.

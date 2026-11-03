@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useCallback } from 'react';
 import type { HTFBiasSettings } from '@/types/htfBias';
 import { DEFAULT_HTF_BIAS_SETTINGS } from '@/types/htfBias';

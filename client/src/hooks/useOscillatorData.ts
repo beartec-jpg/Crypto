@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Hook for calculating oscillator data
  * Extracted from ChartFullscreenPage.tsx for reusability

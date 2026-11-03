@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // Web Vitals tracking
 import { onCLS, onINP, onFCP, onLCP, onTTFB, type Metric } from 'web-vitals';
 

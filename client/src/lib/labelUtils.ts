@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Label Utilities for Chart Drawing Tools
  * Provides smart label positioning and formatting to prevent overflow

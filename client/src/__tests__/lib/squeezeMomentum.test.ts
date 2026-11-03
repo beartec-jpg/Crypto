@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { describe, it, expect } from 'vitest';
 import { calculateSqueezeMomentum } from '@/lib/indicators/squeezeMomentum';
 import type { CandleData } from '@/types/chart.types';

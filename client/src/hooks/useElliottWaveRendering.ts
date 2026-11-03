@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useEffect, useRef } from 'react';
 import type { ISeriesMarkersPluginApi, Time } from 'lightweight-charts';
 import { ElliottWavePrimitive } from '@/components/chart/primitives/ElliottWavePrimitive';

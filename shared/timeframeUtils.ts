@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Shared timeframe hierarchy utilities for cross-timeframe drawing visibility.
  * Used by both client and API to determine which timeframes should be visible

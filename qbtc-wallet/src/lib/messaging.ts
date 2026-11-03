@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * End-to-end encrypted messaging via ECDH-P256 + HKDF-SHA256 + AES-256-GCM.
  * The relay server (/api/qbtc/messages) only sees ciphertext — never plaintext.

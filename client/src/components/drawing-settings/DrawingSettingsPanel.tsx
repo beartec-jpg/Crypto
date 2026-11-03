@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { ChannelSettings } from './ChannelSettings';
 import { TrendlineSettings } from './TrendlineSettings';
 import { HorizontalLineSettings } from './HorizontalLineSettings';

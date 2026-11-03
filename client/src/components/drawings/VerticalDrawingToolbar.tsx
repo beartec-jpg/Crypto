@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { LucideIcon } from 'lucide-react';
 import { Activity, Type, ArrowUpDown, Hash, Spline } from 'lucide-react';
 import { Button } from '@/components/ui/button';

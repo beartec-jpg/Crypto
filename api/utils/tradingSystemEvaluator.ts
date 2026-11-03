@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Trading System Condition Evaluator
  * Evaluates trading system entry conditions against current indicator values

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { Link, useLocation } from 'wouter';

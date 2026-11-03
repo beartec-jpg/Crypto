@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /** Shared wall-clock budget for one deep-dive model attempt pair. */
 export const DEEP_DIVE_DEADLINE_MS = 270_000;
 /**

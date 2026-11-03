@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 export const DEEP_DIVE_POLL_INTERVAL_MS = 3_000;
 export const DEEP_DIVE_CLIENT_CAP_MS = 6 * 60 * 1000;
 export const DEEP_DIVE_CONNECTION_LOST_MESSAGE = 'Connection lost; still working, tap to check';

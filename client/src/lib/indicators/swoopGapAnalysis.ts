@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Per-gap accumulation read for Swoop (each LH–LH or LL–LL section).
  *

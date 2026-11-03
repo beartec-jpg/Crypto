@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const POOL_BASE_URL = process.env.QBTC_POOL_HTTP_BASE_URL || '';

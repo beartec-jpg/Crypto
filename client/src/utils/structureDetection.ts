@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Structure detection utilities for identifying market bias
  * Extracted from TickerTable.tsx for reusability

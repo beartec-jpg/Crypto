@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * AI usage tiers — charts/indicators are free with an email signup.
  * Paid plans only buy AI page tokens + nominated tickers.

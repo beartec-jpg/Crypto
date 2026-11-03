@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * CHoCH + FVG Strategy
  * Trades FVG retests after price enters from the correct direction

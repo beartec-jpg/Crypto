@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState } from 'react';
 
 /** Tolerance for treating an edited value as equal to the default level */

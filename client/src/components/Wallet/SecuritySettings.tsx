@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // SecuritySettings.tsx — passkey-only security panel
 // Tier system removed. Wallet is secured by passkey PRF (Google/Apple account).
 // Keeps: security scan, HTLC deploy tools (admin), Shamir recovery, emergency reset.

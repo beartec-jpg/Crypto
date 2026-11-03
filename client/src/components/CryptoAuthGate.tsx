@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { lazy, Suspense } from 'react';

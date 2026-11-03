@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { sha256 } from '@noble/hashes/sha256';
 import { initFalcon, falcon, PK_SIZE, SK_SIZE, SIG_SIZE, SEED_SIZE } from './falcon-wasm/falconWasm';
 

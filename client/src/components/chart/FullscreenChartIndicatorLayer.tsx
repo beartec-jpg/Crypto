@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { MovingAverages } from '@/components/chart/MovingAverages';
 import { VWAPRenderer } from '@/components/indicators/trend/VWAPRenderer';
 import { FVGRenderer } from '@/components/indicators/FVGRenderer';

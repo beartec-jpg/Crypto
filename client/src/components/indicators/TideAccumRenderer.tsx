@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useEffect, useMemo, useRef } from 'react';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import { EMPTY_TIDE_OVERLAY, TideAccumPrimitive } from '@/lib/chartPrimitives/TideAccumPrimitive';

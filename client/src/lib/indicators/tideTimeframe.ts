@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { calculateTideZone, type TideZoneCandle, type TideZoneOptions, type TideZonePoint } from '@/lib/indicators/tideZone';
 import { resolveTideTimeframe, type TideTimeframe } from '@/lib/indicators/tideSignals';
 

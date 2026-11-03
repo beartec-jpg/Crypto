@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Integration tests for multi-timeframe auto-zoom feature
  * Tests the complete workflow of auto-switching timeframes based on zoom level

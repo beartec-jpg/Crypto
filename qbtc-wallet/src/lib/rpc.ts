@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Thin RPC proxy wrapper — all calls go through the existing /api/qbtc/rpc endpoint.
  */

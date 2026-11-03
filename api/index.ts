@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export default async function handler(_req: VercelRequest, res: VercelResponse) {

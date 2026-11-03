@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import {
   COACHMARK_DURATION_MS,

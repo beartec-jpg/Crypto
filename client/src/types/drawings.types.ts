@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Additional drawing-related type definitions
  * Note: Main DrawingTool type already exists in drawing.ts

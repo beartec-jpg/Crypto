@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState } from 'react';
 import type { LiquidityHeatmapData, LiquidityHeatmapSettings, CoinglassRange } from '@/types/liquidityHeatmap';
 import type { LiquidityHeatmapDebugInfo } from '@/hooks/useLiquidityHeatmapData';

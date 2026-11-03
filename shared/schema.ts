@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, decimal, timestamp, jsonb, boolean, doublePrecision, uuid, index, uniqueIndex, primaryKey, bigserial, date } from "drizzle-orm/pg-core";
 import { z } from "zod";
@@ -73,8 +74,8 @@ export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().unique().references(() => cryptoUsers.id, { onDelete: "cascade" }),
   tier: varchar("tier").notNull().default("free"), // Base tier: "free", "beginner", "intermediate", "pro", "elite"
-  hasElliottAddon: boolean("has_elliott_addon").default(false), // Elliott Wave add-on ($10/mo) - independent of tier
-  elliottStripeItemId: varchar("elliott_stripe_item_id"), // Stripe subscription item ID for Elliott add-on
+  hasElliottAddon: boolean("has_elliott_addon").default(false), // Legacy (discontinued Elliott add-on); kept for data, no longer read by the app
+  elliottStripeItemId: varchar("elliott_stripe_item_id"), // Legacy (discontinued Elliott add-on); no longer written
   selectedTickers: text("selected_tickers").array().default(sql`ARRAY[]::text[]`), // Max 3 tickers
   alertGrades: text("alert_grades").array().default(sql`ARRAY['A+', 'A']::text[]`), // Which grades to alert on
   alertTimeframes: text("alert_timeframes").array().default(sql`ARRAY['15m', '1h', '4h']::text[]`), // Which timeframes to monitor
@@ -87,7 +88,7 @@ export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
   indicatorAlertsEnabled: boolean("indicator_alerts_enabled").default(true), // Smart Money/Indicator alerts
   aiCredits: integer("ai_credits").default(0), // AI tokens used this month (Core 80, Pro 160, Elite 270)
   aiCreditsResetAt: timestamp("ai_credits_reset_at"), // When credits were last reset (monthly)
-  elliottAiCredits: integer("elliott_ai_credits").default(0), // Remaining Elliott Wave AI credits (monthly: Elite 150, Add-on 50)
+  elliottAiCredits: integer("elliott_ai_credits").default(0), // Remaining Elliott Wave AI credits (monthly: Elite 150, other tiers 50)
   elliottAiCreditsResetAt: timestamp("elliott_ai_credits_reset_at"), // When Elliott credits were last reset (monthly)
   bonusAiCredits: integer("bonus_ai_credits").default(0), // Admin-granted bonus AI credits (added on top of tier)
   bonusElliottCredits: integer("bonus_elliott_credits").default(0), // Admin-granted bonus Elliott credits

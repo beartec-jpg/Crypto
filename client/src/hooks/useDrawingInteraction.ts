@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { IChartApi, ISeriesApi } from 'lightweight-charts';
 import { findDrawingsNearClick } from '@/lib/drawingHitDetection';
