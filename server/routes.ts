@@ -5940,8 +5940,6 @@ Return ONLY valid JSON in this exact format:
       // Import stripe functions dynamically
       const { 
         createTierCheckoutSession, 
-        createElliottAddonCheckoutSession, 
-        cancelElliottAddon,
         createPortalSession 
       } = await import('./stripeCheckout');
 
@@ -5955,22 +5953,6 @@ Return ONLY valid JSON in this exact format:
           return res.status(400).json({ error: result.error });
         }
         return res.json({ url: result.url });
-      }
-
-      if (type === 'elliott_addon') {
-        const result = await createElliottAddonCheckoutSession(userId, email, successUrl, cancelUrl);
-        if (result.error) {
-          return res.status(400).json({ error: result.error });
-        }
-        return res.json({ url: result.url, added: !result.url });
-      }
-
-      if (type === 'cancel_elliott' || action === 'cancel_elliott') {
-        const result = await cancelElliottAddon(userId);
-        if (!result.success) {
-          return res.status(400).json({ error: result.error });
-        }
-        return res.json({ success: true, message: 'Elliott Wave add-on canceled' });
       }
 
       if (type === 'portal') {

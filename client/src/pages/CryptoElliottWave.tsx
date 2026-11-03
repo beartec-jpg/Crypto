@@ -3379,7 +3379,7 @@ export default function CryptoElliottWave() {
         } else if (error.status === 403) {
           toast({
             title: 'Subscription Required',
-            description: 'Elliott Wave features require Elite tier or the Elliott Wave add-on.',
+            description: 'Elliott Wave features require Elite tier.',
             variant: 'destructive',
           });
         } else {
@@ -3449,7 +3449,7 @@ export default function CryptoElliottWave() {
         } else if (error.status === 403) {
           toast({
             title: 'Subscription Required',
-            description: 'Elliott Wave features require Elite tier or the Elliott Wave add-on.',
+            description: 'Elliott Wave features require Elite tier.',
             variant: 'destructive',
           });
         } else {
@@ -3497,7 +3497,7 @@ export default function CryptoElliottWave() {
         } else if (error.status === 403) {
           toast({
             title: 'Subscription Required',
-            description: 'Elliott Wave features require Elite tier or the Elliott Wave add-on.',
+            description: 'Elliott Wave features require Elite tier.',
             variant: 'destructive',
           });
         } else {
@@ -7172,7 +7172,7 @@ const aiAnalyze = useMutation({
     if (!hasElliottAccess) {
       toast({
         title: 'Subscription Required',
-        description: 'Elliott Wave features require Elite tier or the Elliott Wave add-on.',
+        description: 'Elliott Wave features require Elite tier.',
         variant: 'destructive',
       });
       return;
@@ -7300,7 +7300,7 @@ const aiAnalyze = useMutation({
     if (!hasElliottAccess) {
       toast({
         title: 'Subscription Required',
-        description: 'AI analysis requires Elite tier or the Elliott Wave add-on.',
+        description: 'AI analysis requires Elite tier.',
         variant: 'destructive',
       });
       return;
@@ -7681,7 +7681,7 @@ const aiAnalyze = useMutation({
                 <div className="flex-1">
                   <p className="text-purple-300 font-medium">Upgrade to access Elliott Wave features</p>
                   <p className="text-sm text-gray-400 mt-1">
-                    Elliott Wave analysis requires either the <span className="text-purple-400">Elite tier</span> or the <span className="text-cyan-400">Elliott Wave add-on ($10/mo)</span>. Upgrade on the Plans page to save and load patterns.
+                    Elliott Wave analysis requires the <span className="text-purple-400">Elite tier</span>. Upgrade on the Plans page to save and load patterns.
                   </p>
                 </div>
                 <Button 
@@ -8192,7 +8192,7 @@ const aiAnalyze = useMutation({
                     </div>
                     <div>
                       <h3 className="text-lg font-bold text-white mb-1">
-                        Upgrade to Elite or add the Waves Add-on
+                        Upgrade to Elite
                       </h3>
                       <p className="text-sm text-gray-300">
                         Save wave patterns, build your wave stack, and track multi-degree structures across timeframes.
@@ -8928,7 +8928,7 @@ const aiAnalyze = useMutation({
                     </>
                   ) : (
                     <>
-                      <p className="text-lg font-semibold text-white">Upgrade to Elite or add the Waves Add-on</p>
+                      <p className="text-lg font-semibold text-white">Upgrade to Elite</p>
                       <p className="text-sm mt-2 text-gray-300">Get AI-powered Elliott Wave analysis with your subscription</p>
                       <a 
                         href="/plans" 

@@ -133,8 +133,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!hasElliottAccess) {
       try { await pool?.end(); } catch {}
       return res.status(403).json({ 
-        error: 'Elliott Wave AI requires Elite tier or Elliott Wave add-on',
-        message: 'Please upgrade to Elite tier or purchase the Elliott Wave add-on to access AI analysis'
+        error: 'Elliott Wave AI requires Elite tier',
+        message: 'Please upgrade to Elite tier to access AI analysis'
       });
     }
 

@@ -40,13 +40,6 @@ const PRODUCTS: ProductConfig[] = [
     priceAmount: 5000, // £50/month
     interval: 'month',
   },
-  {
-    name: 'Elliott Wave Add-on',
-    description: 'Elliott Wave pattern analysis - works with any base tier',
-    metadata: { tier: 'elliott_addon', type: 'addon' },
-    priceAmount: 1000, // £10/month
-    interval: 'month',
-  },
 ];
 
 async function seedProducts() {

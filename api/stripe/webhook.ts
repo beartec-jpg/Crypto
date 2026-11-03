@@ -112,24 +112,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             [userId, tier, subscriptionId]
           );
           console.log(`✅ Updated user ${userId} to tier: ${tier}`);
-        } else if (type === 'elliott_addon') {
-          // Get subscription item ID for Elliott by product name
-          const stripeSub = await stripe.subscriptions.retrieve(subscriptionId as string, {
-expand: ['items.data.price'],  // ✅
-          });
-          const elliottItem = stripeSub.items.data.find((item: any) => {
-            const productName = (item.price?.product as any)?.name || '';
-            return productName.toLowerCase().includes('elliot') || productName.toLowerCase().includes('elliott');
-          });
-
-          await pool.query(
-            `UPDATE crypto_subscriptions 
-             SET has_elliott_addon = true, elliott_stripe_item_id = $1, 
-                 stripe_subscription_id = COALESCE(stripe_subscription_id, $2), updated_at = NOW()
-             WHERE user_id = $3`,
-            [elliottItem?.id, subscriptionId, userId]
-          );
-          console.log(`✅ Added Elliott Wave addon for user ${userId}`);
         }
         break;
       }
