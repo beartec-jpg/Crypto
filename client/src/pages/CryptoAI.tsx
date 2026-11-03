@@ -1,3 +1,4 @@
+import { TechnicalScenarioDisclaimer } from '@/components/TechnicalScenarioDisclaimer';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { Link, useLocation } from 'wouter';
@@ -665,7 +666,7 @@ export default function CryptoAI() {
           <div className={cn(panelClass, 'border-amber-500/30 p-5')}>
             <h2 className="text-lg font-semibold text-white">Upgrade required</h2>
             <p className="mt-1 text-sm text-slate-400">
-                Charts stay free. AI trade ideas need a Core, Pro, or Elite usage plan. Each general reading or deep dive uses 1 token on your nominated ticker(s).
+                Charts stay free. AI technical scenarios need a Core, Pro, or Elite usage plan. Each general reading or deep dive uses 1 token on your nominated ticker(s).
             </p>
           </div>
         ) : trackedTickers.length === 0 ? (
@@ -894,7 +895,7 @@ export default function CryptoAI() {
                       {deepDiveState.status === 'error' ? (
                         <Alert variant="destructive">
                           <AlertCircle className="h-4 w-4" />
-                          <AlertTitle>Trade search failed</AlertTitle>
+                          <AlertTitle>Scenario search failed</AlertTitle>
                           <AlertDescription>{deepDiveState.error}</AlertDescription>
                         </Alert>
                       ) : null}
@@ -951,7 +952,7 @@ export default function CryptoAI() {
                                 Key zones to watch
                               </div>
                               <p className="text-sm text-slate-400">
-                                No setup has cleared the confluence and risk/reward gates yet. Wait for price to reach one of the next structural zones below.
+                                No chart setup has cleared the confluence and risk/reward gates yet. The next structural zones on this chart are listed below.
                               </p>
                               {deepDiveWatchLevels.length > 0 ? (
                                 <ul className="mt-3 space-y-2 text-sm text-slate-400">
@@ -1028,6 +1029,8 @@ export default function CryptoAI() {
                                     </div>
                                   </div>
 
+                                  <TechnicalScenarioDisclaimer className="mt-3" />
+
                                   {trade.confluenceSignals?.length ? (
                                     <div className="mt-3 flex flex-wrap gap-2">
                                       {trade.confluenceSignals.map((signal) => (
@@ -1050,7 +1053,7 @@ export default function CryptoAI() {
                                            horizonLabel: getCryptoAiTradeHorizon(aiTradeHorizon).label,
                                            modeLabel: ENABLED_AI_TRADER_MODES.find((mode) => mode.id === aiTraderMode)?.label,
                                          });
-                                         toast({ title: 'Trade downloaded', description: 'PNG saved to your downloads.' });
+                                         toast({ title: 'Chart setup downloaded', description: 'PNG saved to your downloads.' });
                                        } catch (error: any) {
                                          toast({
                                            title: 'Download failed',
@@ -1069,7 +1072,7 @@ export default function CryptoAI() {
                                      onClick={() => {
                                        const dir = trade.direction;
                                        if (dir !== 'LONG' && dir !== 'SHORT') {
-                                         toast({ title: 'Cannot print trade', description: 'Trade direction must be LONG or SHORT.', variant: 'destructive' });
+                                         toast({ title: 'Cannot print chart setup', description: 'Setup direction must be LONG or SHORT.', variant: 'destructive' });
                                          return;
                                        }
                                        const entry = Number(trade.entry);
@@ -1096,7 +1099,7 @@ export default function CryptoAI() {
                                        };
                                        existing.push(newTrade);
                                        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(existing)); } catch { toast({ title: 'Storage full', description: 'Could not save trade – browser storage quota exceeded.', variant: 'destructive' }); return; }
-                                       toast({ title: 'Trade printed to chart', description: `Open ${formatTickerDisplay(ticker)} on ${aiLowerTimeframe} to see it.` });
+                                       toast({ title: 'Chart setup printed to chart', description: `Open ${formatTickerDisplay(ticker)} on ${aiLowerTimeframe} to see it.` });
                                      }}
                                    >
                                      <Printer className="mr-2 h-4 w-4" />
@@ -1120,8 +1123,8 @@ export default function CryptoAI() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
       <Helmet>
-        <title>AI Trade Ideas | BearTec</title>
-        <meta name="description" content="AI-powered crypto trade ideas in a beginner-friendly workspace, alongside charts, oscillators, and indicators." />
+        <title>AI Technical Scenarios | BearTec</title>
+        <meta name="description" content="AI-generated crypto technical scenarios (general technical analysis) in a beginner-friendly workspace, alongside charts, oscillators, and indicators." />
       </Helmet>
 
       <div className="mx-auto max-w-7xl px-4 py-6 pb-32">

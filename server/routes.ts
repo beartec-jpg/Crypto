@@ -4372,7 +4372,7 @@ ${fmtTF(lowerTimeframe, lowerData)}
 Give a concise at-a-glance analysis only. Do NOT produce a trade plan, entry, stop, targets, or risk/reward.
 - Higher timeframe: focus on dominant bias/trend and key levels.
 - Lower timeframe: focus on momentum/structure, alignment with the higher timeframe, and nearby trigger levels.
-- Keep summaries brief and actionable.
+- Keep summaries brief, neutral and descriptive (no buy/sell directives).
 
 OUTPUT: Valid JSON only, no markdown.
 {
@@ -4405,9 +4405,10 @@ TRADE PLANNING RULES:
 10. Minimum R/R: ${minRiskReward}:1 to TP1. With-trend setups need at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}; counter-trend setups need at least ${counterTrendMinConfluence}.
 11. LONG: SL strictly below entry, TP1/TP2 strictly above entry. SHORT: SL strictly above entry, TP1/TP2 strictly below entry.
 12. Return the valid standalone setup(s) you actually find. Do NOT force sequenced or linked trades. You MAY mention a natural flow into another zone in overallSummary, but never withhold a good standalone setup for lack of a second leg.
-13. No contradictory LONG and SHORT at the same entry. Maximum 2 trade ideas total.
+13. No contradictory LONG and SHORT at the same entry. Maximum 2 technical scenarios total.
 14. If no high-quality setup exists at a structural level, output 0 trades and use overallSummary/keyLevels to say which zones are worth watching next.
-15. Tag each trade's expected hold to match the horizon (${tradeHorizonMeta.expectedHold}) in reasoning when useful.
+15. Tag each scenario's expected hold to match the horizon (${tradeHorizonMeta.expectedHold}) in reasoning when useful.
+16. Wording: conditional scenario language only ("a long setup appears if price holds above X; invalidated below Y"). No "buy"/"sell"/"you should"/"enter now", no position sizing or % of account, no hype or performance claims.
 
 OUTPUT: Valid JSON only, no markdown.
 {
@@ -4423,7 +4424,7 @@ OUTPUT: Valid JSON only, no markdown.
       "direction": "LONG/SHORT",
       "htfRelationship": "with-trend/counter-trend",
       "triggerZone": "e.g. 1.0800-1.0850 demand FVG",
-      "triggerCondition": "e.g. price drops into the zone and reacts with local confirmation",
+      "triggerCondition": "e.g. scenario activates if price drops into the zone and reacts with local confirmation",
       "entry": 1.2345,
       "stopLoss": 1.2280,
       "targets": [1.2420, 1.2520],
@@ -4434,7 +4435,7 @@ OUTPUT: Valid JSON only, no markdown.
       "tp2Rationale": "next major level",
       "confluenceSignals": ["signal 1", "signal 2", "signal 3"],
       "riskRewardRatio": 2.1,
-      "reasoning": "1 sentence: why this is a high-probability level-to-level setup."
+      "reasoning": "1 sentence, conditional and neutral: e.g. a long setup appears if price holds above X; invalidated below Y."
     }
   ]
 }`;
@@ -4447,8 +4448,10 @@ OUTPUT: Valid JSON only, no markdown.
           {
             role: "system",
             content: analysisType === 'general'
-              ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Always respond with valid JSON only, no markdown.`
-              : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes (${higherTimeframe}, ${lowerTimeframe}) with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nYour edge is cross-timeframe confluence: identify WHERE price is going (the target level), WHERE to enter (with a concrete justification appropriate to this mode — never a blind "enter at current price"), and WHERE your invalidation is (a structural stop scaled to the trade horizon, not automatically the nearest LTF wick). Higher timeframe bias is context and destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Stop-loss goes just behind the horizon-appropriate invalidation structure — no arbitrary ATR padding. Require minimum R/R ${minRiskReward}:1 to TP1, at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}, and one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB/FVG alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups and never force sequencing. You never output contradictory LONG+SHORT setups. If no quality setup exists for this mode, you say so and point to the watch zones. Always respond with valid JSON only, no markdown.`
+              ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Use neutral, descriptive, third-person language; never use imperative or second-person directives ("buy", "sell", "you should"), and no hype or performance claims. Always respond with valid JSON only, no markdown.`
+              : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes (${higherTimeframe}, ${lowerTimeframe}) with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nYour edge is cross-timeframe confluence: identify WHERE price is going (the target level), WHERE to enter (with a concrete justification appropriate to this mode — never a blind "enter at current price"), and WHERE your invalidation is (a structural stop scaled to the trade horizon, not automatically the nearest LTF wick). Higher timeframe bias is context and destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Stop-loss goes just behind the horizon-appropriate invalidation structure — no arbitrary ATR padding. Require minimum R/R ${minRiskReward}:1 to TP1, at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}, and one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB/FVG alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups and never force sequencing. You never output contradictory LONG+SHORT setups. If no quality setup exists for this mode, you say so and point to the watch zones. Always respond with valid JSON only, no markdown.
+
+LANGUAGE RULES (general, non-personalised technical analysis): Describe every setup as a conditional chart scenario, e.g. "a long setup appears if price holds above X; invalidated below Y". Never use imperative or second-person directives such as "buy", "sell", "you should", "enter now", "go long", "take profit now". Present risk/reward only as illustrative ratios derived from the entry, stop and target levels (e.g. "an entry at X with a stop at Y and target Z gives about 1:3"). Never mention position sizing, leverage amounts, or a percentage of an account/portfolio. No hype, "hot picks", urgency, guarantees, or performance claims. Write all text fields (summaries, rationales, triggerCondition, reasoning) in neutral, descriptive, third-person language.`
           },
           { role: "user", content: analysisType === 'general' ? generalPrompt : deepPrompt }
         ],
@@ -5804,7 +5807,7 @@ Keep the analysis concise but informative (200-300 words).`;
       if (tier === 'free' || tier === 'beginner') {
         return res.status(403).json({ 
           error: 'Subscription required',
-          message: 'Please upgrade to Intermediate tier or higher to access AI Trade Ideas',
+          message: 'Please upgrade to Intermediate tier or higher to access AI technical scenarios',
           requiredTier: 'intermediate'
         });
       }
@@ -5828,7 +5831,7 @@ Keep the analysis concise but informative (200-300 words).`;
 
       const latestCandle = candles[candles.length - 1];
       
-      const prompt = `You are a professional crypto trader analyzing ${ticker}. Generate 2-3 high-quality trade setups based on the following data:
+      const prompt = `You are a technical analyst describing chart structure for ${ticker}. Describe 2-3 general technical scenarios (chart setups) based on the following data. This is general, non-personalised technical analysis, not a recommendation:
 
 Current Price: ${latestCandle?.close || 'N/A'}
 Market Data: ${candles.length} candles analyzed
@@ -5838,9 +5841,9 @@ For each trade setup, provide:
 1. Grade (A+, A, B, C, D, or E) based on setup quality and probability
 2. Direction (long or short)
 3. Entry price (specific level)
-4. Target price (profit target)
-5. Stop loss (risk management level)
-6. Reasoning (2-3 sentences explaining the setup)
+4. Target price (scenario target level)
+5. Stop loss (invalidation level)
+6. Reasoning (2-3 sentences in conditional scenario language, e.g. "a long setup appears if price holds above X; invalidated below Y"; no imperative or second-person directives, no position sizing, no hype or performance claims)
 7. Confidence (0-100)
 
 Return ONLY valid JSON in this exact format:
@@ -5861,7 +5864,7 @@ Return ONLY valid JSON in this exact format:
       const completion = await xai.chat.completions.create({
         model: XAI_DEFAULT_MODEL,
         messages: [
-          { role: "system", content: "You are a professional crypto trader. Return only valid JSON, no markdown." },
+          { role: "system", content: "You are a technical analyst producing general, non-personalised chart scenarios. Use conditional, third-person language only; never say buy, sell, you should, or enter now; express risk/reward only as illustrative ratios from entry/stop/target; never mention position sizing or % of account; no hype or performance claims. Return only valid JSON, no markdown." },
           { role: "user", content: prompt }
         ],
         temperature: 0.8,
@@ -5878,7 +5881,7 @@ Return ONLY valid JSON in this exact format:
         console.error('Failed to parse AI response:', responseText);
         tradeIdeas = {
           setups: [],
-          error: 'Failed to generate trade ideas'
+          error: 'Failed to generate technical scenarios'
         };
       }
 

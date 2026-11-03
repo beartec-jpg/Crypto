@@ -3774,9 +3774,9 @@ const handleAIMarketReview = () => {
     <>
       <Helmet>
         <title>Crypto Indicators & Oscillators | BearTec</title>
-        <meta name="description" content="Beginner-friendly crypto charts with multiple oscillators, indicators, and AI-powered trade ideas." />
+        <meta name="description" content="Beginner-friendly crypto charts with multiple oscillators, indicators, and AI-powered technical scenarios." />
         <meta property="og:title" content="Crypto Indicators & Oscillators | BearTec" />
-        <meta property="og:description" content="Beginner-friendly crypto charts with multiple oscillators, indicators, and AI-powered trade ideas." />
+        <meta property="og:description" content="Beginner-friendly crypto charts with multiple oscillators, indicators, and AI-powered technical scenarios." />
         <meta property="og:type" content="website" />
       </Helmet>
       <div className="min-h-screen bg-[#0e0e0e] p-4 pb-20">
