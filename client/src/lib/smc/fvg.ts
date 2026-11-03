@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Fair Value Gap (FVG) detection utilities
  * Extracted from CryptoIndicators.tsx for better modularity

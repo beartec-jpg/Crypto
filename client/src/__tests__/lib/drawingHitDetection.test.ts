@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { describe, it, expect, vi } from 'vitest';
 import { findDrawingsNearClick, type Drawing } from '../../lib/drawingHitDetection';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';

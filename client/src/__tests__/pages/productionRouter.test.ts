@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { readFileSync } from 'fs'
 import { describe, it, expect } from 'vitest'
 import path from 'path'

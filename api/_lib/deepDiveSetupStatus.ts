@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Deep-dive setup status: "active" (price is in the entry zone now) vs
  * "pending" (limit/conditional plan at an unmitigated zone not reached yet).

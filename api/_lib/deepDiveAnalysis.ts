@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Deep-dive "full analysis" helpers. A deep dive must always return a real market read,
  * even when no trade clears the gates. The model returns `marketAnalysis`; trades it

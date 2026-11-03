@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { GrokInsights } from './GrokInsights';

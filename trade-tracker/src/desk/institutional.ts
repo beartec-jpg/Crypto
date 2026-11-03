@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * OI / funding for desk tools.
  * Cascade: Coinalyze → CoinGlass → Binance USDT-M public (no key).

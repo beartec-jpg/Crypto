@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // PasskeyAuthModal — single-tap wallet creation + cold signer import.
 // No mnemonic. No password. One biometric tap = wallet ready, backed by Google/Apple.
 

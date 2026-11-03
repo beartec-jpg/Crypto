@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // One-time Sepolia deploy: USDC collateral lock contract (bridge vault).
 // Passkey wallets: single Deploy button (biometric). Legacy wallets: password.
 

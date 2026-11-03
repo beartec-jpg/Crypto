@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // Stripe Checkout Service for Crypto Subscriptions
 import { getUncachableStripeClient } from './stripeClient';
 import { cryptoSubscriptionService } from './cryptoSubscriptionService';

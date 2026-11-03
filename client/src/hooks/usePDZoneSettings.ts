@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useCallback } from 'react';
 import type { PDZoneSettings } from '@/types/liquidity';
 import { DEFAULT_PD_ZONE_SETTINGS } from '@/types/liquidity';

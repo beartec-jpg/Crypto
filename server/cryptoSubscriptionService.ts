@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { db } from "./db";
 import { cryptoSubscriptions, cryptoUsers, cryptoAiAnalyses } from "@shared/schema";
 import { eq, and } from "drizzle-orm";

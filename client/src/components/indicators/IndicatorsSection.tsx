@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { OscillatorsPanel } from '@/components/indicators/OscillatorsPanel';
 import { GenuineDemandScorePanel } from '@/components/indicators/GenuineDemandScorePanel';
 import type { Candle, CVDDataItem } from '@/types/chart';

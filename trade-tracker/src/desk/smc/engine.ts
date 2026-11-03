@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Continuous SMC ingest. Fetches klines, merges into the persistent map,
  * updates mitigation on stored zones (even if they aged out of the window).

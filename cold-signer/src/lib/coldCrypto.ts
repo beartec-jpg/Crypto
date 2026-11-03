@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Cold Crypto Service - AES-256-GCM encryption with PBKDF2
  * Ported from client/src/lib/walletService.ts

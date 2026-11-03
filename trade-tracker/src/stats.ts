@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Performance metrics from closed trades (R-multiples).
  * Prefer win rate / expectancy / PF / max DD until sample is large;

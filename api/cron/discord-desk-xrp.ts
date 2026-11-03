@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Pre-London desk — XRP only (isolated request, 5 min after BTC).
  * Schedule: 05:50 UTC

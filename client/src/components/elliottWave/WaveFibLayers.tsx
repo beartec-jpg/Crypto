@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { PredictiveFibRenderer } from '@/components/elliottWave/PredictiveFibRenderer';
 import type { FibLevel } from '@/lib/elliottWave/fibCalculator';
 

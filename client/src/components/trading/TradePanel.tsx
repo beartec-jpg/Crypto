@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useEffect } from 'react';
 import { X, TrendingUp, TrendingDown, Trash2, LogOut, History, Edit2, Check, Crosshair } from 'lucide-react';
 import { Button } from '@/components/ui/button';

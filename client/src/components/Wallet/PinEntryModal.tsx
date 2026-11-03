@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // client/src/components/Wallet/PinEntryModal.tsx
 // PIN entry modal with numpad interface for Maximum security tier
 

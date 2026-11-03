@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Persistent SMC map types. Detection is versioned — bump ENGINE_VERSION
  * if FVG width, swing lookback, or mitigation rules change.

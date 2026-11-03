@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // client/src/pages/Wallet.tsx
 // Main wallet page with multi-chain support, security tiers, and transaction management
 

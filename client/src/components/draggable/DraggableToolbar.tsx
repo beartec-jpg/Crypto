@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { ReactNode, useState, Children, isValidElement, cloneElement } from 'react';
 import { GripVertical, RotateCw, Minus, Plus } from 'lucide-react';
 import { useDraggable } from '@/hooks/useDraggable';

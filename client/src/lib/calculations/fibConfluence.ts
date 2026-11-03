@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { FibSetResult } from '@/types/autoFib';
 import type { FVGDetection } from '@/types/fvg';
 import type { OrderBlock } from '@/types/orderBlock';

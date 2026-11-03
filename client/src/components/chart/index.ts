@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 export { ChartContainer } from './ChartContainer';
 export { MovingAverages } from './MovingAverages';
 export { ChartControls } from './ChartControls';

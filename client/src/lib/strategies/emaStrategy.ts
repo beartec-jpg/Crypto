@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * EMA Trading Strategy
  * Supports bounce, cross, and trend trade patterns using EMAs

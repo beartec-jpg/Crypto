@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // client/src/components/Wallet/ConfirmationTimer.tsx
 // Non-linear confirmation time slider (1min → 1hr) with security feedback and live polling
 

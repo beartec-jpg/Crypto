@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { type FeedbackBoard, type InsertFeedbackBoard, type FeedbackBoardReply, type InsertFeedbackBoardReply, type ElliottWaveLabel, type InsertElliottWaveLabel, type CachedCandles, type InsertCachedCandles, type UserOscillatorPreferences } from "@shared/schema";
 import { randomUUID } from "crypto";
 

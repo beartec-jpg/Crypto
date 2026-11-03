@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createChart, IChartApi, ISeriesApi, ColorType, CandlestickSeries, CrosshairMode } from 'lightweight-charts';
 import { formatPriceDynamic } from '@/lib/chart/priceUtils';

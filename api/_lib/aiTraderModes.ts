@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // AI Trader Modes — self-contained copy for Vercel serverless functions.
 //
 // This mirrors shared/aiTraderModes.ts. It is duplicated here (rather than imported

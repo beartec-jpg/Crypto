@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // client/src/components/Wallet/TransactionSuccessModal.tsx
 // Success modal shown after transaction is broadcast
 

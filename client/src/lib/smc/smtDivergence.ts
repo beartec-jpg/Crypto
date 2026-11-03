@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * @fileoverview SMT (...) Divergence Detection
  * Compares swing pivots between two correlated assets to identify divergences

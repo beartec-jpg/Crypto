@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * @fileoverview Hotkey Definitions
  * @description Type definitions and key mappings for chart keyboard shortcuts.

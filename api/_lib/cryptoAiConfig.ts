@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 export const CRYPTO_AI_HIGHER_TIMEFRAMES = ['1w', '1d'] as const;
 export const CRYPTO_AI_LOWER_TIMEFRAMES = ['1h', '15m'] as const;
 export const DEFAULT_CRYPTO_AI_HIGHER_TIMEFRAME = '1d' as const;

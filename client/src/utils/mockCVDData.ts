@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { Candle, CVDDataItem } from '@/types/chart';
 
 const MOCK_DELTA_VOLUME_MULTIPLIER = 0.1; // 10% of volume as delta range

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Trading Systems - Preset configurations that activate groups of indicators
  * with optimized settings for specific trading strategies

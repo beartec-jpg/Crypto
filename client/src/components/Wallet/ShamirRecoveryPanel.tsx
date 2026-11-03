@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useEffect, useState } from 'react';
 import { Check, Copy, Eye, EyeOff, HardDrive, Lock, QrCode, RefreshCw, Shield, Snowflake, X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';

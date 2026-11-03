@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'wouter';
 import axios from 'axios';

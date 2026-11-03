@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, decimal, timestamp, jsonb, boolean, doublePrecision, uuid, index, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
 import { z } from "zod";

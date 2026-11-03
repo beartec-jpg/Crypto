@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { Maximize2 } from 'lucide-react';
 import { useRef } from 'react';
 import { useSimpleChart } from '@/hooks/useSimpleChart';

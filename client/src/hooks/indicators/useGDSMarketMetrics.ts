@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { CVDDataItem } from '@/types/chart';

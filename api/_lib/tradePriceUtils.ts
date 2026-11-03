@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /** Shared price / % move helpers for Discord desk (mirrors client cryptoAiTradePlans). */
 
 export function parseTradePrice(value: unknown): number | null {

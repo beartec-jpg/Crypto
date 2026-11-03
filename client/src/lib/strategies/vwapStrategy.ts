@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * VWAP Trading Strategy
  * Trades bounces and crosses at VWAP levels

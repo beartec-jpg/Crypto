@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Breaker Block type definitions.
  * A breaker is created when a candle passes completely through an OB zone in one move

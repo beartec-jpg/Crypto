@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useCallback } from 'react';
 import { AutoFibSettings, DEFAULT_AUTO_FIB_SETTINGS } from '@/types/autoFib';
 
