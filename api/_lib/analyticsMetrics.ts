@@ -3,16 +3,15 @@
  * the maths can be unit tested directly.
  */
 
-export const PAID_TIERS = ['beginner', 'intermediate', 'pro', 'elite'] as const;
+import { PRODUCT_NAME_TO_TIER as SHARED_PRODUCT_NAME_TO_TIER } from '../../shared/stripeTiers.js';
+import { usdGbpRate as sharedUsdGbpRate, usdToPence as sharedUsdToPence } from '../../shared/currency.js';
+
+/** Paid tiers (internal ids). 'beginner' is legacy and treated as free. */
+export const PAID_TIERS = ['intermediate', 'pro', 'elite'] as const;
 export const ALL_TIERS = ['free', ...PAID_TIERS] as const;
 
-/** Product names used in Stripe, same map as api/stripe/webhook.ts. */
-export const PRODUCT_NAME_TO_TIER: Record<string, string> = {
-  'Beginner membership': 'beginner',
-  'Intermediate membership': 'intermediate',
-  'Pro membership': 'pro',
-  'Elite membership': 'elite',
-};
+/** Stripe product name → tier (current Core/Pro/Elite + legacy names). See shared/stripeTiers.ts. */
+export const PRODUCT_NAME_TO_TIER: Record<string, string> = SHARED_PRODUCT_NAME_TO_TIER;
 
 export interface PriceLike {
   unit_amount?: number | null;
@@ -109,15 +108,13 @@ export function parseRange(from: unknown, to: unknown, now: Date = new Date()): 
   return { from: start, to: end };
 }
 
-/** Convert USD (api_usage_log.estimated_cost) to pence using USD_GBP_RATE. */
+/** Convert USD (api_usage_log.estimated_cost) to pence using USD_GBP_RATE. See shared/currency.ts. */
 export function usdToPence(usd: number, rate: number): number {
-  if (!Number.isFinite(usd)) return 0;
-  return Math.round(usd * rate * 100);
+  return sharedUsdToPence(usd, rate);
 }
 
 export function usdGbpRate(): number {
-  const r = Number(process.env.USD_GBP_RATE);
-  return Number.isFinite(r) && r > 0 ? r : 0.79;
+  return sharedUsdGbpRate();
 }
 
 export interface AiCostRowInput {

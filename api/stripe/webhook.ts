@@ -2,6 +2,7 @@
 // Vercel serverless function for Stripe webhooks
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { recordStripeEvent } from '../_lib/billingEvents.js';
+import { normalizePaidTier, tierFromSubscription } from '../../shared/stripeTiers.js';
 
 // Disable body parsing to get raw body for Stripe signature verification
 export const config = {
@@ -85,7 +86,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const session = event.data.object;
         const userId = session.metadata?.userId;
         const type = session.metadata?.type;
-        const tier = session.metadata?.tier;
+        // Normalise ('core' → 'intermediate'); unknown/free values are ignored.
+        const tier = normalizePaidTier(session.metadata?.tier);
         const subscriptionId = session.subscription;
 
         if (!userId) {
@@ -138,30 +140,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           break;
         }
 
-        // Map product names to tier values
-        const productNameToTier: Record<string, string> = {
-          'Beginner membership': 'beginner',
-          'Intermediate membership': 'intermediate',
-          'Pro membership': 'pro',
-          'Elite membership': 'elite',
-        };
+        // Pinned price id (STRIPE_PRICE_*) wins, then price/product metadata,
+        // then product name (current + legacy), then subscription metadata.
+        const tier = tierFromSubscription(subscription);
 
-        // Get tier from subscription metadata first, then from product names
-        const items = subscription.items?.data || [];
-        let tier = subscription.metadata?.tier;
-        
-        // If no tier in subscription metadata, check product names
-        if (!tier) {
-          for (const item of items) {
-            const productName = item.price?.product?.name || item.plan?.product?.name;
-            
-            // Check for tier products
-            if (productName && productNameToTier[productName]) {
-              tier = productNameToTier[productName];
-            }
-          }
-        }
-        
         await pool.query(
           `UPDATE crypto_subscriptions 
            SET tier = COALESCE($1, tier), 

@@ -1,6 +1,7 @@
 // Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // Stripe Checkout Service for Crypto Subscriptions
 import { getUncachableStripeClient } from './stripeClient';
+import { getPinnedPriceId, tierFromSubscription } from '../shared/stripeTiers';
 import { cryptoSubscriptionService } from './cryptoSubscriptionService';
 import { db } from './db';
 import { cryptoUsers, cryptoSubscriptions } from '@shared/schema';
@@ -34,42 +35,13 @@ async function getOrCreateCustomer(userId: string, email: string): Promise<strin
   return customer.id;
 }
 
-// Map tier names to product names
-const tierToProductName: Record<string, string> = {
-  'beginner': 'Beginner membership',
-  'intermediate': 'Intermediate membership',
-  'pro': 'Pro membership',
-  'elite': 'Elite membership',
-};
-
-// Get price ID for a tier from Stripe by product name
+// Pinned price id for a tier (STRIPE_PRICE_CORE / _PRO / _ELITE). See shared/stripeTiers.ts.
 async function getPriceIdForTier(tier: string): Promise<string | null> {
-  const stripe = await getUncachableStripeClient();
-  
-  // Get product name for tier
-  let productName = tierToProductName[tier];
-  
-  // List all active products and find by name
-  const products = await stripe.products.list({ active: true, limit: 100 });
-  let product = products.data.find(p => p.name === productName);
-  
-  if (!product) {
-    console.error(`No Stripe product found for tier: ${tier} (looking for: ${productName})`);
-    return null;
+  const priceId = getPinnedPriceId(tier);
+  if (!priceId) {
+    console.error(`No pinned Stripe price configured for tier: ${tier}`);
   }
-  
-  // Get active price for this product
-  const prices = await stripe.prices.list({
-    product: product.id,
-    active: true,
-  });
-  
-  if (prices.data.length === 0) {
-    console.error(`No active price found for tier: ${tier}`);
-    return null;
-  }
-  
-  return prices.data[0].id;
+  return priceId;
 }
 
 // Create checkout session for base tier subscription
@@ -176,7 +148,7 @@ export async function handleSubscriptionWebhook(event: any): Promise<void> {
     }
     
     case 'customer.subscription.updated': {
-      const tier = subscription.metadata?.tier;
+      const tier = tierFromSubscription(subscription);
       
       if (tier) {
         await cryptoSubscriptionService.updateSubscriptionTier(userId, tier as TierType, subscription.id);
