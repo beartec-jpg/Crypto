@@ -9004,6 +9004,22 @@ CRITICAL DATA RULES:
   let clerkSyncLastRun = 0;
   const CLERK_SYNC_TTL_MS = 5 * 60 * 1000;
 
+  // GET /api/admin/analytics/:view — same queries as the Vercel function api/admin/analytics.ts
+  app.get('/api/admin/analytics/:view', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
+    try {
+      const { pool } = await import('./db');
+      const { handleAnalyticsView } = await import('../api/_lib/adminAnalytics');
+      const { parseRange } = await import('../api/_lib/analyticsMetrics');
+      const range = parseRange(req.query.from, req.query.to);
+      const out = await handleAnalyticsView(pool as any, String(req.params.view), req.query as Record<string, unknown>, range);
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.status(out.status).json(out.body);
+    } catch (error: any) {
+      console.error('Admin analytics error:', error?.message ?? 'unknown error');
+      res.status(500).json({ error: 'Analytics query failed' });
+    }
+  });
+
   // GET /api/admin/users — list all users with their subscription details
   // Syncs any Clerk-registered users who haven't yet hit an authenticated route
   app.get('/api/admin/users', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {

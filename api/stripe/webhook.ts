@@ -1,6 +1,7 @@
 // Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // Vercel serverless function for Stripe webhooks
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { recordStripeEvent } from '../_lib/billingEvents.js';
 
 // Disable body parsing to get raw body for Stripe signature verification
 export const config = {
@@ -212,6 +213,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         break;
       }
     }
+
+    // Admin analytics: append to billing_events (deduped on event id). Never throws.
+    await recordStripeEvent(pool, event);
 
     await pool.end();
     return res.json({ received: true });
