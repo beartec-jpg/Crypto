@@ -5643,7 +5643,6 @@ Return JSON only, no markdown:
         return res.json({
           tier: 'elite',
           status: 'active',
-          hasElliottAddon: true,
           canUseElliott: true,
           canUseAI: true,
           hasUnlimitedAI: true,
@@ -7640,7 +7639,6 @@ Return JSON:
   });
 
   // Get extended historical data for Elliott Wave analysis
-  // Requires elite tier OR Elliott Wave add-on
   app.get("/api/crypto/extended-history", requireCryptoAuth, requireEliteTier, async (req, res) => {
     try {
       const { symbol, timeframe, forceRefresh } = req.query;
@@ -9063,7 +9061,6 @@ CRITICAL DATA RULES:
           lastName: usersTable.lastName,
           createdAt: usersTable.createdAt,
           tier: subsTable.tier,
-          hasElliottAddon: subsTable.hasElliottAddon,
           aiCredits: subsTable.aiCredits,
           elliottAiCredits: subsTable.elliottAiCredits,
           bonusAiCredits: subsTable.bonusAiCredits,
@@ -9137,22 +9134,6 @@ CRITICAL DATA RULES:
       res.json({ success: true });
     } catch (error: any) {
       console.error('Admin bonus credits error:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // PATCH /api/admin/users/:userId/elliott-addon — toggle Elliott Wave add-on
-  app.patch('/api/admin/users/:userId/elliott-addon', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
-    try {
-      const { userId } = req.params;
-      const { enabled } = req.body as { enabled: boolean };
-      if (typeof enabled !== 'boolean') {
-        return res.status(400).json({ error: 'enabled must be a boolean' });
-      }
-      await cryptoSubscriptionService.toggleElliottAddon(userId, enabled);
-      res.json({ success: true });
-    } catch (error: any) {
-      console.error('Admin Elliott addon error:', error);
       res.status(500).json({ error: error.message });
     }
   });

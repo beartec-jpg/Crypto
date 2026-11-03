@@ -52,7 +52,6 @@ function ClerkSignOutButton({ children }: { children: React.ReactNode }) {
 
 interface SubscriptionData {
   tier: string;
-  hasElliottAddon: boolean;
   canUseAI: boolean;
   hasUnlimitedAI: boolean;
   aiCredits: number;

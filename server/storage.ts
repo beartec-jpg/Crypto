@@ -11,7 +11,7 @@ export interface IStorage {
   getFeedbackBoardReplies(feedbackId: string): Promise<FeedbackBoardReply[]>;
   deleteFeedbackBoardReply(id: string): Promise<boolean>;
 
-  // Elliott Wave Labels (elite tier only)
+  // Elliott Wave Labels
   createElliottWaveLabel(label: InsertElliottWaveLabel): Promise<ElliottWaveLabel>;
   getElliottWaveLabels(userId: string, symbol: string, timeframe: string): Promise<ElliottWaveLabel[]>;
   getElliottWaveLabel(id: string): Promise<ElliottWaveLabel | undefined>;

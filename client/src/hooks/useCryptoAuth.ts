@@ -27,7 +27,6 @@ interface CryptoSubscription {
   stripeCustomerId?: string;
   stripeSubscriptionId?: string;
   aiCredits?: number;
-  hasElliottAddon?: boolean;
   canUseElliott?: boolean;
   canUseAI?: boolean;
   hasUnlimitedAI?: boolean;
@@ -80,7 +79,6 @@ function getDevSubscription(): CryptoSubscription {
     tier: 'elite',
     subscriptionStatus: 'active',
     aiCredits: 999999,
-    hasElliottAddon: true,
     canUseElliott: true,
     canUseAI: true,
     hasUnlimitedAI: true,
@@ -162,7 +160,6 @@ export function useCryptoAuth() {
       canUseElliott: true,
       canUseAI: true,
       hasUnlimitedAI: true,
-      hasElliottAddon: true,
     };
     return {
       user: devUser,

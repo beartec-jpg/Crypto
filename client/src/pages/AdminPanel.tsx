@@ -34,7 +34,6 @@ interface AdminUser {
   lastName: string | null;
   createdAt: string | null;
   tier: string | null;
-  hasElliottAddon: boolean | null;
   aiCredits: number | null;
   elliottAiCredits: number | null;
   bonusAiCredits: number | null;
@@ -251,22 +250,6 @@ function UserRow({ user }: { user: AdminUser }) {
     onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
   });
 
-  const elliottMutation = useMutation({
-    mutationFn: async (enabled: boolean) => {
-      const res = await fetch(`/api/admin/users/${user.userId}/elliott-addon`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...await authHeaders() },
-        body: JSON.stringify({ enabled }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error || 'Failed');
-    },
-    onSuccess: (_, enabled) => {
-      toast({ title: `Elliott add-on ${enabled ? 'enabled' : 'disabled'}`, description: user.email });
-      qc.invalidateQueries({ queryKey: ['/api/admin/users'] });
-    },
-    onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
-  });
-
   const resetMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/admin/users/${user.userId}/reset-credits`, {
@@ -329,13 +312,6 @@ function UserRow({ user }: { user: AdminUser }) {
               ))}
             </SelectContent>
           </Select>
-        </td>
-        <td className="py-3 px-4">
-          <Switch
-            checked={user.hasElliottAddon ?? false}
-            onCheckedChange={v => elliottMutation.mutate(v)}
-            disabled={elliottMutation.isPending}
-          />
         </td>
         <td className="py-3 px-4 text-sm text-slate-300">
           <div>AI: {aiTotal} {(user.bonusAiCredits ?? 0) > 0 && <span className="text-green-400 text-xs">(+{user.bonusAiCredits} bonus)</span>}</div>
@@ -525,7 +501,6 @@ export default function AdminPanel() {
                       <tr className="border-b border-slate-700 text-slate-400 text-xs uppercase">
                         <th className="py-2 px-4 text-left font-medium">User</th>
                         <th className="py-2 px-4 text-left font-medium">Tier</th>
-                        <th className="py-2 px-4 text-left font-medium">Elliott</th>
                         <th className="py-2 px-4 text-left font-medium">Credits</th>
                         <th className="py-2 px-4 text-left font-medium">Custom Tools</th>
                         <th className="py-2 px-4 text-left font-medium">Actions</th>

@@ -148,18 +148,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Get tier from subscription metadata first, then from product names
         const items = subscription.items?.data || [];
         let tier = subscription.metadata?.tier;
-        let elliottItem: any = null;
         
         // If no tier in subscription metadata, check product names
         if (!tier) {
           for (const item of items) {
             const productName = item.price?.product?.name || item.plan?.product?.name;
-            
-            // Check if this is Elliott Wave
-            if (productName && (productName.toLowerCase().includes('elliot') || productName.toLowerCase().includes('elliott'))) {
-              elliottItem = item;
-              continue;
-            }
             
             // Check for tier products
             if (productName && productNameToTier[productName]) {
@@ -168,59 +161,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
         
-        // Also check for Elliott if not found yet in this subscription
-        if (!elliottItem) {
-          elliottItem = items.find((item: any) => {
-            const productName = item.price?.product?.name || item.plan?.product?.name || '';
-            return productName.toLowerCase().includes('elliot') || productName.toLowerCase().includes('elliott');
-          });
-        }
-
-        // CRITICAL: Check ALL customer subscriptions for Elliott addon (it may be separate)
-        let hasElliottOnAnySubscription = !!elliottItem;
-        let elliottItemId = elliottItem?.id || null;
-        
-        if (!hasElliottOnAnySubscription && customerId) {
-          try {
-            const allSubs = await stripe.subscriptions.list({
-              customer: customerId as string,
-              status: 'active',
-expand: ['data.items.data.price'],  // ✅
-            });
-            
-            for (const sub of allSubs.data) {
-              for (const item of sub.items.data) {
-                const productName = (item.price?.product as any)?.name || '';
-                if (productName.toLowerCase().includes('elliot') || productName.toLowerCase().includes('elliott')) {
-                  hasElliottOnAnySubscription = true;
-                  elliottItemId = item.id;
-                  break;
-                }
-              }
-              if (hasElliottOnAnySubscription) break;
-            }
-          } catch (err) {
-            console.log('⚠️ Could not check other subscriptions for Elliott:', err);
-          }
-        }
-
         await pool.query(
           `UPDATE crypto_subscriptions 
            SET tier = COALESCE($1, tier), 
-               has_elliott_addon = $2,
-               elliott_stripe_item_id = COALESCE($3, elliott_stripe_item_id),
-               subscription_status = $4,
+               subscription_status = $2,
                updated_at = NOW()
-           WHERE user_id = $5`,
+           WHERE user_id = $3`,
           [
             tier || null,
-            hasElliottOnAnySubscription,
-            elliottItemId,
             subscription.status,
             userId
           ]
         );
-        console.log(`✅ Updated subscription for user ${userId}, status: ${subscription.status}, elliott: ${hasElliottOnAnySubscription}`);
+        console.log(`✅ Updated subscription for user ${userId}, status: ${subscription.status}`);
         break;
       }
 
@@ -233,8 +186,8 @@ expand: ['data.items.data.price'],  // ✅
         // Reset to free tier
         await pool.query(
           `UPDATE crypto_subscriptions 
-           SET tier = 'free', has_elliott_addon = false, 
-               stripe_subscription_id = NULL, elliott_stripe_item_id = NULL,
+           SET tier = 'free',
+               stripe_subscription_id = NULL,
                subscription_status = 'canceled', updated_at = NOW()
            WHERE user_id = $1`,
           [userId]

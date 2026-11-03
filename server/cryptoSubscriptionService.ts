@@ -4,7 +4,7 @@ import { cryptoSubscriptions, cryptoUsers, cryptoAiAnalyses } from "@shared/sche
 import { eq, and } from "drizzle-orm";
 import { MONTHLY_AI_CREDITS, AI_TICKER_SLOTS } from '../shared/aiUsageTiers';
 
-// Base tiers (Elliott Wave is a separate add-on, not a tier)
+// Base tiers
 type BaseTier = "free" | "beginner" | "intermediate" | "pro" | "elite";
 
 const TIER_HIERARCHY: Record<BaseTier, number> = {
@@ -15,32 +15,33 @@ const TIER_HIERARCHY: Record<BaseTier, number> = {
   elite: 4,
 };
 
-// Monthly Elliott Wave AI credits (separate from trade AI)
+// Monthly Elliott Wave AI credits (separate from trade AI).
+// Elliott Wave tools are available to every tier; Elite gets a larger AI allowance.
 const MONTHLY_ELLIOTT_AI_CREDITS: Record<BaseTier, number> = {
-  free: 0,
-  beginner: 0,
-  intermediate: 0, // Needs Elliott add-on
-  pro: 0, // Needs Elliott add-on
-  elite: 150, // Elite includes Elliott AI
+  free: 50,
+  beginner: 50,
+  intermediate: 50,
+  pro: 50,
+  elite: 150,
 };
 
-// Elliott add-on gives 50 monthly Elliott AI credits
-const ELLIOTT_ADDON_CREDITS = 50;
+function elliottCreditLimit(tier: BaseTier): number {
+  return MONTHLY_ELLIOTT_AI_CREDITS[tier] ?? MONTHLY_ELLIOTT_AI_CREDITS.free;
+}
 
-// Feature capability flags computed from base tier + add-ons
-export function getCapabilities(tier: BaseTier, hasElliottAddon: boolean) {
+// Feature capability flags computed from base tier
+export function getCapabilities(tier: BaseTier) {
   const tierLevel = TIER_HIERARCHY[tier] || 0;
   return {
     tier,
-    hasElliottAddon,
-    canViewElliott: true, // Everyone can VIEW the page
-    canUseElliott: hasElliottAddon || tier === "elite", // Elliott add-on OR Elite tier
+    canViewElliott: true,
+    canUseElliott: true, // Elliott Wave tools are open to everyone
     canUseAI: tierLevel >= TIER_HIERARCHY.intermediate, // Intermediate+ for AI
-    canUseElliottAI: hasElliottAddon || tier === "elite", // Elliott add-on OR Elite tier
+    canUseElliottAI: true,
     canUsePushNotifications: tierLevel >= TIER_HIERARCHY.pro,
     isElite: tier === "elite",
     monthlyAiCredits: MONTHLY_AI_CREDITS[tier],
-    monthlyElliottCredits: (tier === "elite" ? MONTHLY_ELLIOTT_AI_CREDITS[tier] : 0) + (hasElliottAddon ? ELLIOTT_ADDON_CREDITS : 0),
+    monthlyElliottCredits: elliottCreditLimit(tier),
   };
 }
 
@@ -109,9 +110,8 @@ export class CryptoSubscriptionService {
   }
 
   async checkElliottAccess(userId: string): Promise<boolean> {
-    const subscription = await this.getUserSubscription(userId);
-    // Can use Elliott if they have the add-on OR are Elite tier
-    return subscription.hasElliottAddon || subscription.tier === "elite";
+    await this.getUserSubscription(userId);
+    return true; // Elliott Wave tools are open to every tier
   }
 
   async useAICredit(userId: string): Promise<{ success: boolean; remaining: number; limit: number }> {
@@ -149,10 +149,7 @@ export class CryptoSubscriptionService {
   async useElliottAICredit(userId: string): Promise<{ success: boolean; remaining: number; limit: number }> {
     const subscription = await this.getUserSubscription(userId);
     const tier = subscription.tier as BaseTier;
-    const hasAddon = subscription.hasElliottAddon || false;
-    
-    // Calculate Elliott AI limit (Elite + addon credits are additive)
-    const limit = (tier === "elite" ? MONTHLY_ELLIOTT_AI_CREDITS[tier] : 0) + (hasAddon ? ELLIOTT_ADDON_CREDITS : 0);
+    const limit = elliottCreditLimit(tier);
 
     // No Elliott AI access
     if (limit === 0) {
@@ -224,10 +221,7 @@ export class CryptoSubscriptionService {
   async resetElliottMonthlyCredits(userId: string): Promise<void> {
     const subscription = await this.getUserSubscription(userId);
     const tier = subscription.tier as BaseTier;
-    const hasAddon = subscription.hasElliottAddon || false;
-    
-    // Calculate Elliott credit limit (Elite + addon credits are additive)
-    const creditsToSet = (tier === "elite" ? MONTHLY_ELLIOTT_AI_CREDITS[tier] : 0) + (hasAddon ? ELLIOTT_ADDON_CREDITS : 0);
+    const creditsToSet = elliottCreditLimit(tier);
     
     if (creditsToSet === 0) return;
 
@@ -266,14 +260,8 @@ export class CryptoSubscriptionService {
     tier: BaseTier,
     stripeSubscriptionId: string
   ): Promise<void> {
-    // Check if user already has the Elliott add-on for combined credits
-    const subscription = await this.getUserSubscription(userId);
-    const hasAddon = subscription.hasElliottAddon || false;
-    
     const newCredits = MONTHLY_AI_CREDITS[tier];
-    // Combined Elliott credits: tier credits + addon credits (if user has addon)
-    const tierElliottCredits = tier === "elite" ? MONTHLY_ELLIOTT_AI_CREDITS[tier] : 0;
-    const newElliottCredits = tierElliottCredits + (hasAddon ? ELLIOTT_ADDON_CREDITS : 0);
+    const newElliottCredits = elliottCreditLimit(tier);
     const now = new Date();
 
     await db
@@ -292,47 +280,17 @@ export class CryptoSubscriptionService {
       .where(eq(cryptoSubscriptions.userId, userId));
   }
 
-  async toggleElliottAddon(
-    userId: string,
-    enabled: boolean,
-    elliottStripeItemId?: string
-  ): Promise<void> {
-    const now = new Date();
-    // Get current subscription to check tier for proper credit calculation
-    const subscription = await this.getUserSubscription(userId);
-    const tier = subscription.tier as BaseTier;
-    const eliteCredits = tier === "elite" ? MONTHLY_ELLIOTT_AI_CREDITS[tier] : 0;
-    
-    // Calculate new credit total: Elite tier credits + addon credits (if enabled)
-    const newCredits = eliteCredits + (enabled ? ELLIOTT_ADDON_CREDITS : 0);
-    
-    await db
-      .update(cryptoSubscriptions)
-      .set({
-        hasElliottAddon: enabled,
-        elliottStripeItemId: enabled ? elliottStripeItemId : null,
-        elliottAiCredits: newCredits,
-        elliottAiCreditsResetAt: newCredits > 0 ? now : null,
-        updatedAt: now,
-      })
-      .where(eq(cryptoSubscriptions.userId, userId));
-  }
-
   async getSubscriptionStats(userId: string) {
     const subscription = await this.getUserSubscription(userId);
     const tier = subscription.tier as BaseTier;
-    const hasElliottAddon = subscription.hasElliottAddon || false;
-
     return {
       tier: subscription.tier,
-      hasElliottAddon,
       aiCredits: subscription.aiCredits || 0,
       aiCreditsLimit: MONTHLY_AI_CREDITS[tier],
       elliottAiCredits: subscription.elliottAiCredits || 0,
-      elliottAiCreditsLimit: (tier === "elite" ? MONTHLY_ELLIOTT_AI_CREDITS[tier] : 0) + (hasElliottAddon ? ELLIOTT_ADDON_CREDITS : 0),
+      elliottAiCreditsLimit: elliottCreditLimit(tier),
       status: subscription.subscriptionStatus,
       stripeSubscriptionId: subscription.stripeSubscriptionId,
-      elliottStripeItemId: subscription.elliottStripeItemId,
       selectedTickers: subscription.selectedTickers || [],
       alertGrades: subscription.alertGrades || ["A+", "A"],
     };
@@ -341,8 +299,7 @@ export class CryptoSubscriptionService {
   async getCapabilities(userId: string) {
     const subscription = await this.getUserSubscription(userId);
     const tier = subscription.tier as BaseTier;
-    const hasElliottAddon = subscription.hasElliottAddon || false;
-    return getCapabilities(tier, hasElliottAddon);
+    return getCapabilities(tier);
   }
 
   // Get current monthly usage status
@@ -352,13 +309,11 @@ export class CryptoSubscriptionService {
     
     const subscription = await this.getUserSubscription(userId);
     const tier = subscription.tier as BaseTier;
-    const hasAddon = subscription.hasElliottAddon || false;
-    
     return {
       aiCredits: subscription.aiCredits || 0,
       aiLimit: MONTHLY_AI_CREDITS[tier],
       elliottCredits: subscription.elliottAiCredits || 0,
-      elliottLimit: (tier === "elite" ? MONTHLY_ELLIOTT_AI_CREDITS[tier] : 0) + (hasAddon ? ELLIOTT_ADDON_CREDITS : 0),
+      elliottLimit: elliottCreditLimit(tier),
     };
   }
 

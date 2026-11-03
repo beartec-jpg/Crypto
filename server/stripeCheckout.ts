@@ -176,20 +176,10 @@ export async function handleSubscriptionWebhook(event: any): Promise<void> {
     }
     
     case 'customer.subscription.updated': {
-      const items = subscription.items.data;
       const tier = subscription.metadata?.tier;
       
       if (tier) {
         await cryptoSubscriptionService.updateSubscriptionTier(userId, tier as TierType, subscription.id);
-      }
-      
-      // Check for Elliott addon
-      const elliottItem = items.find((item: any) => 
-        item.price.metadata?.tier === 'elliott_addon'
-      );
-      
-      if (elliottItem) {
-        await cryptoSubscriptionService.toggleElliottAddon(userId, true, elliottItem.id);
       }
       break;
     }
@@ -199,9 +189,7 @@ export async function handleSubscriptionWebhook(event: any): Promise<void> {
       await db.update(cryptoSubscriptions)
         .set({
           tier: 'free',
-          hasElliottAddon: false,
           stripeSubscriptionId: null,
-          elliottStripeItemId: null,
           subscriptionStatus: 'canceled',
           updatedAt: new Date(),
         })

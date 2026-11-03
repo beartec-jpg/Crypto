@@ -189,7 +189,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   expand: ['items.data.price'],  // ✅
 });
           
-          // Find the current base tier item (not Elliott addon)
+          // Find the current base tier item
           const baseTierItem = subscription.items.data.find((item: any) => {
             const productName = (item.price?.product as any)?.name || '';
             return ['Beginner membership', 'Intermediate membership', 'Pro membership', 'Elite membership'].includes(productName);

@@ -36,15 +36,15 @@ Short story from **current in-repo code** (Clerk + Stripe + Postgres). Do not in
 | Checkout (serverless) | `api/crypto/checkout.ts` | Authenticated `POST`; needs `STRIPE_SECRET_KEY` + `DATABASE_URL` + Clerk |
 | Subscription read/sync | `api/crypto/my-subscription.ts` | Authenticated; syncs Stripe customer subscriptions into DB |
 | Webhook | `api/stripe/webhook.ts` | `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` |
-| Express Stripe helpers | `server/stripeCheckout.ts`, `server/stripeClient.ts` | Checkout sessions, customer create, Elliott add-on item |
+| Express Stripe helpers | `server/stripeCheckout.ts`, `server/stripeClient.ts` | Checkout sessions, customer create |
 | Subscription service | `server/cryptoSubscriptionService.ts` | Tiers, credits, capabilities; auto-creates free tier |
 | Seed script | `scripts/seed-stripe-products.ts` | Product seeding (ops) |
 
 **Tiers** (from `server/cryptoSubscriptionService.ts` / `api/crypto/my-subscription.ts` / `shared/aiUsageTiers.ts`):
 
 - Base: `free` \| `beginner` \| `intermediate` \| `pro` \| `elite`
-- Separate add-on: Elliott Wave (`elliott_addon` / `hasElliottAddon`) — Elite includes Elliott AI credits; other paid tiers need the add-on for Elliott AI use
-- Capabilities examples: `canUseAI` from intermediate+, `canUsePushNotifications` from pro+, `canUseElliott` from add-on or elite
+- Elliott Wave tools are available to every tier (no add-on); Elite gets a larger monthly Elliott AI credit allowance
+- Capabilities examples: `canUseAI` from intermediate+, `canUsePushNotifications` from pro+, `canUseElliott` is always true
 - AI usage priced as monthly tokens/credits (`shared/aiUsageTiers.ts`); charts/indicators are usable with signup per that file’s comments
 
 **Express subscription routes** (authenticated): e.g. `GET /api/crypto/subscription`, `GET /api/crypto/my-subscription`, checkout helpers wired through Stripe services.

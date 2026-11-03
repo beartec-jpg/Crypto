@@ -6,7 +6,6 @@ import { useQuery } from '@tanstack/react-query';
 
 interface SubscriptionData {
   tier: string;
-  hasElliottAddon: boolean;
   canUseElliott: boolean;
   canUseAI: boolean;
 }

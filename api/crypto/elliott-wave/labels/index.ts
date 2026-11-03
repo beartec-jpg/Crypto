@@ -95,19 +95,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const cryptoUserId = userResult.rows[0].id;
 
-    // Get subscription and check Elliott access
-    const subResult = await pool.query(
-      'SELECT tier, has_elliott_addon FROM crypto_subscriptions WHERE user_id = $1',
-      [cryptoUserId]
-    );
-
-    // TODO [TESTING ONLY]: Subscription tier check temporarily disabled for testing.
-    // Re-enable this check before deploying to production.
-    // const subscription = subResult.rows[0];
-    // const hasAccess = subscription?.tier === 'elite' || subscription?.has_elliott_addon === true;
-    // if (!hasAccess) {
-    //   return res.status(403).json({ error: 'Elliott Wave features require Elite tier or Elliott Wave add-on' });
-    // }
 
     if (req.method === 'GET') {
       const { symbol, timeframe, allTimeframes } = req.query;
