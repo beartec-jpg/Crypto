@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, timestamp, jsonb, boolean, doublePrecision, uuid, index, uniqueIndex, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, timestamp, jsonb, boolean, doublePrecision, uuid, index, uniqueIndex, primaryKey, bigserial, date } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import {
   CRYPTO_AI_TIMEFRAMES,
@@ -776,6 +776,51 @@ export const analyticsDailyStats = pgTable("analytics_daily_stats", {
   tierBreakdown: jsonb("tier_breakdown"), // {free: X, beginner: Y, ...}
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// ========== ADMIN BUSINESS ANALYTICS (migrations/016_admin_analytics.sql) ==========
+// Append-only Stripe billing log, deduped on stripe_event_id.
+export const billingEvents = pgTable("billing_events", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  userId: varchar("user_id"),
+  stripeCustomerId: varchar("stripe_customer_id"),
+  stripeSubscriptionId: varchar("stripe_subscription_id"),
+  stripeEventId: varchar("stripe_event_id").notNull().unique(),
+  type: varchar("type").notNull(),
+  status: varchar("status"),
+  tier: varchar("tier"),
+  amountPence: integer("amount_pence"),
+  currency: varchar("currency", { length: 8 }),
+  mrrPence: integer("mrr_pence"), // subscription MRR after this event (state events only)
+  mrrDeltaPence: integer("mrr_delta_pence"),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  raw: jsonb("raw"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  subTimeIdx: index("billing_events_sub_time_idx").on(t.stripeSubscriptionId, t.occurredAt),
+  typeTimeIdx: index("billing_events_type_time_idx").on(t.type, t.occurredAt),
+  userIdx: index("billing_events_user_idx").on(t.userId),
+}));
+
+export const subscriptionSnapshotsDaily = pgTable("subscription_snapshots_daily", {
+  date: date("date").notNull(),
+  tier: varchar("tier").notNull(),
+  activeCount: integer("active_count").notNull().default(0),
+  trialingCount: integer("trialing_count").notNull().default(0),
+  mrrPence: integer("mrr_pence").notNull().default(0),
+  churnedCount: integer("churned_count").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ pk: primaryKey({ columns: [t.date, t.tier] }) }));
+
+// Clerk webhook events, keyed by svix id for idempotency.
+export const authEvents = pgTable("auth_events", {
+  svixId: varchar("svix_id").primaryKey(),
+  type: varchar("type").notNull(),
+  userId: varchar("user_id"),
+  sessionId: varchar("session_id"),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  raw: jsonb("raw"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ typeTimeIdx: index("auth_events_type_time_idx").on(t.type, t.occurredAt) }));
 
 // ========== MULTI-EXCHANGE CVD CACHE ==========
 // Cache for multi-exchange CVD/footprint data to avoid redundant API calls

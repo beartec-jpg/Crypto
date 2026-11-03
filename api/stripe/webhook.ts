@@ -1,5 +1,6 @@
 // Vercel serverless function for Stripe webhooks
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { recordStripeEvent } from '../_lib/billingEvents.js';
 
 // Disable body parsing to get raw body for Stripe signature verification
 export const config = {
@@ -276,6 +277,9 @@ expand: ['data.items.data.price'],  // ✅
         break;
       }
     }
+
+    // Admin analytics: append to billing_events (deduped on event id). Never throws.
+    await recordStripeEvent(pool, event);
 
     await pool.end();
     return res.json({ received: true });
