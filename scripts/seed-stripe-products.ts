@@ -3,54 +3,33 @@
 
 import { getUncachableStripeClient } from '../server/stripeClient';
 
-interface ProductConfig {
-  name: string;
-  description: string;
-  metadata: Record<string, string>;
-  priceAmount: number; // in cents
-  interval: 'month' | 'year';
-}
+import { PAID_TIER_CONFIG, PAID_TIER_IDS } from '../shared/stripeTiers';
 
-const PRODUCTS: ProductConfig[] = [
-  {
-    name: 'Beginner',
-    description: 'Basic access to crypto indicators and training',
-    metadata: { tier: 'beginner', type: 'base_tier' },
-    priceAmount: 500, // £5/month
-    interval: 'month',
-  },
-  {
-    name: 'Core',
-    description: '80 AI tokens per month for 1 nominated ticker. Charts stay free.',
-    metadata: { tier: 'intermediate', type: 'base_tier' },
-    priceAmount: 1500, // £15/month
-    interval: 'month',
-  },
-  {
-    name: 'Pro',
-    description: '160 AI tokens per month for 3 nominated tickers',
-    metadata: { tier: 'pro', type: 'base_tier' },
-    priceAmount: 3000, // £30/month
-    interval: 'month',
-  },
-  {
-    name: 'Elite',
-    description: '270 AI tokens per month for 5 nominated tickers',
-    metadata: { tier: 'elite', type: 'base_tier' },
-    priceAmount: 5000, // £50/month
-    interval: 'month',
-  },
-];
+// Free tier has no Stripe product. Paid tiers come from shared/stripeTiers.ts
+// (pricing page is the source of truth: Core £15, Pro £30, Elite £50 per month, GBP).
+const PRODUCTS = PAID_TIER_IDS.map((id) => {
+  const c = PAID_TIER_CONFIG[id];
+  return {
+    name: c.name,
+    description: c.description,
+    metadata: { tier: c.tier, type: 'base_tier' } as Record<string, string>,
+    priceAmount: c.amountPence, // pence
+    interval: c.interval,
+    envVar: c.priceEnvVar,
+  };
+});
 
 async function seedProducts() {
   console.log('🚀 Starting Stripe product seed...');
   
   const stripe = await getUncachableStripeClient();
+  const envLines: string[] = [];
   
   for (const product of PRODUCTS) {
     // Check if product already exists
     const existing = await stripe.products.search({
-      query: `name:'${product.name}'`,
+      // Match on metadata.tier so existing products (e.g. legacy 'Intermediate membership') are reused, not duplicated.
+      query: `active:'true' AND metadata['tier']:'${product.metadata.tier}'`,
     });
     
     if (existing.data.length > 0) {
@@ -62,8 +41,21 @@ async function seedProducts() {
         active: true,
       });
       
-      if (prices.data.length > 0) {
-        console.log(`   Price: ${prices.data[0].id} (£${prices.data[0].unit_amount! / 100}/${prices.data[0].recurring?.interval})`);
+      const match = prices.data.find(p => p.unit_amount === product.priceAmount && p.currency === 'gbp'
+        && p.recurring?.interval === product.interval && (p.recurring?.interval_count ?? 1) === 1);
+      if (match) {
+        console.log(`   Matching price: ${match.id}`);
+        envLines.push(`${product.envVar}=${match.id}`);
+      } else {
+        const price = await stripe.prices.create({
+          product: existing.data[0].id,
+          unit_amount: product.priceAmount,
+          currency: 'gbp',
+          recurring: { interval: product.interval },
+          metadata: product.metadata,
+        });
+        console.log(`   Created price: ${price.id} (£${product.priceAmount / 100}/${product.interval})`);
+        envLines.push(`${product.envVar}=${price.id}`);
       }
       continue;
     }
@@ -87,7 +79,11 @@ async function seedProducts() {
     });
     
     console.log(`   Created price: ${price.id} (£${product.priceAmount / 100}/${product.interval})`);
+    envLines.push(`${product.envVar}=${price.id}`);
   }
+
+  console.log('\nSet these env vars (Vercel + .env) to pin checkout prices:');
+  for (const line of envLines) console.log(`  ${line}`);
   
   console.log('\n✨ Stripe product seed complete!');
   console.log('\nProducts created:');

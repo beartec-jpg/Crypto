@@ -2,6 +2,7 @@
 // Vercel serverless function for Stripe checkout
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
+import { getPinnedPriceId, isBaseTierItem, normalizePaidTier, PAID_TIER_CONFIG } from '../../shared/stripeTiers.js';
 
 // Verify user authentication from Clerk token
 async function verifyAuth(req: VercelRequest): Promise<{ userId: string; email: string } | null> {
@@ -139,39 +140,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const successUrl = `${baseUrl}/cryptosubscribe?success=true`;
     const cancelUrl = `${baseUrl}/cryptosubscribe?canceled=true`;
 
-    // Map tier names to product names
-    const tierToProductName: Record<string, string> = {
-      'beginner': 'Beginner membership',
-      'intermediate': 'Intermediate membership',
-      'pro': 'Pro membership',
-      'elite': 'Elite membership',
-    };
-
     // Handle different checkout types
     if (type === 'base_tier' && tier) {
-      const productName = tierToProductName[tier];
-      if (!productName) {
+      const paidTier = normalizePaidTier(tier);
+      if (!paidTier) {
         return res.status(400).json({ error: `Invalid tier: ${tier}` });
       }
 
-      // Search by product name instead of metadata
-      const products = await stripe.products.list({ active: true, limit: 100 });
-      const product = products.data.find(p => p.name === productName);
-
-      if (!product) {
-        return res.status(400).json({ error: `No product found for tier: ${tier}` });
+      // Pinned price id (STRIPE_PRICE_CORE / _PRO / _ELITE). Never fall back to
+      // "whatever price is active" on the product.
+      const priceId = getPinnedPriceId(paidTier);
+      if (!priceId) {
+        console.error(`Checkout: ${PAID_TIER_CONFIG[paidTier].priceEnvVar} not configured`);
+        return res.status(503).json({ error: `Checkout not configured for tier: ${PAID_TIER_CONFIG[paidTier].name}` });
       }
-
-      const prices = await stripe.prices.list({
-        product: product.id,
-        active: true,
-      });
-
-      if (prices.data.length === 0) {
-        return res.status(400).json({ error: `No price found for tier: ${tier}` });
-      }
-
-      const priceId = prices.data[0].id;
 
       // Check if user already has a subscription
       const subResult = await pool.query(
@@ -181,19 +163,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const existingSub = subResult.rows[0];
 
-      if (existingSub?.stripe_subscription_id && existingSub.tier !== 'free') {
+      if (existingSub?.stripe_subscription_id && existingSub.tier !== 'free' && existingSub.tier !== 'beginner') {
         // UPGRADE/DOWNGRADE: Update existing subscription with proration
         try {
           // Get the current subscription to find the base tier item
          const subscription = await stripe.subscriptions.retrieve(existingSub.stripe_subscription_id, {
-  expand: ['items.data.price'],  // ✅
+  expand: ['items.data.price.product'],
 });
           
           // Find the current base tier item
-          const baseTierItem = subscription.items.data.find((item: any) => {
-            const productName = (item.price?.product as any)?.name || '';
-            return ['Beginner membership', 'Intermediate membership', 'Pro membership', 'Elite membership'].includes(productName);
-          });
+          const baseTierItem = subscription.items.data.find((item: any) => isBaseTierItem(item));
           
           if (!baseTierItem) {
             // No base tier found, create checkout for new subscription
@@ -203,9 +182,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               line_items: [{ price: priceId, quantity: 1 }],
               success_url: successUrl,
               cancel_url: cancelUrl,
-              metadata: { userId, tier, type: 'base_tier' },
+              metadata: { userId, tier: paidTier, type: 'base_tier' },
               subscription_data: {
-                metadata: { userId, tier, type: 'base_tier' },
+                metadata: { userId, tier: paidTier, type: 'base_tier' },
               },
             });
             return res.json({ url: session.url });
@@ -219,7 +198,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }],
             proration_behavior: 'always_invoice', // Create and pay invoice immediately
             payment_behavior: 'error_if_incomplete', // Fail if payment can't be collected
-            metadata: { userId, tier, type: 'base_tier' },
+            metadata: { userId, tier: paidTier, type: 'base_tier' },
           });
           
           // Update database
@@ -227,14 +206,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             `UPDATE crypto_subscriptions 
              SET tier = $1, updated_at = NOW()
              WHERE user_id = $2`,
-            [tier, userId]
+            [paidTier, userId]
           );
           
-          console.log(`✅ Upgraded user ${userId} from ${existingSub.tier} to ${tier}`);
+          console.log(`✅ Upgraded user ${userId} from ${existingSub.tier} to ${paidTier}`);
           return res.json({ 
             success: true, 
             upgraded: true,
-            message: `Successfully upgraded to ${tier.charAt(0).toUpperCase() + tier.slice(1)}! Proration applied.`,
+            message: `Successfully upgraded to ${PAID_TIER_CONFIG[paidTier].name}! Proration applied.`,
             url: successUrl 
           });
         } catch (upgradeError: any) {
@@ -255,9 +234,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         line_items: [{ price: priceId, quantity: 1 }],
         success_url: successUrl,
         cancel_url: cancelUrl,
-        metadata: { userId, tier, type: 'base_tier' },
+        metadata: { userId, tier: paidTier, type: 'base_tier' },
         subscription_data: {
-          metadata: { userId, tier, type: 'base_tier' },
+          metadata: { userId, tier: paidTier, type: 'base_tier' },
         },
       });
 

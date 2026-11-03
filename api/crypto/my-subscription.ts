@@ -2,6 +2,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import { MONTHLY_AI_CREDITS } from '../../shared/aiUsageTiers.js';
+import { tierFromSubscriptionItem } from '../../shared/stripeTiers.js';
 
 // Base tiers
 type BaseTier = "free" | "beginner" | "intermediate" | "pro" | "elite";
@@ -108,14 +109,6 @@ async function syncAllSubscriptionsFromStripe(customerId: string, userId: string
       return null; // Don't downgrade - preserve existing
     }
 
-    // Map product names to tiers
-    const tierMap: Record<string, BaseTier> = {
-      'Beginner membership': 'beginner',
-      'Intermediate membership': 'intermediate',
-      'Pro membership': 'pro',
-      'Elite membership': 'elite',
-    };
-
     let bestTier: BaseTier = 'free';
     let foundProducts: string[] = [];
 
@@ -123,13 +116,13 @@ async function syncAllSubscriptionsFromStripe(customerId: string, userId: string
     for (const sub of allSubs.data) {
       console.log(`  📦 Subscription ${sub.id} (${sub.status}):`);
       for (const item of sub.items.data) {
-        const productName = (item.price?.product as any)?.name || '';
-        console.log(`    - Product: "${productName}"`);
+        const productName = (item.price?.product as any)?.name || item.price?.id || '';
+        console.log(`    - Product/price: "${productName}"`);
         foundProducts.push(productName);
 
-        // Check for tier products
-        if (tierMap[productName]) {
-          const foundTier = tierMap[productName];
+        // Pinned price id first, then metadata, then product name (current + legacy)
+        const foundTier = tierFromSubscriptionItem(item) as BaseTier | null;
+        if (foundTier && TIER_HIERARCHY[foundTier] !== undefined) {
           if (TIER_HIERARCHY[foundTier] > TIER_HIERARCHY[bestTier]) {
             bestTier = foundTier;
           }

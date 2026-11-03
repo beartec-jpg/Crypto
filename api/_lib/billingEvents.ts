@@ -3,7 +3,8 @@
  * Rows are written from the Stripe webhook and the backfill script and are
  * deduplicated on stripe_event_id, so replaying a webhook adds nothing.
  */
-import { subscriptionMrrPence, PRODUCT_NAME_TO_TIER, type SubscriptionLike } from './analyticsMetrics.js';
+import { subscriptionMrrPence, type SubscriptionLike } from './analyticsMetrics.js';
+import { tierFromSubscription as sharedTierFromSubscription } from '../../shared/stripeTiers.js';
 
 export interface Queryable {
   query: (text: string, params?: unknown[]) => Promise<{ rows: any[]; rowCount?: number | null }>;
@@ -43,12 +44,7 @@ function idOf(v: unknown): string | null {
 }
 
 function tierFromSubscription(sub: any): string | null {
-  if (sub?.metadata?.tier) return String(sub.metadata.tier);
-  for (const item of sub?.items?.data ?? []) {
-    const name = item?.price?.product?.name || item?.plan?.product?.name;
-    if (name && PRODUCT_NAME_TO_TIER[name]) return PRODUCT_NAME_TO_TIER[name];
-  }
-  return null;
+  return sharedTierFromSubscription(sub);
 }
 
 /** Keep raw small: ids, amounts and statuses only, no card or address data. */
