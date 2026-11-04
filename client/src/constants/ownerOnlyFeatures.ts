@@ -15,7 +15,7 @@ export const OWNER_ONLY_TRADING_SYSTEM_IDS = [
   'volume-profile',
 ] as const satisfies readonly TradingSystemId[];
 
-export const OWNER_ONLY_OSCILLATOR_IDS = ['smartMoney'] as const;
+export const OWNER_ONLY_OSCILLATOR_IDS = ['smartMoney', 'tetherDivergence'] as const;
 
 export function isOwnerOnlyEmail(email: string | undefined | null): boolean {
   return email === OWNER_ONLY_EMAIL;

@@ -205,6 +205,7 @@ export default function CryptoIndicatorsClean() {
             cvdData={cvdData}
             externalMetrics={externalMetrics}
             symbol={selectedSymbol}
+            timeframe={selectedTimeframe}
             showPatternBacktest={false}
             activeOscillators={activeOscillators}
             onActiveOscillatorsChange={(oscillators) => {

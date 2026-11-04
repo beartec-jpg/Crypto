@@ -1,0 +1,366 @@
+import { describe, expect, it } from 'vitest';
+import {
+  alignToChart,
+  bbCompFromPctB,
+  bollingerPctB,
+  buildTetherMarkers,
+  computeTetherDivergence,
+  DAY_SECONDS,
+  emaCompFromDist,
+  emaSeries,
+  rsiWilder,
+  tetherZoneColor,
+  tetherZoneLabel,
+  utcMondayOpenSec,
+  WEEK_SECONDS,
+  zoneFromScore,
+  type TetherCoinCandle,
+  type DailyPoint,
+} from '@/lib/indicators/tetherDivergence';
+import {
+  DEFAULT_TETHER_DIVERGENCE_SETTINGS,
+  normalizeTetherDivergenceSettings,
+} from '@/types/tetherDivergenceSettings';
+
+function candle(time: number, close: number, extra: Partial<TetherCoinCandle> = {}): TetherCoinCandle {
+  return {
+    time,
+    open: extra.open ?? close,
+    high: extra.high ?? close,
+    low: extra.low ?? close,
+    close,
+    volume: extra.volume ?? 1,
+  };
+}
+
+function series(n: number, start: number, step = DAY_SECONDS, value: (i: number) => number): DailyPoint[] {
+  return Array.from({ length: n }, (_, i) => ({ time: start + i * step, value: value(i) }));
+}
+
+function coins(n: number, start: number, step = DAY_SECONDS, close: (i: number) => number): TetherCoinCandle[] {
+  return Array.from({ length: n }, (_, i) => candle(start + i * step, close(i)));
+}
+
+const DAY0 = Date.UTC(2024, 0, 1) / 1000; // Monday 2024-01-01
+const FAR = DAY0 + 400 * DAY_SECONDS;
+
+describe('rsiWilder', () => {
+  it('returns null during warm-up and a known RSI(2)', () => {
+    const values = [10, 12, 11, 13];
+    const rsi = rsiWilder(values, 2);
+    expect(rsi[0]).toBeNull();
+    expect(rsi[1]).toBeNull();
+    expect(rsi[2]).toBeCloseTo(100 - 100 / 3, 10);
+    expect(rsi[3]).toBeCloseTo(100 - 100 / 7, 10);
+  });
+
+  it('is 100 after a run of ups and 0 after a run of downs', () => {
+    const ups = rsiWilder([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15], 5);
+    expect(ups[5]).toBe(100);
+    expect(ups[14]).toBe(100);
+    const downs = rsiWilder([15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1], 5);
+    expect(downs[5]).toBe(0);
+    expect(downs[14]).toBe(0);
+  });
+});
+
+describe('emaSeries / bollingerPctB', () => {
+  it('SMA-seeds EMA then compounds', () => {
+    const ema = emaSeries([1, 2, 3, 4], 3);
+    expect(ema[0]).toBeNull();
+    expect(ema[1]).toBeNull();
+    expect(ema[2]).toBeCloseTo(2, 10);
+    expect(ema[3]).toBeCloseTo(3, 10);
+  });
+
+  it('constant series: EMA equals the constant; %B is 0.5 when width is 0', () => {
+    const vals = [10, 10, 10, 10, 10];
+    const ema = emaSeries(vals, 3);
+    expect(ema[4]).toBeCloseTo(10, 10);
+    const pctB = bollingerPctB(vals, 3, 2);
+    expect(pctB[0]).toBeNull();
+    expect(pctB[1]).toBeNull();
+    expect(pctB[2]).toBe(0.5);
+    expect(pctB[4]).toBe(0.5);
+  });
+
+  it('population %B at the window high of [1,2,3]', () => {
+    const pctB = bollingerPctB([1, 2, 3], 3, 2);
+    const std = Math.sqrt(2 / 3);
+    const lower = 2 - 2 * std;
+    const upper = 2 + 2 * std;
+    expect(pctB[2]).toBeCloseTo((3 - lower) / (upper - lower), 10);
+  });
+});
+
+describe('component mapping', () => {
+  it('clamps rsi/ema/bb components to 0..100 centred on 50', () => {
+    expect(emaCompFromDist(0, 4)).toBe(50);
+    expect(emaCompFromDist(4, 4)).toBe(100);
+    expect(emaCompFromDist(-4, 4)).toBe(0);
+    expect(emaCompFromDist(100, 4)).toBe(100);
+    expect(emaCompFromDist(-100, 4)).toBe(0);
+    expect(bbCompFromPctB(0)).toBe(0);
+    expect(bbCompFromPctB(0.5)).toBe(50);
+    expect(bbCompFromPctB(1)).toBe(100);
+    expect(bbCompFromPctB(-1)).toBe(0);
+    expect(bbCompFromPctB(2)).toBe(100);
+  });
+});
+
+describe('zone thresholds', () => {
+  it('treats exactly 80 as bottom, 60 as watch, just below as the lower band', () => {
+    expect(zoneFromScore(80, 80, 60)).toBe('bottom');
+    expect(zoneFromScore(79.999, 80, 60)).toBe('watch');
+    expect(zoneFromScore(60, 80, 60)).toBe('watch');
+    expect(zoneFromScore(59.999, 80, 60)).toBe('neutral');
+    expect(zoneFromScore(null, 80, 60)).toBeNull();
+  });
+});
+
+describe('computeTetherDivergence', () => {
+  it('blends stretch vs coin-oversold with custom weights and inverts coin RSI', () => {
+    const n = 80;
+    const usdtd = series(n, DAY0, DAY_SECONDS, () => 8);
+    const coinCandles = coins(n, DAY0, DAY_SECONDS, () => 100);
+    const res = computeTetherDivergence({
+      coinCandles,
+      usdtd,
+      nowSec: FAR,
+      settings: { wRsi: 1, wEma: 0, wBb: 0, wStretch: 1, wCoin: 1 },
+    });
+    const last = res.score.length - 1;
+    expect(res.usdtRsi[last]).not.toBeNull();
+    expect(res.coinRsi[last]).not.toBeNull();
+    expect(res.coinOversold[last]).toBeCloseTo(100 - (res.coinRsi[last] as number), 8);
+    expect(res.score[last]).toBeCloseTo(
+      ((res.stretch[last] as number) + (res.coinOversold[last] as number)) / 2,
+      6,
+    );
+  });
+
+  it('uses 2:1 stretch vs coin weights', () => {
+    const n = 80;
+    const usdtd = series(n, DAY0, DAY_SECONDS, (i) => 5 + i * 0.02);
+    const coinCandles = coins(n, DAY0, DAY_SECONDS, (i) => 100 - i * 0.3);
+    const res = computeTetherDivergence({
+      coinCandles,
+      usdtd,
+      nowSec: FAR,
+      settings: { wStretch: 2, wCoin: 1, wRsi: 1, wEma: 1, wBb: 1 },
+    });
+    const i = res.score.length - 1;
+    const expected =
+      (2 * (res.stretch[i] as number) + 1 * (res.coinOversold[i] as number)) / 3;
+    expect(res.score[i]).toBeCloseTo(expected, 8);
+  });
+
+  it('computes the unvalidated top-mirror formula', () => {
+    const n = 80;
+    const usdtd = series(n, DAY0, DAY_SECONDS, (i) => 6 + Math.sin(i / 7));
+    const coinCandles = coins(n, DAY0, DAY_SECONDS, (i) => 50 + i);
+    const res = computeTetherDivergence({
+      coinCandles,
+      usdtd,
+      nowSec: FAR,
+      settings: { topMirror: true, wStretch: 1, wCoin: 1 },
+    });
+    const i = res.score.length - 1;
+    const expected =
+      (1 * (100 - (res.stretch[i] as number)) + 1 * (res.coinRsi[i] as number)) / 2;
+    expect(res.topScore[i]).toBeCloseTo(expected, 8);
+  });
+
+  it('marks gap when USDT.D RSI is high and coin RSI is low', () => {
+    const n = 60;
+    const usdtd = series(n, DAY0, DAY_SECONDS, (i) => (i < 20 ? 5 : 5 + (i - 20) * 0.4));
+    const coinCandles = coins(n, DAY0, DAY_SECONDS, (i) => (i < 20 ? 100 : 100 - (i - 20) * 3));
+    const res = computeTetherDivergence({
+      coinCandles,
+      usdtd,
+      nowSec: FAR,
+      settings: { gapUsdtMin: 65, gapCoinMax: 35 },
+    });
+    expect(res.gap.some(Boolean)).toBe(true);
+    const lastGap = res.gap.lastIndexOf(true);
+    expect(res.usdtRsi[lastGap] as number).toBeGreaterThanOrEqual(65);
+    expect(res.coinRsi[lastGap] as number).toBeLessThanOrEqual(35);
+  });
+
+  it('emits one marker per threshold cross, none while staying above, re-arms after drop', () => {
+    const n = 100;
+    const usdtd = series(n, DAY0, DAY_SECONDS, () => 8);
+    const coinCloses = Array.from({ length: n }, () => 50);
+    for (let i = 30; i < 50; i++) coinCloses[i] = 1;
+    for (let i = 50; i < 75; i++) coinCloses[i] = 200;
+    for (let i = 75; i < 95; i++) coinCloses[i] = 1;
+    const coinCandles = coinCloses.map((c, i) => candle(DAY0 + i * DAY_SECONDS, c));
+    const res = computeTetherDivergence({
+      coinCandles,
+      usdtd,
+      nowSec: FAR,
+      settings: { markerOnCross: 'watch', watchThreshold: 60, bottomThreshold: 80 },
+    });
+    expect(res.crosses.length).toBeGreaterThanOrEqual(2);
+    const times = res.crosses.map((c) => c.time);
+    expect(new Set(times).size).toBe(times.length);
+    for (const c of res.crosses) {
+      const idx = res.times.indexOf(c.time);
+      expect(idx).toBeGreaterThan(0);
+      expect(res.score[idx] as number).toBeGreaterThanOrEqual(60);
+      expect(res.score[idx - 1] as number).toBeLessThan(60);
+    }
+  });
+
+  it('excludes the forming bar and does not look ahead', () => {
+    const n = 50;
+    const usdtd = series(n, DAY0, DAY_SECONDS, (i) => 5 + i * 0.01);
+    const coinCandles = coins(n, DAY0, DAY_SECONDS, (i) => 100 - i);
+    const lastOpen = DAY0 + (n - 1) * DAY_SECONDS;
+    const nowDuringLast = lastOpen + 3600;
+    const closed = computeTetherDivergence({ coinCandles, usdtd, nowSec: nowDuringLast });
+    expect(closed.times.includes(lastOpen)).toBe(false);
+    expect(closed.times[closed.times.length - 1]).toBe(lastOpen - DAY_SECONDS);
+
+    const baseNow = lastOpen + DAY_SECONDS;
+    const a = computeTetherDivergence({ coinCandles, usdtd, nowSec: baseNow });
+    const extraUsdtd = [
+      ...usdtd,
+      { time: lastOpen + DAY_SECONDS, value: 99 },
+      { time: lastOpen + 2 * DAY_SECONDS, value: 120 },
+    ];
+    const extraCoin = [
+      ...coinCandles,
+      candle(lastOpen + DAY_SECONDS, 1),
+      candle(lastOpen + 2 * DAY_SECONDS, 1),
+    ];
+    const b = computeTetherDivergence({
+      coinCandles: extraCoin,
+      usdtd: extraUsdtd,
+      nowSec: lastOpen + 3 * DAY_SECONDS,
+    });
+    for (let i = 0; i < a.times.length; i++) {
+      expect(b.times[i]).toBe(a.times[i]);
+      expect(b.score[i]).toEqual(a.score[i]);
+      expect(b.usdtRsi[i]).toEqual(a.usdtRsi[i]);
+      expect(b.coinRsi[i]).toEqual(a.coinRsi[i]);
+      expect(b.zone[i]).toEqual(a.zone[i]);
+    }
+  });
+
+  it('resamples to UTC-Monday weeks and keeps closed weeks only', () => {
+    const n = 28;
+    const usdtd = series(n, DAY0, DAY_SECONDS, (i) => 5 + i);
+    const coinCandles = coins(n, DAY0, DAY_SECONDS, (i) => 100 - i);
+    const lastOpen = DAY0 + (n - 1) * DAY_SECONDS;
+    const res = computeTetherDivergence({
+      coinCandles,
+      usdtd,
+      nowSec: lastOpen + DAY_SECONDS,
+      settings: { timeframe: '1W' },
+    });
+    expect(res.periodSeconds).toBe(WEEK_SECONDS);
+    for (const t of res.times) {
+      expect(utcMondayOpenSec(t)).toBe(t);
+      expect(t + WEEK_SECONDS).toBeLessThanOrEqual(lastOpen + DAY_SECONDS);
+    }
+    expect(res.times.length).toBeGreaterThanOrEqual(2);
+    expect(res.times.length).toBeLessThan(n / 5);
+  });
+});
+
+describe('alignToChart', () => {
+  const day = DAY0;
+  const seriesPts = [
+    { time: day, value: 10 },
+    { time: day + DAY_SECONDS, value: 20 },
+    { time: day + 2 * DAY_SECONDS, value: 30 },
+  ];
+
+  it('maps onto 1h bars only after the daily bar has closed', () => {
+    const hours = Array.from({ length: 50 }, (_, i) => ({ time: day + i * 3600 }));
+    const aligned = alignToChart(seriesPts, hours, 3600, DAY_SECONDS);
+    expect(aligned[0]).toBeNull();
+    const firstUse = hours.findIndex((h) => day + DAY_SECONDS <= h.time + 3600);
+    expect(aligned[firstUse]).toBe(10);
+    expect(aligned[firstUse - 1]).toBeNull();
+    const secondUse = hours.findIndex((h) => day + 2 * DAY_SECONDS <= h.time + 3600);
+    expect(aligned[secondUse]).toBe(20);
+  });
+
+  it('maps onto 4h bars without lookahead', () => {
+    const bars = Array.from({ length: 20 }, (_, i) => ({ time: day + i * 14400 }));
+    const aligned = alignToChart(seriesPts, bars, 14400, DAY_SECONDS);
+    const firstUse = bars.findIndex((h) => day + DAY_SECONDS <= h.time + 14400);
+    expect(aligned[firstUse]).toBe(10);
+    if (firstUse > 0) expect(aligned[firstUse - 1]).toBeNull();
+  });
+
+  it('on 1D charts uses the same-day closed bar', () => {
+    const days = [
+      { time: day },
+      { time: day + DAY_SECONDS },
+      { time: day + 2 * DAY_SECONDS },
+    ];
+    const aligned = alignToChart(seriesPts, days, DAY_SECONDS, DAY_SECONDS);
+    expect(aligned).toEqual([10, 20, 30]);
+  });
+});
+
+describe('buildTetherMarkers / labels', () => {
+  it('builds one marker per cross and respects showMarkers', () => {
+    const crosses = [
+      { time: DAY0, kind: 'bottom' as const },
+      { time: DAY0 + DAY_SECONDS, kind: 'watch' as const },
+    ];
+    const marks = buildTetherMarkers(crosses);
+    expect(marks).toHaveLength(2);
+    expect(buildTetherMarkers(crosses, { ...DEFAULT_TETHER_DIVERGENCE_SETTINGS, showMarkers: false })).toEqual([]);
+    expect(tetherZoneLabel('bottom')).toBe('Bottom zone');
+    expect(tetherZoneLabel('watch')).toBe('Watch');
+    expect(tetherZoneLabel('neutral')).toBe('—');
+    expect(tetherZoneColor('bottom')).toBe('#22c55e');
+  });
+});
+
+describe('normalizeTetherDivergenceSettings', () => {
+  it('clamps NaN / out-of-range and falls back when all weights are zero', () => {
+    const n = normalizeTetherDivergenceSettings({
+      usdtRsiLen: 999,
+      coinRsiLen: -4,
+      emaLen: Number.NaN,
+      bbLen: 'nope' as unknown as number,
+      bbMult: 99,
+      emaDistFullPct: 0,
+      wRsi: 0,
+      wEma: 0,
+      wBb: 0,
+      wStretch: 0,
+      wCoin: 0,
+      bottomThreshold: 10,
+      watchThreshold: 90,
+      bottomColor: 'green',
+      timeframe: '4h' as unknown as '1D',
+      markerOnCross: 'nope' as unknown as 'bottom',
+      topMirror: 'yes' as unknown as boolean,
+    });
+    expect(n.usdtRsiLen).toBe(50);
+    expect(n.coinRsiLen).toBe(2);
+    expect(n.emaLen).toBe(20);
+    expect(n.bbLen).toBe(20);
+    expect(n.bbMult).toBe(5);
+    expect(n.emaDistFullPct).toBe(0.5);
+    expect(n.wRsi).toBe(1);
+    expect(n.wEma).toBe(1);
+    expect(n.wBb).toBe(1);
+    expect(n.wStretch).toBe(1);
+    expect(n.wCoin).toBe(1);
+    expect(n.bottomThreshold).toBe(50);
+    expect(n.watchThreshold).toBeLessThanOrEqual(n.bottomThreshold);
+    expect(n.bottomColor).toBe(DEFAULT_TETHER_DIVERGENCE_SETTINGS.bottomColor);
+    expect(n.timeframe).toBe('1D');
+    expect(n.markerOnCross).toBe('bottom');
+    expect(n.topMirror).toBe(false);
+    expect(n.showMarkers).toBe(true);
+  });
+});

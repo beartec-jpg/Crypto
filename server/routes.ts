@@ -2880,6 +2880,15 @@ const requireCryptoAuth: RequestHandler = async (req: Request, res: Response, ne
     }
   });
 
+  app.get("/api/crypto/usdt-dominance", async (req, res) => {
+    const handler = (await import("../api/crypto/usdt-dominance")).default;
+    await handler(req as any, res as any);
+  });
+  app.options("/api/crypto/usdt-dominance", async (req, res) => {
+    const handler = (await import("../api/crypto/usdt-dominance")).default;
+    await handler(req as any, res as any);
+  });
+
   // Auto-EMA API - calculate optimal EMA length based on price reactivity (public access)
   app.get("/api/crypto/auto-ema", async (req, res) => {
     try {
