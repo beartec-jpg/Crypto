@@ -12,6 +12,7 @@ import {
 } from '../_lib/deepDiveJobBudget.js';
 import { annotateSetupStatus, DEEP_DIVE_SETUP_STATUS_RULES } from '../_lib/deepDiveSetupStatus.js';
 import { buildPrimaryResponsesRequest, deepDiveCostUsd, resolveDeepDiveModelConfig, responsesToCompletion } from '../_lib/deepDiveModel.js';
+import { withScenarioFraming } from '../_lib/scenarioFraming.js';
 
 const ADMIN_EMAIL = 'beartec@beartec.uk';
 const AI_MIN_RISK_REWARD_RATIO = 1.5;
@@ -593,14 +594,14 @@ async function buildMacroContext(symbol: string): Promise<{ text: string; levels
 
 function buildTargetsRule(higherTimeframe: string, lowerTimeframe: string): string {
   return (
-    `9. TARGETS:\n` +
-    `   - TP1 = nearest valid opposing level of the CURRENT range/swing in the trade direction ` +
-    `(range high for LONG, range low for SHORT on ${higherTimeframe}/${lowerTimeframe}). Keep TP1 local.\n` +
-    `   - TP2 = next structural target on this trade's path. A weekly/monthly magnet may be TP2 ONLY if it is NEAR or APPROACHING ` +
-    `AND you judge price can reach it without first reversing the other way past invalidation / the opposing range. ` +
-    `If the macro level is far, IGNORE it — do not stretch TP2 to a 2023 high just because it exists.\n` +
+    `9. REFERENCE LEVELS (targets field, TP1/TP2 are internal labels):\n` +
+    `   - First reference level = nearest valid opposing level of the CURRENT range/swing in the scenario direction ` +
+    `(range high for a bullish scenario, range low for a bearish scenario on ${higherTimeframe}/${lowerTimeframe}). Keep it local.\n` +
+    `   - Second reference level = next structural level on this scenario's path. A weekly/monthly magnet may be used ONLY if it is NEAR or APPROACHING ` +
+    `AND price could plausibly reach it without first reversing the other way past invalidation / the opposing range. ` +
+    `If the macro level is far, IGNORE it.\n` +
     `   - If a macro level is getting close, mention it in analysis (and in tp2Rationale if you use it). If it is far, do not mention it.\n` +
-    `   - Min R/R is measured to TP1 (not TP2).`
+    `   - The illustrative distance ratio is measured to the first reference level.`
   );
 }
 
@@ -753,7 +754,7 @@ Lower timeframe: ${lowerTimeframe}
 ${fmtTF(higherTimeframe, higherData)}
 ${fmtTF(lowerTimeframe, lowerData)}
 
-Give a concise at-a-glance analysis only. Do NOT produce a trade plan, entry, stop, targets, or risk/reward.
+Give a concise at-a-glance analysis only. Do NOT produce a trade plan, trigger/invalidation levels, targets, or risk/reward.
 - Higher timeframe: focus on dominant bias/trend and key levels.
 - Lower timeframe: focus on momentum/structure, alignment with the higher timeframe, and nearby trigger levels.
 - Keep summaries brief and actionable.
@@ -789,7 +790,7 @@ async function generateGeneralPairAnalysis(apiKey: string, symbol: string, highe
     completion = await (openai.chat.completions.create as any)({
       model: XAI_PRIMARY_MODEL,
       messages: [
-        { role: 'system', content: 'You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Always respond with valid JSON only.' },
+        { role: 'system', content: withScenarioFraming('You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan or tell the reader what to do. Always respond with valid JSON only.') },
         { role: 'user', content: generalPrompt }
       ],
       temperature: 0.2,
@@ -800,7 +801,7 @@ async function generateGeneralPairAnalysis(apiKey: string, symbol: string, highe
     completion = await openai.chat.completions.create({
       model: XAI_FALLBACK_MODEL,
       messages: [
-        { role: 'system', content: 'You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Always respond with valid JSON only.' },
+        { role: 'system', content: withScenarioFraming('You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan or tell the reader what to do. Always respond with valid JSON only.') },
         { role: 'user', content: generalPrompt }
       ],
       temperature: 0.3,
@@ -1012,7 +1013,7 @@ export async function runSystemDeepDive(options: {
   else if (parseFloat(lowerData.macd.histogram) < 0) htfBiasScore -= 1;
   const dominantBias = htfBiasScore >= 2 ? 'BULLISH' : htfBiasScore <= -2 ? 'BEARISH' : 'NEUTRAL';
 
-  const deepPrompt = `Symbol: ${symbol} | Multi-timeframe trade search
+  const deepPrompt = `Symbol: ${symbol} | Multi-timeframe technical scenario search (educational, not advice)
 Dominant bias from ${higherTimeframe}: ${dominantBias}
 ${horizonPrompt}
 ${fmtTF(higherTimeframe, higherData)}
@@ -1030,33 +1031,33 @@ For EVERY setup listed above with an id, decide keep or cancel against CURRENT s
 - Prefer cancel over keep if the thesis is stale or HTF context flipped against it.
 - You MUST return one openTradeReviews entry per open-book id (empty array only if open book is empty).
 
-**TRADE SEARCH RULES — MANDATORY**
+**TECHNICAL SCENARIO RULES — MANDATORY** (output is general educational analysis; JSON field names are legacy labels for neutral chart levels)
 1. ${higherTimeframe} sets directional context and the dominant destination; it is NOT a hard veto.
 2. Favour with-trend setups and tag them as "with-trend". Counter-trend setups are allowed when local structure and confluence justify them; tag them as "counter-trend" and require a higher bar.
 3. Explicitly detect reversal/structure-shift triggers: a higher-low after a downtrend can trigger a LONG, and a lower-high after an uptrend can trigger a SHORT, even against the HTF bias.
 4. Map the NEXT high-probability setup(s), even if price has not reached the zone yet. Pending/conditional plans are valid and should be returned.
 5. For pending setups, include triggerZone and triggerCondition that describe what price must do before the setup activates.
 5b. ${DEEP_DIVE_SETUP_STATUS_RULES}
-6. ENTRY: must be at a concrete structural/indicator level appropriate to the selected trader mode — never a blind entry at current price. Use ${lowerTimeframe} for timing/trigger even on swing/position horizons.
-7. ENTRY CONFIRMATION (MANDATORY): do NOT open on a raw spike through the level. Define how price must confirm.
+6. TRIGGER LEVEL (entry field): must be at a concrete structural/indicator level appropriate to the selected trader mode — never simply the current price. Use ${lowerTimeframe} for timing/trigger even on swing/position horizons.
+7. SCENARIO CONFIRMATION (MANDATORY): a raw spike through the level does not confirm the scenario. Define how price would confirm it.
    - entryConfirmType: usually "reclaim" (preferred). Use "touch" only for rare market-order style plans.
-   - entryConfirmLevel: after the entry zone is tagged, price must reclaim this level before the trade is OPEN (LONG: trade back above this price; SHORT: trade back below). Often equal to entry, or slightly past entry (e.g. close above wick high of the zone / break of the micro-swing that formed the entry).
+   - entryConfirmLevel: after the entry zone is tagged, price would need to reclaim this level before the scenario counts as confirmed (bullish: back above this price; bearish: back below). Often equal to entry, or slightly past entry (e.g. close above wick high of the zone / break of the micro-swing that formed the entry).
    - entryConfirmRationale: technique-specific rule in plain language (e.g. "tag FVG then close back above zone high", "sweep liquidity then reclaim prior low").
    - A wick through the entry zone is the sweep, not a cancel. Stay pending/armed until reclaim.
-   - stopLoss is the live stop. The tracker keeps that price. It does not move the stop to the wick.
+   - stopLoss is the scenario invalidation level. The tracker keeps that price; it does not move it to the wick.
    - The idea is invalid only if price closes through that stop, or the target already printed before confirm.
-8. STOP LOSS: stopLoss goes beyond the origin swing of the unmitigated zone named in the data. LONG: below that origin. SHORT: above that origin. If the only valid stop is inside half the lower-timeframe ATR, return an empty bestTrades array. Do not use a nearby wick or a percent of price.
+8. INVALIDATION LEVEL (stopLoss field): place it beyond the origin swing of the unmitigated zone named in the data. LONG: below that origin. SHORT: above that origin. If the only valid invalidation level is inside half the lower-timeframe ATR, return an empty bestTrades array. Do not use a nearby wick or a percent of price.
 ${buildTargetsRule(higherTimeframe, lowerTimeframe)}
-10. STOP LIFT (MANDATORY on every trade): AFTER confirmed open and BEFORE TP1, pick a structural proof level — then move the stop. Fields: stopLiftTrigger + stopLiftTo + stopLiftRationale.
-   - stopLiftTrigger: between confirmed entry and TP1 (LONG above entry; SHORT below entry).
-   - stopLiftTo: usually entry (BE) or small lock-in. Must improve original stop.
+10. SCENARIO PROGRESS LEVEL (MANDATORY on every scenario, descriptive only): a structural level between confirmation and the first reference level at which the scenario would be considered progressing, and the revised invalidation level from then on. Fields: stopLiftTrigger + stopLiftTo + stopLiftRationale.
+   - stopLiftTrigger: between the trigger level and the first reference level (bullish: above the trigger; bearish: below).
+   - stopLiftTo: the revised invalidation level, usually the trigger level. Must be tighter than the original invalidation.
 11. CONFLUENCE SCORING: Fib OTE zone overlap, EMA proximity, OB alignment, swing pivot alignment, BOS/CHoCH, liquidity sweep, and trendline alignment each count as a confluence signal. More confluences = higher grade.
-12. Only include trades with R/R ≥ ${minRiskReward} to TP1. With-trend setups need at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}; counter-trend setups need at least ${counterTrendMinConfluence}.
-13. Return the valid standalone setup(s) you actually find. Do NOT force sequenced or linked trades. You MAY mention a natural flow into another zone in overallSummary, but never withhold a good standalone setup for lack of a second leg.
-14. If no valid trade exists yet, return an empty bestTrades array. You MUST still deliver a full analysis in marketAnalysis (never leave it empty): structure, liquidity, momentum, at least one bullish and one bearish scenario with trigger/target/invalidation prices, and exactly what price must do to create a valid setup.
+12. Only include scenarios with an illustrative distance ratio ≥ ${minRiskReward} to TP1. With-trend setups need at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}; counter-trend setups need at least ${counterTrendMinConfluence}.
+13. Return the valid standalone setup(s) you actually find. Do NOT force sequenced or linked scenarios. You MAY mention a natural flow into another zone in overallSummary, but never withhold a good standalone setup for lack of a second leg.
+14. If no valid scenario exists yet, return an empty bestTrades array. You MUST still deliver a full analysis in marketAnalysis (never leave it empty): structure, liquidity, momentum, at least one bullish and one bearish scenario with trigger/target/invalidation prices, and exactly what price must do to create a valid setup.
 15. Expected hold should match the horizon (${tradeHorizonMeta.expectedHold}).
-16. Do not re-issue a bestTrade that duplicates an open-book setup you marked keep (same direction + similar entry).
-17. MACRO RELEVANCE: only discuss NEAR/APPROACHING weekly-monthly levels. Far history is IGNORE. Use a nearby macro level as TP2 only if price can get there without first going the other way through invalidation.
+16. Do not re-issue a scenario that duplicates an open-book setup you marked keep (same direction + similar entry).
+17. MACRO RELEVANCE: only discuss NEAR/APPROACHING weekly-monthly levels. Far history is IGNORE. Use a nearby macro level as the second reference level only if price can get there without first going the other way through invalidation.
 
 Respond with ONLY valid JSON:
 {
@@ -1077,7 +1078,7 @@ Respond with ONLY valid JSON:
       { "direction": "BULLISH", "trigger": "what price must do (with price)", "target": "next level(s)", "invalidation": "price that kills it" },
       { "direction": "BEARISH", "trigger": "...", "target": "...", "invalidation": "..." }
     ],
-    "whatWouldCreateSetup": "1-2 sentences: the exact condition that would turn this into a valid trade under the rules"
+    "whatWouldCreateSetup": "1-2 sentences: the exact condition that would turn this into a valid scenario under the rules"
   },
   "bestTrades": [
     {
@@ -1089,28 +1090,28 @@ Respond with ONLY valid JSON:
       "triggerZone": "e.g. 1.0800-1.0850 demand FVG",
       "triggerCondition": "e.g. price drops into the zone and reacts with local confirmation",
       "entryZone": "FVG/OB/indicator trigger zone",
-      "entry": "exact entry price",
+      "entry": "scenario trigger price level",
       "entryConfirmType": "reclaim",
       "entryConfirmLevel": "exact reclaim price (often = entry or zone high/low)",
       "entryConfirmRationale": "e.g. tag demand then close/trade back above zone high",
-      "stopLoss": "exact SL price",
+      "stopLoss": "scenario invalidation price level",
       "slRationale": "why that invalidation level matters",
-      "stopLiftTrigger": "exact price between entry and TP1 that proves the trade (e.g. local high reclaim)",
-      "stopLiftTo": "exact new stop after trigger (usually entry/BE or small lock-in)",
-      "stopLiftRationale": "why this trigger proves the setup and why that new stop is safe",
-      "targets": ["TP1 price", "TP2 price"],
-      "tp1Rationale": "nearest opposing level",
-      "tp2Rationale": "next major target level",
+      "stopLiftTrigger": "price level between trigger and first reference level at which the scenario would be progressing",
+      "stopLiftTo": "revised invalidation level once progressing (usually the trigger level)",
+      "stopLiftRationale": "descriptive: why this level would show the scenario progressing",
+      "targets": ["first reference level", "second reference level"],
+      "tp1Rationale": "why the first reference level matters (nearest opposing level)",
+      "tp2Rationale": "why the second reference level matters (next major level)",
       "confluenceSignals": ["signal1", "signal2", "signal3"],
-      "invalidation": "what cancels the idea before entry, with price",
+      "invalidation": "what would cancel the scenario before it triggers, with price",
       "riskRewardRatio": 2.1,
-      "reasoning": "why the setup is valid and what activates it"
+      "reasoning": "neutral, descriptive: why the scenario is technically valid and what would activate it"
     }
   ]
 }`;
 
   const systemContent =
-    `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Weekly/monthly magnets only matter if they are NEAR or APPROACHING and price can reach them without first reversing the other way; far-away history must be ignored. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. For this deep dive, 'approaching' an entry zone includes any unmitigated zone within reach of the horizon: return it as a pending (setupStatus "pending") plan rather than zero setups just because no zone is being tagged right now. The stop you publish is the live invalidation, beyond the origin swing of the unmitigated zone. If that stop is inside half the lower-timeframe ATR, do not return the trade. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. When an OPEN BOOK is provided, re-validate every id with openTradeReviews (keep|cancel) before proposing new bestTrades; cancel stale/broken zones. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
+    `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Weekly/monthly magnets only matter if they are NEAR or APPROACHING and price can reach them without first reversing the other way; far-away history must be ignored. Favour with-trend scenarios, but allow counter-trend scenarios when local structure shifts and confluence are strong enough. Every trigger level needs a concrete justification appropriate to this mode — never simply the current price. Prefer conditional (pending) scenarios with triggerZone and triggerCondition when price has not reached the level yet. For this deep dive, 'approaching' a trigger zone includes any unmitigated zone within reach of the horizon: return it as a pending (setupStatus "pending") plan rather than zero setups just because no zone is being tagged right now. The invalidation level you publish is beyond the origin swing of the unmitigated zone. If that invalidation level is inside half the lower-timeframe ATR, do not return the scenario. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — a straight-through spike does not confirm) and stopLiftTrigger + stopLiftTo as descriptive scenario-progress levels before the first reference level. When an OPEN BOOK is provided, re-validate every id with openTradeReviews (keep|cancel) before proposing new scenarios in bestTrades; cancel stale/broken zones. Respect the user's settings: minimum illustrative distance ratio ${minRiskReward}:1 to the first reference level, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone scenarios; do not force sequencing. Always respond with valid JSON only.`;
 
   const openai = new OpenAI({
     baseURL: 'https://api.x.ai/v1',
@@ -1403,7 +1404,7 @@ Lower timeframe: ${lowerTimeframe}
 ${fmtTF(higherTimeframe, higherData)}
 ${fmtTF(lowerTimeframe, lowerData)}
 
-Give a concise at-a-glance analysis only. Do NOT produce a trade plan, entry, stop, targets, or risk/reward.
+Give a concise at-a-glance analysis only. Do NOT produce a trade plan, trigger/invalidation levels, targets, or risk/reward.
 - Higher timeframe: focus on dominant bias/trend and key levels.
 - Lower timeframe: focus on momentum/structure, alignment with the higher timeframe, and nearby trigger levels.
 - Keep summaries brief and actionable.
@@ -1418,36 +1419,36 @@ Respond with ONLY valid JSON:
 }`;
 
     const counterTrendMinConfluence = minConfluence + 1;
-    const deepPrompt = `Symbol: ${symbol} | Multi-timeframe trade search
+    const deepPrompt = `Symbol: ${symbol} | Multi-timeframe technical scenario search (educational, not advice)
 Dominant bias from ${higherTimeframe}: ${dominantBias}
 ${horizonPrompt}
 ${fmtTF(higherTimeframe, higherData)}
 ${fmtTF(lowerTimeframe, lowerData)}
 
-**TRADE SEARCH RULES — MANDATORY**
+**TECHNICAL SCENARIO RULES — MANDATORY** (output is general educational analysis; JSON field names are legacy labels for neutral chart levels)
 1. ${higherTimeframe} sets directional context and the dominant destination; it is NOT a hard veto.
 2. Favour with-trend setups and tag them as "with-trend". Counter-trend setups are allowed when local structure and confluence justify them; tag them as "counter-trend" and require a higher bar.
 3. Explicitly detect reversal/structure-shift triggers: a higher-low after a downtrend can trigger a LONG, and a lower-high after an uptrend can trigger a SHORT, even against the HTF bias.
 4. Map the NEXT high-probability setup(s), even if price has not reached the zone yet. Pending/conditional plans are valid and should be returned.
 5. For pending setups, include triggerZone and triggerCondition that describe what price must do before the setup activates.
 5b. ${DEEP_DIVE_SETUP_STATUS_RULES}
-6. ENTRY: must be at a concrete structural/indicator level appropriate to the selected trader mode — never a blind entry at current price. Use ${lowerTimeframe} for timing/trigger even on swing/position horizons.
-7. ENTRY CONFIRMATION (MANDATORY): do NOT open on a raw spike through the level. Define how price must confirm.
+6. TRIGGER LEVEL (entry field): must be at a concrete structural/indicator level appropriate to the selected trader mode — never simply the current price. Use ${lowerTimeframe} for timing/trigger even on swing/position horizons.
+7. SCENARIO CONFIRMATION (MANDATORY): a raw spike through the level does not confirm the scenario. Define how price would confirm it.
    - entryConfirmType: usually "reclaim" (preferred). Use "touch" only for rare market-order style plans.
-   - entryConfirmLevel: after the entry zone is tagged, price must reclaim this level before the trade is OPEN (LONG: trade back above this price; SHORT: trade back below). Often equal to entry, or slightly past entry (e.g. close above wick high of the zone / break of the micro-swing that formed the entry).
+   - entryConfirmLevel: after the entry zone is tagged, price would need to reclaim this level before the scenario counts as confirmed (bullish: back above this price; bearish: back below). Often equal to entry, or slightly past entry (e.g. close above wick high of the zone / break of the micro-swing that formed the entry).
    - entryConfirmRationale: technique-specific rule in plain language (e.g. "tag FVG then close back above zone high", "sweep liquidity then reclaim prior low").
    - A wick through the entry zone is the sweep, not a cancel. Stay pending/armed until reclaim.
-   - stopLoss is the live stop. The tracker keeps that price. It does not move the stop to the wick.
+   - stopLoss is the scenario invalidation level. The tracker keeps that price; it does not move it to the wick.
    - The idea is invalid only if price closes through that stop, or the target already printed before confirm.
-8. STOP LOSS: stopLoss goes beyond the origin swing of the unmitigated zone named in the data. LONG: below that origin. SHORT: above that origin. If the only valid stop is inside half the lower-timeframe ATR, return an empty bestTrades array. Do not use a nearby wick or a percent of price.
+8. INVALIDATION LEVEL (stopLoss field): place it beyond the origin swing of the unmitigated zone named in the data. LONG: below that origin. SHORT: above that origin. If the only valid invalidation level is inside half the lower-timeframe ATR, return an empty bestTrades array. Do not use a nearby wick or a percent of price.
 9. TARGETS: level-to-level at the horizon's scale. TP1 nearest valid opposing level for this horizon; TP2 next major level. On swing/position prefer ${higherTimeframe} levels. Min R/R is measured to TP1 (not TP2).
-10. STOP LIFT (MANDATORY on every trade): AFTER confirmed open and BEFORE TP1, pick a structural proof level — then move the stop. Fields: stopLiftTrigger + stopLiftTo + stopLiftRationale.
-   - stopLiftTrigger: between confirmed entry and TP1 (LONG above entry; SHORT below entry).
-   - stopLiftTo: usually entry (BE) or small lock-in. Must improve original stop.
+10. SCENARIO PROGRESS LEVEL (MANDATORY on every scenario, descriptive only): a structural level between confirmation and the first reference level at which the scenario would be considered progressing, and the revised invalidation level from then on. Fields: stopLiftTrigger + stopLiftTo + stopLiftRationale.
+   - stopLiftTrigger: between the trigger level and the first reference level (bullish: above the trigger; bearish: below).
+   - stopLiftTo: the revised invalidation level, usually the trigger level. Must be tighter than the original invalidation.
 11. CONFLUENCE SCORING: Fib OTE zone overlap, EMA proximity, OB alignment, swing pivot alignment, BOS/CHoCH, liquidity sweep, and trendline alignment each count as a confluence signal. More confluences = higher grade.
-12. Only include trades with R/R ≥ ${minRiskReward} to TP1. With-trend setups need at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}; counter-trend setups need at least ${counterTrendMinConfluence}.
-13. Return the valid standalone setup(s) you actually find. Do NOT force sequenced or linked trades. You MAY mention a natural flow into another zone in overallSummary, but never withhold a good standalone setup for lack of a second leg.
-14. If no valid trade exists yet, return an empty bestTrades array and use overallSummary plus keyLevels to explain the key zones to watch next.
+12. Only include scenarios with an illustrative distance ratio ≥ ${minRiskReward} to TP1. With-trend setups need at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}; counter-trend setups need at least ${counterTrendMinConfluence}.
+13. Return the valid standalone setup(s) you actually find. Do NOT force sequenced or linked scenarios. You MAY mention a natural flow into another zone in overallSummary, but never withhold a good standalone setup for lack of a second leg.
+14. If no valid scenario exists yet, return an empty bestTrades array and use overallSummary plus keyLevels to explain the key zones to watch next.
 15. Expected hold should match the horizon (${tradeHorizonMeta.expectedHold}).
 
 Respond with ONLY valid JSON:
@@ -1467,22 +1468,22 @@ Respond with ONLY valid JSON:
       "triggerZone": "e.g. 1.0800-1.0850 demand FVG",
       "triggerCondition": "e.g. price drops into the zone and reacts with local confirmation",
       "entryZone": "FVG/OB/indicator trigger zone",
-      "entry": "exact entry price",
+      "entry": "scenario trigger price level",
       "entryConfirmType": "reclaim",
       "entryConfirmLevel": "exact reclaim price (often = entry or zone high/low)",
       "entryConfirmRationale": "e.g. tag demand then close/trade back above zone high",
-      "stopLoss": "exact SL price",
+      "stopLoss": "scenario invalidation price level",
       "slRationale": "why that invalidation level matters",
-      "stopLiftTrigger": "exact price between entry and TP1 that proves the trade (e.g. local high reclaim)",
-      "stopLiftTo": "exact new stop after trigger (usually entry/BE or small lock-in)",
-      "stopLiftRationale": "why this trigger proves the setup and why that new stop is safe",
-      "targets": ["TP1 price", "TP2 price"],
-      "tp1Rationale": "nearest opposing level",
-      "tp2Rationale": "next major target level",
+      "stopLiftTrigger": "price level between trigger and first reference level at which the scenario would be progressing",
+      "stopLiftTo": "revised invalidation level once progressing (usually the trigger level)",
+      "stopLiftRationale": "descriptive: why this level would show the scenario progressing",
+      "targets": ["first reference level", "second reference level"],
+      "tp1Rationale": "why the first reference level matters (nearest opposing level)",
+      "tp2Rationale": "why the second reference level matters (next major level)",
       "confluenceSignals": ["signal1", "signal2", "signal3"],
-      "invalidation": "what cancels the idea before entry, with price",
+      "invalidation": "what would cancel the scenario before it triggers, with price",
       "riskRewardRatio": 2.1,
-      "reasoning": "why the setup is valid and what activates it"
+      "reasoning": "neutral, descriptive: why the scenario is technically valid and what would activate it"
     }
   ]
 }`;
@@ -1503,14 +1504,14 @@ Respond with ONLY valid JSON:
 
     let completion: any;
     const systemContent = analysisType === 'general'
-      ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Always respond with valid JSON only.`
-      : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Every entry needs a concrete justification appropriate to this mode — never a blind "enter at current price". Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. For this deep dive, 'approaching' an entry zone includes any unmitigated zone within reach of the horizon: return it as a pending (setupStatus "pending") plan rather than zero setups just because no zone is being tagged right now. The stop you publish is the live invalidation, beyond the origin swing of the unmitigated zone. If that stop is inside half the lower-timeframe ATR, do not return the trade. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — never open on a straight-through spike) and stopLiftTrigger + stopLiftTo so risk can be reduced after the open is confirmed BEFORE TP1. Respect the user's settings: minimum R/R ${minRiskReward}:1 to TP1, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups; do not force sequencing. Always respond with valid JSON only.`;
+      ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan or tell the reader what to do. Always respond with valid JSON only.`
+      : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nHigher timeframe bias is directional context and the dominant destination, not a veto. Favour with-trend scenarios, but allow counter-trend scenarios when local structure shifts and confluence are strong enough. Every trigger level needs a concrete justification appropriate to this mode — never simply the current price. Prefer conditional (pending) scenarios with triggerZone and triggerCondition when price has not reached the level yet. For this deep dive, 'approaching' a trigger zone includes any unmitigated zone within reach of the horizon: return it as a pending (setupStatus "pending") plan rather than zero setups just because no zone is being tagged right now. The invalidation level you publish is beyond the origin swing of the unmitigated zone. If that invalidation level is inside half the lower-timeframe ATR, do not return the scenario. Always include entryConfirmType/entryConfirmLevel (prefer reclaim after zone touch — a straight-through spike does not confirm) and stopLiftTrigger + stopLiftTo as descriptive scenario-progress levels before the first reference level. Respect the user's settings: minimum illustrative distance ratio ${minRiskReward}:1 to the first reference level, minimum confluence ${minConfluence}, and require one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone scenarios; do not force sequencing. Always respond with valid JSON only.`;
     try {
       if (analysisType === 'general') {
         completion = await openai.chat.completions.create({
           model: XAI_PRIMARY_MODEL,
           messages: [
-            { role: 'system', content: systemContent },
+            { role: 'system', content: withScenarioFraming(systemContent) },
             { role: 'user', content: generalPrompt }
           ],
           temperature: 0.2,
@@ -1537,7 +1538,7 @@ Respond with ONLY valid JSON:
       completion = await openai.chat.completions.create({
         model: XAI_FALLBACK_MODEL,
         messages: [
-          { role: 'system', content: systemContent },
+          { role: 'system', content: withScenarioFraming(systemContent) },
           { role: 'user', content: generalPrompt }
         ],
         temperature: 0.3,

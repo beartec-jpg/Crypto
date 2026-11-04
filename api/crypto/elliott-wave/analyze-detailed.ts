@@ -2,6 +2,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
+import { withScenarioFraming } from '../../_lib/scenarioFraming.js';
 
 const ADMIN_EMAIL = 'beartec@beartec.uk';
 
@@ -189,7 +190,7 @@ Analyze the likely internal sub-wave structure. Provide JSON response:
       messages: [
         {
           role: 'system',
-          content: 'You are an expert Elliott Wave analyst specializing in sub-wave structure analysis. Respond ONLY with valid JSON.',
+          content: withScenarioFraming('You are an expert Elliott Wave analyst specializing in sub-wave structure analysis. Respond ONLY with valid JSON.'),
         },
         {
           role: 'user',

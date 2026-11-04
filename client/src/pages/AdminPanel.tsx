@@ -53,7 +53,7 @@ const ALL_CUSTOM_TOOLS = [
   { id: 'bos', label: 'Break of Structure' },
   { id: 'supertrend', label: 'SuperTrend' },
   { id: 'vwap_advanced', label: 'Advanced VWAP' },
-  { id: 'ai_trade', label: 'AI Trade Signals' },
+  { id: 'ai_trade', label: 'AI Technical Scenarios' },
 ];
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

@@ -164,7 +164,7 @@ export default function CryptoSubscribe() {
         'Full indicator page after email signup',
         'All oscillators, drawings, and SMC tools',
         'Auto-Fibonacci and training lessons',
-        'No AI trade ideas',
+        'No AI technical scenarios',
       ],
       current: currentTier === 'free' || currentTier === 'beginner',
     },
@@ -225,7 +225,7 @@ export default function CryptoSubscribe() {
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold mb-4">AI usage plans</h1>
           <p className="text-gray-400 text-lg max-w-2xl mx-auto">
-            Charts and indicators are free with an email signup. Paid plans only add AI trade ideas —
+            Charts and indicators are free with an email signup. Paid plans only add educational AI technical scenarios (not financial advice) —
             each general reading or deep dive uses 1 token.
           </p>
         </div>

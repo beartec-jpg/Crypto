@@ -45,6 +45,6 @@ describe('deep dive setup status', () => {
 
   it('prompt rules say tagging now is not required', () => {
     expect(DEEP_DIVE_SETUP_STATUS_RULES).toMatch(/does NOT need to be tagging/);
-    expect(DEEP_DIVE_SETUP_STATUS_RULES).toMatch(/R\/R and confluence/);
+    expect(DEEP_DIVE_SETUP_STATUS_RULES).toMatch(/distance-ratio and confluence/);
   });
 });

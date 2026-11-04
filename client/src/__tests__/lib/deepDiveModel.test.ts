@@ -1,5 +1,6 @@
 // Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { describe, expect, it } from 'vitest';
+import { withScenarioFraming } from '../../../../api/_lib/scenarioFraming';
 import {
   buildPrimaryResponsesRequest,
   deepDiveCostUsd,
@@ -28,7 +29,7 @@ describe('deep dive model config', () => {
   it('builds a Responses request with explicit effort', () => {
     const req = buildPrimaryResponsesRequest(resolveDeepDiveModelConfig({}), 'sys', 'user', 16000);
     expect(req).toMatchObject({ model: 'grok-4.7', reasoning: { effort: 'low' }, max_output_tokens: 16000, store: false });
-    expect(req.input).toEqual([{ role: 'system', content: 'sys' }, { role: 'user', content: 'user' }]);
+    expect(req.input).toEqual([{ role: 'system', content: withScenarioFraming('sys') }, { role: 'user', content: 'user' }]);
   });
 
   it('maps Responses output and usage onto the completion shape', () => {

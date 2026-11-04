@@ -126,7 +126,7 @@ export function AIAnalysisPanel({
 
           {/* Trade Setups */}
           <div>
-            <h4 className="text-white font-semibold mb-2">Suggested Setups</h4>
+            <h4 className="text-white font-semibold mb-2">Technical scenarios (educational, not advice)</h4>
             <div className="space-y-3">
               {analysisResult.tradeSetups.map((setup, idx) => (
                 <div key={idx} className="bg-slate-800 rounded p-3 space-y-2">
