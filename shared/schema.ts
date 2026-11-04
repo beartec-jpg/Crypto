@@ -1280,3 +1280,21 @@ export const acceptSwapOfferSchema = z.object({
   buyerEvmAddress: z.string().min(1),
   buyerPubKeyHex: z.string().length(66),
 });
+
+// Compliance log of AI technical scenarios / overviews delivered to users (migrations/015_ai_output_log.sql).
+// Retention: 1 year / 365 days (see api/_lib/aiOutputLog.ts).
+export const aiOutputLog = pgTable("ai_output_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  userId: varchar("user_id"),
+  symbol: varchar("symbol").notNull(),
+  timeframe: varchar("timeframe"),
+  mode: varchar("mode"),
+  analysisType: varchar("analysis_type"),
+  promptVersion: varchar("prompt_version").notNull(),
+  deliveryChannel: varchar("delivery_channel").notNull(),
+  cached: boolean("cached").default(false).notNull(),
+  outputJson: jsonb("output_json"),
+  outputText: text("output_text"),
+});
+export type AiOutputLog = typeof aiOutputLog.$inferSelect;

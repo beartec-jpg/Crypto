@@ -1,4 +1,5 @@
 // Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
+import { TECHNICAL_SCENARIO_DISCLAIMER } from './scenarioDisclaimer.js';
 /**
  * Discord incoming-webhook helpers (multipart file + embeds).
  */
@@ -103,7 +104,7 @@ export function tradeEmbeds(
         { name: 'Targets (% from entry)', value: tps, inline: false },
         { name: 'Stop lift (before TP1)', value: lift.slice(0, 500), inline: false },
       ],
-      footer: { text: 'Not financial advice · Review the chart yourself' },
+      footer: { text: TECHNICAL_SCENARIO_DISCLAIMER },
       timestamp: new Date().toISOString(),
     };
   });

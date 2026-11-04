@@ -13,6 +13,7 @@ import {
 import { annotateSetupStatus, DEEP_DIVE_SETUP_STATUS_RULES } from '../_lib/deepDiveSetupStatus.js';
 import { buildPrimaryResponsesRequest, deepDiveCostUsd, resolveDeepDiveModelConfig, responsesToCompletion } from '../_lib/deepDiveModel.js';
 import { withScenarioFraming } from '../_lib/scenarioFraming.js';
+import { logAiOutputBounded } from '../_lib/aiOutputLog.js';
 
 const ADMIN_EMAIL = 'beartec@beartec.uk';
 const AI_MIN_RISK_REWARD_RATIO = 1.5;
@@ -1686,6 +1687,7 @@ Respond with ONLY valid JSON:
     }
     };
     if (analysisType === 'deep' && !input.jobMode) await writeDeepCache();
+    await logAiOutputBounded(pool, { userId: cryptoUserId, symbol, timeframe: pairInterval, mode: analysisType === 'deep' ? deepDiveCacheMode : 'general', analysisType, channel: 'web', cached: false, output: { multiTFInsights: parsedResult.multiTFInsights, bestTrades: parsedResult.bestTrades || [] } });
 
     const body = {
       success: true as const,
@@ -1898,6 +1900,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ? JSON.parse(cachedRow.ai_narration)
           : (cachedRow.ai_narration || {});
 
+        await logAiOutputBounded(pool, { userId: cryptoUserId, symbol, timeframe: pairInterval, mode: deepDiveCacheMode, analysisType, channel: 'web', cached: true, output: { multiTFInsights: aiNarration.multiTFInsights || null, bestTrades: Array.isArray(aiNarration.bestTrades) ? aiNarration.bestTrades : [] } });
         await pool.end();
         return res.json({
           success: true,
@@ -1969,6 +1972,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const snapshots = Array.isArray(cachedRow.snapshots) ? cachedRow.snapshots : [];
         const aiNarration = typeof cachedRow.ai_narration === 'string' ? JSON.parse(cachedRow.ai_narration) : (cachedRow.ai_narration || {});
         const remaining = await consumeAiToken();
+        await logAiOutputBounded(pool, { userId: cryptoUserId, symbol, timeframe: pairInterval, mode: 'general', analysisType, channel: 'web', cached: true, output: { multiTFInsights: aiNarration.multiTFInsights || null } });
         await pool.end();
         return res.json({
           success: true,
@@ -1989,6 +1993,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         const generated = await runGeneralPairRefresh(pool, apiKey, symbol, higherTimeframe, lowerTimeframe);
         const remaining = await consumeAiToken();
+        await logAiOutputBounded(pool, { userId: cryptoUserId, symbol, timeframe: pairInterval, mode: 'general', analysisType, channel: 'web', cached: false, output: { multiTFInsights: generated.multiTFInsights } });
         await pool.end();
         return res.json({
           success: true,
@@ -2009,6 +2014,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const snapshots = Array.isArray(cachedRow.snapshots) ? cachedRow.snapshots : [];
           const aiNarration = typeof cachedRow.ai_narration === 'string' ? JSON.parse(cachedRow.ai_narration) : (cachedRow.ai_narration || {});
           const remaining = await consumeAiToken();
+          await logAiOutputBounded(pool, { userId: cryptoUserId, symbol, timeframe: pairInterval, mode: 'general', analysisType, channel: 'web', cached: true, output: { multiTFInsights: aiNarration.multiTFInsights || null } });
           await pool.end();
           return res.json({
             success: true,

@@ -20,6 +20,7 @@ import WebSocket from "ws";
 import axios from 'axios';
 import { storage } from "./storage";
 import { withScenarioFraming, withScenarioFramingMessages } from '@shared/scenarioFraming';
+import { logAiOutput } from "../api/_lib/aiOutputLog";
 import { userWatchlists } from "@shared/schema";
 import {
   CRYPTO_AI_HIGHER_TIMEFRAMES,
@@ -4156,6 +4157,7 @@ Be concise and direct.`;
           const aiNarration = typeof cachedRow.ai_narration === 'string'
             ? JSON.parse(cachedRow.ai_narration)
             : (cachedRow.ai_narration || {});
+          void import('./db').then(({ pool }) => logAiOutput(pool, { userId, symbol: symbol, timeframe: `${higherTimeframe}/${lowerTimeframe}`, mode: deepDiveCacheMode, analysisType: analysisType, channel: 'web', cached: true, output: { multiTFInsights: aiNarration.multiTFInsights || null, bestTrades: Array.isArray(aiNarration.bestTrades) ? aiNarration.bestTrades : [] } })).catch(() => {});
           return res.json({
             success: true,
             cached: true,
@@ -4631,6 +4633,7 @@ OUTPUT: Valid JSON only, no markdown.
         }
       }
 
+      void import('./db').then(({ pool }) => logAiOutput(pool, { userId, symbol: symbol, timeframe: `${higherTimeframe}/${lowerTimeframe}`, mode: analysisType === 'deep' ? deepDiveCacheMode : 'general', analysisType: analysisType, channel: 'web', cached: false, output: { multiTFInsights: parsedResult.multiTFInsights, bestTrades: parsedResult.bestTrades || [] } })).catch(() => {});
       res.json({
         success: true,
         multiTFInsights: parsedResult.multiTFInsights,
@@ -5883,6 +5886,7 @@ Return ONLY valid JSON in this exact format:
         };
       }
 
+      void import('./db').then(({ pool }) => logAiOutput(pool, { userId, symbol: ticker, timeframe: null, mode: 'legacy-ai-trade-ideas', analysisType: 'legacy', channel: 'web', cached: false, output: tradeIdeas })).catch(() => {});
       res.json({ 
         ...tradeIdeas,
         creditsRemaining: creditResult.remaining,
