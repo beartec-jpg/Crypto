@@ -34,7 +34,10 @@ function sleep(ms: number): Promise<void> {
 async function fetchJson(url: string, headers: Record<string, string>, attempt = 0): Promise<any> {
   const res = await fetch(url, { headers, signal: AbortSignal.timeout(20000) });
   if (res.status === 429 && attempt < 4) {
-    const wait = 400 * 2 ** attempt;
+    const retryAfter = Number(res.headers.get('retry-after'));
+    const wait = Number.isFinite(retryAfter) && retryAfter > 0
+      ? Math.min(retryAfter * 1000, 8000)
+      : 1000 * 2 ** attempt;
     await sleep(wait);
     return fetchJson(url, headers, attempt + 1);
   }
@@ -73,12 +76,15 @@ async function fetchProSeries(apiKey: string): Promise<CachedPayload> {
   };
 }
 
-async function fetchFreeBasketProxy(): Promise<CachedPayload> {
-  const headers = { accept: 'application/json' };
+async function fetchFreeBasketProxy(demoKey?: string): Promise<CachedPayload> {
+  // CoinGecko's keyless tier rate-limits by IP, and Vercel's shared egress IPs are
+  // usually already over it (429). A free Demo key gives a per-key quota instead.
+  const headers: Record<string, string> = { accept: 'application/json' };
+  if (demoKey) headers['x-cg-demo-api-key'] = demoKey;
   const seriesById: Record<string, Array<[number, number]>> = {};
   for (let i = 0; i < BASKET_COIN_IDS.length; i++) {
     const id = BASKET_COIN_IDS[i];
-    if (i > 0) await sleep(300);
+    if (i > 0) await sleep(demoKey ? 300 : 1500);
     const raw = await fetchJson(
       `${FREE_HOST}/coins/${id}/market_chart?vs_currency=usd&days=365&interval=daily`,
       headers,
@@ -127,7 +133,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const proKey = process.env.COINGECKO_PRO_API_KEY;
-    const payload = proKey ? await fetchProSeries(proKey) : await fetchFreeBasketProxy();
+    const demoKey = process.env.COINGECKO_DEMO_API_KEY;
+    const payload = proKey ? await fetchProSeries(proKey) : await fetchFreeBasketProxy(demoKey);
     cache = { at: now, payload };
     return sendJson(res, 200, payload);
   } catch (err) {
@@ -135,6 +142,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (cache?.payload) {
       return sendJson(res, 200, { ...cache.payload, stale: true });
     }
-    return sendJson(res, 502, { error: 'Failed to fetch USDT dominance' });
+    // Never let the CDN cache a failure for hours (s-maxage); retry on next request.
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(502).json({ error: 'Failed to fetch USDT dominance' });
   }
 }
