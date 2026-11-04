@@ -1,0 +1,17 @@
+candidate,cost,desc,is_n,is_avg,oos_n,oos_avg,oos_pf,oos_tot,oos_dd
+repo preset,zero cost,TideOut ema21 N8 <-40 | stop pct0.005 | TideIn ema8 N8 min0 after0 hold0,159,0.7843,101,0.8864,1.861,10.93,-6.41
+repo preset,4bp/side (repo research),TideOut ema21 N8 <-40 | stop pct0.005 | TideIn ema8 N8 min0 after0 hold0,159,0.7043,101,0.8064,1.754,9.814,-6.741
+repo preset,base 9.5bp+5bp stop,TideOut ema21 N8 <-40 | stop pct0.005 | TideIn ema8 N8 min0 after0 hold0,159,0.5758,101,0.6801,1.595,8.065,-7.335
+repo preset,20bp/side + 15bp stop,TideOut ema21 N8 <-40 | stop pct0.005 | TideIn ema8 N8 min0 after0 hold0,159,0.3287,101,0.4374,1.339,4.784,-8.467
+best IS stage3 (filters),zero cost,TideOut ema89 N8 <-20 | stop atr1.5 | TideIn ema13 N13 minNone after0 hold12 | rearm20,166,1.709,106,0.03112,1.023,0.3154,-11.62
+best IS stage3 (filters),4bp/side (repo research),TideOut ema89 N8 <-20 | stop atr1.5 | TideIn ema13 N13 minNone after0 hold12 | rearm20,166,1.629,106,-0.04888,0.9651,-0.7425,-12.01
+best IS stage3 (filters),base 9.5bp+5bp stop,TideOut ema89 N8 <-20 | stop atr1.5 | TideIn ema13 N13 minNone after0 hold12 | rearm20,166,1.511,106,-0.1693,0.8853,-2.314,-12.65
+best IS stage3 (filters),20bp/side + 15bp stop,TideOut ema89 N8 <-20 | stop atr1.5 | TideIn ema13 N13 minNone after0 hold12 | rearm20,166,1.284,106,-0.4,0.7532,-5.257,-14.15
+best IS stage4 (Pull),zero cost,TideOut ema89 N5 <-20 | stop atr1.5 | TideIn ema21 N13 min-20 after0 hold3 | TS144/3 | Pull[exit peak>=30 then <0 ema3],160,1.737,86,0.0197,1.014,-0.3841,-8.536
+best IS stage4 (Pull),4bp/side (repo research),TideOut ema89 N5 <-20 | stop atr1.5 | TideIn ema21 N13 min-20 after0 hold3 | TS144/3 | Pull[exit peak>=30 then <0 ema3],160,1.657,86,-0.0603,0.9597,-1.231,-8.773
+best IS stage4 (Pull),base 9.5bp+5bp stop,TideOut ema89 N5 <-20 | stop atr1.5 | TideIn ema21 N13 min-20 after0 hold3 | TS144/3 | Pull[exit peak>=30 then <0 ema3],160,1.535,86,-0.1808,0.8848,-2.495,-9.16
+best IS stage4 (Pull),20bp/side + 15bp stop,TideOut ema89 N5 <-20 | stop atr1.5 | TideIn ema21 N13 min-20 after0 hold3 | TS144/3 | Pull[exit peak>=30 then <0 ema3],160,1.301,86,-0.4117,0.7597,-4.865,-10.07
+best IS overall,zero cost,TideOut ema89 N5 <-20 | stop atr1.5 | TideIn ema21 N13 min-20 after0 hold3 | TS144/3 | Pull[exit peak>=30 then <0 ema3],160,1.737,86,0.0197,1.014,-0.3841,-8.536
+best IS overall,4bp/side (repo research),TideOut ema89 N5 <-20 | stop atr1.5 | TideIn ema21 N13 min-20 after0 hold3 | TS144/3 | Pull[exit peak>=30 then <0 ema3],160,1.657,86,-0.0603,0.9597,-1.231,-8.773
+best IS overall,base 9.5bp+5bp stop,TideOut ema89 N5 <-20 | stop atr1.5 | TideIn ema21 N13 min-20 after0 hold3 | TS144/3 | Pull[exit peak>=30 then <0 ema3],160,1.535,86,-0.1808,0.8848,-2.495,-9.16
+best IS overall,20bp/side + 15bp stop,TideOut ema89 N5 <-20 | stop atr1.5 | TideIn ema21 N13 min-20 after0 hold3 | TS144/3 | Pull[exit peak>=30 then <0 ema3],160,1.301,86,-0.4117,0.7597,-4.865,-10.07

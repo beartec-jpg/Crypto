@@ -1,0 +1,7 @@
+pool,n,avg,pf,stop
+repo preset (fixed),101,0.6801,1.595,32.67
+exits only (stage2),129,-0.5529,0.659,33.33
++entry filters (stage3),63,0.08779,1.103,22.22
++Pull (stage4),125,0.06087,1.057,10.4
+alt entries (5/5b),190,-0.2606,0.8208,38.42
+all,63,0.09201,1.11,22.22

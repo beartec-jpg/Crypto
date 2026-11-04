@@ -1,0 +1,4 @@
+1h preset: all symbols 271 signals, 6 (2%) within 6 bars of the previous signal; XRP last 150d: 1 signals, 0 within 6 bars of the previous one
+4h preset: all symbols 451 signals, 25 (6%) within 6 bars of the previous signal; XRP last 150d: 3 signals, 0 within 6 bars of the previous one
+1h loose ema8 N3 <0: all symbols 2038 signals, 95 (5%) within 6 bars of the previous signal; XRP last 150d: 11 signals, 0 within 6 bars of the previous one
+4h loose ema8 N3 <0: all symbols 608 signals, 30 (5%) within 6 bars of the previous signal; XRP last 150d: 5 signals, 0 within 6 bars of the previous one

@@ -1,0 +1,17 @@
+candidate,cost,desc,is_n,is_avg,oos_n,oos_avg,oos_pf,oos_tot,oos_dd
+repo preset,zero cost,TideOut ema8 N3 <-20 | stop atr0.5 | TideIn ema8 N5 min0 after0 hold0,269,0.08669,163,0.6286,1.303,11.32,-21.48
+repo preset,4bp/side (repo research),TideOut ema8 N3 <-20 | stop atr0.5 | TideIn ema8 N5 min0 after0 hold0,269,0.006692,163,0.5486,1.259,9.509,-21.95
+repo preset,base 9.5bp+5bp stop,TideOut ema8 N3 <-20 | stop atr0.5 | TideIn ema8 N5 min0 after0 hold0,269,-0.1208,163,0.4196,1.191,6.634,-22.77
+repo preset,20bp/side + 15bp stop,TideOut ema8 N3 <-20 | stop atr0.5 | TideIn ema8 N5 min0 after0 hold0,269,-0.3657,163,0.1716,1.073,1.308,-24.5
+best IS stage3 (filters),zero cost,"TideOut ema5 N21 <-40 | stop atr1.5 | TideIn ema3 N8 min20 after1 hold0 | cd24,TS55/16",115,2.489,97,0.7265,1.441,9.458,-12.45
+best IS stage3 (filters),4bp/side (repo research),"TideOut ema5 N21 <-40 | stop atr1.5 | TideIn ema3 N8 min20 after1 hold0 | cd24,TS55/16",115,2.409,97,0.6465,1.384,8.414,-12.77
+best IS stage3 (filters),base 9.5bp+5bp stop,"TideOut ema5 N21 <-40 | stop atr1.5 | TideIn ema3 N8 min20 after1 hold0 | cd24,TS55/16",115,2.295,97,0.5339,1.307,6.966,-13.24
+best IS stage3 (filters),20bp/side + 15bp stop,"TideOut ema5 N21 <-40 | stop atr1.5 | TideIn ema3 N8 min20 after1 hold0 | cd24,TS55/16",115,2.077,97,0.3187,1.172,4.25,-14.11
+best IS stage4 (Pull),zero cost,"TideOut ema5 N21 <-40 | stop atr1.5 | TideIn ema3 N8 min20 after1 hold0 | cd24,TS55/16 | Pull[exit peak>=20 drop>=25/6b ema8]",116,2.688,98,0.7388,1.463,9.389,-10.98
+best IS stage4 (Pull),4bp/side (repo research),"TideOut ema5 N21 <-40 | stop atr1.5 | TideIn ema3 N8 min20 after1 hold0 | cd24,TS55/16 | Pull[exit peak>=20 drop>=25/6b ema8]",116,2.608,98,0.6588,1.403,8.33,-11.32
+best IS stage4 (Pull),base 9.5bp+5bp stop,"TideOut ema5 N21 <-40 | stop atr1.5 | TideIn ema3 N8 min20 after1 hold0 | cd24,TS55/16 | Pull[exit peak>=20 drop>=25/6b ema8]",116,2.495,98,0.5468,1.323,6.868,-11.8
+best IS stage4 (Pull),20bp/side + 15bp stop,"TideOut ema5 N21 <-40 | stop atr1.5 | TideIn ema3 N8 min20 after1 hold0 | cd24,TS55/16 | Pull[exit peak>=20 drop>=25/6b ema8]",116,2.279,98,0.3327,1.184,4.13,-12.7
+best IS overall,zero cost,"TideOut ema5 N21 <-40 | stop atr1.5 | TideIn ema3 N8 min20 after1 hold0 | cd24,TS55/16 | Pull[exit peak>=20 drop>=25/6b ema8]",116,2.688,98,0.7388,1.463,9.389,-10.98
+best IS overall,4bp/side (repo research),"TideOut ema5 N21 <-40 | stop atr1.5 | TideIn ema3 N8 min20 after1 hold0 | cd24,TS55/16 | Pull[exit peak>=20 drop>=25/6b ema8]",116,2.608,98,0.6588,1.403,8.33,-11.32
+best IS overall,base 9.5bp+5bp stop,"TideOut ema5 N21 <-40 | stop atr1.5 | TideIn ema3 N8 min20 after1 hold0 | cd24,TS55/16 | Pull[exit peak>=20 drop>=25/6b ema8]",116,2.495,98,0.5468,1.323,6.868,-11.8
+best IS overall,20bp/side + 15bp stop,"TideOut ema5 N21 <-40 | stop atr1.5 | TideIn ema3 N8 min20 after1 hold0 | cd24,TS55/16 | Pull[exit peak>=20 drop>=25/6b ema8]",116,2.279,98,0.3327,1.184,4.13,-12.7

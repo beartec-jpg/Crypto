@@ -1,0 +1,2 @@
+4h preset, all years: 432 trades, 156 stopped (36%). Of stopped trades the EMA3 tide reached >=20 before the stop in 12% and >=40 in 3% (for non-stopped trades: 85% / 58%); median best open profit of stopped trades +1.15%, share that were ever >= +1% in profit 54%
+1h preset, all years: 260 trades, 92 stopped (35%). Of stopped trades the EMA3 tide reached >=20 before the stop in 4% and >=40 in 0% (for non-stopped trades: 59% / 30%); median best open profit of stopped trades +0.68%, share that were ever >= +1% in profit 40%
