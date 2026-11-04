@@ -21,12 +21,12 @@ import { calculateTideZoneForTimeframe } from '@/lib/indicators/tideTimeframe';
 import {
   DEFAULT_TIDE_ZONE_SETTINGS,
   TIDE_PRESETS,
-  isTidePreset,
-  normalizeTideZoneSettings,
+  TIDE_ZONE_SETTINGS,
   tideParamsFor,
 } from '@/types/tideZoneSettings';
 import fx4h from './fixtures/tide_btc_4h.json';
 import fx1h from './fixtures/tide_btc_1h.json';
+import { useTideZoneSettings } from '@/hooks/useTideZoneSettings';
 
 /**
  * Fixtures: real BTCUSDT perp bars from the research warehouse, with the expected output of
@@ -253,25 +253,27 @@ describe('presets and settings', () => {
     expect(TIDE_PRESETS['1h']).toMatchObject({ emaPeriod: 21, pivotN: 8, belowScore: -40, exitEmaPeriod: 8, exitPivotN: 8, stopKind: 'pct', stopPct: 0.005 });
   });
 
-  it('selects settings by timeframe and none elsewhere', () => {
-    const s = normalizeTideZoneSettings(null);
+  it('selects the fixed preset by timeframe and none elsewhere', () => {
+    const s = TIDE_ZONE_SETTINGS;
     expect(tideParamsFor(s, '4h')).toEqual(TIDE_PRESETS['4h']);
     expect(tideParamsFor(s, '1h')).toEqual(TIDE_PRESETS['1h']);
     expect(tideParamsFor(s, null)).toBeNull();
-    expect(isTidePreset(s.byTimeframe['1h'], '1h')).toBe(true);
+    expect(DEFAULT_TIDE_ZONE_SETTINGS).toBe(TIDE_ZONE_SETTINGS);
   });
 
-  it('keeps 1h and 4h edits separate and clamps bad values', () => {
-    const s = normalizeTideZoneSettings({
-      byTimeframe: {
-        '1h': { ...TIDE_PRESETS['1h'], pivotN: 99, belowScore: -30 },
-        '4h': { ...TIDE_PRESETS['4h'], stopKind: 'nope' as never, emaPeriod: Number.NaN },
-      },
-    });
-    expect(s.byTimeframe['1h'].pivotN).toBe(21);
-    expect(s.byTimeframe['1h'].belowScore).toBe(-30);
-    expect(s.byTimeframe['4h']).toEqual(TIDE_PRESETS['4h']);
-    expect(isTidePreset(s.byTimeframe['1h'], '1h')).toBe(false);
+  it('ignores stored customisations: the hook always returns the fixed presets', () => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(
+        'tide-zone-settings-v2',
+        JSON.stringify({ byTimeframe: { '1h': { emaPeriod: 5, cooldownBars: 24 } }, showStops: false }),
+      );
+    }
+    const { settings } = useTideZoneSettings();
+    expect(settings.byTimeframe).toEqual(TIDE_PRESETS);
+    expect(settings.showStops).toBe(true);
+    expect('cooldownBars' in settings.byTimeframe['1h']).toBe(false);
+    expect('exitPeakAfterEntry' in settings.byTimeframe['4h']).toBe(false);
+    expect('minHoldBars' in settings.byTimeframe['4h']).toBe(false);
   });
 
   it('defaults hide nothing validated and keep absorb off', () => {
@@ -477,100 +479,9 @@ describe('Tide exit guards (flip-flop options; all off = current behaviour)', ()
     expect(r).toHaveLength(2);
   });
 
-  it('normalizer keeps default settings identical to the presets and only stores switched-on guards', () => {
-    const d = normalizeTideZoneSettings(null);
-    expect(d.byTimeframe['4h']).toEqual(TIDE_PRESETS['4h']);
-    expect(d.byTimeframe).toEqual(TIDE_PRESETS);
-    expect('cooldownBars' in d.byTimeframe['4h']).toBe(false);
-    expect('exitPeakAfterEntry' in d.byTimeframe['4h']).toBe(false);
-    expect('minHoldBars' in d.byTimeframe['4h']).toBe(false);
-    const s = normalizeTideZoneSettings({
-      byTimeframe: {
-        '4h': { ...TIDE_PRESETS['4h'], exitPeakAfterEntry: true, minHoldBars: 3.4, exitMinScore: 0, cooldownBars: 999 },
-        '1h': { ...TIDE_PRESETS['1h'], minHoldBars: 0, exitPeakAfterEntry: false, exitMinScore: undefined },
-      },
-    });
-    expect(s.byTimeframe['4h']).toMatchObject({ exitPeakAfterEntry: true, minHoldBars: 3, exitMinScore: 0, cooldownBars: 96 });
-    expect(s.byTimeframe['1h']).toEqual(TIDE_PRESETS['1h']);
-    expect('exitPeakAfterEntry' in s.byTimeframe['1h']).toBe(false);
-    expect('minHoldBars' in s.byTimeframe['1h']).toBe(false);
-  });
-
-  it('default presets have exitMinScore 0 and normalize(null) equals them', () => {
+  it('default presets have exitMinScore 0', () => {
     expect(TIDE_PRESETS['1h'].exitMinScore).toBe(0);
     expect(TIDE_PRESETS['4h'].exitMinScore).toBe(0);
-    expect(normalizeTideZoneSettings(null).byTimeframe).toEqual(TIDE_PRESETS);
-    expect(isTidePreset(TIDE_PRESETS['1h'], '1h')).toBe(true);
-    expect(isTidePreset(TIDE_PRESETS['4h'], '4h')).toBe(true);
-  });
-
-  it('exitMinScore null stays disabled; reset (the preset) restores 0', () => {
-    const s = normalizeTideZoneSettings({
-      byTimeframe: {
-        '1h': { ...TIDE_PRESETS['1h'], exitMinScore: null },
-        '4h': { exitMinScore: null },
-      },
-    });
-    expect(s.byTimeframe['1h'].exitMinScore).toBeNull();
-    expect(s.byTimeframe['4h'].exitMinScore).toBeNull();
-    expect(isTidePreset(s.byTimeframe['1h'], '1h')).toBe(false);
-    const reset = normalizeTideZoneSettings({ byTimeframe: { '1h': { ...TIDE_PRESETS['1h'] }, '4h': { ...TIDE_PRESETS['4h'] } } });
-    expect(reset.byTimeframe['1h']).toEqual(TIDE_PRESETS['1h']);
-    expect(reset.byTimeframe['1h'].exitMinScore).toBe(0);
-    expect(isTidePreset(reset.byTimeframe['1h'], '1h')).toBe(true);
-  });
-
-  it('clamps exitMinScore to [-100, 100] (1 decimal)', () => {
-    const s = normalizeTideZoneSettings({
-      byTimeframe: {
-        '1h': { exitMinScore: 150.2 },
-        '4h': { exitMinScore: -150.2 },
-      },
-    });
-    expect(s.byTimeframe['1h'].exitMinScore).toBe(100);
-    expect(s.byTimeframe['4h'].exitMinScore).toBe(-100);
-    const rounded = normalizeTideZoneSettings({
-      byTimeframe: { '1h': { exitMinScore: 12.26 }, '4h': { exitMinScore: -99.96 } },
-    });
-    expect(rounded.byTimeframe['1h'].exitMinScore).toBe(12.3);
-    expect(rounded.byTimeframe['4h'].exitMinScore).toBe(-100);
-  });
-
-  it('missing, undefined, or non-finite exitMinScore on persisted settings loads as 0', () => {
-    const legacy1h = {
-      emaPeriod: 21,
-      pivotN: 8,
-      belowScore: -40,
-      exitEmaPeriod: 8,
-      exitPivotN: 8,
-      stopKind: 'pct' as const,
-      stopAtrMult: 0.5,
-      stopPct: 0.005,
-    };
-    const legacy4h = {
-      emaPeriod: 8,
-      pivotN: 3,
-      belowScore: -20,
-      exitEmaPeriod: 8,
-      exitPivotN: 5,
-      stopKind: 'atr' as const,
-      stopAtrMult: 0.5,
-      stopPct: 0.005,
-    };
-    const missing = normalizeTideZoneSettings({ byTimeframe: { '1h': legacy1h, '4h': legacy4h } });
-    expect(missing.byTimeframe['1h']).toEqual(TIDE_PRESETS['1h']);
-    expect(missing.byTimeframe['4h']).toEqual(TIDE_PRESETS['4h']);
-    expect(missing.byTimeframe['1h'].exitMinScore).toBe(0);
-    const bad = normalizeTideZoneSettings({
-      byTimeframe: {
-        '1h': { exitMinScore: undefined },
-        '4h': { exitMinScore: Number.NaN },
-      },
-    });
-    expect(bad.byTimeframe['1h'].exitMinScore).toBe(0);
-    expect(bad.byTimeframe['4h'].exitMinScore).toBe(0);
-    const inf = normalizeTideZoneSettings({ byTimeframe: { '4h': { exitMinScore: Number.POSITIVE_INFINITY } } });
-    expect(inf.byTimeframe['4h'].exitMinScore).toBe(0);
   });
 
   it.each([

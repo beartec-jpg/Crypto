@@ -3,8 +3,6 @@ import { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { TideZonePoint } from '@/lib/indicators/tideZone';
 import { tideZoneLabel } from '@/lib/indicators/tideZone';
-import { TideHistEmaControl } from '@/components/indicators/TideHistEmaControl';
-import { ConnectedTideZoneSettingsModal } from '@/components/modals/TideZoneSettingsModal';
 import type { TideStatus } from '@/hooks/useTideV2';
 import type { TideTimeframe } from '@/types/tideZoneSettings';
 
@@ -20,6 +18,11 @@ interface TideZoneHudProps {
   className?: string;
   emaPeriod?: number;
   emaValue?: number;
+  /**
+   * overlay (default): floating card on the plot (fullscreen).
+   * inline: wrapping row outside the plot (main indicators card).
+   */
+  variant?: 'overlay' | 'inline';
 }
 
 const COMPONENTS = [
@@ -53,7 +56,6 @@ function fmtPrice(p: number): string {
 
 /** Shown instead of the HUD on timeframes where Tide does not run. */
 export function TideOffNote({ className }: { className?: string }) {
-  const [settingsOpen, setSettingsOpen] = useState(false);
   return (
     <div
       className={`pointer-events-auto inline-flex items-center gap-2 rounded-lg border border-slate-600/60 bg-slate-900/85 px-2 py-1 text-[11px] text-slate-300 backdrop-blur-sm ${className ?? ''}`}
@@ -61,8 +63,6 @@ export function TideOffNote({ className }: { className?: string }) {
       onPointerDown={(e) => e.stopPropagation()}
     >
       <span className="font-semibold">Tide: 1h/4h only</span>
-      <TideHistEmaControl timeframe={null} onOpenSettings={() => setSettingsOpen(true)} className="border-0 bg-transparent px-0" />
-      <ConnectedTideZoneSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }
@@ -77,29 +77,34 @@ export function TideZoneHud({
   className,
   emaPeriod,
   emaValue,
+  variant = 'overlay',
 }: TideZoneHudProps) {
   const [open, setOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const pct = (v: number) => Math.round(v * 100);
   const showAbsorb = absorb || last.tell === 'absorb';
   const showDistro = !showAbsorb && (distro || last.tell === 'distro');
   const showReacc = !showAbsorb && !showDistro && (reacc || last.tell === 'reacc');
   const fresh = status?.fresh ?? null;
+  const inline = variant === 'inline';
 
   return (
     <div
-      className={`pointer-events-auto max-w-[min(100%,20rem)] rounded-lg border backdrop-blur-sm shadow-lg ${kindClass(last.kind)} ${className ?? ''}`}
+      className={`pointer-events-auto rounded-lg border ${
+        inline
+          ? 'w-full min-w-0 max-w-full'
+          : 'max-w-[min(100%,20rem)] backdrop-blur-sm shadow-lg'
+      } ${kindClass(last.kind)} ${className ?? ''}`}
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
       <button
         type="button"
-        className="flex w-full items-center gap-2 px-2 py-1.5 text-left"
+        className="flex w-full items-start gap-2 px-2 py-1.5 text-left"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
       >
         <div className="min-w-0 flex-1">
-          <div className="text-[11px] font-semibold leading-tight truncate">
+          <div className="text-[11px] font-semibold leading-tight break-words">
             {showAbsorb && (
               <span className="mr-1 rounded bg-cyan-500/30 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-cyan-200">
                 Absorb
@@ -137,7 +142,7 @@ export function TideZoneHud({
             {tideZoneLabel(last.kind)}
             <span className="opacity-80"> · {last.score.toFixed(0)}</span>
           </div>
-          <div className="text-[10px] opacity-90 tabular-nums leading-tight">
+          <div className="text-[10px] opacity-90 tabular-nums leading-tight break-words">
             T {pct(last.tide)} · E {pct(last.energy)} · Tp {pct(last.tape)}
             {emaPeriod != null && emaValue != null && Number.isFinite(emaValue) && (
               <span className="text-sky-200"> · EMA{emaPeriod} {emaValue.toFixed(0)}</span>
@@ -148,12 +153,11 @@ export function TideZoneHud({
             <span className="opacity-60"> · {timeframe}</span>
           </div>
         </div>
-        {open ? <ChevronUp className="h-3.5 w-3.5 shrink-0" /> : <ChevronDown className="h-3.5 w-3.5 shrink-0" />}
+        {open ? <ChevronUp className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : <ChevronDown className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
       </button>
 
       {open && (
         <div className="border-t border-white/10 px-2 py-2 space-y-2">
-          <TideHistEmaControl timeframe={timeframe} onOpenSettings={() => setSettingsOpen(true)} />
           {COMPONENTS.map((c) => (
             <div key={c.key}>
               <div className="text-[10px] font-semibold uppercase tracking-wide">
@@ -196,7 +200,6 @@ export function TideZoneHud({
           </p>
         </div>
       )}
-      <ConnectedTideZoneSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} timeframe={timeframe} />
     </div>
   );
 }
