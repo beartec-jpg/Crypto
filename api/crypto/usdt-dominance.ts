@@ -7,7 +7,7 @@ import {
   mergeBasketByUtcDay,
   snapshotsToBarDays,
   type DominancePoint,
-} from '../_lib/usdtDominance';
+} from '../_lib/usdtDominance.js';
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const CACHE_CONTROL = 'public, s-maxage=21600, stale-while-revalidate=86400';
