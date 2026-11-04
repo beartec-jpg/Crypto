@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Single source of truth for drawing stroke / level colors.
  * Used by chart primitives (render) and edit-panel ColorPickers (preview).

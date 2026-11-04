@@ -1,8 +1,10 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import { MONTHLY_AI_CREDITS } from '../../shared/aiUsageTiers.js';
+import { tierFromSubscriptionItem } from '../../shared/stripeTiers.js';
 
-// Base tiers (Elliott Wave is a separate add-on)
+// Base tiers
 type BaseTier = "free" | "beginner" | "intermediate" | "pro" | "elite";
 
 const TIER_HIERARCHY: Record<BaseTier, number> = {
@@ -14,22 +16,19 @@ const TIER_HIERARCHY: Record<BaseTier, number> = {
 };
 
 const MONTHLY_ELLIOTT_AI_CREDITS: Record<BaseTier, number> = {
-  free: 0,
-  beginner: 0,
-  intermediate: 0,
-  pro: 0,
+  free: 50,
+  beginner: 50,
+  intermediate: 50,
+  pro: 50,
   elite: 150,
 };
 
-const ELLIOTT_ADDON_CREDITS = 50;
-
-function getCapabilities(tier: BaseTier, hasElliottAddon: boolean) {
+function getCapabilities(tier: BaseTier) {
   const tierLevel = TIER_HIERARCHY[tier] || 0;
   return {
     tier,
-    hasElliottAddon,
     canViewElliott: true,
-    canUseElliott: hasElliottAddon || tier === "elite",
+    canUseElliott: true,
     canUseAI: tierLevel >= TIER_HIERARCHY.intermediate,
     hasUnlimitedAI: false, // No tier has unlimited AI - all have monthly credits
     canUsePushNotifications: tierLevel >= TIER_HIERARCHY.pro,
@@ -88,7 +87,7 @@ async function getStripeClient() {
 
 // Sync ALL subscriptions from Stripe for a customer
 // Returns null if sync fails (preserves existing DB values)
-async function syncAllSubscriptionsFromStripe(customerId: string, userId: string, pool: any): Promise<{ tier: BaseTier; hasElliott: boolean } | null> {
+async function syncAllSubscriptionsFromStripe(customerId: string, userId: string, pool: any): Promise<{ tier: BaseTier } | null> {
   try {
     const stripe = await getStripeClient();
     if (!stripe || !customerId) {
@@ -110,52 +109,37 @@ async function syncAllSubscriptionsFromStripe(customerId: string, userId: string
       return null; // Don't downgrade - preserve existing
     }
 
-    // Map product names to tiers
-    const tierMap: Record<string, BaseTier> = {
-      'Beginner membership': 'beginner',
-      'Intermediate membership': 'intermediate',
-      'Pro membership': 'pro',
-      'Elite membership': 'elite',
-    };
-
     let bestTier: BaseTier = 'free';
-    let hasElliott = false;
     let foundProducts: string[] = [];
 
     // Check ALL subscriptions and ALL items
     for (const sub of allSubs.data) {
       console.log(`  📦 Subscription ${sub.id} (${sub.status}):`);
       for (const item of sub.items.data) {
-        const productName = (item.price?.product as any)?.name || '';
-        console.log(`    - Product: "${productName}"`);
+        const productName = (item.price?.product as any)?.name || item.price?.id || '';
+        console.log(`    - Product/price: "${productName}"`);
         foundProducts.push(productName);
 
-        // Check for tier products
-        if (tierMap[productName]) {
-          const foundTier = tierMap[productName];
+        // Pinned price id first, then metadata, then product name (current + legacy)
+        const foundTier = tierFromSubscriptionItem(item) as BaseTier | null;
+        if (foundTier && TIER_HIERARCHY[foundTier] !== undefined) {
           if (TIER_HIERARCHY[foundTier] > TIER_HIERARCHY[bestTier]) {
             bestTier = foundTier;
           }
-        }
-
-        // Check for Elliott Wave (handles "Elliot" and "Elliott" spellings)
-        if (productName.toLowerCase().includes('elliot')) {
-          hasElliott = true;
-          console.log(`    ✅ Found Elliott Wave!`);
         }
       }
     }
 
     // Only update if we found at least one known product
-    if (bestTier !== 'free' || hasElliott) {
+    if (bestTier !== 'free') {
       await pool.query(`
         UPDATE crypto_subscriptions 
-        SET tier = $1, has_elliott_addon = $2, updated_at = NOW()
-        WHERE user_id = $3
-      `, [bestTier, hasElliott, userId]);
+        SET tier = $1, updated_at = NOW()
+        WHERE user_id = $2
+      `, [bestTier, userId]);
       
-      console.log(`✅ Synced: tier=${bestTier}, hasElliott=${hasElliott}`);
-      return { tier: bestTier, hasElliott };
+      console.log(`✅ Synced: tier=${bestTier}`);
+      return { tier: bestTier };
     } else {
       console.log(`⚠️ Found ${foundProducts.length} products but none matched: ${foundProducts.join(', ')}`);
       return null; // Preserve existing values
@@ -180,14 +164,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   
   // If not authenticated, return free tier
   if (!auth) {
-    const capabilities = getCapabilities('free', false);
+    const capabilities = getCapabilities('free');
     return res.status(200).json({
       id: null,
       userId: 'anonymous',
       subscriptionStatus: 'none',
       aiCredits: 0,
       stripeSubscriptionId: null,
-      elliottStripeItemId: null,
       monthlyUsage: {
         aiCredits: 0,
         aiLimit: 0,
@@ -222,11 +205,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Create free subscription for new user
       const insertResult = await pool.query(`
         INSERT INTO crypto_subscriptions (
-          id, user_id, tier, has_elliott_addon, subscription_status,
+          id, user_id, tier, subscription_status,
           ai_credits, ai_credits_reset_at, created_at, updated_at
         )
         VALUES (
-          gen_random_uuid(), $1, 'free', false, 'active',
+          gen_random_uuid(), $1, 'free', 'active',
           0, NOW(), NOW(), NOW()
         )
         RETURNING *
@@ -245,7 +228,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Sync from Stripe if customer ID exists - this runs on EVERY request
     let tier: BaseTier;
-    let hasElliottAddon: boolean;
     
     if (stripeCustomerId) {
       console.log(`🔄 Starting Stripe sync for customer ${stripeCustomerId}...`);
@@ -253,27 +235,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (synced) {
         // Stripe sync successful - use synced values
         tier = synced.tier;
-        hasElliottAddon = synced.hasElliott;
-        console.log(`✅ Stripe sync complete: tier=${tier}, hasElliott=${hasElliottAddon}`);
+        console.log(`✅ Stripe sync complete: tier=${tier}`);
       } else {
         // Sync failed or no products found - use existing DB values
         tier = (subscription.tier || 'free') as BaseTier;
-        hasElliottAddon = subscription.has_elliott_addon || false;
-        console.log(`⚠️ Stripe sync returned null, using DB: tier=${tier}, hasElliott=${hasElliottAddon}`);
+        console.log(`⚠️ Stripe sync returned null, using DB: tier=${tier}`);
       }
     } else {
       // No Stripe customer - use existing DB values
       tier = (subscription.tier || 'free') as BaseTier;
-      hasElliottAddon = subscription.has_elliott_addon || false;
-      console.log(`ℹ️ No Stripe customer, using DB: tier=${tier}, hasElliott=${hasElliottAddon}`);
+      console.log(`ℹ️ No Stripe customer, using DB: tier=${tier}`);
     }
     
-    const capabilities = getCapabilities(tier, hasElliottAddon);
+    const capabilities = getCapabilities(tier);
     
     const aiLimit = MONTHLY_AI_CREDITS[tier] || 0;
     const aiCredits = subscription.ai_credits || 0;
     
-    const elliottLimit = (tier === 'elite' ? MONTHLY_ELLIOTT_AI_CREDITS[tier] : 0) + (hasElliottAddon ? ELLIOTT_ADDON_CREDITS : 0);
+    const elliottLimit = MONTHLY_ELLIOTT_AI_CREDITS[tier] ?? MONTHLY_ELLIOTT_AI_CREDITS.free;
     const elliottCredits = subscription.elliott_ai_credits || 0;
 
     return res.status(200).json({
@@ -284,7 +263,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       aiCreditsRemaining: aiCredits,
       aiCreditsLimit: aiLimit,
       stripeSubscriptionId: subscription.stripe_subscription_id,
-      elliottStripeItemId: subscription.elliott_stripe_item_id,
       monthlyUsage: {
         aiCredits: aiCredits,
         aiLimit: aiLimit,
@@ -298,14 +276,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error('Error fetching subscription:', error);
     
     // Fallback to free tier on error
-    const capabilities = getCapabilities('free', false);
+    const capabilities = getCapabilities('free');
     return res.status(200).json({
       id: null,
       userId: auth.userId,
       subscriptionStatus: 'active',
       aiCredits: 0,
       stripeSubscriptionId: null,
-      elliottStripeItemId: null,
       monthlyUsage: {
         aiCredits: 0,
         aiLimit: 0,

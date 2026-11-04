@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Zone helper utilities for trading indicators
  * Used to check candle positions relative to price zones/levels

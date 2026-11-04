@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Badge color utilities for divergence confluence strength.
  * Re-exports the canonical implementation from divergenceCalculations.

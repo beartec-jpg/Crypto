@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Cold Signer Service - Hot wallet side helpers for QR-based cold signing flow.
  *

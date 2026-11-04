@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import React, { memo } from 'react';
 import { MenuButton } from './MenuButton';
 import { MenuDragHandle } from './MenuDragHandle';

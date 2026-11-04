@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { MouseEvent } from 'react';
 import { Time } from 'lightweight-charts';
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';

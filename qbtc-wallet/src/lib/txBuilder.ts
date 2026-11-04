@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Lightweight transaction builder for qBTC PWA.
  * Uses ECDSA-only signing (3-element witness) which is valid for hybrid addresses.

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { buildIndicatorCoach, type IndicatorCoachReport } from '@/lib/indicators/indicatorCoach';
 import { tideZoneLabel } from '@/lib/indicators/tideZone';
 import type { OscillatorData } from '@/hooks/useOscillatorData';

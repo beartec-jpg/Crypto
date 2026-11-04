@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useCallback } from 'react';
 import type { RewindSettings } from '@/types/rewind';
 import { DEFAULT_REWIND_SETTINGS } from '@/types/rewind';

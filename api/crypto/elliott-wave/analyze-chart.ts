@@ -1,6 +1,8 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
+import { withScenarioFraming } from '../../_lib/scenarioFraming.js';
 
 const ADMIN_EMAIL = 'beartec@beartec.uk';
 
@@ -78,7 +80,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     let tier = 'free';
-    let hasElliottAddon = false;
     let elliottCreditsUsed = 0;
     let cryptoUserId: number | null = null;
     let dbAvailable = false;
@@ -97,13 +98,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         dbAvailable = true;
 
         const subResult = await pool.query(
-          'SELECT tier, has_elliott_addon, elliott_ai_credits, elliott_ai_credits_reset_at FROM crypto_subscriptions WHERE user_id = $1',
+          'SELECT tier, elliott_ai_credits, elliott_ai_credits_reset_at FROM crypto_subscriptions WHERE user_id = $1',
           [cryptoUserId]
         );
 
         subscription = subResult.rows[0];
         tier = subscription?.tier || 'free';
-        hasElliottAddon = subscription?.has_elliott_addon || false;
         elliottCreditsUsed = subscription?.elliott_ai_credits || 0;
         const resetAt = subscription?.elliott_ai_credits_reset_at ? new Date(subscription.elliott_ai_credits_reset_at) : null;
 
@@ -123,18 +123,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error('DB connection error:', dbError);
       if (isAdmin) {
         tier = 'elite';
-        hasElliottAddon = true;
         console.log('Admin bypass enabled due to DB error');
       }
-    }
-
-    const hasElliottAccess = isAdmin || tier === 'elite' || hasElliottAddon;
-    if (!hasElliottAccess) {
-      try { await pool?.end(); } catch {}
-      return res.status(403).json({ 
-        error: 'Elliott Wave AI requires Elite tier or Elliott Wave add-on',
-        message: 'Please upgrade to Elite tier or purchase the Elliott Wave add-on to access AI analysis'
-      });
     }
 
     const elliottLimit = isAdmin ? 999 : (tier === 'elite' ? MONTHLY_ELLIOTT_CREDITS.elite : MONTHLY_ELLIOTT_CREDITS.addon);
@@ -202,7 +192,7 @@ Based on these pivot points, identify the most likely Elliott Wave pattern. Prov
       messages: [
         {
           role: 'system',
-          content: 'You are an expert Elliott Wave analyst. Analyze price action patterns and respond ONLY with valid JSON.',
+          content: withScenarioFraming('You are an expert Elliott Wave analyst. Analyze price action patterns and respond ONLY with valid JSON.'),
         },
         {
           role: 'user',

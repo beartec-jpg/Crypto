@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { Helmet } from 'react-helmet-async';
 import { MarketingPageFrame } from '@/components/marketing/MarketingPageFrame';
 

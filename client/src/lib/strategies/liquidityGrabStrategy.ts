@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Liquidity Grab Strategy
  * Identifies and trades liquidity sweeps (stop hunts) followed by reversals

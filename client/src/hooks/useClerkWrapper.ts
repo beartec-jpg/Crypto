@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // This file provides safe wrappers for Clerk hooks that work in both
 // development (no ClerkProvider) and production (with ClerkProvider) modes
 

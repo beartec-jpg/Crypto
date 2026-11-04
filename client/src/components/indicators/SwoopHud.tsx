@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { SWOOP_BOOK_LABEL, type SwoopResult } from '@/types/swoop';
 
 interface SwoopHudProps {

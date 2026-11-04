@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { Link, useLocation } from 'wouter';
 import { BarChart3, Bot, GraduationCap, Crown, MessageSquare } from 'lucide-react';
 import { useCryptoAuth } from '@/hooks/useCryptoAuth';
@@ -5,7 +6,6 @@ import { useQuery } from '@tanstack/react-query';
 
 interface SubscriptionData {
   tier: string;
-  hasElliottAddon: boolean;
   canUseElliott: boolean;
   canUseAI: boolean;
 }

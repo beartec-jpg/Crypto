@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // shared/utils/sandboxBootstrap.ts
 export type SandboxOptions = {
   autoInit?: boolean; // default false: do not auto-init on import

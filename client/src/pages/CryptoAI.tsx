@@ -1,5 +1,5 @@
-import { TechnicalScenarioDisclaimer } from '@/components/TechnicalScenarioDisclaimer';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { Link, useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
@@ -17,7 +17,22 @@ import { useToast } from '@/hooks/use-toast';
 import { useWatchlistState } from '@/hooks/useWatchlistState';
 import { usePageViewTracking } from '@/hooks/useAnalytics';
 import { useLoadingMessages } from '@/hooks/useLoadingMessages';
-import { authenticatedApiRequest } from '@/lib/apiAuth';
+import { ApiError, authenticatedApiRequest } from '@/lib/apiAuth';
+import {
+  DEEP_DIVE_POLL_INTERVAL_MS,
+  DEEP_DIVE_STILL_WORKING_MESSAGE,
+  clearSavedDeepDiveJob,
+  clearSavedDeepDiveJobsForUser,
+  deepDiveJobErrorMessage,
+  deepDiveJobStorageKey,
+  isDeepDiveClientCapReached,
+  isResumableDeepDiveError,
+  mapDeepDiveClientError,
+  readSavedDeepDiveJob,
+  writeSavedDeepDiveJob,
+  type SavedDeepDiveJob,
+} from '@/lib/cryptoAiDeepJob';
+import { buildDeepDiveAnalysisSections, type DeepDiveMarketAnalysisView, type DeepDiveNearMissView } from '@/lib/cryptoAiDeepAnalysis';
 import { cn } from '@/lib/utils';
 import {
   collectWatchLevels,
@@ -27,6 +42,8 @@ import {
   getOverallSummary,
   getSection,
   isPendingTradeIdea,
+  setupStatusLabel,
+  formatDistanceFromPrice,
   type MultiTFInsights,
   type TradeIdea,
 } from '@/lib/cryptoAiTradePlans';
@@ -37,6 +54,8 @@ import {
 } from '@/lib/cryptoAiSessionBoard';
 import { queryClient } from '@/lib/queryClient';
 import { formatTickerDisplay } from '@/lib/chart/priceUtils';
+import { AiScenarioDisclaimer } from '@/components/ai/AiScenarioDisclaimer';
+import { TechnicalScenarioDisclaimer } from '@/components/TechnicalScenarioDisclaimer';
 import { DEFAULT_AI_TRADER_MODE, ENABLED_AI_TRADER_MODES, isAiTraderModeId, type AiTraderModeId } from '@shared/aiTraderModes';
 import type { CryptoPreferences } from '@shared/schema';
 import {
@@ -73,6 +92,8 @@ type AnalysisResponse = {
   success?: boolean;
   multiTFInsights?: MultiTFInsights | null;
   bestTrades?: TradeIdea[];
+  marketAnalysis?: DeepDiveMarketAnalysisView | null;
+  nearMissSetups?: DeepDiveNearMissView[] | null;
   tokens?: { input?: number; output?: number };
   estimatedCost?: number;
   creditsRemaining?: number;
@@ -157,7 +178,8 @@ const labelClass = 'text-xs font-semibold uppercase tracking-wide text-slate-400
 export default function CryptoAI() {
   usePageViewTracking('crypto-ai');
 
-  const { isAuthenticated, isLoading: authLoading, isAdmin } = useCryptoAuth();
+  const { isAuthenticated, isLoading: authLoading, isAdmin, user: authUser } = useCryptoAuth();
+  const authUserId = authUser?.id ? String(authUser.id) : '';
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { watchlistTickers } = useWatchlistState();
@@ -173,6 +195,8 @@ export default function CryptoAI() {
   const [deepDiveStates, setDeepDiveStates] = useState<Record<string, RequestState>>({});
   const [sessionCandles, setSessionCandles] = useState<Record<string, ReturnType<typeof parseKlinesToCandles>>>({});
   const [pageSection, setPageSection] = useState<AiPageSection>('analysis');
+  const [prefsReady, setPrefsReady] = useState(false);
+  const deepDivePollTokens = useRef<Record<string, number>>({});
 
   const { data: preferences, isLoading: preferencesLoading } = useQuery<AiPreferences>({
     queryKey: ['/api/crypto/preferences'],
@@ -220,6 +244,7 @@ export default function CryptoAI() {
 
     setMinRiskReward(String(preferences.minRiskReward ?? 1.5));
     setMinConfluence(String(preferences.minConfluence ?? 3));
+    setPrefsReady(true);
   }, [preferences]);
 
   const watchlistOptions = useMemo(
@@ -364,6 +389,122 @@ export default function CryptoAI() {
     setDeepDiveStates({});
   }, [timeframeKey, aiTraderMode, aiTradeHorizon]);
 
+  // Sign-out: drop every saved deep-dive job so the next user can't resume them.
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) clearSavedDeepDiveJobsForUser();
+  }, [authLoading, isAuthenticated]);
+
+  const deepDiveKeyFor = useCallback((ticker: string) => deepDiveJobStorageKey({
+    userId: authUserId || 'anon',
+    ticker,
+    mode: aiTraderMode,
+    horizon: aiTradeHorizon,
+    higherTimeframe: aiHigherTimeframe,
+    lowerTimeframe: aiLowerTimeframe,
+  }), [aiHigherTimeframe, aiLowerTimeframe, aiTradeHorizon, aiTraderMode, authUserId]);
+
+  const stopDeepDivePoll = useCallback((ticker: string) => {
+    deepDivePollTokens.current[ticker] = (deepDivePollTokens.current[ticker] ?? 0) + 1;
+  }, []);
+
+  const beginDeepDivePoll = useCallback((ticker: string, job: SavedDeepDiveJob) => {
+    const key = deepDiveKeyFor(ticker);
+    const token = (deepDivePollTokens.current[ticker] ?? 0) + 1;
+    deepDivePollTokens.current[ticker] = token;
+    const stillCurrent = () => deepDivePollTokens.current[ticker] === token;
+    setDeepDiveStates((current) => ({ ...current, [ticker]: { status: 'loading' } }));
+
+    const run = async () => {
+      while (stillCurrent()) {
+        try {
+          const response = await authenticatedApiRequest(
+            'GET',
+            `/api/crypto/ai-deep-job?id=${encodeURIComponent(job.jobId)}`,
+            undefined,
+            { timeout: 20000 },
+          );
+          const payload = await response.json() as {
+            status?: string;
+            result?: AnalysisResponse;
+            error?: string;
+          };
+          if (!stillCurrent()) return;
+          if (payload.status === 'done') {
+            clearSavedDeepDiveJob(key);
+            if (payload.result) {
+              setDeepDiveStates((current) => ({ ...current, [ticker]: { status: 'success', data: payload.result! } }));
+            } else {
+              setDeepDiveStates((current) => ({
+                ...current,
+                [ticker]: { status: 'error', error: 'Deep-dive finished without a result.' },
+              }));
+            }
+            return;
+          }
+          if (payload.status === 'error') {
+            clearSavedDeepDiveJob(key);
+            setDeepDiveStates((current) => ({
+              ...current,
+              [ticker]: { status: 'error', error: deepDiveJobErrorMessage(payload) },
+            }));
+            return;
+          }
+        } catch (error: unknown) {
+          if (!stillCurrent()) return;
+          if (error instanceof ApiError && error.status === 404) {
+            clearSavedDeepDiveJob(key);
+          }
+          setDeepDiveStates((current) => ({
+            ...current,
+            [ticker]: { status: 'error', error: mapDeepDiveClientError(error) },
+          }));
+          return;
+        }
+        if (!stillCurrent()) return;
+        if (isDeepDiveClientCapReached(job.startedAt, Date.now())) {
+          setDeepDiveStates((current) => ({
+            ...current,
+            [ticker]: { status: 'error', error: DEEP_DIVE_STILL_WORKING_MESSAGE },
+          }));
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, DEEP_DIVE_POLL_INTERVAL_MS));
+      }
+    };
+
+    void run();
+  }, [deepDiveKeyFor]);
+
+  useEffect(() => {
+    if (!prefsReady || authLoading || !isAuthenticated || !canUseAi) return;
+
+    const resumeSaved = () => {
+      for (const ticker of trackedTickers) {
+        const saved = readSavedDeepDiveJob(deepDiveKeyFor(ticker));
+        if (saved) beginDeepDivePoll(ticker, saved);
+      }
+    };
+
+    resumeSaved();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') resumeSaved();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      for (const ticker of trackedTickers) stopDeepDivePoll(ticker);
+    };
+  }, [
+    authLoading,
+    beginDeepDivePoll,
+    canUseAi,
+    deepDiveKeyFor,
+    isAuthenticated,
+    prefsReady,
+    stopDeepDivePoll,
+    trackedTickers,
+  ]);
+
   const handleHigherTimeframeChange = async (nextHigherTimeframe: string) => {
     if (!(CRYPTO_AI_HIGHER_TIMEFRAMES as readonly string[]).includes(nextHigherTimeframe)) return;
     const nextHigher = nextHigherTimeframe as CryptoAiHigherTimeframe;
@@ -441,22 +582,48 @@ export default function CryptoAI() {
   };
 
   const handleDeepDive = async (ticker: string) => {
+    const key = deepDiveKeyFor(ticker);
+    const existing = readSavedDeepDiveJob(key);
+    if (existing) {
+      beginDeepDivePoll(ticker, existing);
+      return;
+    }
+
     setDeepDiveStates((current) => ({ ...current, [ticker]: { status: 'loading' } }));
 
     try {
-      const data = await fetchAnalysis(ticker, 'deep');
+      const response = await authenticatedApiRequest(
+        'POST',
+        '/api/crypto/order-flow-alerts-multi-tf',
+        {
+          symbol: ticker,
+          higherTimeframe: aiHigherTimeframe,
+          lowerTimeframe: aiLowerTimeframe,
+          analysisType: 'deep',
+          mode: aiTraderMode,
+          tradeHorizon: aiTradeHorizon,
+        },
+        { timeout: 90000 },
+      );
+      const data = await response.json();
+      if (data?.jobId) {
+        const saved: SavedDeepDiveJob = { jobId: String(data.jobId), startedAt: Date.now() };
+        writeSavedDeepDiveJob(key, saved);
+        beginDeepDivePoll(ticker, saved);
+        return;
+      }
       setDeepDiveStates((current) => ({ ...current, [ticker]: { status: 'success', data } }));
-    } catch (error: any) {
+    } catch (error: unknown) {
       setDeepDiveStates((current) => ({
         ...current,
-        [ticker]: { status: 'error', error: error.message || 'Deep-dive trade search failed.' },
+        [ticker]: { status: 'error', error: mapDeepDiveClientError(error) },
       }));
     }
   };
 
   if (authLoading || preferencesLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white pb-32">
+      <div className="bt-dark-surface min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white pb-32">
         <div className="mx-auto max-w-7xl space-y-6 px-4 py-6">
           <Skeleton className="h-20 w-40 bg-slate-800" />
           <Skeleton className="h-10 w-80 bg-slate-800" />
@@ -505,7 +672,7 @@ export default function CryptoAI() {
             </div>
 
             <div className="space-y-2">
-              <div className={labelClass}>Trader mode</div>
+              <div className={labelClass}>Analysis lens</div>
               <div className="flex flex-wrap gap-2">
                 {ENABLED_AI_TRADER_MODES.map((mode) => (
                   <Pill
@@ -520,7 +687,7 @@ export default function CryptoAI() {
             </div>
 
             <div className="space-y-2">
-              <div className={labelClass}>Trade length</div>
+              <div className={labelClass}>Scenario horizon</div>
               <div className="flex flex-wrap gap-2">
                 {TRADE_HORIZON_OPTIONS.map((option) => (
                   <Pill
@@ -532,7 +699,7 @@ export default function CryptoAI() {
                   </Pill>
                 ))}
               </div>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-400">
                 Hold window ~{getCryptoAiTradeHorizon(aiTradeHorizon).expectedHold}. Scales stop/target structure independently of the chart pair.
               </p>
             </div>
@@ -598,7 +765,7 @@ export default function CryptoAI() {
               <div className={labelClass}>Deep-dive thresholds</div>
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="space-y-2">
-                  <div className="text-sm font-medium text-slate-200">Min R/R</div>
+                  <div className="text-sm font-medium text-slate-200">Min distance ratio</div>
                   <Input
                     type="number"
                     step="0.1"
@@ -637,25 +804,25 @@ export default function CryptoAI() {
             <p className="mb-4 text-sm text-slate-400">Admin-only spend and cache health.</p>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
               <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-4">
-                <div className="text-xs uppercase text-slate-500">Active combos</div>
+                <div className="text-xs uppercase text-slate-400">Active combos</div>
                 <div className="mt-1 text-2xl font-semibold">{adminUsage.activeCombos ?? adminUsage.activePairs ?? 0}</div>
               </div>
               <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-4">
-                <div className="text-xs uppercase text-slate-500">Calls / day</div>
+                <div className="text-xs uppercase text-slate-400">Calls / day</div>
                 <div className="mt-1 text-2xl font-semibold">{adminUsage.callsPerDay.toLocaleString()}</div>
               </div>
               <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-4">
-                <div className="text-xs uppercase text-slate-500">Avg tokens / call</div>
+                <div className="text-xs uppercase text-slate-400">Avg tokens / call</div>
                 <div className="mt-1 text-sm font-semibold">
                   {(adminUsage.averageInputTokens ?? 0).toLocaleString()} in / {(adminUsage.averageOutputTokens ?? 0).toLocaleString()} out
                 </div>
               </div>
               <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-4">
-                <div className="text-xs uppercase text-slate-500">Est. daily cost</div>
+                <div className="text-xs uppercase text-slate-400">Est. daily cost</div>
                 <div className="mt-1 text-2xl font-semibold">${(adminUsage.estimatedDailyCost ?? 0).toFixed(2)}</div>
               </div>
               <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-4">
-                <div className="text-xs uppercase text-slate-500">Cache hit rate</div>
+                <div className="text-xs uppercase text-slate-400">Cache hit rate</div>
                 <div className="mt-1 text-2xl font-semibold">{((adminUsage.cacheHitRate ?? 0) * 100).toFixed(0)}%</div>
               </div>
             </div>
@@ -693,6 +860,11 @@ export default function CryptoAI() {
               const deepInsights = deepDiveState.status === 'success' ? deepDiveState.data.multiTFInsights : null;
               const tradeIdeas = deepDiveState.status === 'success' ? (deepDiveState.data.bestTrades ?? []) : [];
               const deepDiveWatchLevels = collectWatchLevels(deepInsights, [aiLowerTimeframe, aiHigherTimeframe]);
+              const deepAnalysisSections = deepDiveState.status === 'success'
+                ? buildDeepDiveAnalysisSections(deepDiveState.data, aiHigherTimeframe, aiLowerTimeframe)
+                : [];
+              const savedDeepJob = readSavedDeepDiveJob(deepDiveKeyFor(ticker));
+              const deepDiveCheckInstead = Boolean(savedDeepJob) && deepDiveState.status !== 'loading';
 
               const canPrintTotal =
                 generalState.status === 'success' || deepDiveState.status === 'success';
@@ -754,7 +926,7 @@ export default function CryptoAI() {
                                 });
                                 toast({
                                   title: 'Total analysis downloaded',
-                                  description: 'Session stats, cross-TF, and setups saved as PNG.',
+                                  description: 'Session stats, cross-TF, and scenarios saved as PNG.',
                                 });
                               } catch (error: any) {
                                 toast({
@@ -772,6 +944,7 @@ export default function CryptoAI() {
                       </div>
                     </div>
                   <div className="space-y-6">
+                  <AiScenarioDisclaimer />
                     <section className="space-y-4 rounded-lg border border-slate-700 bg-slate-950/40 p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div>
@@ -869,7 +1042,7 @@ export default function CryptoAI() {
                     <section className="space-y-4 rounded-lg border border-slate-700 bg-slate-950/40 p-4">
                       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div>
-                          <h3 className="font-semibold text-white">Deep-dive trade search</h3>
+                          <h3 className="font-semibold text-white">Deep-dive technical scenarios</h3>
                           <p className="text-sm text-slate-400">
                             Uses {ENABLED_AI_TRADER_MODES.find((mode) => mode.id === aiTraderMode)?.label ?? 'SMC / ICT'} mode
                             {' · '}
@@ -883,10 +1056,15 @@ export default function CryptoAI() {
                               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                               {loadingMessage}
                             </>
+                          ) : deepDiveCheckInstead ? (
+                            <>
+                              <Search className="mr-2 h-4 w-4" />
+                              Check
+                            </>
                           ) : (
                             <>
                               <Search className="mr-2 h-4 w-4" />
-                              Search for trades
+                              Generate scenarios
                             </>
                           )}
                         </Button>
@@ -895,8 +1073,23 @@ export default function CryptoAI() {
                       {deepDiveState.status === 'error' ? (
                         <Alert variant="destructive">
                           <AlertCircle className="h-4 w-4" />
-                          <AlertTitle>Scenario search failed</AlertTitle>
-                          <AlertDescription>{deepDiveState.error}</AlertDescription>
+                          <AlertTitle>
+                            {isResumableDeepDiveError(deepDiveState.error) ? 'Scenario search still running' : 'Scenario search failed'}
+                          </AlertTitle>
+                          <AlertDescription>
+                            <p>{deepDiveState.error}</p>
+                            {savedDeepJob ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="mt-3"
+                                onClick={() => handleDeepDive(ticker)}
+                              >
+                                Check
+                              </Button>
+                            ) : null}
+                          </AlertDescription>
                         </Alert>
                       ) : null}
 
@@ -943,8 +1136,21 @@ export default function CryptoAI() {
                               </Button>
                             </div>
                             <p className="text-sm text-slate-400">{getOverallSummary(deepInsights)}</p>
+                            {deepAnalysisSections.length > 0 ? (
+                              <div className="mt-3 space-y-3" data-testid="deep-dive-analysis">
+                                {deepAnalysisSections.map((section) => (
+                                  <div key={section.title}>
+                                    <div className="text-xs font-semibold uppercase text-slate-300">{section.title}</div>
+                                    {section.lines.map((line, lineIndex) => (
+                                      <p key={`${section.title}-${lineIndex}`} className="text-sm text-slate-400">{line}</p>
+                                    ))}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
                           </div>
 
+                          <AiScenarioDisclaimer />
                           {tradeIdeas.length === 0 ? (
                             <div className="rounded-lg border border-dashed border-slate-700 p-4">
                               <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
@@ -952,7 +1158,7 @@ export default function CryptoAI() {
                                 Key zones to watch
                               </div>
                               <p className="text-sm text-slate-400">
-                                No chart setup has cleared the confluence and risk/reward gates yet. The next structural zones on this chart are listed below.
+                                No scenario has cleared the confluence and distance-ratio checks. The next structural zones on the chart are listed below.
                               </p>
                               {deepDiveWatchLevels.length > 0 ? (
                                 <ul className="mt-3 space-y-2 text-sm text-slate-400">
@@ -970,19 +1176,32 @@ export default function CryptoAI() {
                                 <div key={`${ticker}-trade-${index}`} className="rounded-lg border border-slate-700 bg-slate-800/40 p-4">
                                   <div className="mb-3 flex flex-wrap items-center gap-2">
                                     <Badge variant={trade.direction === 'LONG' ? 'default' : trade.direction === 'SHORT' ? 'destructive' : 'outline'}>
-                                      {trade.direction ?? 'Setup'}
+                                      {trade.direction === 'LONG' ? 'Bullish scenario' : trade.direction === 'SHORT' ? 'Bearish scenario' : 'Scenario'}
                                     </Badge>
                                     <Badge variant="secondary">{trade.grade ?? 'Unrated'}</Badge>
                                     <Badge variant={getHtfRelationshipBadgeVariant(trade.htfRelationship)}>
                                       {getHtfRelationshipLabel(trade.htfRelationship)}
                                     </Badge>
-                                    <Badge variant="outline">{isPendingTradeIdea(trade) ? 'Pending plan' : 'Live setup'}</Badge>
+                                    <Badge
+                                      variant={isPendingTradeIdea(trade) ? 'outline' : 'default'}
+                                      className={isPendingTradeIdea(trade) ? 'border-amber-400 text-amber-300' : 'bg-emerald-600 text-white'}
+                                      data-testid="setup-status-badge"
+                                    >
+                                      {setupStatusLabel(trade)}
+                                    </Badge>
                                     <Badge variant="outline">{trade.primaryTF ?? `${aiLowerTimeframe}/${aiHigherTimeframe}`}</Badge>
                                   </div>
 
+                                  {(formatDistanceFromPrice(trade) || trade.invalidation) ? (
+                                    <div className="mb-3 text-sm text-muted-foreground space-y-0.5">
+                                      {formatDistanceFromPrice(trade) ? <div>Trigger distance: {formatDistanceFromPrice(trade)}</div> : null}
+                                      {trade.invalidation ? <div>Invalidation: {trade.invalidation}</div> : null}
+                                    </div>
+                                  ) : null}
+
                                   {(trade.triggerZone || trade.triggerCondition) ? (
                                     <div className="mb-3 rounded-md bg-slate-950/60 p-3">
-                                      <div className="text-xs uppercase text-slate-500">Trigger</div>
+                                      <div className="text-xs uppercase text-slate-400">Trigger</div>
                                       <div className="font-medium">{trade.triggerZone ?? trade.entryZone ?? '—'}</div>
                                       {trade.triggerCondition ? (
                                         <div className="mt-1 text-sm text-muted-foreground">{trade.triggerCondition}</div>
@@ -992,33 +1211,33 @@ export default function CryptoAI() {
 
                                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                                     <div>
-                                      <div className="text-xs uppercase text-muted-foreground">Entry</div>
+                                      <div className="text-xs uppercase text-muted-foreground">Trigger level</div>
                                       <div className="font-medium">{formatValue(trade.entry)}</div>
                                       {trade.entryZone ? <div className="text-xs text-muted-foreground">{trade.entryZone}</div> : null}
                                     </div>
                                     <div>
-                                      <div className="text-xs uppercase text-muted-foreground">Stop</div>
+                                      <div className="text-xs uppercase text-muted-foreground">Invalidation level</div>
                                       <div className="font-medium">{formatValue(trade.stopLoss)}</div>
                                       {trade.slRationale ? <div className="text-xs text-muted-foreground">{trade.slRationale}</div> : null}
                                     </div>
                                     <div>
-                                      <div className="text-xs uppercase text-muted-foreground">Targets</div>
+                                      <div className="text-xs uppercase text-muted-foreground">Reference levels</div>
                                       <div className="font-medium space-y-0.5">
                                         {trade.targets?.length ? (
                                           trade.targets.map((target, tpIndex) => (
                                             <div key={`${ticker}-tp-${tpIndex}`}>
-                                              TP{tpIndex + 1}: {formatTargetWithPercent(trade.entry, target, trade.direction)}
+                                              Level {tpIndex + 1}: {formatTargetWithPercent(trade.entry, target, trade.direction)}
                                             </div>
                                           ))
                                         ) : (
                                           '—'
                                         )}
                                       </div>
-                                      {trade.tp1Rationale ? <div className="text-xs text-muted-foreground">TP1: {trade.tp1Rationale}</div> : null}
-                                      {trade.tp2Rationale ? <div className="text-xs text-muted-foreground">TP2: {trade.tp2Rationale}</div> : null}
+                                      {trade.tp1Rationale ? <div className="text-xs text-muted-foreground">Level 1: {trade.tp1Rationale}</div> : null}
+                                      {trade.tp2Rationale ? <div className="text-xs text-muted-foreground">Level 2: {trade.tp2Rationale}</div> : null}
                                     </div>
                                     <div>
-                                      <div className="text-xs uppercase text-muted-foreground">R:R</div>
+                                      <div className="text-xs uppercase text-muted-foreground">Distance ratio (illustrative)</div>
                                       <div className="font-medium">
                                         {trade.riskRewardRatio == null ? '—' : `${trade.riskRewardRatio.toFixed(2)}R`}
                                       </div>
@@ -1053,11 +1272,11 @@ export default function CryptoAI() {
                                            horizonLabel: getCryptoAiTradeHorizon(aiTradeHorizon).label,
                                            modeLabel: ENABLED_AI_TRADER_MODES.find((mode) => mode.id === aiTraderMode)?.label,
                                          });
-                                         toast({ title: 'Chart setup downloaded', description: 'PNG saved to your downloads.' });
+                                         toast({ title: 'Scenario downloaded', description: 'PNG saved to your downloads.' });
                                        } catch (error: any) {
                                          toast({
                                            title: 'Download failed',
-                                           description: error?.message || 'Could not create trade image.',
+                                           description: error?.message || 'Could not create scenario image.',
                                            variant: 'destructive',
                                          });
                                        }
@@ -1072,14 +1291,14 @@ export default function CryptoAI() {
                                      onClick={() => {
                                        const dir = trade.direction;
                                        if (dir !== 'LONG' && dir !== 'SHORT') {
-                                         toast({ title: 'Cannot print chart setup', description: 'Setup direction must be LONG or SHORT.', variant: 'destructive' });
+                                         toast({ title: 'Cannot draw scenario', description: 'Scenario direction must be bullish or bearish.', variant: 'destructive' });
                                          return;
                                        }
                                        const entry = Number(trade.entry);
                                        const sl = Number(trade.stopLoss);
                                        const tp = Number(trade.targets?.[0]);
                                        if (!entry || !sl || !tp) {
-                                         toast({ title: 'Cannot print trade', description: 'Missing entry, stop-loss, or target price.', variant: 'destructive' });
+                                         toast({ title: 'Cannot draw scenario', description: 'Missing trigger, invalidation, or reference level.', variant: 'destructive' });
                                          return;
                                        }
                                        const STORAGE_KEY = 'manual_trades_v1';
@@ -1099,11 +1318,11 @@ export default function CryptoAI() {
                                        };
                                        existing.push(newTrade);
                                        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(existing)); } catch { toast({ title: 'Storage full', description: 'Could not save trade – browser storage quota exceeded.', variant: 'destructive' }); return; }
-                                       toast({ title: 'Chart setup printed to chart', description: `Open ${formatTickerDisplay(ticker)} on ${aiLowerTimeframe} to see it.` });
+                                       toast({ title: 'Scenario drawn on chart', description: `Open ${formatTickerDisplay(ticker)} on ${aiLowerTimeframe} to see it.` });
                                      }}
                                    >
                                      <Printer className="mr-2 h-4 w-4" />
-                                     Print to chart
+                                     Draw on chart
                                    </Button>
                                   </div>
                                 </div>
@@ -1121,10 +1340,10 @@ export default function CryptoAI() {
         );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
+    <div className="bt-dark-surface min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
       <Helmet>
         <title>AI Technical Scenarios | BearTec</title>
-        <meta name="description" content="AI-generated crypto technical scenarios (general technical analysis) in a beginner-friendly workspace, alongside charts, oscillators, and indicators." />
+        <meta name="description" content="Educational AI technical scenarios for crypto charts, alongside charts, oscillators, and indicators. Not financial advice." />
       </Helmet>
 
       <div className="mx-auto max-w-7xl px-4 py-6 pb-32">

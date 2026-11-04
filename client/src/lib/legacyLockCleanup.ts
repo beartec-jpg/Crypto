@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /** Legacy bridge lock (v1, no withdraw) — testnet cleanup only. */
 
 export const LEGACY_LOCK_CONTRACT = '0x05712e9BC202cE3F1E601caCb1C82fc3AC9D8651'

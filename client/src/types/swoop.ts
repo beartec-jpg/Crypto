@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Swoop tool — predictive accumulation envelope from successive pivot slopes.
  */

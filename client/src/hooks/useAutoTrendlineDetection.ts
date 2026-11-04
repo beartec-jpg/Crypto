@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useMemo } from 'react';
 import { detectAutoTrendlines, type AutoTrendlineCandle } from '@/lib/indicators/autoTrendline';
 import type { AutoTrendlineResult, AutoTrendlineSettings } from '@/types/autoTrendline';

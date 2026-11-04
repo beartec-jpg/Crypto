@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Once-daily pre-London desk: deep-dive per symbol and post text embeds to Discord.
  * Prefer isolated crons (not one multi-symbol request):
@@ -667,6 +668,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               higherTimeframe: deep.higherTimeframe,
               lowerTimeframe: deep.lowerTimeframe,
               from: 'discord-btc-pre-london',
+              // Informational only: tracker always starts trades as 'pending' and fills on price.
+              setupStatus: t.setupStatus ?? null,
               stopLiftRationale: t.stopLiftRationale || null,
             },
           })),

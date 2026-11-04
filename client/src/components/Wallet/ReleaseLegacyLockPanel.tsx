@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // Recover USDC still locked in the v1 collateral lock (owner: this wallet's Sepolia key).
 
 import { useEffect, useState } from 'react';

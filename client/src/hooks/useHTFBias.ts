@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useEffect, useRef } from 'react';
 import type { Bias } from '@/types/candle';
 import type { HTFBiasEntry } from '@/types/htfBias';

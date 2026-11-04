@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useCallback } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';

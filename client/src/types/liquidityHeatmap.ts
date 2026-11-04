@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 export type CoinglassRange = '12h' | '24h' | '3d' | '7d' | '30d' | '90d' | '180d' | '1y';
 export type SidebarPosition = 'left' | 'right';
 

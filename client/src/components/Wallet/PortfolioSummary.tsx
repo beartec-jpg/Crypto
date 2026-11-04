@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // client/src/components/Wallet/PortfolioSummary.tsx
 // Portfolio overview with total value, 24h change, mini chart, and top/bottom movers
 

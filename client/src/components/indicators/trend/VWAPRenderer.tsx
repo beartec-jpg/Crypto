@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useEffect, useRef, useMemo } from 'react';
 import { IChartApi, LineSeries, ISeriesApi } from 'lightweight-charts';
 import { calculatePeriodicVWAP, calculateRollingVWAP } from '@/lib/calculations/vwapCalculations';

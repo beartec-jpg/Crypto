@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useCallback, useEffect } from 'react';
 import { hasWallet, loadWallet, completeMigration } from '../storage/walletStore';
 import { isLegacyRecord } from '../storage/db';

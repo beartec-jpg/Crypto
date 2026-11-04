@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useEffect, useRef, forwardRef, Ref, useCallback } from 'react';
 import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, ISeriesApi, MouseEventParams, Time } from 'lightweight-charts';
 import type { CandleData } from '@/types/chart.types';
@@ -82,6 +83,7 @@ export const ChartContainer = forwardRef<HTMLDivElement, ChartContainerProps>(fu
         width: container.clientWidth || 800,
         height: container.clientHeight || 600,
         layout: {
+          attributionLogo: true,
           background: { type: ColorType.Solid, color: '#0f172a' },
           textColor: '#d1d5db',
         },

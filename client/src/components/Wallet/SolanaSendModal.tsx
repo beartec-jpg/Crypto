@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // client/src/components/Wallet/SolanaSendModal.tsx
 // Modal for Solana native + SPL token sending
 

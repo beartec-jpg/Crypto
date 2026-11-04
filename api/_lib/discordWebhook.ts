@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Discord incoming-webhook helpers (multipart file + embeds).
  */
@@ -64,6 +65,7 @@ export function tradeEmbeds(
     riskRewardRatio?: number;
     reasoning?: string;
     triggerZone?: string;
+    setupStatus?: string;
     entryConfirmType?: string;
     entryConfirmLevel?: string | number;
     entryConfirmRationale?: string;
@@ -90,7 +92,7 @@ export function tradeEmbeds(
           (t.stopLiftRationale ? `\n${String(t.stopLiftRationale).slice(0, 200)}` : '')
         : '—';
     return {
-      title: `${symbol} · Setup ${i + 1} · ${dir}${t.grade ? ` (${t.grade})` : ''}`,
+      title: `${symbol} · Setup ${i + 1} · ${dir}${t.grade ? ` (${t.grade})` : ''}${t.setupStatus === 'active' ? ' · Active now' : t.setupStatus === 'pending' ? ' · Planned - waiting for price' : ''}`,
       color,
       description: t.reasoning || t.triggerZone || undefined,
       fields: [

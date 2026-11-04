@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Indicator-related type definitions
  * Extracted from CryptoSandbox.tsx for reusability and maintainability

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';

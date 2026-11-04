@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Paper account: $1000 start, small fixed-fraction risk, capped leverage.
  * Goal is consistent compounding, not max notional.

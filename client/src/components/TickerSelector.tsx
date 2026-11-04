@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Star, Search, ChevronDown, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';

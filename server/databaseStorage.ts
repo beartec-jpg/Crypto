@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { FeedbackBoard, InsertFeedbackBoard, FeedbackBoardReply, InsertFeedbackBoardReply, ElliottWaveLabel, InsertElliottWaveLabel, CachedCandles, InsertCachedCandles, UserOscillatorPreferences } from "@shared/schema";
 import { db } from "./db";
 import { feedbackBoard, feedbackBoardReplies } from "@shared/schema";

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Session Separators - Calculate Asian/London/NY session opens
  * Useful for spotting liquidity patterns around major market openings

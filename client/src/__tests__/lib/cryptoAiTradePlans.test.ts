@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -60,5 +61,16 @@ describe('cryptoAiTradePlans', () => {
       'Map the next pullback long into supply.',
     );
     expect(getOverallSummary(null)).toBe('');
+  });
+});
+
+describe('setup status labels', () => {
+  it('labels pending vs active from setupStatus', async () => {
+    const m = await import('../../lib/cryptoAiTradePlans');
+    expect(m.setupStatusLabel({ setupStatus: 'pending' })).toBe('Conditional - price not at trigger zone');
+    expect(m.setupStatusLabel({ setupStatus: 'active', triggerZone: 'x' })).toBe('Price in trigger zone now');
+    expect(m.isPendingTradeIdea({ setupStatus: 'active', triggerZone: 'x' })).toBe(false);
+    expect(m.formatDistanceFromPrice({ distanceFromPrice: { price: -5, percent: -5 } })).toBe('-5 (-5.00%) from current price');
+    expect(m.formatDistanceFromPrice({})).toBeNull();
   });
 });

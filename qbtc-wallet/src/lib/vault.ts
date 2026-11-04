@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Vault: PIN → PBKDF2 key → AES-256-GCM encrypted master seed
  * All crypto is done via the Web Crypto API (no dependencies).

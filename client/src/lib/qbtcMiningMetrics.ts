@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 export interface LaneRoundContributorLike {
   accepted_shares?: number;
   weighted_shares?: number;

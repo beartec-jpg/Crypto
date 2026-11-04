@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useEffect, useRef } from 'react';
 import { Time } from 'lightweight-charts';
 import { DrawingQuickMenu } from '@/components/drawings/DrawingQuickMenu';

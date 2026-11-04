@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 interface LineWidthSelectorProps {
   value: number; // 1-5
   onChange: (value: number) => void;

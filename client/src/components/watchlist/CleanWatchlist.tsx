@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { TickerSearch } from '@/components/TickerSearch';

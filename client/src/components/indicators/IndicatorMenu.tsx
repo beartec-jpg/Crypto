@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState } from 'react';
 import { Waves, Settings, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
