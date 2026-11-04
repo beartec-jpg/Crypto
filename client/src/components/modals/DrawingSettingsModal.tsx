@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DrawingSettingsPanel } from '@/components/drawing-settings/DrawingSettingsPanel';
 import { X } from 'lucide-react';

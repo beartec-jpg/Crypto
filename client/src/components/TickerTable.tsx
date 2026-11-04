@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { WATCHLIST_TAP_HINT } from '@/lib/watchlistHints';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';

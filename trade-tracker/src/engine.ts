@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Partial-TP trade engine with entry confirmation + pre-TP1 stop lift
  *

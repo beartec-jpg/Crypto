@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Deterministic SMC detection. Pure functions — no I/O.
  * Mitigation rule (v1): a zone is mitigated when a bar CLOSES through

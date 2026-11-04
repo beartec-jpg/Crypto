@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { SMCDebugTable } from '@/components/tradingSystems/SMCDebugTable';
 import type { SMCTrendEnginePanelData } from '@/components/trading/SMCTrendEngine/types';
 

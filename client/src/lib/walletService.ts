@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // client/src/lib/walletService.ts
 // Multi-chain embedded wallet service with AES-256-GCM encryption and multi-user support
 

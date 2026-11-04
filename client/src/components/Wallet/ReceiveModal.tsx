@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // client/src/components/Wallet/ReceiveModal.tsx
 // Full-page receive view with QR code and dropdown chain selector
 

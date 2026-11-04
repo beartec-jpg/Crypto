@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -101,6 +102,43 @@ function SwitchRow({ label, checked, onChange }: { label: string; checked: boole
   );
 }
 
+const EXIT_MIN_SCORE_HINT =
+  'Exit-EMA peak must reach this Tide score to count as Tide in. 0 = only exit on peaks in green. Off = exit on any peak (old behaviour)';
+
+function TideInMinScoreRow({
+  value,
+  onChange,
+}: {
+  value: number | null;
+  onChange: (exitMinScore: number | null) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <Label className="text-xs text-slate-300">Tide in minimum score</Label>
+          <div className="text-[10px] text-slate-500 leading-snug">{EXIT_MIN_SCORE_HINT}</div>
+        </div>
+        <Switch
+          checked={value != null}
+          onCheckedChange={(enabled) => onChange(enabled ? 0 : null)}
+          className="data-[state=checked]:bg-violet-600"
+        />
+      </div>
+      {value != null && (
+        <NumRow
+          label="Score"
+          value={value}
+          min={-100}
+          max={100}
+          step={1}
+          onChange={onChange}
+        />
+      )}
+    </div>
+  );
+}
+
 function TimeframeFields({
   tf,
   values,
@@ -118,7 +156,7 @@ function TimeframeFields({
     <div className="space-y-3">
       <p className="text-[10px] text-slate-500 leading-snug">
         {tf} preset: EMA {preset.emaPeriod} · N {preset.pivotN} · below {preset.belowScore} · Tide-in EMA{' '}
-        {preset.exitEmaPeriod} peak N {preset.exitPivotN} · stop{' '}
+        {preset.exitEmaPeriod} peak N {preset.exitPivotN} · min peak {preset.exitMinScore ?? 0} · stop{' '}
         {preset.stopKind === 'atr' ? `pivot − ${preset.stopAtrMult} ATR` : `pivot − ${(preset.stopPct * 100).toFixed(1)}%`}
         {atPreset ? ' (active)' : ' — edited'}
       </p>
@@ -167,6 +205,34 @@ function TimeframeFields({
         max={21}
         step={1}
         onChange={(exitPivotN) => onChange({ exitPivotN })}
+      />
+      <TideInMinScoreRow
+        value={values.exitMinScore}
+        onChange={(exitMinScore) => onChange({ exitMinScore })}
+      />
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-sky-300">Flip-flop guards (all off = validated preset)</div>
+      <SwitchRow
+        label="Exit peak must form after entry"
+        checked={values.exitPeakAfterEntry === true}
+        onChange={(exitPeakAfterEntry) => onChange({ exitPeakAfterEntry })}
+      />
+      <NumRow
+        label="Minimum hold (bars)"
+        hint="Ignore Tide in for this many bars after the entry (0 = off)"
+        value={values.minHoldBars ?? 0}
+        min={0}
+        max={48}
+        step={1}
+        onChange={(minHoldBars) => onChange({ minHoldBars })}
+      />
+      <NumRow
+        label="Cooldown after exit (bars)"
+        hint="After a Tide in / stop, skip new Tide out signals for this many bars (0 = off)"
+        value={values.cooldownBars ?? 0}
+        min={0}
+        max={96}
+        step={1}
+        onChange={(cooldownBars) => onChange({ cooldownBars })}
       />
       <div className="text-[10px] font-semibold uppercase tracking-wide text-red-300">Stop</div>
       <div className="flex items-center justify-between gap-2">

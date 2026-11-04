@@ -72,6 +72,10 @@
     {
       "path": "/api/cron/discord-desk-xrp",
       "schedule": "50 5 * * *"
+    },
+    {
+      "path": "/api/cron/rollup-analytics-daily",
+      "schedule": "15 0 * * *"
     }
   ],
   "rewrites": [
@@ -106,6 +110,7 @@
     { "source": "/api/swap/offers", "destination": "http://204.168.175.194:3099/api/swap/offers" },
     { "source": "/api/swap/health", "destination": "http://204.168.175.194:3099/api/swap/health" },
     { "source": "/api/swap/:swapId", "destination": "http://204.168.175.194:3099/api/swap/:swapId" },
+    { "source": "/api/admin/analytics/:view", "destination": "/api/admin/analytics?view=:view" },
     { "source": "/api/crypto/elliott-wave/labels/:id", "destination": "/api/crypto/elliott-wave/labels/[id]" },
     { "source": "/api/crypto/projection-lines/:id", "destination": "/api/crypto/projection-lines/[id]" },
     { "source": "/api/crypto/chart-drawings/:id", "destination": "/api/crypto/chart-drawings/[id]" },

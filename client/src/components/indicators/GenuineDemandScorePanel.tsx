@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { Candle, CVDDataItem } from '@/types/chart';
 import { useGenuineDemandScore } from '@/hooks/indicators/useGenuineDemandScore';
 import type { GDSExternalMetrics } from '@/lib/indicators/genuineDemandScore';

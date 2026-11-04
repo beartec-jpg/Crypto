@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { ReactNode, useState, useMemo } from 'react';
 import { GripHorizontal, X, Maximize2, Minimize2 } from 'lucide-react';
 import { useDraggable } from '@/hooks/useDraggable';

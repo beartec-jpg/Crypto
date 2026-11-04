@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { FibLevel } from '@/lib/elliottWave/fibCalculator';
 import type { Drawing, ChartDrawingTool } from '@/types/drawing';
 import { WaveStatusPanels } from '@/components/elliottWave/WaveStatusPanels';

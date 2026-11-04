@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Pure helpers for /cryptoindicators onboarding hints (watchlist + chart coachmark).
  * Kept framework-free so they can be unit tested.

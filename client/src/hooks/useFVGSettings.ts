@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useCallback } from 'react';
 import type { FVGSettings } from '@/types/fvg';
 import { DEFAULT_FVG_SETTINGS } from '@/types/fvg';

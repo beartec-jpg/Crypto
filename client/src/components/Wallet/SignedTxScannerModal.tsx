@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * SignedTxScannerModal - Scans a QR code from the cold signer device
  * containing the signed transaction hex, then broadcasts it.

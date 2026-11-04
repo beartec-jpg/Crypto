@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // client/src/lib/securityService.ts
 // Wallet security management - auto-lock, key protection, session management, 3-tier security
 

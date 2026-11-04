@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useMemo } from 'react';
 import type { Candle } from '@/types/candle';
 import type { VolumeProfileData, VolumeProfileRow, VolumeProfileSettings } from '@/types/volumeProfile';

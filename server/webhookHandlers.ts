@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // Stripe webhook handlers using stripe-replit-sync
 import { getStripeSync } from './stripeClient';
 

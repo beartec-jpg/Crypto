@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Market pattern detection for the Multi-System Confluence Monitor.
  * Analyses relationships between available trading system scores to identify

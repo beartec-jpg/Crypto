@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * @fileoverview Drawing State
  * @description Type definitions and interfaces for drawing state management.

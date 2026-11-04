@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { calcRetracementLevels, calcW5ProjectionLevels, type FibLevel } from '@/lib/elliottWave/fibCalculator';
 
 const getCanonicalWavePosition = (label: string): string | null => {

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * UI-related constants
  * Layout dimensions, margins, padding, and configuration

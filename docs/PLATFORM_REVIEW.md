@@ -42,12 +42,11 @@ Beartec fills a unique market gap: AI-powered technical analysis for **manual tr
 
 | Tier | Estimated Price | Trade AI Credits | Elliott AI Credits | Alert Tickers | Alert Types |
 |------|-----------------|------------------|-------------------|---------------|-------------|
-| **Free** | $0/month | 0 | 0 | 0 | None |
-| **Beginner** | ~$5/month | 0 | 0 | 0 | Basic access |
-| **Intermediate** | ~$15/month | 200/month | 0 | 3 tickers | Basic + Indicators |
-| **Pro** | ~$30/month | 400/month | 0 | 4 tickers | All alert types |
-| **Elite** | ~$50/month | 500/month | 150/month | 5 tickers | All + Elliott Wave |
-| **Elliott Wave Add-on** | +$10/month | — | 50/month | — | Elliott AI only |
+| **Free** | $0/month | 0 | 50/month | 0 | Elliott Wave tools |
+| **Beginner** | ~$5/month | 0 | 50/month | 0 | Basic access + Elliott Wave |
+| **Intermediate** | ~$15/month | 200/month | 50/month | 3 tickers | Basic + Indicators |
+| **Pro** | ~$30/month | 400/month | 50/month | 4 tickers | All alert types |
+| **Elite** | ~$50/month | 500/month | 150/month | 5 tickers | All |
 
 ### Credit System Explained
 
@@ -235,7 +234,6 @@ Features not found on any competitor platform:
 | Pro | 400 | ~$30 | **$0.075** |
 | Elite (Trade) | 500 | ~$50 | **$0.10** |
 | Elite (Elliott) | 150 | included | **$0.33** |
-| Add-on (Elliott) | 50 | ~$10 | **$0.20** |
 
 ### Market Comparison
 
@@ -257,7 +255,7 @@ Features not found on any competitor platform:
 | Learning traders | Free/Beginner | $0-5 | Explore charts, learn SMC concepts |
 | Day traders | Intermediate | ~$15 | 200 analyses = ~6-7 per day |
 | Swing traders | Pro | ~$30 | Multi-timeframe analysis |
-| Elliott practitioners | Elite or Add-on | ~$50-60 | Dedicated Elliott AI pool |
+| Elliott practitioners | Any (Elite for more Elliott AI) | $0-50 | Elliott Wave tools open to all tiers |
 | Professional analysts | Elite | ~$50 | Maximum credits + all alerts |
 
 ---

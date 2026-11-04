@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Pure market-structure helpers for the standalone LTF desk.
  * Binance klines + indicators / SMC slices for tool payloads.

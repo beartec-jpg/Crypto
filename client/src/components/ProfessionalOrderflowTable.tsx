@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
 import { Loader2, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * TypeScript interfaces for the graduated trading system scoring system.
  * Scores range from -100 (strong bearish) to +100 (strong bullish) for most systems.

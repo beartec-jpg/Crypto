@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Proxy / aggregate AI trade-tracker performance for the web app.
  * Primary source: always-on worker (TRACKER_URL). Falls back to empty if unset.

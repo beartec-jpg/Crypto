@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // Gas meter specifications with internal volume and cyclic volume
 export const METER_TYPES = [
   {

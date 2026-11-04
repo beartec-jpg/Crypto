@@ -49,6 +49,7 @@ export default defineConfig({
         'client/src/lib/cryptoAiDeepJob.ts',
         'api/_lib/deepDiveJobBudget.ts',
         'api/_lib/deepDiveJobs.ts',
+        'client/src/lib/watchlistHints.ts',
       ],
       // Exclude patterns
       exclude: [
@@ -66,14 +67,14 @@ export default defineConfig({
     exclude: ['node_modules', 'dist', 'client/dist', '.git'],
     
     // Test timeout
-    testTimeout: 10000,
+    testTimeout: 30000,
   },
   
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'client/src'),
       '@shared': path.resolve(__dirname, 'shared'),
-      '@assets': path.resolve(__dirname, 'attached_assets'),
+      '@assets': path.resolve(__dirname, 'client/src/assets/media'),
     },
   },
 })

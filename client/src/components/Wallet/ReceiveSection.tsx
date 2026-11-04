@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // client/src/components/wallet/ReceiveSection.tsx
 // Display wallet address with QR code for receiving funds
 

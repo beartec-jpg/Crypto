@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useMemo, useRef } from 'react';
 import type { Candle } from '@/types/candle';
 import type { LiquidityZone, LiquiditySettings } from '@/types/liquidity';

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 const COLD_SIGNER_INSTALL_REQUEST_KEY = 'cold-signer-install-request';
 
 export const coldSignerInstallUrl = '/cold-signer/?install=1';

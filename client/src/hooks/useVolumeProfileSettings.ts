@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useCallback } from 'react';
 import type { VolumeProfileSettings } from '@/types/volumeProfile';
 import { DEFAULT_VOLUME_PROFILE_SETTINGS } from '@/types/volumeProfile';

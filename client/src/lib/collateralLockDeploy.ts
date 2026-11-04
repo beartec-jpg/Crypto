@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // Auto-generated — FalconCollateralLock.sol (Solidity 0.8.20, optimizer 200 runs)
 // Includes withdraw() for bridge-out. Regenerate from qXRP/contracts/FalconCollateralLock.sol.
 

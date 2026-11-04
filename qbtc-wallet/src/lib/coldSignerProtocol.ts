@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Cold Signer QR Protocol — payload types shared between the web wallet and cold signer.
  *

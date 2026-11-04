@@ -1,3 +1,5 @@
+import { withScenarioFraming } from './scenarioFraming.js';
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Deep-dive model selection. Primary runs on the xAI Responses API with an
  * explicit reasoning effort (grok-4.7 is Responses-only and defaults to
@@ -34,7 +36,7 @@ export function buildPrimaryResponsesRequest(
     model: cfg.primaryModel,
     reasoning: { effort: cfg.reasoningEffort },
     input: [
-      { role: 'system', content: systemContent },
+      { role: 'system', content: withScenarioFraming(systemContent) },
       { role: 'user', content: userContent },
     ],
     max_output_tokens: maxOutputTokens,

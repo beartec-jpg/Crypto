@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * migrate.ts — Lightweight SQL migration runner for the QBTC Swap Server.
  *

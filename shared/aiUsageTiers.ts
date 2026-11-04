@@ -1,16 +1,21 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * AI usage tiers — charts/indicators are free with an email signup.
  * Paid plans only buy AI page tokens + nominated tickers.
  *
- * Cost model (Grok 4.6, typical desk payloads):
- *   General overview ≈ $0.02   (no thinking, short JSON)
- *   Deep dive        ≈ $0.12–0.18 (thinking on)
- *   Blended token    ≈ $0.09   (mix of general + deep, retries, cache misses)
+ * Currency: plan prices are GBP. The AI provider bills in USD, so model costs
+ * are kept in USD (as billed) and converted with USD_GBP_RATE (shared/currency.ts,
+ * default 0.79 GBP per USD) wherever they are compared with prices.
  *
- * Price is set for ~50% gross margin:
- *   Core $15 → ~$7.50 COGS → 80 tokens
- *   Pro  $30 → ~$15 COGS  → 160 tokens
- *   Elite $50 → ~$25 COGS → 270 tokens
+ * Cost model (Grok 4.6, typical desk payloads), USD as billed → GBP @ 0.79:
+ *   General overview ≈ $0.02  ≈ £0.016  (no thinking, short JSON)
+ *   Deep dive        ≈ $0.12–0.18 ≈ £0.09–0.14 (thinking on)
+ *   Blended token    ≈ $0.09  ≈ £0.07   (mix of general + deep, retries, cache misses)
+ *
+ * Prices (GBP) target ≤ ~50% COGS:
+ *   Core  £15 →  80 tokens ≈ £5.70 COGS
+ *   Pro   £30 → 160 tokens ≈ £11.40 COGS
+ *   Elite £50 → 270 tokens ≈ £19.20 COGS
  *
  * Each general analysis OR deep dive spends 1 token.
  */
@@ -19,9 +24,18 @@ export type AiUsageTierId = 'free' | 'beginner' | 'intermediate' | 'pro' | 'elit
 
 export const AI_READING_TOKEN_COST = 1;
 
+/** Blended model cost per token, in USD as billed by the provider. */
+export const BLENDED_TOKEN_COST_USD = 0.09;
+
+/** Blended cost per token in GBP at the given USD→GBP rate. */
+export function blendedTokenCostGbp(usdGbpRate: number): number {
+  return BLENDED_TOKEN_COST_USD * usdGbpRate;
+}
+
 export interface AiUsageTier {
   id: AiUsageTierId;
   name: string;
+  /** Monthly price in GBP (pounds). */
   monthlyPrice: number;
   priceLabel: string;
   tokens: number;

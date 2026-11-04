@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * @fileoverview SMT (Smart Money Technique) Configuration
  * Manages correlated asset selection and SMT-specific settings

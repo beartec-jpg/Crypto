@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useCallback, useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { ChevronDown } from 'lucide-react';
@@ -128,7 +129,7 @@ export default function CryptoIndicatorsClean() {
     <>
       <Helmet>
         <title>Crypto Indicators & Oscillators | BearTec</title>
-        <meta name="description" content="Beginner-friendly crypto charts with multiple oscillators, indicators, and AI-powered trade ideas." />
+        <meta name="description" content="Beginner-friendly crypto charts with multiple oscillators, indicators, and educational AI technical scenarios. Not financial advice." />
       </Helmet>
 
       {/* Main Content */}

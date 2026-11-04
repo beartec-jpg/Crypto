@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { Snapshot } from '@/services/patternDetectors.ts';
 
 const SNAPSHOT_LIMIT = 180;

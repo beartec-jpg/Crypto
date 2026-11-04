@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // client/src/lib/crypto.ts
 // Hybrid post-quantum cryptography utilities
 // Uses Falcon-512 for post-quantum security + ECDSA for compatibility

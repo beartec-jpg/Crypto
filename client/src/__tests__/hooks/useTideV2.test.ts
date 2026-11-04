@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { describe, it, expect } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { calculateTideZone, type TideZoneCandle } from '@/lib/indicators/tideZone';
@@ -42,7 +43,8 @@ describe('useTideV2', () => {
     const s0 = result.current!.signals[0];
     const cut = candles.findIndex((c) => c.time >= s0.pivot1Time) - 5;
     const shifted = candles.slice(cut);
-    const fresh = computeTideV2(shifted, calculateTideZone(shifted), TIDE_PRESETS['4h'], { warmupBars: 0 });
+    // Fixture expectations are the research detector: score filter off (presets now default it to 0).
+    const fresh = computeTideV2(shifted, calculateTideZone(shifted), { ...TIDE_PRESETS['4h'], exitMinScore: null }, { warmupBars: 0 });
     expect(fresh.signals.map((s) => s.confirmTime)).not.toContain(s0.confirmTime);
     rerender({ c: shifted });
     const after = result.current!.signals.map((s) => s.confirmTime);
@@ -55,7 +57,7 @@ describe('useTideV2', () => {
 });
 
 describe('buildTideOverlay / summarizeTide', () => {
-  const res = computeTideV2(candles, calculateTideZone(candles), TIDE_PRESETS['4h'], { nowSec: 4_102_444_800, warmupBars: 0 });
+  const res = computeTideV2(candles, calculateTideZone(candles), { ...TIDE_PRESETS['4h'], exitMinScore: null }, { nowSec: 4_102_444_800, warmupBars: 0 });
 
   it('marks Tide out (+) under the confirmation bar, Tide in above the exit bar, stop lines per signal', () => {
     const ov = buildTideOverlay(candles, res, DEFAULT_TIDE_ZONE_SETTINGS);

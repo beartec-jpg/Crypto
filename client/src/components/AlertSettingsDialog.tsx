@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -876,7 +877,7 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
                   />
                 </div>
                 <div className="flex items-center justify-between p-2 bg-slate-900/50 rounded">
-                  <Label className="text-gray-300 text-sm">AI Trade Alerts</Label>
+                  <Label className="text-gray-300 text-sm">AI scenario notifications</Label>
                   <Switch
                     checked={aiTradeAlertsEnabled}
                     onCheckedChange={(checked) => {
@@ -1125,7 +1126,7 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
                         </div>
                       ))}
                       
-                      {/* AI Trade Alerts */}
+                      {/* AI scenario notifications */}
                       {activeAlerts?.aiTrades?.map((trade) => (
                         <div key={`ai-${trade.id}`} className="flex items-center justify-between p-2 bg-slate-900/70 rounded text-sm">
                           <div className="flex items-center gap-2">
@@ -1134,7 +1135,7 @@ export function AlertSettingsDialog({ open, onOpenChange }: AlertSettingsDialogP
                               {' '}AI
                             </span>
                             <span className="text-gray-300">{trade.symbol}</span>
-                            <span className="text-gray-500">Entry:</span>
+                            <span className="text-gray-500">Trigger:</span>
                             <span className="text-white">${trade.entry}</span>
                             <span className="text-gray-500 text-xs">({trade.status})</span>
                           </div>

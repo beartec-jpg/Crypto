@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { MultiTFInsights, TradeIdea } from '@/lib/cryptoAiTradePlans';
 import { formatTickerDisplay } from '@/lib/chart/priceUtils';
 import {
@@ -105,6 +106,20 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   return lines;
 }
 
+const IMAGE_DISCLAIMER =
+  'Educational technical scenario from automated software. Not financial advice or a recommendation to buy, sell or hold. ' +
+  'BEARTEC LTD is not FCA-authorised. Cryptoassets are high risk; you can lose all the money you put in.';
+
+/** Two-line not-advice notice drawn above the footer stamp on every exported image. */
+function drawImageDisclaimer(ctx: CanvasRenderingContext2D, x: number, y: number, maxWidth: number): void {
+  ctx.save();
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = '11px system-ui, -apple-system, sans-serif';
+  const lines = wrapText(ctx, IMAGE_DISCLAIMER, maxWidth).slice(0, 2);
+  lines.forEach((line, i) => ctx.fillText(line, x, y + i * 15));
+  ctx.restore();
+}
+
 /**
  * Renders a self-contained trade card PNG and triggers a browser download.
  * Uses Canvas only — no html2canvas dependency.
@@ -112,7 +127,7 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
 export async function downloadTradeImage(options: DownloadTradeImageOptions): Promise<void> {
   const { trade, symbol, higherTimeframe, lowerTimeframe, horizonLabel, modeLabel } = options;
   const displaySymbol = formatTickerDisplay(symbol);
-  const direction = trade.direction === 'SHORT' ? 'SHORT' : trade.direction === 'LONG' ? 'LONG' : 'SETUP';
+  const direction = trade.direction === 'SHORT' ? 'SHORT' : trade.direction === 'LONG' ? 'LONG' : 'SCENARIO';
   const isLong = direction === 'LONG';
   const accent = isLong ? '#22c55e' : direction === 'SHORT' ? '#ef4444' : '#a855f7';
   const bg = '#0b1220';
@@ -151,7 +166,7 @@ export async function downloadTradeImage(options: DownloadTradeImageOptions): Pr
   height += 16;
   height += 22 + rationaleLines.length * 22; // rationale
   if (signalLines.length) height += 18 + 22 + signalLines.length * 22;
-  height += 40; // footer
+  height += 74; // footer + disclaimer
   height += padding;
 
   const canvas = document.createElement('canvas');
@@ -198,7 +213,7 @@ export async function downloadTradeImage(options: DownloadTradeImageOptions): Pr
   const badges = [
     trade.grade || 'Unrated',
     getHtfRelationshipLabel(trade.htfRelationship),
-    isPendingTradeIdea(trade) ? 'Planned - waiting for price' : 'Active now',
+    isPendingTradeIdea(trade) ? 'Conditional - price not at trigger zone' : 'Price in trigger zone now',
     trade.primaryTF || `${lowerTimeframe}/${higherTimeframe}`,
   ];
   if (horizonLabel) badges.push(horizonLabel);
@@ -234,11 +249,11 @@ export async function downloadTradeImage(options: DownloadTradeImageOptions): Pr
 
   // Price grid
   const cols = [
-    { label: 'ENTRY', value: fmt(trade.entry), sub: trade.entryZone || '' },
-    { label: 'STOP', value: fmt(trade.stopLoss), sub: trade.slRationale || '' },
-    { label: 'TARGETS', value: targets, sub: trade.tp1Rationale || '' },
+    { label: 'TRIGGER LEVEL', value: fmt(trade.entry), sub: trade.entryZone || '' },
+    { label: 'INVALIDATION', value: fmt(trade.stopLoss), sub: trade.slRationale || '' },
+    { label: 'REFERENCE LEVELS', value: targets, sub: trade.tp1Rationale || '' },
     {
-      label: 'R:R',
+      label: 'RATIO (ILLUSTRATIVE)',
       value: trade.riskRewardRatio == null ? '—' : `${Number(trade.riskRewardRatio).toFixed(2)}R`,
       sub: '',
     },
@@ -298,6 +313,9 @@ export async function downloadTradeImage(options: DownloadTradeImageOptions): Pr
   ctx.fillStyle = muted;
   ctx.font = '12px system-ui, -apple-system, sans-serif';
   const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+  drawImageDisclaimer(ctx, padding + 12, y - 36, width - padding * 2 - 24);
+  ctx.fillStyle = muted;
+  ctx.font = '12px system-ui, -apple-system, sans-serif';
   ctx.fillText(`BearTec Crypto AI  ·  ${stamp}`, padding + 12, y);
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
@@ -368,7 +386,7 @@ export async function downloadAnalysisImage(options: DownloadAnalysisImageOption
   const noTradeNote = tradeCount === 0
     ? wrapText(
       mctx,
-      'No setup cleared confluence / R:R gates. Watch the zones below for the next trigger.',
+      'No scenario cleared the confluence / distance-ratio checks. Structural zones are listed below.',
       contentWidth,
     )
     : wrapText(
@@ -390,7 +408,7 @@ export async function downloadAnalysisImage(options: DownloadAnalysisImageOption
     for (const lines of levelLineSets) height += lines.length * 22;
     height += 8;
   }
-  height += 40; // footer
+  height += 74; // footer + disclaimer
   height += padding;
 
   const canvas = document.createElement('canvas');
@@ -482,7 +500,7 @@ export async function downloadAnalysisImage(options: DownloadAnalysisImageOption
       lowerSummaryLines,
     );
   }
-  drawSection(tradeCount === 0 ? 'STATUS' : 'SETUPS', noTradeNote);
+  drawSection(tradeCount === 0 ? 'STATUS' : 'SCENARIOS', noTradeNote);
 
   if (levelLineSets.length) {
     ctx.fillStyle = muted;
@@ -503,6 +521,9 @@ export async function downloadAnalysisImage(options: DownloadAnalysisImageOption
   ctx.fillStyle = muted;
   ctx.font = '12px system-ui, -apple-system, sans-serif';
   const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+  drawImageDisclaimer(ctx, padding + 12, y - 36, width - padding * 2 - 24);
+  ctx.fillStyle = muted;
+  ctx.font = '12px system-ui, -apple-system, sans-serif';
   ctx.fillText(`BearTec Crypto AI  ·  ${stamp}`, padding + 12, y);
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
@@ -606,8 +627,8 @@ export async function downloadTotalAnalysisImage(
     lines: string[];
   };
   const tradeLayouts: TradeLayout[] = limitedTrades.map((trade, i) => {
-    const dir = trade.direction || 'SETUP';
-    const header = `${i + 1}. ${dir}  ·  ${trade.grade || 'Unrated'}  ·  ${getHtfRelationshipLabel(trade.htfRelationship)}${isPendingTradeIdea(trade) ? '  ·  Planned - waiting for price' : '  ·  Active now'}`;
+    const dir = trade.direction === 'LONG' ? 'BULLISH SCENARIO' : trade.direction === 'SHORT' ? 'BEARISH SCENARIO' : 'SCENARIO';
+    const header = `${i + 1}. ${dir}  ·  ${trade.grade || 'Unrated'}  ·  ${getHtfRelationshipLabel(trade.htfRelationship)}${isPendingTradeIdea(trade) ? '  ·  Conditional' : '  ·  Price in trigger zone'}`;
     const trigger = [trade.triggerZone, trade.triggerCondition].filter(Boolean).join(' — ');
     const triggerLines = trigger ? wrapText(mctx, trigger, contentWidth - 24).slice(0, 3) : [];
     const rationaleLines = trade.reasoning
@@ -616,10 +637,10 @@ export async function downloadTotalAnalysisImage(
     const rr = trade.riskRewardRatio == null ? '—' : `${Number(trade.riskRewardRatio).toFixed(2)}R`;
     const tps = formatTargetsWithPercent(trade.entry, trade.targets, trade.direction, '  |  ');
     const lines = [
-      `Entry ${fmt(trade.entry)}${trade.entryZone ? `  (${trade.entryZone})` : ''}`,
-      `Stop  ${fmt(trade.stopLoss)}${trade.slRationale ? `  — ${trade.slRationale}` : ''}`,
-      `TPs   ${tps}`,
-      `R:R   ${rr}`,
+      `Trigger ${fmt(trade.entry)}${trade.entryZone ? `  (${trade.entryZone})` : ''}`,
+      `Invalidation  ${fmt(trade.stopLoss)}${trade.slRationale ? `  — ${trade.slRationale}` : ''}`,
+      `Reference levels   ${tps}`,
+      `Ratio (illustrative)   ${rr}`,
     ];
     return { trade, header, triggerLines, rationaleLines, lines };
   });
@@ -664,7 +685,7 @@ export async function downloadTotalAnalysisImage(
       height += 16;
     }
   }
-  height += 36; // footer
+  height += 70; // footer + disclaimer
   height += padding;
 
   const canvas = document.createElement('canvas');
@@ -706,7 +727,7 @@ export async function downloadTotalAnalysisImage(
   // Badges
   const badges = [
     `${higherTimeframe}/${lowerTimeframe}`,
-    limitedTrades.length === 0 ? 'No trade setups' : `${limitedTrades.length} setup${limitedTrades.length === 1 ? '' : 's'}`,
+    limitedTrades.length === 0 ? 'No scenarios' : `${limitedTrades.length} scenario${limitedTrades.length === 1 ? '' : 's'}`,
   ];
   if (horizonLabel) badges.push(horizonLabel);
   if (modeLabel) badges.push(modeLabel);
@@ -895,7 +916,7 @@ export async function downloadTotalAnalysisImage(
   }
 
   // ---- Trades ----
-  sectionTitle('Trade setups');
+  sectionTitle('Technical scenarios');
   if (tradeLayouts.length === 0) {
     ctx.fillStyle = panel;
     roundRect(ctx, padding + 10, y, contentWidth, 40, 10);
@@ -904,8 +925,8 @@ export async function downloadTotalAnalysisImage(
     ctx.font = '14px system-ui, -apple-system, sans-serif';
     ctx.fillText(
       deepInsights == null
-        ? 'Run deep-dive search to include entry / SL / TP setups.'
-        : 'No setup cleared confluence / R:R gates yet.',
+        ? 'Run a deep dive to include technical scenarios.'
+        : 'No scenario cleared the confluence / distance-ratio checks yet.',
       padding + 22,
       y + 25,
     );
@@ -969,6 +990,9 @@ export async function downloadTotalAnalysisImage(
   ctx.fillStyle = muted;
   ctx.font = '12px system-ui, -apple-system, sans-serif';
   const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+  drawImageDisclaimer(ctx, padding + 10, height - padding - 32, width - padding * 2 - 20);
+  ctx.fillStyle = muted;
+  ctx.font = '12px system-ui, -apple-system, sans-serif';
   ctx.fillText(`BearTec Crypto AI  ·  Total analysis  ·  ${stamp}`, padding + 10, height - padding + 4);
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));

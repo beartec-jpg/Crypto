@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useCallback, useMemo } from 'react';
 import { 
   OSCILLATOR_PANEL_HEIGHT_PER,

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Once-daily pre-London desk: deep-dive per symbol and post text embeds to Discord.
  * Prefer isolated crons (not one multi-symbol request):

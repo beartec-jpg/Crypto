@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { cn } from '@/lib/utils';
 
 const INDICATOR_ABBREVS: Record<string, string> = {

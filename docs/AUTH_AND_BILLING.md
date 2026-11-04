@@ -36,22 +36,25 @@ Short story from **current in-repo code** (Clerk + Stripe + Postgres). Do not in
 | Checkout (serverless) | `api/crypto/checkout.ts` | Authenticated `POST`; needs `STRIPE_SECRET_KEY` + `DATABASE_URL` + Clerk |
 | Subscription read/sync | `api/crypto/my-subscription.ts` | Authenticated; syncs Stripe customer subscriptions into DB |
 | Webhook | `api/stripe/webhook.ts` | `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` |
-| Express Stripe helpers | `server/stripeCheckout.ts`, `server/stripeClient.ts` | Checkout sessions, customer create, Elliott add-on item |
+| Express Stripe helpers | `server/stripeCheckout.ts`, `server/stripeClient.ts` | Checkout sessions, customer create |
 | Subscription service | `server/cryptoSubscriptionService.ts` | Tiers, credits, capabilities; auto-creates free tier |
 | Seed script | `scripts/seed-stripe-products.ts` | Product seeding (ops) |
 
 **Tiers** (from `server/cryptoSubscriptionService.ts` / `api/crypto/my-subscription.ts` / `shared/aiUsageTiers.ts`):
 
-- Base: `free` \| `beginner` \| `intermediate` \| `pro` \| `elite`
-- Separate add-on: Elliott Wave (`elliott_addon` / `hasElliottAddon`) — Elite includes Elliott AI credits; other paid tiers need the add-on for Elliott AI use
-- Capabilities examples: `canUseAI` from intermediate+, `canUsePushNotifications` from pro+, `canUseElliott` from add-on or elite
+- Base: `free` \| `intermediate` (sold as **Core**) \| `pro` \| `elite`; `beginner` is a legacy id treated as Free and never sold
+- Prices (GBP, source of truth = pricing page): Free, Core £15/mo, Pro £30/mo, Elite £50/mo. Config lives in `shared/stripeTiers.ts`
+- Checkout pins prices via `STRIPE_PRICE_CORE`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_ELITE`; webhook/sync/analytics map a subscription to a tier by pinned price id → price/product `metadata.tier` → product name (`Core`/`Pro`/`Elite`, plus legacy `* membership` names)
+- AI costs are USD as billed; converted to GBP with `USD_GBP_RATE` (`shared/currency.ts`, default 0.79)
+- Elliott Wave tools are available to every tier (no add-on); Elite gets a larger monthly Elliott AI credit allowance
+- Capabilities examples: `canUseAI` from intermediate+, `canUsePushNotifications` from pro+, `canUseElliott` is always true
 - AI usage priced as monthly tokens/credits (`shared/aiUsageTiers.ts`); charts/indicators are usable with signup per that file’s comments
 
 **Express subscription routes** (authenticated): e.g. `GET /api/crypto/subscription`, `GET /api/crypto/my-subscription`, checkout helpers wired through Stripe services.
 
 ## What is absent / not claimed here
 
-- No in-repo documentation of live Stripe **price IDs** (resolved at runtime by product name in `stripeCheckout.ts`).
+- Live Stripe **price IDs** are not committed; they are supplied via the `STRIPE_PRICE_*` env vars (see `.env.example`).
 - No separate “billing portal” UI module documented beyond checkout + subscription API + Clerk-gated client.
 - Twilio SMS appears as optional alert delivery in routes/settings — configure via env where those handlers read it; not expanded here.
 

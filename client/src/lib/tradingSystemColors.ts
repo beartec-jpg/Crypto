@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Color utility functions for the Active System Monitor and related components.
  * Maps trading system scores (-100 to +100) to Tailwind classes and labels.

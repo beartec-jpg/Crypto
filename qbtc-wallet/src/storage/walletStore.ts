@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { getDb, isLegacyRecord, type WalletRecord } from './db';
 
 export async function saveWallet(record: WalletRecord): Promise<void> {

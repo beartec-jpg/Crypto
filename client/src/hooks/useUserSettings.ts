@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { authenticatedApiRequest, ApiError } from '@/lib/apiAuth';
 import type { UserSettingsResponse } from '@shared/schema';
