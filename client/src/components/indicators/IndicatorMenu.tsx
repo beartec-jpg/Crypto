@@ -7,6 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { useShowOwnerOnlyTools } from '@/hooks/useShowOwnerOnlyTools';
+import { OWNER_ONLY_OSCILLATOR_IDS } from '@/constants/ownerOnlyFeatures';
 import type { FVGSettings } from '@/types/fvg';
 import type { OrderBlockSettings } from '@/types/orderBlock';
 import type { BreakerSettings } from '@/types/breaker';
@@ -30,6 +31,7 @@ const OSCILLATORS = [
   { id: 'cci', name: 'CCI', description: 'Commodity Channel Index (20)' },
   { id: 'adx', name: 'ADX', description: 'Average Directional Index (14)' },
   { id: 'tideZone', name: 'Tide Zone', description: '4h tide + local energy/tape zones' },
+  { id: 'tetherDivergence', name: 'Tether Divergence', description: 'USDT.D stretch vs coin oversold — daily bottom-zone score' },
 ];
 
 interface IndicatorMenuProps {
@@ -233,7 +235,11 @@ export function IndicatorMenu({
               </Button>
             </div>
             <div className="space-y-0.5">
-              {OSCILLATORS.map(osc => (
+              {OSCILLATORS.filter(
+                (osc) =>
+                  showOwnerOnlyTools ||
+                  !(OWNER_ONLY_OSCILLATOR_IDS as readonly string[]).includes(osc.id),
+              ).map(osc => (
                 <IndicatorRow
                   key={osc.id}
                   label={osc.name}

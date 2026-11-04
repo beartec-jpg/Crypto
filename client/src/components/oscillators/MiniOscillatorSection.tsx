@@ -8,6 +8,8 @@ import type { SMCTrendEnginePanelData } from '@/components/trading/SMCTrendEngin
 import { TOP_TOOLBAR_HEIGHT } from '@/lib/constants/layout';
 import { useShowOwnerOnlyTools } from '@/hooks/useShowOwnerOnlyTools';
 import { type TideZoneKind } from '@/lib/indicators/tideZone';
+import { lastDefined, tetherZoneColor, tetherZoneLabel } from '@/lib/indicators/tetherDivergence';
+import { useTetherDivergenceSettings } from '@/hooks/useTetherDivergenceSettings';
 
 const VOLUME_UP_COLOR = '#26a69a';
 
@@ -116,6 +118,27 @@ function getTideZoneStatus(kind: TideZoneKind, score: number): { label: string; 
   return { label: 'TIDE', value: score.toFixed(0), color, zone };
 }
 
+function TetherSpark({ values, color }: { values: number[]; color: string }) {
+  if (values.length < 2) return null;
+  const w = 48;
+  const h = 14;
+  const min = Math.min(...values, 0);
+  const max = Math.max(...values, 100);
+  const span = max - min || 1;
+  const pts = values
+    .map((v, i) => {
+      const x = (i / (values.length - 1)) * w;
+      const y = h - ((v - min) / span) * h;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+  return (
+    <svg width={w} height={h} className="block mt-0.5" aria-hidden>
+      <polyline fill="none" stroke={color} strokeWidth="1.2" points={pts} />
+    </svg>
+  );
+}
+
 function getKlingerStatus(klinger: number, signal: number): { label: string; value: string; color: string; zone: string } {
   if (klinger > signal) return { label: 'KL', value: klinger.toFixed(0), color: 'text-green-400', zone: 'Bull' };
   if (klinger < signal) return { label: 'KL', value: klinger.toFixed(0), color: 'text-red-400', zone: 'Bear' };
@@ -132,14 +155,16 @@ interface MiniChipProps {
   color: string;
   zone: string;
   onCycle: (id: string) => void;
+  extra?: ReactNode;
 }
 
-function MiniChipContent({ label, value, color, zone }: Pick<MiniChipProps, 'label' | 'value' | 'color' | 'zone'>) {
+function MiniChipContent({ label, value, color, zone, extra }: Pick<MiniChipProps, 'label' | 'value' | 'color' | 'zone' | 'extra'>) {
   return (
     <>
       <div className="text-[10px] text-slate-400 truncate">{label}</div>
       <div className={`text-xs font-medium ${color}`}>{value}</div>
       <div className={`text-[10px] ${color}`}>{zone}</div>
+      {extra}
     </>
   );
 }
@@ -156,7 +181,7 @@ function clampMiniChipPosition(
   };
 }
 
-function DraggableMiniChip({ id, label, value, color, zone, onCycle }: MiniChipProps) {
+function DraggableMiniChip({ id, label, value, color, zone, onCycle, extra }: MiniChipProps) {
   const chipRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const dragRef = useRef<{
@@ -236,7 +261,7 @@ function DraggableMiniChip({ id, label, value, color, zone, onCycle }: MiniChipP
           : undefined
       }
     >
-      <MiniChipContent label={label} value={value} color={color} zone={zone} />
+      <MiniChipContent label={label} value={value} color={color} zone={zone} extra={extra} />
     </div>
   );
 
@@ -260,6 +285,7 @@ export function MiniOscillatorSection({
   smcTrendEnginePanelData,
 }: MiniOscillatorSectionProps) {
   const showOwnerOnlyTools = useShowOwnerOnlyTools();
+  const { settings: tetherSettings } = useTetherDivergenceSettings();
   if (miniOscillators.size === 0) return null;
 
   const newMiniItems: Array<{ id: string; label: string; value: string; color: string; zone: string }> = [];
@@ -361,6 +387,16 @@ export function MiniOscillatorSection({
     newMiniItems.push({ id: 'tideZone', label: s.label, value: s.value, color: s.color, zone: s.zone });
   }
 
+  const tether = oscillatorData.tetherDivergence;
+  const showTetherMini = showOwnerOnlyTools && miniOscillators.has('tetherDivergence') && tether;
+  const tetherScore = showTetherMini ? lastDefined(tether.score) : null;
+  const tetherZone = showTetherMini ? lastDefined(tether.zone) : null;
+  const tetherTop = showTetherMini ? lastDefined(tether.topScore) : null;
+  const tetherSpark = showTetherMini
+    ? tether.score.filter((v): v is number => v != null).slice(-24)
+    : [];
+  const tetherColor = tetherZoneColor(tetherZone, tetherSettings);
+
   if (miniOscillators.has('klinger') && oscillatorData.klinger.klinger.length > 0) {
     const klingerLen = oscillatorData.klinger.klinger.length;
     const signalLen = oscillatorData.klinger.signal.length;
@@ -409,6 +445,26 @@ export function MiniOscillatorSection({
           onCycle={onCycleMode}
         />
       ))}
+      {showTetherMini && tetherScore != null && (
+        <DraggableMiniChip
+          id="tetherDivergence"
+          label={`USDT.D${tether && tether.approximate ? ' ≈' : ''}`}
+          value={`${tetherScore.toFixed(0)}`}
+          color={
+            tetherZone === 'bottom' ? 'text-green-400' : tetherZone === 'watch' ? 'text-amber-400' : 'text-slate-400'
+          }
+          zone={tetherZoneLabel(tetherZone)}
+          onCycle={onCycleMode}
+          extra={
+            <>
+              <TetherSpark values={tetherSpark} color={tetherColor} />
+              {tetherSettings.topMirror && tetherTop != null && tetherTop >= tetherSettings.topThreshold && (
+                <div className="text-[9px] text-red-400/40 leading-tight">Top zone (unvalidated)</div>
+              )}
+            </>
+          }
+        />
+      )}
     </div>
   );
 }

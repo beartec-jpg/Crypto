@@ -38,8 +38,11 @@ import { FullscreenChartModals } from '@/components/chart/FullscreenChartModals'
 import { FullscreenChartViewportLayer } from '@/components/chart/FullscreenChartViewportLayer';
 import { FullscreenOscillatorLayout } from '@/components/oscillators/FullscreenOscillatorLayout';
 import { TideAccumRenderer } from '@/components/indicators/TideAccumRenderer';
+import { TetherDivergenceOverlay } from '@/components/indicators/TetherDivergenceOverlay';
 import { useTideZoneSettings } from '@/hooks/useTideZoneSettings';
 import { useTideV2 } from '@/hooks/useTideV2';
+import { useTetherDivergenceSettings } from '@/hooks/useTetherDivergenceSettings';
+import { useTetherDivergence } from '@/hooks/useTetherDivergence';
 
 import { useSuperTrendSettings } from '@/hooks/useSuperTrendSettings';
 import { useSuperTrendCalculation } from '@/hooks/useSuperTrendCalculation';
@@ -135,7 +138,7 @@ const FREE_MODE_POINT_INTERVAL = 3;
 // All possible oscillator panel IDs (must match OscillatorSelectorModal)
 const ALL_OSCILLATOR_IDS = [
   'rsi', 'macd', 'waddah', 'cmf', 'volume', 'stochRsi', 'tsi',
-  'williamsR', 'cci', 'adx', 'obv', 'mfi', 'klinger', 'tideZone', 'smartMoney', 'smcTrendEngine',
+  'williamsR', 'cci', 'adx', 'obv', 'mfi', 'klinger', 'tideZone', 'tetherDivergence', 'smartMoney', 'smcTrendEngine',
 ];
 
 // Minimum number of candles required for meaningful indicator calculations during rewind
@@ -473,6 +476,7 @@ export function ChartFullscreenPage({
   // Hooks - Oscillator panel (needed first for totalHeight)
   const oscillatorPanel = useOscillatorPanel();
   const tideZoneSettings = useTideZoneSettings();
+  const tetherSettings = useTetherDivergenceSettings();
 
   // Hooks - Chart instance
   const { chartRef, candleSeriesRef, isReady: chartReady, fitContent } = useChartInstance({
@@ -658,10 +662,22 @@ export function ChartFullscreenPage({
   );
 
   // Hooks - Oscillator data
-  const oscillatorData = useOscillatorData(effectiveCandles, oscillatorSettings, {
+  const oscillatorDataBase = useOscillatorData(effectiveCandles, oscillatorSettings, {
     oiHistory: gdsOiHistory,
     timeframe: renderedTimeframe,
   });
+  const tetherDivergence = useTetherDivergence({
+    symbol,
+    chartCandles: effectiveCandles,
+    chartTimeframe: renderedTimeframe,
+    settings: tetherSettings.settings,
+    enabled:
+      oscillatorPanel.selectedOscillators.has('tetherDivergence') || tetherSettings.isModalOpen,
+  });
+  const oscillatorData = useMemo(
+    () => ({ ...oscillatorDataBase, tetherDivergence: tetherDivergence.result }),
+    [oscillatorDataBase, tetherDivergence.result],
+  );
   const tideV2 = useTideV2({
     candles: effectiveCandles,
     tideZone: oscillatorData.tideZone,
@@ -691,6 +707,7 @@ export function ChartFullscreenPage({
       tsi: { enabled: oscillatorPanel.selectedOscillators.has('tsi') },
       klinger: { enabled: oscillatorPanel.selectedOscillators.has('klinger') },
       waddah: { enabled: oscillatorPanel.selectedOscillators.has('waddah') },
+      tetherDivergence: { enabled: oscillatorPanel.selectedOscillators.has('tetherDivergence') },
       smartMoney: { enabled: oscillatorPanel.selectedOscillators.has('smartMoney') },
       smcTrendEngine: { enabled: oscillatorPanel.selectedOscillators.has('smcTrendEngine') },
     }),
@@ -3292,6 +3309,17 @@ export function ChartFullscreenPage({
           tide={tideV2}
           settings={tideZoneSettings.settings}
           enabled={oscillatorPanel.selectedOscillators.has('tideZone')}
+        />
+
+        <TetherDivergenceOverlay
+          chart={chartRef.current}
+          candles={effectiveCandles}
+          result={tetherDivergence.result}
+          settings={tetherSettings.settings}
+          enabled={
+            oscillatorPanel.selectedOscillators.has('tetherDivergence') &&
+            tetherSettings.settings.showMarkers
+          }
         />
 
         {/* Trade panel popup */}
