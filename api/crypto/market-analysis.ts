@@ -2,6 +2,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
+import { withScenarioFraming } from '../_lib/scenarioFraming.js';
 
 const xai = new OpenAI({ 
   baseURL: "https://api.x.ai/v1",
@@ -186,10 +187,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 **VWAP Position:**
 - Price vs VWAP: ${vwap?.current ? (currentPrice > vwap.current ? 'Above' : 'Below') : 'N/A'}
 
-Provide a brief, actionable market analysis (3-4 sentences) covering:
+Provide a brief, educational technical reading (3-4 sentences, no recommendations) covering:
 1. Current trend and momentum
 2. Key support/resistance levels
-3. Trading bias (bullish/bearish/neutral) with reasoning
+3. Technical bias (bullish/bearish/neutral) with reasoning
 4. Risk factors to watch
 
 Be concise and direct.`;
@@ -199,7 +200,7 @@ Be concise and direct.`;
       messages: [
         {
           role: "system",
-          content: "You are a professional cryptocurrency market analyst. Provide concise, actionable insights based on technical analysis."
+          content: withScenarioFraming("You are an automated technical-analysis tool. Provide concise, educational, non-advisory insights based on technical analysis.")
         },
         {
           role: "user",

@@ -62,8 +62,8 @@ export function isPendingTradeIdea(trade: TradeIdea | null | undefined): boolean
   return Boolean(trade?.triggerZone || trade?.triggerCondition);
 }
 
-export const PENDING_SETUP_LABEL = 'Planned - waiting for price';
-export const ACTIVE_SETUP_LABEL = 'Active now';
+export const PENDING_SETUP_LABEL = 'Conditional - price not at trigger zone';
+export const ACTIVE_SETUP_LABEL = 'Price in trigger zone now';
 
 export function setupStatusLabel(trade: TradeIdea | null | undefined): string {
   return isPendingTradeIdea(trade) ? PENDING_SETUP_LABEL : ACTIVE_SETUP_LABEL;

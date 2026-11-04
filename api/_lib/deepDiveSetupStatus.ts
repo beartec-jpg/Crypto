@@ -7,11 +7,11 @@
  */
 export type DeepDiveSetupStatus = 'active' | 'pending';
 
-export const DEEP_DIVE_SETUP_STATUS_RULES = `SETUP STATUS (MANDATORY on every trade):
-   - "setupStatus": "active" only if current price is inside the entry zone now. Otherwise "pending": a limit/conditional plan at an unmitigated zone price has not reached yet ("if price comes to X, potential LONG/SHORT").
-   - Price does NOT need to be tagging a zone right now. If no zone is being tagged, still return the best pending setups at the nearest unmitigated zones (above and below) that clear the R/R and confluence rules, reachable within the horizon.
-   - Every trade, active or pending, needs entryZone, entry, stopLoss, targets [TP1, TP2], confluenceSignals, triggerCondition (what activates it) and "invalidation" (what cancels it before entry, with a price).
-   - Only return an empty bestTrades array if no setup (active or pending) clears the R/R and confluence rules.`;
+export const DEEP_DIVE_SETUP_STATUS_RULES = `SCENARIO STATUS (MANDATORY on every scenario):
+   - "setupStatus": "active" only if current price is inside the trigger zone now. Otherwise "pending": a conditional scenario at an unmitigated zone price has not reached yet ("if price comes to X, a bullish/bearish scenario would become active").
+   - Price does NOT need to be tagging a zone right now. If no zone is being tagged, still return the best pending scenarios at the nearest unmitigated zones (above and below) that clear the distance-ratio and confluence rules, reachable within the horizon.
+   - Every scenario, active or pending, needs entryZone (trigger zone), entry (trigger level), stopLoss (invalidation level), targets (reference levels), confluenceSignals, triggerCondition (what activates it) and "invalidation" (what cancels it before it triggers, with a price).
+   - Only return an empty bestTrades array if no scenario (active or pending) clears the distance-ratio and confluence rules.`;
 
 function num(v: unknown): number | null {
   if (v === undefined || v === null || v === '') return null;

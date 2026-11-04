@@ -1,5 +1,6 @@
 // Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import OpenAI from 'openai';
+import { withScenarioFramingMessages } from '@shared/scenarioFraming';
 
 // XAI API disabled - feature not available
 let xaiClient: OpenAI | null = null;
@@ -26,7 +27,7 @@ async function callGrokAPI(messages: any[], model: string = "grok-4.6", maxToken
     const client = getXaiClient();
     const response = await client.chat.completions.create({
       model,
-      messages,
+      messages: withScenarioFramingMessages(messages),
       max_tokens: maxTokens,
       temperature: 0,
     });

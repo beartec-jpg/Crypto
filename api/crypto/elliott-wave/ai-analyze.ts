@@ -2,6 +2,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
+import { withScenarioFraming } from '../../_lib/scenarioFraming.js';
 
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour cache per symbol/timeframe
 
@@ -202,7 +203,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       messages: [
         {
           role: 'system',
-          content: 'You are an expert Elliott Wave analyst. You respond ONLY with valid JSON. No explanations, no markdown, no extra text.',
+          content: withScenarioFraming('You are an expert Elliott Wave analyst. You respond ONLY with valid JSON. No explanations, no markdown, no extra text.'),
         },
         {
           role: 'user',

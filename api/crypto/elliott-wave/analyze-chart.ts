@@ -2,6 +2,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
+import { withScenarioFraming } from '../../_lib/scenarioFraming.js';
 
 const ADMIN_EMAIL = 'beartec@beartec.uk';
 
@@ -191,7 +192,7 @@ Based on these pivot points, identify the most likely Elliott Wave pattern. Prov
       messages: [
         {
           role: 'system',
-          content: 'You are an expert Elliott Wave analyst. Analyze price action patterns and respond ONLY with valid JSON.',
+          content: withScenarioFraming('You are an expert Elliott Wave analyst. Analyze price action patterns and respond ONLY with valid JSON.'),
         },
         {
           role: 'user',

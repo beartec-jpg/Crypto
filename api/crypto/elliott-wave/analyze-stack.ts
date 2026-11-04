@@ -2,6 +2,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
+import { withScenarioFraming } from '../../_lib/scenarioFraming.js';
 
 const ADMIN_EMAIL = 'beartec@beartec.uk';
 
@@ -194,7 +195,7 @@ Provide JSON response with:
       messages: [
         {
           role: 'system',
-          content: 'You are an expert Elliott Wave analyst. Respond ONLY with valid JSON. No explanations, no markdown, no extra text.',
+          content: withScenarioFraming('You are an expert Elliott Wave analyst. Respond ONLY with valid JSON. No explanations, no markdown, no extra text.'),
         },
         {
           role: 'user',
