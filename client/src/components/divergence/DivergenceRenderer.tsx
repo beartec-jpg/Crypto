@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useEffect, useState, useCallback } from 'react';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import type { Time } from 'lightweight-charts';

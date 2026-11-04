@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useMemo, useRef, useEffect } from 'react';
 import { TRADING_SYSTEMS, type TradingSystemId } from '@/types/tradingSystems';
 import { scoreSystem, type ScoringInput } from '@/lib/tradingSystemScoring';

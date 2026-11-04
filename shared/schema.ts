@@ -1,5 +1,6 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, timestamp, jsonb, boolean, doublePrecision } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, timestamp, jsonb, boolean, doublePrecision, uuid, index, uniqueIndex, primaryKey, bigserial, date } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import {
   CRYPTO_AI_TIMEFRAMES,
@@ -73,8 +74,8 @@ export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().unique().references(() => cryptoUsers.id, { onDelete: "cascade" }),
   tier: varchar("tier").notNull().default("free"), // Base tier: "free", "beginner", "intermediate", "pro", "elite"
-  hasElliottAddon: boolean("has_elliott_addon").default(false), // Elliott Wave add-on ($10/mo) - independent of tier
-  elliottStripeItemId: varchar("elliott_stripe_item_id"), // Stripe subscription item ID for Elliott add-on
+  hasElliottAddon: boolean("has_elliott_addon").default(false), // Legacy (discontinued Elliott add-on); kept for data, no longer read by the app
+  elliottStripeItemId: varchar("elliott_stripe_item_id"), // Legacy (discontinued Elliott add-on); no longer written
   selectedTickers: text("selected_tickers").array().default(sql`ARRAY[]::text[]`), // Max 3 tickers
   alertGrades: text("alert_grades").array().default(sql`ARRAY['A+', 'A']::text[]`), // Which grades to alert on
   alertTimeframes: text("alert_timeframes").array().default(sql`ARRAY['15m', '1h', '4h']::text[]`), // Which timeframes to monitor
@@ -87,7 +88,7 @@ export const cryptoSubscriptions = pgTable("crypto_subscriptions", {
   indicatorAlertsEnabled: boolean("indicator_alerts_enabled").default(true), // Smart Money/Indicator alerts
   aiCredits: integer("ai_credits").default(0), // AI tokens used this month (Core 80, Pro 160, Elite 270)
   aiCreditsResetAt: timestamp("ai_credits_reset_at"), // When credits were last reset (monthly)
-  elliottAiCredits: integer("elliott_ai_credits").default(0), // Remaining Elliott Wave AI credits (monthly: Elite 150, Add-on 50)
+  elliottAiCredits: integer("elliott_ai_credits").default(0), // Remaining Elliott Wave AI credits (monthly: Elite 150, other tiers 50)
   elliottAiCreditsResetAt: timestamp("elliott_ai_credits_reset_at"), // When Elliott credits were last reset (monthly)
   bonusAiCredits: integer("bonus_ai_credits").default(0), // Admin-granted bonus AI credits (added on top of tier)
   bonusElliottCredits: integer("bonus_elliott_credits").default(0), // Admin-granted bonus Elliott credits
@@ -185,6 +186,39 @@ export const insertCryptoScanCacheSchema = z.object({
 
 export type InsertCryptoScanCache = z.infer<typeof insertCryptoScanCacheSchema>;
 export type CryptoScanCache = typeof cryptoScanCache.$inferSelect;
+
+// Async CryptoAI deep-dive jobs (migration 015). One active job per key, shared across users.
+export const cryptoAiDeepJobs = pgTable("crypto_ai_deep_jobs", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => cryptoUsers.id, { onDelete: "cascade" }), // creator
+  symbol: varchar("symbol").notNull(),
+  higherTimeframe: varchar("higher_timeframe").notNull(),
+  lowerTimeframe: varchar("lower_timeframe").notNull(),
+  mode: varchar("mode").notNull(), // deep-dive cache mode incl. horizon
+  status: text("status").notNull().default("pending"), // pending | running | done | error
+  result: jsonb("result"),
+  error: text("error"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  userCreatedIdx: index("idx_crypto_ai_deep_jobs_user_id_created_at").on(t.userId, t.createdAt),
+  activeUq: uniqueIndex("uq_crypto_ai_deep_jobs_active")
+    .on(t.symbol, t.higherTimeframe, t.lowerTimeframe, t.mode)
+    .where(sql`status IN ('pending', 'running')`),
+}));
+
+export const cryptoAiDeepJobWaiters = pgTable("crypto_ai_deep_job_waiters", {
+  jobId: uuid("job_id").notNull().references(() => cryptoAiDeepJobs.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => cryptoUsers.id, { onDelete: "cascade" }),
+  charged: boolean("charged").notNull().default(false),
+  exempt: boolean("exempt").notNull().default(false), // admin: never consumes credits
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.jobId, t.userId] }),
+}));
+
+export type CryptoAiDeepJob = typeof cryptoAiDeepJobs.$inferSelect;
+export type CryptoAiDeepJobWaiter = typeof cryptoAiDeepJobWaiters.$inferSelect;
 
 // User Watchlists - separate table for managing user's ticker watchlist
 export const userWatchlists = pgTable("user_watchlists", {
@@ -744,6 +778,51 @@ export const analyticsDailyStats = pgTable("analytics_daily_stats", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// ========== ADMIN BUSINESS ANALYTICS (migrations/016_admin_analytics.sql) ==========
+// Append-only Stripe billing log, deduped on stripe_event_id.
+export const billingEvents = pgTable("billing_events", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  userId: varchar("user_id"),
+  stripeCustomerId: varchar("stripe_customer_id"),
+  stripeSubscriptionId: varchar("stripe_subscription_id"),
+  stripeEventId: varchar("stripe_event_id").notNull().unique(),
+  type: varchar("type").notNull(),
+  status: varchar("status"),
+  tier: varchar("tier"),
+  amountPence: integer("amount_pence"),
+  currency: varchar("currency", { length: 8 }),
+  mrrPence: integer("mrr_pence"), // subscription MRR after this event (state events only)
+  mrrDeltaPence: integer("mrr_delta_pence"),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  raw: jsonb("raw"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  subTimeIdx: index("billing_events_sub_time_idx").on(t.stripeSubscriptionId, t.occurredAt),
+  typeTimeIdx: index("billing_events_type_time_idx").on(t.type, t.occurredAt),
+  userIdx: index("billing_events_user_idx").on(t.userId),
+}));
+
+export const subscriptionSnapshotsDaily = pgTable("subscription_snapshots_daily", {
+  date: date("date").notNull(),
+  tier: varchar("tier").notNull(),
+  activeCount: integer("active_count").notNull().default(0),
+  trialingCount: integer("trialing_count").notNull().default(0),
+  mrrPence: integer("mrr_pence").notNull().default(0),
+  churnedCount: integer("churned_count").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ pk: primaryKey({ columns: [t.date, t.tier] }) }));
+
+// Clerk webhook events, keyed by svix id for idempotency.
+export const authEvents = pgTable("auth_events", {
+  svixId: varchar("svix_id").primaryKey(),
+  type: varchar("type").notNull(),
+  userId: varchar("user_id"),
+  sessionId: varchar("session_id"),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  raw: jsonb("raw"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ typeTimeIdx: index("auth_events_type_time_idx").on(t.type, t.occurredAt) }));
+
 // ========== MULTI-EXCHANGE CVD CACHE ==========
 // Cache for multi-exchange CVD/footprint data to avoid redundant API calls
 export const multiExchangeCvdCache = pgTable("multi_exchange_cvd_cache", {
@@ -1203,7 +1282,7 @@ export const acceptSwapOfferSchema = z.object({
 });
 
 // Compliance log of AI technical scenarios / overviews delivered to users (migrations/015_ai_output_log.sql).
-// Retention: 5 years (see api/_lib/aiOutputLog.ts).
+// Retention: 1 year / 365 days (see api/_lib/aiOutputLog.ts).
 export const aiOutputLog = pgTable("ai_output_log", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   createdAt: timestamp("created_at").defaultNow().notNull(),

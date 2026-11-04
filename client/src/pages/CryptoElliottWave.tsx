@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { createChart, IChartApi, ISeriesApi, ColorType, CrosshairMode, CandlestickSeries, LineSeries, createSeriesMarkers, LineWidth, Time } from 'lightweight-charts';
@@ -2896,14 +2897,14 @@ export default function CryptoElliottWave() {
   debugSettingsRef.current = debugSettings;
 
   // Check subscription tier and Elliott Wave access
-  const { data: subscription, isLoading: subLoading } = useQuery<{ tier: string; canUseElliott?: boolean; hasElliottAddon?: boolean; monthlyUsage?: { aiCredits: number; aiLimit: number; elliottCredits: number; elliottLimit: number } }>({
+  const { data: subscription, isLoading: subLoading } = useQuery<{ tier: string; monthlyUsage?: { aiCredits: number; aiLimit: number; elliottCredits: number; elliottLimit: number } }>({
     queryKey: ['/api/crypto/my-subscription'],
   });
 
-  // User can use Elliott features if they have the addon OR elite tier OR are admin
-  const canUseElliottFeatures = isAdmin || subscription?.canUseElliott || subscription?.hasElliottAddon || subscription?.tier === 'elite' || localTier === 'elite';
+  // Elliott Wave chart tools are available to every signed-in user (no tier gate)
+  const canUseElliottFeatures = true;
   const isElite = isAdmin || subscription?.tier === 'elite' || localTier === 'elite';
-  const hasElliottAIAccess = isAdmin || (subscription?.monthlyUsage?.elliottLimit ?? 0) > 0 || subscription?.tier === 'elite' || subscription?.hasElliottAddon;
+  const hasElliottAIAccess = isAuthenticated || isAdmin;
   
   // Computed access flag: In development = always allowed; In production = need auth + subscription + ready
   // Also requires auth and subscription loading to be complete to prevent premature mutations
@@ -3137,7 +3138,7 @@ export default function CryptoElliottWave() {
 
   // Fetch saved wave labels (scoped by user so caches never cross accounts)
   // In development: open access, no auth required
-  // In production: require isAuthenticated, canUseElliott (elite OR addon), and authReady
+  // In production: require isAuthenticated, and authReady
   const labelsQueryKey = ['/api/crypto/elliott-wave/labels', userScope, symbol, timeframe] as const;
   const { data: labelsData, refetch: refetchLabels } = useQuery<ElliottWaveLabel[]>({
     queryKey: labelsQueryKey,
@@ -3375,12 +3376,6 @@ export default function CryptoElliottWave() {
             description: 'Please sign in to save wave patterns.',
             variant: 'destructive',
           });
-        } else if (error.status === 403) {
-          toast({
-            title: 'Subscription Required',
-            description: 'Elliott Wave features require Elite tier or the Elliott Wave add-on.',
-            variant: 'destructive',
-          });
         } else {
           toast({
             title: 'Save Failed',
@@ -3445,12 +3440,6 @@ export default function CryptoElliottWave() {
             description: 'Please sign in to delete wave patterns.',
             variant: 'destructive',
           });
-        } else if (error.status === 403) {
-          toast({
-            title: 'Subscription Required',
-            description: 'Elliott Wave features require Elite tier or the Elliott Wave add-on.',
-            variant: 'destructive',
-          });
         } else {
           toast({
             title: 'Delete Failed',
@@ -3491,12 +3480,6 @@ export default function CryptoElliottWave() {
           toast({
             title: 'Sign In Required',
             description: 'Please sign in to update wave patterns.',
-            variant: 'destructive',
-          });
-        } else if (error.status === 403) {
-          toast({
-            title: 'Subscription Required',
-            description: 'Elliott Wave features require Elite tier or the Elliott Wave add-on.',
             variant: 'destructive',
           });
         } else {
@@ -4023,6 +4006,7 @@ const aiAnalyze = useMutation({
     console.log('📊 Creating new chart with', chartData.length, 'data points');
     const chart = createChart(chartContainerRef.current, {
       layout: {
+        attributionLogo: true,
         background: { type: ColorType.Solid, color: '#0e0e0e' },
         textColor: '#d1d5db',
       },
@@ -7169,8 +7153,8 @@ const aiAnalyze = useMutation({
     // Guard: Check access before attempting save
     if (!hasElliottAccess) {
       toast({
-        title: 'Subscription Required',
-        description: 'Elliott Wave features require Elite tier or the Elliott Wave add-on.',
+        title: 'Sign In Required',
+        description: 'Please sign in to save wave patterns.',
         variant: 'destructive',
       });
       return;
@@ -7297,8 +7281,8 @@ const aiAnalyze = useMutation({
     // Guard: Check access before AI analysis
     if (!hasElliottAccess) {
       toast({
-        title: 'Subscription Required',
-        description: 'AI analysis requires Elite tier or the Elliott Wave add-on.',
+        title: 'Sign In Required',
+        description: 'Please sign in to use AI wave analysis.',
         variant: 'destructive',
       });
       return;
@@ -7415,9 +7399,6 @@ const aiAnalyze = useMutation({
             <img src={bearTecLogoNew} alt="BearTec" className="h-8 cursor-pointer" />
           </Link>
           <h1 className="text-xl font-bold">Elliott Wave Analysis</h1>
-          <Badge variant="outline" className="bg-red-600/20 text-red-400 border-red-600">
-            Elite
-          </Badge>
         </div>
 
         <div className="flex items-center gap-4">
@@ -7590,7 +7571,7 @@ const aiAnalyze = useMutation({
                 disabled={saveLabel.isPending || !hasElliottAccess} 
                 size="sm" 
                 className="h-7 px-2 bg-[#00c4b4] hover:bg-[#00a89c] disabled:opacity-50"
-                title={!hasElliottAccess ? "Subscription required to save patterns" : "Save pattern"}
+                title={!hasElliottAccess ? "Sign in to save patterns" : "Save pattern"}
               >
                 {saveLabel.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               </Button>
@@ -7628,7 +7609,7 @@ const aiAnalyze = useMutation({
                   variant="ghost" 
                   size="sm" 
                   className="h-7 px-2 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
-                  title={!hasElliottAccess ? "Subscription required to delete patterns" : "Delete pattern"}
+                  title={!hasElliottAccess ? "Sign in to delete patterns" : "Delete pattern"}
                 >
                   {deleteLabel.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 </Button>
@@ -7669,31 +7650,6 @@ const aiAnalyze = useMutation({
           </Card>
         )}
 
-        {!isDevelopment && isAuthenticated && !canUseElliottFeatures && !subLoading && (
-          <Card className="bg-purple-900/20 border-purple-500/50 mb-4">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center flex-shrink-0">
-                  <TrendingUp className="w-5 h-5 text-purple-400" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-purple-300 font-medium">Upgrade to access Elliott Wave features</p>
-                  <p className="text-sm text-gray-400 mt-1">
-                    Elliott Wave analysis requires either the <span className="text-purple-400">Elite tier</span> or the <span className="text-cyan-400">Elliott Wave add-on ($10/mo)</span>. Upgrade on the Plans page to save and load patterns.
-                  </p>
-                </div>
-                <Button 
-                  onClick={() => setLocation('/crypto/subscribe')} 
-                  size="sm" 
-                  className="bg-purple-600 hover:bg-purple-700 text-white"
-                  data-testid="button-upgrade-elliott"
-                >
-                  View Plans
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Chart */}
         <Card className="bg-slate-900/50 border-slate-800">
@@ -8178,39 +8134,6 @@ const aiAnalyze = useMutation({
           </TabsContent>
 
           <TabsContent value="stack" className="mt-4">
-            {/* Upgrade banner for free users */}
-            {!hasElliottAccess && (
-              <Card className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 border-purple-500/50 mb-4">
-                <CardContent className="p-6">
-                  <div className="text-center space-y-3">
-                    <div className="flex justify-center">
-                      <div className="w-12 h-12 bg-purple-500/20 rounded-full flex items-center justify-center">
-                        <Sparkles className="w-6 h-6 text-purple-400" />
-                      </div>
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-white mb-1">
-                        Upgrade to Elite or add the Waves Add-on
-                      </h3>
-                      <p className="text-sm text-gray-300">
-                        Save wave patterns, build your wave stack, and track multi-degree structures across timeframes.
-                      </p>
-                    </div>
-                    <Link href="/cryptosubscribe">
-                      <Button 
-                        className="w-full sm:w-auto bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-4 sm:px-6 py-3 text-sm font-semibold"
-                        data-testid="button-upgrade-stack"
-                      >
-                        View Plans & Upgrade
-                      </Button>
-                    </Link>
-                    <p className="text-xs text-gray-500">
-                      Free trial: Draw 1 pattern to explore Fib levels & rules
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
             {/* Saved Projection Lines Manager */}
             {savedProjectionLinesFromDB.filter(l => l.symbol === symbol).length > 0 && (
               <div className="mb-4 p-3 bg-slate-800/50 rounded-lg border border-slate-700">
@@ -8919,24 +8842,8 @@ const aiAnalyze = useMutation({
                 <div className="absolute inset-0 bg-gradient-to-br from-purple-900/80 via-slate-900/90 to-cyan-900/80" />
                 <div className="relative text-center py-12 px-6">
                   <Sparkles className="w-10 h-10 text-purple-400 mx-auto mb-4" />
-                  {!isAuthenticated ? (
-                    <>
-                      <p className="text-lg font-semibold text-white">Sign in to access Elliott Wave AI analysis</p>
-                      <p className="text-sm mt-2 text-gray-300">Create an account to unlock AI-powered wave analysis</p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-lg font-semibold text-white">Upgrade to Elite or add the Waves Add-on</p>
-                      <p className="text-sm mt-2 text-gray-300">Get AI-powered Elliott Wave analysis with your subscription</p>
-                      <a 
-                        href="/plans" 
-                        className="inline-block mt-4 px-6 py-2 bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700 rounded-lg text-white font-medium transition-all"
-                        data-testid="link-upgrade-plans"
-                      >
-                        View Plans & Upgrade
-                      </a>
-                    </>
-                  )}
+                  <p className="text-lg font-semibold text-white">Sign in to access Elliott Wave AI analysis</p>
+                  <p className="text-sm mt-2 text-gray-300">Create an account to unlock AI-powered wave analysis</p>
                 </div>
               </div>
             )}

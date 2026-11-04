@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // client/src/lib/balanceService.ts
 // Multi-chain balance fetching service - supports MAINNET and TESTNET
 

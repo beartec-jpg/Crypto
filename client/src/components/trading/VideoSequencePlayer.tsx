@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useRef, useEffect, useState } from 'react';
 import bearVideo from '@assets/grok_video_2025-11-20-03-05-08_1763607929480.mp4';
 import transitionVideo from '@assets/grok_video_2025-11-20-06-10-37_1763619824022.mp4';

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // SMS Notification Service using Twilio Integration
 import twilio from 'twilio';
 

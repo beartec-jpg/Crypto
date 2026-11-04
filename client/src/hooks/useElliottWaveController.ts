@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useCallback } from 'react';
 import { getDegreeConfiguration } from '@/components/elliottWave/DegreePicker';
 import type { ChartDrawingTool } from '@/types/drawing';

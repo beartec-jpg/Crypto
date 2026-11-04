@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Fair Value Gap (FVG) type definitions for the professional FVG detection system.
  */

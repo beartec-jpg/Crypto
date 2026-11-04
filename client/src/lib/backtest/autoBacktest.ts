@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Auto-backtest runner
  * Phase 4: Extracted from CryptoIndicators.tsx

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Layout constants for chart and UI positioning
  * Extracted from ChartFullscreenPage.tsx for reusability

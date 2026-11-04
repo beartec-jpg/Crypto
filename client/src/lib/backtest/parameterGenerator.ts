@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Parameter generation utilities for auto-backtest
  * Phase 4: Extracted from CryptoIndicators.tsx

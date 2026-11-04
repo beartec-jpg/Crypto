@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Pencil, TrendingUp, Minus, Square, GitBranch, Activity, Type, ArrowUpDown, Hash, Spline } from 'lucide-react';

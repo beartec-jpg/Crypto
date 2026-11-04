@@ -1,8 +1,10 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { Candle, CVDDataItem } from '@/types/chart';
 import { useGenuineDemandScore } from '@/hooks/indicators/useGenuineDemandScore';
 import type { GDSExternalMetrics } from '@/lib/indicators/genuineDemandScore';
 import { PatternGrid } from '@/components/patterns/PatternGrid';
 import { PatternBacktestPanel } from '@/components/patterns/PatternBacktestPanel';
+import { patternPanelIdleCopy } from '@/lib/watchlistHints';
 
 interface GenuineDemandScorePanelProps {
   candles: Candle[];
@@ -12,6 +14,10 @@ interface GenuineDemandScorePanelProps {
   showPatternBacktest?: boolean;
   /** When false (empty watchlist), system is idle and does not look "live". */
   isActive?: boolean;
+  /** Drives idle copy: whether the watchlist has any tickers. */
+  watchlistHasTickers?: boolean;
+  /** Drives idle copy: whether a watchlist ticker is selected. */
+  hasSelectedTicker?: boolean;
 }
 
 export function GenuineDemandScorePanel({
@@ -21,12 +27,16 @@ export function GenuineDemandScorePanel({
   symbol,
   showPatternBacktest = true,
   isActive = true,
+  watchlistHasTickers = false,
+  hasSelectedTicker = false,
 }: GenuineDemandScorePanelProps) {
   const { gds } = useGenuineDemandScore({
     candles: isActive ? candles : [],
     cvdData: isActive ? cvdData : [],
     externalMetrics: isActive ? externalMetrics : undefined,
   });
+
+  const idle = patternPanelIdleCopy(watchlistHasTickers, hasSelectedTicker);
 
   return (
     <div
@@ -49,10 +59,8 @@ export function GenuineDemandScorePanel({
 
       {!isActive ? (
         <div className="rounded-lg border border-dashed border-slate-700 bg-slate-950/40 px-4 py-8 text-center">
-          <p className="text-sm text-slate-300">Add a ticker to your watchlist to activate pattern detection.</p>
-          <p className="mt-1 text-xs text-slate-500">
-            The multi-pattern system stays idle until you have at least one symbol.
-          </p>
+          <p className="text-sm text-slate-300">{idle.title}</p>
+          <p className="mt-1 text-xs text-slate-500">{idle.detail}</p>
         </div>
       ) : (
         <>

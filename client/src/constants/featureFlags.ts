@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Feature flags — hide features without deleting code.
  * Flip to true to re-enable QBTC pages, wallet chain UI, and QBTC swap flows.

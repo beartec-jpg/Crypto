@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { OscillatorsPanel } from '@/components/indicators/OscillatorsPanel';
 import { GenuineDemandScorePanel } from '@/components/indicators/GenuineDemandScorePanel';
 import type { Candle, CVDDataItem } from '@/types/chart';
@@ -57,6 +58,8 @@ export function IndicatorsSection({
           symbol={symbol}
           showPatternBacktest={showPatternBacktest && live}
           isActive={live && candles.length > 0}
+          watchlistHasTickers={live}
+          hasSelectedTicker={Boolean(symbol)}
         />
       </div>
     </>

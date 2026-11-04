@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 interface OpacitySliderProps {
   value: number; // 0-1
   onChange: (value: number) => void;

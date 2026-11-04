@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 type GetTokenFn = () => Promise<string | null>;
 
 let getTokenFn: GetTokenFn | null = null;

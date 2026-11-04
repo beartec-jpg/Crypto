@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useRef, useCallback, useEffect, useMemo } from 'react';
 import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { CrosshairMode } from 'lightweight-charts';

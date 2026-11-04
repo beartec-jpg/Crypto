@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 import { LoadingSpinner } from '@/components/LoadingSpinner'

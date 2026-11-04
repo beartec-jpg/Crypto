@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Once-daily pre-London desk: deep-dive per symbol and post text embeds to Discord.
  * Prefer isolated crons (not one multi-symbol request):
@@ -589,7 +590,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return `• CANCEL ${t ? `${t.direction} @ ${t.entry}` : r.id.slice(0, 8)} — ${r.reason || 'stale'}`;
         });
       embeds.push({
-        title: '④ Open-book review (prior scenarios)',
+        title: '④ Open-book review (prior ideas)',
         description: [
           cancelLines.length ? cancelLines.join('\n') : '• No cancels',
           keepLines.length ? keepLines.join('\n') : '• Nothing kept (empty book or all cancelled)',
@@ -678,6 +679,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               higherTimeframe: deep.higherTimeframe,
               lowerTimeframe: deep.lowerTimeframe,
               from: 'discord-btc-pre-london',
+              // Informational only: tracker always starts trades as 'pending' and fills on price.
+              setupStatus: t.setupStatus ?? null,
               stopLiftRationale: t.stopLiftRationale || null,
             },
           })),

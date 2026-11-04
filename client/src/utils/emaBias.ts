@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Utility for calculating EMA-based market bias
  * Uses EMA20, EMA50, and EMA100 to determine trend

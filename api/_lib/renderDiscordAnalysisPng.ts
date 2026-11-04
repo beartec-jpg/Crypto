@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { TECHNICAL_SCENARIO_DISCLAIMER } from './scenarioDisclaimer.js';
 /**
  * High-quality server-side "total analysis" PNG for Discord.

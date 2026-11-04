@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import { X } from 'lucide-react';

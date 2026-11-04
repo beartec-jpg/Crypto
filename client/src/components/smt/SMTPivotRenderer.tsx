@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * @fileoverview SMT Pivot Renderer
  * Renders swing pivots detected from SMT divergence analysis on the chart

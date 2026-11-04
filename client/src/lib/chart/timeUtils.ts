@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Time-related utility functions for chart rendering
  * Extracted from CryptoIndicators.tsx

@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Interaction-related constants
  * Thresholds and timings for user interactions (touch, click, drag, etc.)

@@ -5,6 +5,8 @@ import {
   buildAiOutputLogParams,
   logAiOutput,
   logAiOutputBounded,
+  AI_OUTPUT_LOG_RETENTION_DAYS,
+  pruneAiOutputLog,
 } from '../../../../api/_lib/aiOutputLog';
 
 const entry = {
@@ -47,5 +49,13 @@ describe('aiOutputLog writer', () => {
     expect(buildAiOutputLogParams({ ...entry, output: 'plain' })[9]).toBe('plain');
     const circ: any = {}; circ.self = circ;
     expect(() => buildAiOutputLogParams({ ...entry, output: circ })).not.toThrow();
+  });
+
+  it('retains AI output rows for 1 year (365 days) by default', async () => {
+    expect(AI_OUTPUT_LOG_RETENTION_DAYS).toBe(365);
+    const query = vi.fn().mockResolvedValue({ rowCount: 0 });
+    await pruneAiOutputLog({ query });
+    const call = query.mock.calls.find(([sql]) => String(sql).includes('DELETE FROM ai_output_log'));
+    expect(call?.[1]).toEqual([365]);
   });
 });

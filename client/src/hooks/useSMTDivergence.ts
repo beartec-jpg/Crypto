@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * @fileoverview useSMTDivergence Hook
  * Manages SMT divergence detection for multi-asset analysis

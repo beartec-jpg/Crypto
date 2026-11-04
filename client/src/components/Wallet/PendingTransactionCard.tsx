@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // client/src/components/Wallet/PendingTransactionCard.tsx
 // Card showing pending transaction progress with steps and remove button
 // Collapses to compact view when complete

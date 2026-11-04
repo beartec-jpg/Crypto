@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Hook to manage trading system activation and configuration
  * Handles applying preset configurations to indicators/oscillators/tools

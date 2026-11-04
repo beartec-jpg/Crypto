@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { saveMessage, getThread, getLatestPerThread } from '../storage/messageStore';
 import { pollRelayMessages, sendRelayMessage, encryptMessage, decryptMessage, deriveSharedKey } from '../lib/messaging';

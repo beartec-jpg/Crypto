@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Live coaching copy for oscillator cards.
  * Turns raw values + price action + divergence into a newbie-friendly readout

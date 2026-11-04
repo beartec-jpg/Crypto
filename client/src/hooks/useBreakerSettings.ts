@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useCallback } from 'react';
 import type { BreakerSettings } from '@/types/breaker';
 import { DEFAULT_BREAKER_SETTINGS } from '@/types/breaker';

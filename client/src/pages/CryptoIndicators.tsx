@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * ⛔️ DO NOT USE THIS FILE - DEPRECATED ⛔️
  * 
@@ -3774,9 +3775,9 @@ const handleAIMarketReview = () => {
     <>
       <Helmet>
         <title>Crypto Indicators & Oscillators | BearTec</title>
-        <meta name="description" content="Beginner-friendly crypto charts with multiple oscillators, indicators, and AI-powered technical scenarios." />
+        <meta name="description" content="Beginner-friendly crypto charts with multiple oscillators, indicators, and educational AI technical scenarios. Not financial advice." />
         <meta property="og:title" content="Crypto Indicators & Oscillators | BearTec" />
-        <meta property="og:description" content="Beginner-friendly crypto charts with multiple oscillators, indicators, and AI-powered technical scenarios." />
+        <meta property="og:description" content="Beginner-friendly crypto charts with multiple oscillators, indicators, and educational AI technical scenarios. Not financial advice." />
         <meta property="og:type" content="website" />
       </Helmet>
       <div className="min-h-screen bg-[#0e0e0e] p-4 pb-20">
@@ -5065,15 +5066,15 @@ const handleAIMarketReview = () => {
         {/* Unlock AI Analysis CTA */}
         <Card className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 border-purple-500/30 p-4 text-center">
           <div className="max-w-2xl mx-auto space-y-2">
-            <h2 className="text-xl font-bold text-white">Unlock AI-Powered Trade Analysis</h2>
+            <h2 className="text-xl font-bold text-white">AI technical scenarios</h2>
             <p className="text-gray-300 text-sm">
-              Upgrade to Intermediate for instant trade alerts powered by Grok AI. Get real-time confluence analysis, 
-              push notifications, and custom alert preferences.
+              Core, Pro and Elite plans add educational AI technical scenarios: cross-timeframe confluence readings, 
+              notifications and custom filters. Automated analysis only, not financial advice.
             </p>
             <div className="flex items-center justify-center gap-4 text-xs text-gray-400">
               <div className="flex items-center gap-1">
                 <Zap className="w-4 h-4 text-yellow-400" />
-                <span>AI Trade Alerts</span>
+                <span>AI technical scenarios</span>
               </div>
               <div className="flex items-center gap-1">
                 <Bell className="w-4 h-4 text-blue-400" />
@@ -5089,7 +5090,7 @@ const handleAIMarketReview = () => {
               className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-6 py-3 text-base font-semibold"
               data-testid="button-unlock-ai"
             >
-              Unlock AI Analysis - $10/month
+              See AI plans - from £15/month
             </Button>
           </div>
         </Card>

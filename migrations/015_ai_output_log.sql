@@ -1,7 +1,8 @@
 -- 015_ai_output_log.sql
 -- Compliance log of every AI technical scenario / overview delivered (web, Discord, PNG).
--- Retention: keep 5 years (AI_OUTPUT_LOG_RETENTION_DAYS in api/_lib/aiOutputLog.ts), then purge:
---   DELETE FROM ai_output_log WHERE created_at < NOW() - INTERVAL '5 years';
+-- Purpose: compliance evidence and our own quality review of AI outputs.
+-- Retention: keep 1 year / 365 days (AI_OUTPUT_LOG_RETENTION_DAYS in api/_lib/aiOutputLog.ts), then purge:
+--   DELETE FROM ai_output_log WHERE created_at < NOW() - INTERVAL '365 days';
 
 CREATE TABLE IF NOT EXISTS ai_output_log (
   id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),

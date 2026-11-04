@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useCallback } from 'react';
 import { authenticatedApiRequest } from '@/lib/apiAuth';
 import type { Dispatch, SetStateAction } from 'react';

@@ -1,6 +1,8 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import OpenAI from 'openai';
+import { withScenarioFraming } from '../../_lib/scenarioFraming.js';
 
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour cache per symbol/timeframe
 
@@ -94,7 +96,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Get subscription for tier and Elliott credits
     const subResult = await pool.query(
-      'SELECT tier, has_elliott_addon, elliott_ai_credits, elliott_ai_credits_reset_at FROM crypto_subscriptions WHERE user_id = $1',
+      'SELECT tier, elliott_ai_credits, elliott_ai_credits_reset_at FROM crypto_subscriptions WHERE user_id = $1',
       [cryptoUserId]
     );
 
@@ -110,21 +112,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const tier = subscription.tier || 'free';
-    const hasElliottAddon = subscription.has_elliott_addon || false;
     let elliottCreditsUsed = subscription.elliott_ai_credits || 0;
     const resetAt = subscription.elliott_ai_credits_reset_at ? new Date(subscription.elliott_ai_credits_reset_at) : null;
 
-    // Check tier eligibility (Elite tier OR Elliott Wave add-on)
-    const hasElliottAccess = tier === 'elite' || hasElliottAddon;
-    if (!hasElliottAccess) {
-      await pool.end();
-      return res.status(403).json({ 
-        error: 'Elliott Wave AI requires Elite tier or Elliott Wave add-on',
-        message: 'Please upgrade to Elite tier or purchase the Elliott Wave add-on to access AI analysis'
-      });
-    }
-
-    // Determine credit limit based on tier/addon
+    // Credit limit: Elite gets the larger allowance, everyone else the standard one
     const elliottLimit = tier === 'elite' ? MONTHLY_ELLIOTT_CREDITS.elite : MONTHLY_ELLIOTT_CREDITS.addon;
 
     // Check if credits should reset (new month)
@@ -212,7 +203,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       messages: [
         {
           role: 'system',
-          content: 'You are an expert Elliott Wave analyst. You respond ONLY with valid JSON. No explanations, no markdown, no extra text.',
+          content: withScenarioFraming('You are an expert Elliott Wave analyst. You respond ONLY with valid JSON. No explanations, no markdown, no extra text.'),
         },
         {
           role: 'user',

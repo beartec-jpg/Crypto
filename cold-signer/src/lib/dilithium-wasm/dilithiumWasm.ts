@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * dilithiumWasm.ts — TypeScript wrapper around the compiled WASM module.
  *

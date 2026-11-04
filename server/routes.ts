@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import type { Express, Request, Response, NextFunction, RequestHandler } from "express";
 import { createServer, type Server } from "http";
 import { execFile } from "child_process";
@@ -18,6 +19,7 @@ import OpenAI from "openai";
 import WebSocket from "ws";
 import axios from 'axios';
 import { storage } from "./storage";
+import { withScenarioFraming, withScenarioFramingMessages } from '@shared/scenarioFraming';
 import { logAiOutput } from "../api/_lib/aiOutputLog";
 import { userWatchlists } from "@shared/schema";
 import {
@@ -324,7 +326,7 @@ async function createXaiChatCompletionWithFallback(params: {
     try {
       const requestParams: any = {
         model,
-        messages: params.messages,
+        messages: withScenarioFramingMessages(params.messages),
         // Thinking mode requires temperature=1 per xAI spec; otherwise use caller value
         temperature: useThinking ? 1 : params.temperature,
         max_tokens: params.max_tokens,
@@ -4002,10 +4004,10 @@ const requireCryptoAuth: RequestHandler = async (req: Request, res: Response, ne
 **VWAP Position:**
 - Price vs VWAP: ${vwap?.current ? (currentPrice > vwap.current ? 'Above' : 'Below') : 'N/A'}
 
-Provide a brief, actionable market analysis (3-4 sentences) covering:
+Provide a brief, educational technical reading (3-4 sentences, no recommendations) covering:
 1. Current trend and momentum
 2. Key support/resistance levels
-3. Trading bias (bullish/bearish/neutral) with reasoning
+3. Technical bias (bullish/bearish/neutral) with reasoning
 4. Risk factors to watch
 
 Be concise and direct.`;
@@ -4018,7 +4020,7 @@ Be concise and direct.`;
         messages: [
           {
             role: "system",
-            content: "You are a professional cryptocurrency market analyst. Provide concise, actionable insights based on technical analysis."
+            content: withScenarioFraming("You are an automated technical-analysis tool. Provide concise, educational, non-advisory insights based on technical analysis.")
           },
           {
             role: "user",
@@ -4371,10 +4373,10 @@ Current Price: $${lowerData.currentPrice}
 ${fmtTF(higherTimeframe, higherData)}
 ${fmtTF(lowerTimeframe, lowerData)}
 
-Give a concise at-a-glance analysis only. Do NOT produce a trade plan, entry, stop, targets, or risk/reward.
+Give a concise at-a-glance analysis only. Do NOT produce a trade plan, trigger/invalidation levels, targets, or risk/reward.
 - Higher timeframe: focus on dominant bias/trend and key levels.
 - Lower timeframe: focus on momentum/structure, alignment with the higher timeframe, and nearby trigger levels.
-- Keep summaries brief, neutral and descriptive (no buy/sell directives).
+- Keep summaries brief and actionable.
 
 OUTPUT: Valid JSON only, no markdown.
 {
@@ -4387,7 +4389,7 @@ OUTPUT: Valid JSON only, no markdown.
 
       const counterTrendMinConfluence = minConfluence + 1;
       const horizonPrompt = buildCryptoAiHorizonPromptBlock(tradeHorizon, higherTimeframe, lowerTimeframe);
-      const deepPrompt = `Symbol: ${symbol} | Multi-timeframe trade search
+      const deepPrompt = `Symbol: ${symbol} | Multi-timeframe technical scenario search (educational, not advice)
 Current Price: $${lowerData.currentPrice}
 HTF Dominant Bias (${higherTimeframe}): ${dominantBias}
 ${horizonPrompt}
@@ -4406,11 +4408,10 @@ TRADE PLANNING RULES:
 9. CONFLUENCE SCORING: Fib OTE zone (0.382-0.705) overlap, EMA proximity (20/50/200), OB alignment, swing pivot alignment, BOS/CHoCH, liquidity sweep, and trendline alignment each add a confluence signal. More confluences = higher grade.
 10. Minimum R/R: ${minRiskReward}:1 to TP1. With-trend setups need at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}; counter-trend setups need at least ${counterTrendMinConfluence}.
 11. LONG: SL strictly below entry, TP1/TP2 strictly above entry. SHORT: SL strictly above entry, TP1/TP2 strictly below entry.
-12. Return the valid standalone setup(s) you actually find. Do NOT force sequenced or linked trades. You MAY mention a natural flow into another zone in overallSummary, but never withhold a good standalone setup for lack of a second leg.
-13. No contradictory LONG and SHORT at the same entry. Maximum 2 technical scenarios total.
+12. Return the valid standalone setup(s) you actually find. Do NOT force sequenced or linked scenarios. You MAY mention a natural flow into another zone in overallSummary, but never withhold a good standalone setup for lack of a second leg.
+13. No contradictory LONG and SHORT at the same entry. Maximum 2 trade ideas total.
 14. If no high-quality setup exists at a structural level, output 0 trades and use overallSummary/keyLevels to say which zones are worth watching next.
-15. Tag each scenario's expected hold to match the horizon (${tradeHorizonMeta.expectedHold}) in reasoning when useful.
-16. Wording: conditional scenario language only ("a long setup appears if price holds above X; invalidated below Y"). No "buy"/"sell"/"you should"/"enter now", no position sizing or % of account, no hype or performance claims.
+15. Tag each trade's expected hold to match the horizon (${tradeHorizonMeta.expectedHold}) in reasoning when useful.
 
 OUTPUT: Valid JSON only, no markdown.
 {
@@ -4426,18 +4427,18 @@ OUTPUT: Valid JSON only, no markdown.
       "direction": "LONG/SHORT",
       "htfRelationship": "with-trend/counter-trend",
       "triggerZone": "e.g. 1.0800-1.0850 demand FVG",
-      "triggerCondition": "e.g. scenario activates if price drops into the zone and reacts with local confirmation",
+      "triggerCondition": "e.g. price drops into the zone and reacts with local confirmation",
       "entry": 1.2345,
       "stopLoss": 1.2280,
       "targets": [1.2420, 1.2520],
       "entryZone": "FVG/OB/indicator trigger zone",
       "entryRationale": "why the level matters",
       "slRationale": "why the invalidation sits there",
-      "tp1Rationale": "nearest opposing level",
+      "tp1Rationale": "why the first reference level matters (nearest opposing level)",
       "tp2Rationale": "next major level",
       "confluenceSignals": ["signal 1", "signal 2", "signal 3"],
       "riskRewardRatio": 2.1,
-      "reasoning": "1 sentence, conditional and neutral: e.g. a long setup appears if price holds above X; invalidated below Y."
+      "reasoning": "1 sentence: why this is a high-probability level-to-level setup."
     }
   ]
 }`;
@@ -4450,10 +4451,8 @@ OUTPUT: Valid JSON only, no markdown.
           {
             role: "system",
             content: analysisType === 'general'
-              ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan. Use neutral, descriptive, third-person language; never use imperative or second-person directives ("buy", "sell", "you should"), and no hype or performance claims. Always respond with valid JSON only, no markdown.`
-              : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes (${higherTimeframe}, ${lowerTimeframe}) with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nYour edge is cross-timeframe confluence: identify WHERE price is going (the target level), WHERE to enter (with a concrete justification appropriate to this mode — never a blind "enter at current price"), and WHERE your invalidation is (a structural stop scaled to the trade horizon, not automatically the nearest LTF wick). Higher timeframe bias is context and destination, not a veto. Favour with-trend setups, but allow counter-trend setups when local structure shifts and confluence are strong enough. Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Stop-loss goes just behind the horizon-appropriate invalidation structure — no arbitrary ATR padding. Require minimum R/R ${minRiskReward}:1 to TP1, at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}, and one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB/FVG alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone setups and never force sequencing. You never output contradictory LONG+SHORT setups. If no quality setup exists for this mode, you say so and point to the watch zones. Always respond with valid JSON only, no markdown.
-
-LANGUAGE RULES (general, non-personalised technical analysis): Describe every setup as a conditional chart scenario, e.g. "a long setup appears if price holds above X; invalidated below Y". Never use imperative or second-person directives such as "buy", "sell", "you should", "enter now", "go long", "take profit now". Present risk/reward only as illustrative ratios derived from the entry, stop and target levels (e.g. "an entry at X with a stop at Y and target Z gives about 1:3"). Never mention position sizing, leverage amounts, or a percentage of an account/portfolio. No hype, "hot picks", urgency, guarantees, or performance claims. Write all text fields (summaries, rationales, triggerCondition, reasoning) in neutral, descriptive, third-person language.`
+              ? `You are a concise crypto market analyst. Compare the higher and lower timeframe, explain bias, momentum, structure, and key levels, and keep it lightweight. Never produce a trade plan or tell the reader what to do. Always respond with valid JSON only, no markdown.`
+              : `${traderMode.systemPrompt}\n\nYou are working in ${traderMode.label} mode across multiple timeframes (${higherTimeframe}, ${lowerTimeframe}) with trade horizon ${tradeHorizonMeta.label} (expected hold ${tradeHorizonMeta.expectedHold}). Apply this mode's validity criteria: ${traderMode.validityCriteria}\n\n${horizonPrompt}\n\nDescribe cross-timeframe confluence as conditional technical scenarios: the reference level price may move towards, the trigger level at which a scenario would become active (with a concrete justification appropriate to this mode — never simply the current price), and the invalidation level (structural, scaled to the horizon, not automatically the nearest LTF wick). Higher timeframe bias is context and destination, not a veto. Favour with-trend scenarios, but allow counter-trend scenarios when local structure shifts and confluence are strong enough. Prefer conditional (pending) scenarios with triggerZone and triggerCondition when price has not reached the level yet. The invalidation level (stopLoss field) sits just behind the horizon-appropriate invalidation structure — no arbitrary ATR padding. Require an illustrative distance ratio of at least ${minRiskReward}:1 to the first reference level, at least ${minConfluence} confirming signal${minConfluence === 1 ? '' : 's'}, and one extra confluence for counter-trend setups. Fib OTE zone (0.382-0.705), EMA proximity, OB/FVG alignment, swing pivots, BOS/CHoCH, liquidity sweeps, and trendline alignment all count as confluence signals. Return valid standalone scenarios and never force sequencing. Never output contradictory bullish and bearish scenarios on the same level. If no quality scenario exists for this mode, say so and point to the zones to watch. Always respond with valid JSON only, no markdown.`
           },
           { role: "user", content: analysisType === 'general' ? generalPrompt : deepPrompt }
         ],
@@ -5070,7 +5069,7 @@ GENERAL RULES:
 - Min R/R ≥${minRiskReward}:1 to TP1. Discard any setup that cannot achieve this.
 - CONFLUENCE SCORING: Fib OTE zone (0.382-0.705) overlap, EMA proximity (20/50/200), OB alignment, swing pivot alignment, BOS/CHoCH, liquidity sweep each count as a confluence signal.
 - Require at least ${minConfluence} confirming signals. Grade: A+ (6+ confluence), A (5), B (4), C (3). Output 1-3 setups only if they genuinely qualify.
-- Do NOT force sequenced or linked trades. Return any standalone valid setup on its own merit; a natural flow into another zone is optional commentary only.
+- Do NOT force sequenced or linked scenarios. Return any standalone valid setup on its own merit; a natural flow into another zone is optional commentary only.
 - If no valid setup exists for this mode, output 0 alerts and explain the live read plus the key zones to watch in marketInsights (still populate bias and keyLevels).
 
 Return JSON only, no markdown:
@@ -5103,7 +5102,7 @@ Return JSON only, no markdown:
         messages: [
           {
             role: "system",
-            content: `${traderMode.systemPrompt} You require a minimum ${minRiskReward}:1 R/R to TP1, at least ${minConfluence} confirming signals. Stop-loss goes just behind the invalidation structure (swing pivot / FVG boundary / order block) — no ATR padding. Fib OTE zone (0.382-0.705), EMA proximity, and structural alignment all count as confluence signals. Prefer predictive/pending setup plans with triggerZone and triggerCondition when price has not reached the level yet. Return standalone setups without forcing sequencing. If no genuine setup exists for your mode, say so clearly rather than forcing a trade.`,
+            content: `${traderMode.systemPrompt} Require an illustrative distance ratio of at least ${minRiskReward}:1 to the first reference level, at least ${minConfluence} confirming signals. The invalidation level (stopLoss field) sits just behind the invalidation structure (swing pivot / FVG boundary / order block) — no ATR padding. Fib OTE zone (0.382-0.705), EMA proximity, and structural alignment all count as confluence signals. Prefer conditional (pending) scenarios with triggerZone and triggerCondition when price has not reached the level yet. Return standalone scenarios without forcing sequencing. If no genuine scenario exists for your mode, say so clearly rather than forcing one.`,
           },
           {
             role: "user",
@@ -5648,7 +5647,6 @@ Return JSON only, no markdown:
         return res.json({
           tier: 'elite',
           status: 'active',
-          hasElliottAddon: true,
           canUseElliott: true,
           canUseAI: true,
           hasUnlimitedAI: true,
@@ -5769,7 +5767,7 @@ Keep the analysis concise but informative (200-300 words).`;
       const completion = await xai.chat.completions.create({
         model: XAI_DEFAULT_MODEL,
         messages: [
-          { role: "system", content: "You are a professional crypto market analyst providing clear, actionable insights." },
+          { role: "system", content: withScenarioFraming("You are an automated technical-analysis tool providing clear, educational, non-advisory insights.") },
           { role: "user", content: prompt }
         ],
         temperature: 0.7,
@@ -5810,7 +5808,7 @@ Keep the analysis concise but informative (200-300 words).`;
       if (tier === 'free' || tier === 'beginner') {
         return res.status(403).json({ 
           error: 'Subscription required',
-          message: 'Please upgrade to Intermediate tier or higher to access AI technical scenarios',
+          message: 'Please upgrade to Intermediate tier or higher to access AI Trade Ideas',
           requiredTier: 'intermediate'
         });
       }
@@ -5834,7 +5832,7 @@ Keep the analysis concise but informative (200-300 words).`;
 
       const latestCandle = candles[candles.length - 1];
       
-      const prompt = `You are a technical analyst describing chart structure for ${ticker}. Describe 2-3 general technical scenarios (chart setups) based on the following data. This is general, non-personalised technical analysis, not a recommendation:
+      const prompt = `You are a professional crypto trader analyzing ${ticker}. Generate 2-3 high-quality trade setups based on the following data:
 
 Current Price: ${latestCandle?.close || 'N/A'}
 Market Data: ${candles.length} candles analyzed
@@ -5844,9 +5842,9 @@ For each trade setup, provide:
 1. Grade (A+, A, B, C, D, or E) based on setup quality and probability
 2. Direction (long or short)
 3. Entry price (specific level)
-4. Target price (scenario target level)
-5. Stop loss (invalidation level)
-6. Reasoning (2-3 sentences in conditional scenario language, e.g. "a long setup appears if price holds above X; invalidated below Y"; no imperative or second-person directives, no position sizing, no hype or performance claims)
+4. Target price (profit target)
+5. Stop loss (risk management level)
+6. Reasoning (2-3 sentences explaining the setup)
 7. Confidence (0-100)
 
 Return ONLY valid JSON in this exact format:
@@ -5867,7 +5865,7 @@ Return ONLY valid JSON in this exact format:
       const completion = await xai.chat.completions.create({
         model: XAI_DEFAULT_MODEL,
         messages: [
-          { role: "system", content: "You are a technical analyst producing general, non-personalised chart scenarios. Use conditional, third-person language only; never say buy, sell, you should, or enter now; express risk/reward only as illustrative ratios from entry/stop/target; never mention position sizing or % of account; no hype or performance claims. Return only valid JSON, no markdown." },
+          { role: "system", content: withScenarioFraming("You are an automated technical-analysis tool describing conditional technical scenarios. Return only valid JSON, no markdown.") },
           { role: "user", content: prompt }
         ],
         temperature: 0.8,
@@ -5884,7 +5882,7 @@ Return ONLY valid JSON in this exact format:
         console.error('Failed to parse AI response:', responseText);
         tradeIdeas = {
           setups: [],
-          error: 'Failed to generate technical scenarios'
+          error: 'Failed to generate trade ideas'
         };
       }
 
@@ -5946,8 +5944,6 @@ Return ONLY valid JSON in this exact format:
       // Import stripe functions dynamically
       const { 
         createTierCheckoutSession, 
-        createElliottAddonCheckoutSession, 
-        cancelElliottAddon,
         createPortalSession 
       } = await import('./stripeCheckout');
 
@@ -5961,22 +5957,6 @@ Return ONLY valid JSON in this exact format:
           return res.status(400).json({ error: result.error });
         }
         return res.json({ url: result.url });
-      }
-
-      if (type === 'elliott_addon') {
-        const result = await createElliottAddonCheckoutSession(userId, email, successUrl, cancelUrl);
-        if (result.error) {
-          return res.status(400).json({ error: result.error });
-        }
-        return res.json({ url: result.url, added: !result.url });
-      }
-
-      if (type === 'cancel_elliott' || action === 'cancel_elliott') {
-        const result = await cancelElliottAddon(userId);
-        if (!result.success) {
-          return res.status(400).json({ error: result.error });
-        }
-        return res.json({ success: true, message: 'Elliott Wave add-on canceled' });
       }
 
       if (type === 'portal') {
@@ -7664,7 +7644,6 @@ Return JSON:
   });
 
   // Get extended historical data for Elliott Wave analysis
-  // Requires elite tier OR Elliott Wave add-on
   app.get("/api/crypto/extended-history", requireCryptoAuth, requireEliteTier, async (req, res) => {
     try {
       const { symbol, timeframe, forceRefresh } = req.query;
@@ -8076,7 +8055,7 @@ CRITICAL: Use the uiIndex numbers from the data. These match the user's table so
       console.log(`🤖 Calling xAI API with ${XAI_DEFAULT_MODEL} model...`);
       const response = await xaiClient.chat.completions.create({
         model: XAI_DEFAULT_MODEL,
-        messages: [{ role: 'user', content: prompt }],
+        messages: withScenarioFramingMessages([{ role: 'user' as const, content: prompt }]),
         max_tokens: 4500,
         temperature: 0.1,
       });
@@ -8413,7 +8392,7 @@ CRITICAL FOR SINGLE-PHASE STRUCTURES:
       console.log(`🤖 Calling xAI API for chart pattern analysis...`);
       const response = await xaiClient.chat.completions.create({
         model: XAI_DEFAULT_MODEL,
-        messages: [{ role: 'user', content: prompt }],
+        messages: withScenarioFramingMessages([{ role: 'user' as const, content: prompt }]),
         max_tokens: 3000,
         temperature: 0.1,
       });
@@ -8796,7 +8775,7 @@ CRITICAL DATA RULES:
       console.log(`🤖 Calling xAI API for detailed sub-wave analysis...`);
       const response = await xaiClient.chat.completions.create({
         model: XAI_DEFAULT_MODEL,
-        messages: [{ role: 'user', content: prompt }],
+        messages: withScenarioFramingMessages([{ role: 'user' as const, content: prompt }]),
         max_tokens: 3000,
         temperature: 0.1,
       });
@@ -9030,6 +9009,22 @@ CRITICAL DATA RULES:
   let clerkSyncLastRun = 0;
   const CLERK_SYNC_TTL_MS = 5 * 60 * 1000;
 
+  // GET /api/admin/analytics/:view — same queries as the Vercel function api/admin/analytics.ts
+  app.get('/api/admin/analytics/:view', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
+    try {
+      const { pool } = await import('./db');
+      const { handleAnalyticsView } = await import('../api/_lib/adminAnalytics');
+      const { parseRange } = await import('../api/_lib/analyticsMetrics');
+      const range = parseRange(req.query.from, req.query.to);
+      const out = await handleAnalyticsView(pool as any, String(req.params.view), req.query as Record<string, unknown>, range);
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.status(out.status).json(out.body);
+    } catch (error: any) {
+      console.error('Admin analytics error:', error?.message ?? 'unknown error');
+      res.status(500).json({ error: 'Analytics query failed' });
+    }
+  });
+
   // GET /api/admin/users — list all users with their subscription details
   // Syncs any Clerk-registered users who haven't yet hit an authenticated route
   app.get('/api/admin/users', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
@@ -9087,7 +9082,6 @@ CRITICAL DATA RULES:
           lastName: usersTable.lastName,
           createdAt: usersTable.createdAt,
           tier: subsTable.tier,
-          hasElliottAddon: subsTable.hasElliottAddon,
           aiCredits: subsTable.aiCredits,
           elliottAiCredits: subsTable.elliottAiCredits,
           bonusAiCredits: subsTable.bonusAiCredits,
@@ -9161,22 +9155,6 @@ CRITICAL DATA RULES:
       res.json({ success: true });
     } catch (error: any) {
       console.error('Admin bonus credits error:', error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // PATCH /api/admin/users/:userId/elliott-addon — toggle Elliott Wave add-on
-  app.patch('/api/admin/users/:userId/elliott-addon', requireCryptoAuth, requireAdminAuth, adminRateLimit, async (req: Request, res: Response) => {
-    try {
-      const { userId } = req.params;
-      const { enabled } = req.body as { enabled: boolean };
-      if (typeof enabled !== 'boolean') {
-        return res.status(400).json({ error: 'enabled must be a boolean' });
-      }
-      await cryptoSubscriptionService.toggleElliottAddon(userId, enabled);
-      res.json({ success: true });
-    } catch (error: any) {
-      console.error('Admin Elliott addon error:', error);
       res.status(500).json({ error: error.message });
     }
   });

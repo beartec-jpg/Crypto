@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * Trade simulation logic extracted from CryptoIndicators.tsx
  * Handles backtest trade simulation with TP/SL logic, EMA/VWAP exits, and trailing stops

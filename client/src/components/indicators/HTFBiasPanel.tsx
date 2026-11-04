@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * HTF Bias Panel – displays Higher Timeframe trend direction in the top-right
  * corner of the fullscreen chart.  Shows Daily / 4H / 1H / 15m bias badges.

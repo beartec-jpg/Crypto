@@ -8,15 +8,15 @@
  * The writer is NON-BLOCKING: it never throws and never awaits in the caller's response path.
  * Any DB failure is swallowed and logged to console only.
  *
- * Retention: rows are kept for AI_OUTPUT_LOG_RETENTION_DAYS (default 5 years, in line with typical
- * UK record-keeping expectations for financial-promotion-adjacent content). Purge with
+ * Retention: rows are kept for AI_OUTPUT_LOG_RETENTION_DAYS (default 1 year / 365 days). Purpose:
+ * compliance evidence of what was delivered, and our own quality review of AI outputs. Purge with
  * `pruneAiOutputLog` from a cron or run the SQL in the migration file manually.
  */
 
 /** Bump when AI prompt wording changes materially so logged outputs can be traced to prompts. */
 export const AI_PROMPT_VERSION = '2026-11-technical-scenarios-v1';
 
-export const AI_OUTPUT_LOG_RETENTION_DAYS = 365 * 5;
+export const AI_OUTPUT_LOG_RETENTION_DAYS = 365;
 
 export type AiOutputDeliveryChannel = 'web' | 'discord' | 'png';
 

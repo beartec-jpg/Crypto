@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { getPool, migrate, closePool } from './db.js';
 import { postWeeklyReport } from './store.js';
 

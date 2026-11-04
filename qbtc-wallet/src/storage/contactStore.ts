@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { getDb, type ContactRecord } from './db';
 
 export async function addContact(contact: ContactRecord): Promise<void> {

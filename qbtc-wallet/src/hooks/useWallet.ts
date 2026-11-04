@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useEffect, useCallback } from 'react';
 import { getBalance, type UtxoEntry } from '../lib/rpc';
 

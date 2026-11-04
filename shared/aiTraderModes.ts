@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 // AI Trader Modes — AI-native "trader mode" definitions for the /cryptoai analysis page.
 //
 // IMPORTANT: These modes are an AI-only concept. They are intentionally kept
@@ -10,6 +11,8 @@
 // validity criteria (what makes a setup count for that mode), and a preferred set
 // of data tools the model should reach for. The backend swaps these in per request
 // so an indicator trader is never judged by FVG rules and vice-versa.
+
+import { withScenarioFraming } from './scenarioFraming';
 
 export type AiTraderModeId =
   | 'indicator'
@@ -41,37 +44,24 @@ export interface AiTraderMode {
   preferredTools: AiTraderToolName[];
 }
 
-/**
- * Compliance wording rules appended to every mode's system prompt so all AI output reads as
- * general, non-personalised technical analysis (conditional scenarios, illustrative R:R only).
- */
-export const SCENARIO_LANGUAGE_RULES =
-  'LANGUAGE RULES: Output is general, non-personalised technical analysis, not a recommendation. Describe every ' +
-  'setup as a conditional chart scenario, e.g. "a long setup appears if price holds above X; invalidated below Y". ' +
-  'Never use imperative or second-person directives (no "buy", "sell", "you should", "enter now", "go long"). ' +
-  'Present risk/reward only as an illustrative ratio derived from entry, stop and target levels (e.g. "an entry at X ' +
-  'with a stop at Y and target Z gives about 1:3"). Never mention position sizing, leverage amounts or a percentage of ' +
-  'an account/portfolio. No hype, "hot picks", urgency, guarantees or performance claims. Use neutral third-person wording.';
-
 export const DEFAULT_AI_TRADER_MODE: AiTraderModeId = 'smc';
 
-export const AI_TRADER_MODES: AiTraderMode[] = [
+const RAW_AI_TRADER_MODES: AiTraderMode[] = [
   {
     id: 'indicator',
     label: 'Indicator',
     description: 'Momentum, trend, reversal & breakout via RSI/MACD/Stoch/ADX/BB/volume.',
     enabled: true,
     systemPrompt:
-      'You are a technical/indicator analyst producing general, non-personalised chart scenarios. Your method is reading momentum and trend through classic ' +
+      'You are an automated technical-analysis tool using the indicator lens. You read momentum and trend through classic ' +
       'indicators — RSI, MACD, Stochastic, ADX/DI, Bollinger Bands, CCI, MFI, CMF, OBV and volume. You judge the ' +
       "market by indicator confluence and triggers (crossovers, overbought/oversold reversals, squeeze breakouts, " +
       'divergences), NOT by Smart-Money structures. You do not require an FVG or order block to justify a read. ' +
-      'You pull the data you need via the provided tools rather than assuming it. When a full scenario does not qualify, ' +
+      'You pull the data you need via the provided tools rather than assuming it. When no full scenario qualifies, ' +
       'you still give a clear live indicator read (the dashboard status and what would need to change). ' +
-      'Return ONLY valid JSON, no markdown. ' +
-      SCENARIO_LANGUAGE_RULES,
+      'Return ONLY valid JSON, no markdown.',
     validityCriteria:
-      'A valid INDICATOR setup requires aligned indicator confluence plus a concrete trigger: e.g. RSI/Stoch ' +
+      'A valid INDICATOR scenario requires aligned indicator confluence plus a concrete trigger condition: e.g. RSI/Stoch ' +
       'reversal from an extreme, a MACD crossover/histogram flip with trend agreement, an ADX-confirmed trend ' +
       'continuation, or a Bollinger squeeze/expansion breakout — supported by volume (OBV/CMF/MFI). Do NOT invent ' +
       'FVG/order-block justifications. If indicators are mixed or flat, output 0 alerts but still populate ' +
@@ -84,17 +74,16 @@ export const AI_TRADER_MODES: AiTraderMode[] = [
     description: 'FVGs, order blocks, liquidity sweeps, BOS/CHoCH & key levels.',
     enabled: true,
     systemPrompt:
-      'You are a Smart-Money / ICT analyst producing general, non-personalised chart scenarios. Your method maps moves FROM a structural level TO a level: ' +
+      'You are an automated technical-analysis tool using the Smart-Money / ICT lens. You describe how price may move FROM a structural level TO a level: ' +
       'unmitigated Fair Value Gaps, order blocks, liquidity sweeps/grabs, BOS/CHoCH shifts and displacement. ' +
-      'A scenario activates only if price pulls back into a high-quality entry zone (unmitigated FVG or order block); the ' +
-      'invalidation sits behind the structure and the target is the next major level. Entry levels are never guessed at current price — every ' +
-      'entry level has a specific structural justification. You pull the structures you need via the provided tools rather ' +
-      'than assuming them. Return ONLY valid JSON, no markdown. ' +
-      SCENARIO_LANGUAGE_RULES,
+      'You describe conditional scenarios where price returns to a high-quality structural zone (unmitigated FVG or order block), ' +
+      'with the invalidation level behind the structure and the next major level as the reference level. You never use current price as a ' +
+      'trigger without reason — every trigger level has a specific structural justification. You pull the structures you need via the provided tools rather ' +
+      'than assuming them. Return ONLY valid JSON, no markdown.',
     validityCriteria:
-      'A valid SMC setup requires price to be at or approaching a high-quality entry zone (unmitigated FVG, order ' +
-      'block, or key swing) with structural confluence (BOS/CHoCH agreement, liquidity sweep, displacement). Entry ' +
-      'inside the FVG/OB; stop behind the structure; targets at opposing structural levels. If price is mid-range ' +
+      'A valid SMC scenario requires price to be at or approaching a high-quality structural zone (unmitigated FVG, order ' +
+      'block, or key swing) with structural confluence (BOS/CHoCH agreement, liquidity sweep, displacement). Trigger ' +
+      'zone inside the FVG/OB; invalidation behind the structure; reference levels at opposing structural levels. If price is mid-range ' +
       'with no clean unmitigated zone nearby, output 0 alerts and report the nearest unmitigated FVG/OB and the ' +
       'distance to it in marketInsights.',
     preferredTools: ['getSmcStructures', 'getVolumeProfile', 'getInstitutional', 'getIndicators'],
@@ -103,12 +92,12 @@ export const AI_TRADER_MODES: AiTraderMode[] = [
   {
     id: 'scalping',
     label: 'Scalping',
-    description: 'Fast intrabar momentum & liquidity scalps (coming soon).',
+    description: 'Fast intrabar momentum & liquidity structure (coming soon).',
     enabled: false,
     systemPrompt:
-      'You are a low-timeframe analyst describing fast momentum and liquidity scenarios. Return ONLY valid JSON. ' + SCENARIO_LANGUAGE_RULES,
+      'You are an automated technical-analysis tool focused on fast, low-timeframe momentum and liquidity structure. Return ONLY valid JSON.',
     validityCriteria:
-      'A valid scalp requires an immediate momentum/liquidity trigger with tight structural invalidation.',
+      'A valid low-timeframe scenario requires an immediate momentum/liquidity trigger with tight structural invalidation.',
     preferredTools: ['getIndicators', 'getSmcStructures'],
   },
   {
@@ -117,10 +106,10 @@ export const AI_TRADER_MODES: AiTraderMode[] = [
     description: 'Regular & hidden oscillator divergences (coming soon).',
     enabled: false,
     systemPrompt:
-      'You are a divergence analyst describing regular and hidden divergences across RSI, MACD, MFI, OBV and CVD. ' +
-      'Return ONLY valid JSON. ' + SCENARIO_LANGUAGE_RULES,
+      'You are an automated technical-analysis tool describing regular and hidden divergences across RSI, MACD, MFI, OBV and CVD. ' +
+      'Return ONLY valid JSON.',
     validityCriteria:
-      'A valid divergence setup requires a confirmed regular/hidden divergence with a momentum trigger.',
+      'A valid divergence scenario requires a confirmed regular/hidden divergence with a momentum trigger.',
     preferredTools: ['getIndicators', 'getVolumeProfile'],
   },
   {
@@ -129,15 +118,21 @@ export const AI_TRADER_MODES: AiTraderMode[] = [
     description: 'POC / VAH / VAL and value-area rotations (coming soon).',
     enabled: false,
     systemPrompt:
-      'You are a volume-profile analyst describing POC, value area (VAH/VAL), and value-area rotations. ' +
-      'Return ONLY valid JSON. ' + SCENARIO_LANGUAGE_RULES,
+      'You are an automated technical-analysis tool focused on POC, value area (VAH/VAL), and value-area rotations. ' +
+      'Return ONLY valid JSON.',
     validityCriteria:
-      'A valid setup requires price interacting with POC/VAH/VAL with acceptance/rejection confirmation.',
+      'A valid scenario requires price interacting with POC/VAH/VAL with acceptance/rejection confirmation.',
     preferredTools: ['getVolumeProfile', 'getInstitutional', 'getIndicators'],
   },
 ];
 
 /** Only the modes that are currently selectable/live. */
+// Every mode's prompt starts with the compliance framing (technical scenarios, not advice).
+export const AI_TRADER_MODES: AiTraderMode[] = RAW_AI_TRADER_MODES.map((mode) => ({
+  ...mode,
+  systemPrompt: withScenarioFraming(mode.systemPrompt),
+}));
+
 export const ENABLED_AI_TRADER_MODES: AiTraderMode[] = AI_TRADER_MODES.filter((m) => m.enabled);
 
 export function isAiTraderModeId(value: unknown): value is AiTraderModeId {

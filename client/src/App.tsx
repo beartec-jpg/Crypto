@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { Switch, Route } from 'wouter';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
@@ -30,6 +31,7 @@ const CryptoElliottWaveLessons = lazy(() => import('@/pages/CryptoElliottWaveLes
 const DevAnalytics = lazy(() => import('@/pages/DevAnalytics'));
 const CryptoSandbox = lazy(() => import('@/pages/CryptoSandbox'));
 const AdminPanel = lazy(() => import('@/pages/AdminPanel'));
+const AdminAnalytics = lazy(() => import('@/pages/AdminAnalytics'));
 const NotFound = lazy(() => import('@/pages/not-found'));
 const ChartPage = lazy(() => import('@/pages/ChartPage'));
 
@@ -147,6 +149,9 @@ function App() {
             </Route>
             <Route path="/admin/users">
               <InternalOnlyRoute component={AdminPanel} />
+            </Route>
+            <Route path="/admin/analytics">
+              <InternalOnlyRoute component={AdminAnalytics} />
             </Route>
             <Route path="/dev/sandbox">
               <InternalOnlyRoute component={CryptoSandbox} />

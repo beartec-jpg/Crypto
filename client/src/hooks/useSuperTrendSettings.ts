@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useCallback } from 'react';
 import type { SuperTrendSettings, SuperTrendConfig, SuperTrendType } from '@/types/supertrend';
 import { DEFAULT_SUPERTREND_SETTINGS } from '@/types/supertrend';

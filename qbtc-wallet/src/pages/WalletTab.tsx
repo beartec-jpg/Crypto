@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState } from 'react';
 import { Send, QrCode, RefreshCw, Copy, CheckCircle, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { useWallet } from '../hooks/useWallet';

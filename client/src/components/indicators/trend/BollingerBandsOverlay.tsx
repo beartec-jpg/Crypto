@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useEffect, useRef } from 'react';
 import { IChartApi, LineSeries, ISeriesApi, LineWidth } from 'lightweight-charts';
 import { BandValue } from '@/lib/indicators';

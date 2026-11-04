@@ -1,6 +1,8 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { AiScenarioDisclaimer } from './AiScenarioDisclaimer';
 
 interface MarketSummaryCardProps {
   tier: 'free' | 'intermediate' | 'professional';
@@ -97,6 +99,7 @@ export function MarketSummaryCard({
                   {timestamp ? new Date(timestamp).toLocaleTimeString() : '-'}
                 </span>
               </div>
+              <AiScenarioDisclaimer />
               <div className="text-xs text-gray-600 px-2 py-1 bg-slate-900/50 rounded border border-slate-700/50">
                 <span className="opacity-75">Note: This analysis uses Grok API. We are not affiliated with or endorsed by xAI.</span>
               </div>

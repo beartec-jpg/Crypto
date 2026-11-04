@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * @fileoverview Settings Modal Manager
  * @description Manager component for all settings modals in the chart page.

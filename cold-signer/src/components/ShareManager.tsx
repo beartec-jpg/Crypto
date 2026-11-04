@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useEffect } from 'react';
 import { Shield, Upload, AlertCircle, CheckCircle, Eye, EyeOff, QrCode, Download, Share2 } from 'lucide-react';
 import { encrypt, generateSalt, validatePassword } from '../lib/coldCrypto';

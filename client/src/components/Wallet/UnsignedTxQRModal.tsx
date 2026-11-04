@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * UnsignedTxQRModal - Displays an unsigned transaction as a QR code
  * for the cold signer device to scan.

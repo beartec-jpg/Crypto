@@ -1,3 +1,4 @@
+// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 /**
  * qBTC key derivation for the cold signer — works from a raw 32-byte master seed
  * (the passkey PRF output) rather than a BIP39 mnemonic.
