@@ -16,7 +16,7 @@ export function TideHistEmaControl({ className, timeframe, onOpenSettings }: Tid
 
   return (
     <div
-      className={`pointer-events-auto flex items-center gap-1 rounded border border-slate-600/70 bg-slate-900/85 px-1 py-0.5 text-[10px] tabular-nums text-sky-200 ${className ?? ''}`}
+      className={`pointer-events-auto inline-flex max-w-full flex-wrap items-center gap-1 rounded border border-slate-600/70 bg-slate-900/85 px-1 py-0.5 text-[10px] tabular-nums text-sky-200 ${className ?? ''}`}
       onClick={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
     >
@@ -31,7 +31,7 @@ export function TideHistEmaControl({ className, timeframe, onOpenSettings }: Tid
           >
             −
           </button>
-          <span className="min-w-[4.4rem] text-center font-semibold">
+          <span className="min-w-0 whitespace-nowrap text-center font-semibold">
             {timeframe} EMA {period}
           </span>
           <button

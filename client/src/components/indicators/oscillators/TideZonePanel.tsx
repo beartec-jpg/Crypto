@@ -19,6 +19,7 @@ import { TideHistEmaControl } from '@/components/indicators/TideHistEmaControl';
 import { ConnectedTideZoneSettingsModal } from '@/components/modals/TideZoneSettingsModal';
 import { useTideZoneSettings } from '@/hooks/useTideZoneSettings';
 import { summarizeTide } from '@/hooks/useTideV2';
+import { buildTideDescriptor } from '@/lib/tideDescriptor';
 
 interface PanelCandle {
   time: number;
@@ -42,6 +43,13 @@ interface TideZonePanelProps {
   height?: number;
   /** Overlay HUD on this pane. Set false when a chart-level HUD is shown instead. */
   showHud?: boolean;
+  /**
+   * overlay (default): HUD + EMA control float on the plot (fullscreen / popped-out).
+   * stack: wrapping row above the plot so the hist keeps its full height (main indicators card).
+   */
+  chrome?: 'overlay' | 'stack';
+  /** Live status / what-it's-showing / what-to-watch block under the hist. */
+  showDescriptor?: boolean;
 }
 
 function toTideCandles(candles: PanelCandle[]): TideCandle[] | null {
@@ -61,6 +69,8 @@ export function TideZonePanel({
   mainChartVisibleRange,
   height = 200,
   showHud = true,
+  chrome = 'overlay',
+  showDescriptor = false,
 }: TideZonePanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -232,23 +242,116 @@ export function TideZonePanel({
     }
   }, [mainChartVisibleRange]);
 
+  const stacked = chrome === 'stack';
+  const last = data.length ? data[data.length - 1] : undefined;
+  const emaSeries = active ? emaTideScore(data, emaPeriod) : [];
+  const emaLast = emaSeries.length ? emaSeries[emaSeries.length - 1].value : undefined;
+  const recent = data.slice(-3);
+  const absorb = recent.some((d) => d.tell === 'absorb');
+  const distro = recent.some((d) => d.tell === 'distro');
+  const reacc = recent.some((d) => d.tell === 'reacc');
+  const status = summarizeTide(v2, candles);
+  const descriptor = showDescriptor
+    ? buildTideDescriptor(
+        active && tf
+          ? {
+              last: last ?? null,
+              timeframe: tf,
+              emaPeriod,
+              emaValue: emaLast,
+              fresh: status.fresh,
+              activeStop: status.activeStop,
+              openCount: status.openCount,
+              absorb,
+              distro,
+              reacc,
+            }
+          : { last: null, timeframe: tf },
+      )
+    : null;
+
+  const settingsModal = (
+    <ConnectedTideZoneSettingsModal
+      isOpen={settingsOpen}
+      onClose={() => setSettingsOpen(false)}
+      timeframe={tf ?? undefined}
+    />
+  );
+
+  const descriptorBlock = descriptor ? (
+    <div className="mt-2 min-w-0 space-y-1.5 border-t border-slate-700/80 pt-2">
+      <div className={`break-words text-[11px] font-semibold ${descriptor.color}`}>{descriptor.headline}</div>
+      <p className="break-words text-[12px] leading-relaxed text-slate-200">
+        <span className="font-medium text-slate-500">What it&apos;s showing now: </span>
+        {descriptor.showingNow}
+      </p>
+      <p className="break-words text-[11px] leading-relaxed text-slate-400">
+        <span className="font-medium text-slate-500">What to watch: </span>
+        {descriptor.watch}
+      </p>
+    </div>
+  ) : null;
+
   if (!active || !tf) {
+    if (stacked) {
+      return (
+        <div className="flex w-full min-w-0 flex-col">
+          <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
+            <span className="min-w-0 break-words">Tide: 1h/4h only</span>
+            <TideHistEmaControl timeframe={null} onOpenSettings={() => setSettingsOpen(true)} />
+          </div>
+          <div className="relative w-full min-w-0 bg-[#1e293b]" style={{ height }} />
+          {descriptorBlock}
+          {settingsModal}
+        </div>
+      );
+    }
     return (
       <div className="relative h-full min-h-0 w-full bg-[#1e293b]">
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="flex items-center gap-2 text-[11px] text-slate-400">
+          <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] text-slate-400">
             <span>Tide: 1h/4h only</span>
             <TideHistEmaControl timeframe={null} onOpenSettings={() => setSettingsOpen(true)} />
           </div>
         </div>
-        <ConnectedTideZoneSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+        {settingsModal}
       </div>
     );
   }
 
-  const last = data[data.length - 1];
-  const emaSeries = emaTideScore(data, emaPeriod);
-  const emaLast = emaSeries.length ? emaSeries[emaSeries.length - 1].value : undefined;
+  const hud = showHud && last ? (
+    <TideZoneHud
+      last={last}
+      timeframe={tf}
+      status={status}
+      absorb={absorb}
+      distro={distro}
+      reacc={reacc}
+      emaPeriod={emaPeriod}
+      emaValue={emaLast}
+      variant={stacked ? 'inline' : 'overlay'}
+    />
+  ) : null;
+
+  if (stacked) {
+    return (
+      <div className="flex w-full min-w-0 flex-col">
+        <div className="mb-1.5 flex min-w-0 flex-wrap items-start gap-1.5">
+          {hud ? <div className="min-w-0 flex-1 basis-full sm:basis-0">{hud}</div> : null}
+          <TideHistEmaControl
+            className="shrink-0"
+            timeframe={tf}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
+        </div>
+        <div className="relative w-full min-w-0 bg-[#1e293b]" style={{ height }}>
+          <div ref={containerRef} className="absolute inset-0" />
+        </div>
+        {descriptorBlock}
+        {settingsModal}
+      </div>
+    );
+  }
 
   return (
     <div className="relative h-full min-h-0 w-full">
@@ -256,21 +359,8 @@ export function TideZonePanel({
       <div className="absolute top-1 right-12 z-20">
         <TideHistEmaControl timeframe={tf} onOpenSettings={() => setSettingsOpen(true)} />
       </div>
-      <ConnectedTideZoneSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} timeframe={tf} />
-      {showHud && last && (
-        <div className="absolute top-1 left-1 right-36 z-20">
-          <TideZoneHud
-            last={last}
-            timeframe={tf}
-            status={summarizeTide(v2, candles)}
-            absorb={data.slice(-3).some((d) => d.tell === 'absorb')}
-            distro={data.slice(-3).some((d) => d.tell === 'distro')}
-            reacc={data.slice(-3).some((d) => d.tell === 'reacc')}
-            emaPeriod={emaPeriod}
-            emaValue={emaLast}
-          />
-        </div>
-      )}
+      {settingsModal}
+      {hud ? <div className="absolute top-1 left-1 right-36 z-20">{hud}</div> : null}
     </div>
   );
 }
