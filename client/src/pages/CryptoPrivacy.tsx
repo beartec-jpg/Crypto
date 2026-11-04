@@ -1,304 +1,104 @@
-// Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Link } from 'wouter';
-import { ArrowLeft, Shield } from 'lucide-react';
-import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
+// Copyright (c) 2026 BEARTEC LTD. All rights reserved.
+import { Shield } from 'lucide-react';
+import { LegalPageLayout, Section, LegalTable, TBC, CONTACT_EMAIL, COMPANY_DETAILS } from '@/components/legal/LegalPageLayout';
+
+const mail = <a href={`mailto:${CONTACT_EMAIL}`} className="text-[#00c4b4] hover:underline">{CONTACT_EMAIL}</a>;
 
 export default function CryptoPrivacy() {
   return (
-    <div className="min-h-screen bg-[#0e0e0e] text-white p-6">
-      <div className="max-w-[1200px] mx-auto space-y-6">
-        {/* BearTec Logo - Top Center */}
-        <div className="flex justify-center mb-8">
-          <Link href="/">
-            <img 
-              src={bearTecLogoNew} 
-              alt="BearTec Logo" 
-              className="h-[140px] w-auto object-contain cursor-pointer"
-            />
-          </Link>
-        </div>
+    <LegalPageLayout title="Privacy Policy" icon={<Shield className="w-8 h-8 text-[#00c4b4]" />} lastUpdated="4 November 2026">
+      <Section title="1. Who we are">
+        <p>BearTec Crypto is run by {COMPANY_DETAILS} ("BEARTEC", "we", "us"). We are the controller of the personal data described in this policy. Contact: {mail}. ICO registration number: <TBC>ICO registration number</TBC>. We have not appointed a data protection officer because the law does not require one for our activities; Scott Reynolds, director, is responsible for data protection.</p>
+      </Section>
 
-        {/* Back Button */}
-        <Link href="/">
-          <Button variant="ghost" className="text-gray-400 hover:text-white hover:bg-[#1a1a1a]">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Home
-          </Button>
-        </Link>
+      <Section title="2. The data we collect">
+        <LegalTable
+          head={['Category', 'What it includes', 'Where it comes from']}
+          rows={[
+            ['Account', 'Email address; name and profile picture if you sign in with Google or another provider; account ID', 'You, and our sign-in provider Clerk'],
+            ['Subscription and billing', 'Plan (Free, Core, Pro, Elite), subscription status and dates, Stripe customer ID, payment receipts. We do not see or store your full card number; Stripe handles payment details.', 'You and Stripe'],
+            ['Product use', 'Tickers and timeframes you view or nominate, watchlists, drawings and saved settings, AI requests and AI token use, alert settings', 'You'],
+            ['Notifications', 'Browser push subscription details; your mobile number if you turn on SMS alerts', 'You'],
+            ['Communications', 'Messages you send us, feedback board posts and contact form details', 'You'],
+            ['Technical', 'IP address, device and browser type, pages requested, timestamps, error logs', 'Your device, our hosting provider'],
+          ]}
+        />
+        <p>We do not ask for special category data and we do not ask for details of your finances, holdings or trades.</p>
+      </Section>
 
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <Shield className="w-8 h-8 text-[#00c4b4]" />
-          <h1 className="text-3xl font-bold">Privacy Policy</h1>
-        </div>
+      <Section title="3. Why we use it and our lawful basis">
+        <LegalTable
+          head={['Purpose', 'Lawful basis (UK GDPR article 6)']}
+          rows={[
+            ['Create and run your account; provide charts, indicators, AI analysis and alerts you ask for', 'Contract'],
+            ['Take payments and manage subscriptions; keep tax and accounting records', 'Contract; legal obligation'],
+            ['Send service messages (receipts, renewal reminders, security notices, changes to terms)', 'Contract; legal obligation (for example subscription reminders required by law)'],
+            ['Send SMS or push alerts', 'Consent (you turn them on and can turn them off at any time)'],
+            ['Keep the service secure, prevent abuse of AI tokens, fix errors', 'Legitimate interests (running a safe and reliable service)'],
+            ['Improve the product using aggregated usage figures (for example sign-ups, plan mix, AI cost per user)', 'Legitimate interests'],
+            ['Marketing emails (only if we start sending them)', 'Consent, or soft opt-in for existing customers with an easy opt-out'],
+            ['Deal with complaints and legal claims', 'Legitimate interests; legal obligation'],
+          ]}
+        />
+      </Section>
 
-        <p className="text-gray-400 text-sm mb-8">
-          Last Updated: November 20, 2025
-        </p>
+      <Section title="4. AI analysis">
+        <p>When you ask for an AI reading, we send the ticker, timeframe and market data needed for that reading to xAI's API, which generates the text. We do not need to send your name or email for this. The AI is an automated software tool, not a person or an adviser. We do not use it to make decisions about you that have legal or similarly significant effects.</p>
+      </Section>
 
-        <div className="space-y-6">
-          {/* Introduction */}
-          <Card className="bg-[#1a1a1a] border-[#2a2e39]">
-            <CardHeader>
-              <CardTitle className="text-xl text-white">Introduction</CardTitle>
-            </CardHeader>
-            <CardContent className="text-gray-300 space-y-3">
-              <p>
-                BearTec ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our cryptocurrency trading analysis platform and services.
-              </p>
-              <p>
-                By using our services, you agree to the collection and use of information in accordance with this policy.
-              </p>
-            </CardContent>
-          </Card>
+      <Section title="5. Who we share data with">
+        <p>We do not sell your personal data. We use these service providers (processors), which act on our instructions:</p>
+        <LegalTable
+          head={['Provider', 'Purpose', 'Location']}
+          rows={[
+            ['Clerk', 'Sign-in and account security', 'USA'],
+            ['Stripe', 'Payments and subscription billing. Stripe is also an independent controller for some data (for example fraud prevention)', 'UK/EU and USA'],
+            ['Vercel', 'Website hosting, serverless functions and scheduled jobs', 'USA and global edge network'],
+            ['Neon', 'Database hosting', <TBC key="neon">region</TBC>],
+            ['xAI', 'AI analysis', 'USA'],
+            ['Twilio', 'SMS alerts (only if you turn them on)', 'USA'],
+            ['Browser push services (for example Google, Mozilla, Apple)', 'Delivering push notifications to your browser', 'Various'],
+          ]}
+        />
+        <p>We may also share data with professional advisers, or where the law requires it (for example HMRC, the police or a court order). If BEARTEC is sold or reorganised, data may pass to the new owner under this policy.</p>
+      </Section>
 
-          {/* Information We Collect */}
-          <Card className="bg-[#1a1a1a] border-[#2a2e39]">
-            <CardHeader>
-              <CardTitle className="text-xl text-white">Information We Collect</CardTitle>
-            </CardHeader>
-            <CardContent className="text-gray-300 space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold text-white mb-2">Personal Information</h3>
-                <ul className="list-disc list-inside space-y-2 text-sm">
-                  <li>Email address (for account creation and authentication)</li>
-                  <li>Name and profile information (if provided via OAuth providers like Google or Clerk)</li>
-                  <li>Payment information (processed securely through Stripe)</li>
-                  <li>Subscription tier and billing information</li>
-                </ul>
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-white mb-2">Usage Data</h3>
-                <ul className="list-disc list-inside space-y-2 text-sm">
-                  <li>Trading symbols and timeframes you analyze</li>
-                  <li>Technical indicator preferences and settings</li>
-                  <li>AI analysis requests and credit usage</li>
-                  <li>Alert preferences and notification settings</li>
-                  <li>Device information, IP address, and browser type</li>
-                  <li>Access times and referring URLs</li>
-                </ul>
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-white mb-2">Automatically Collected Data</h3>
-                <ul className="list-disc list-inside space-y-2 text-sm">
-                  <li>Session data and authentication tokens</li>
-                  <li>Performance metrics and error logs</li>
-                  <li>Cookie data for session management</li>
-                </ul>
-              </div>
-            </CardContent>
-          </Card>
+      <Section title="6. International transfers">
+        <p>Some providers process data outside the UK, mainly in the USA. Where they do, we rely on UK adequacy regulations (including the UK extension to the EU-US Data Privacy Framework where the provider is certified) or on the ICO's International Data Transfer Agreement or UK Addendum to the EU standard contractual clauses. You can ask us for details.</p>
+      </Section>
 
-          {/* How We Use Your Information */}
-          <Card className="bg-[#1a1a1a] border-[#2a2e39]">
-            <CardHeader>
-              <CardTitle className="text-xl text-white">How We Use Your Information</CardTitle>
-            </CardHeader>
-            <CardContent className="text-gray-300 space-y-3">
-              <p>We use the information we collect to:</p>
-              <ul className="list-disc list-inside space-y-2 text-sm">
-                <li>Provide and maintain our trading analysis services</li>
-                <li>Process your subscription payments and manage your account</li>
-                <li>Generate AI-powered trade alerts and market analysis</li>
-                <li>Send you technical updates, security alerts, and support messages</li>
-                <li>Improve our services, features, and user experience</li>
-                <li>Monitor and analyze usage patterns and trends</li>
-                <li>Detect, prevent, and address technical issues or fraud</li>
-                <li>Send push notifications for trade alerts (with your consent)</li>
-                <li>Comply with legal obligations and enforce our terms</li>
-              </ul>
-            </CardContent>
-          </Card>
+      <Section title="7. How long we keep it">
+        <LegalTable
+          head={['Data', 'Retention']}
+          rows={[
+            ['Account and product data', 'While your account is open. Deleted or anonymised within 30 days after you close it'],
+            ['Billing and transaction records', '6 years after the end of the financial year they relate to (tax and accounting law)'],
+            ['Server and error logs', <TBC key="logs">retention period</TBC>],
+            ['AI request and output logs', <TBC key="ai">retention period</TBC>],
+            ['Complaints and correspondence', 'Up to 6 years after the matter closes'],
+          ]}
+        />
+      </Section>
 
-          {/* Data Sharing and Disclosure */}
-          <Card className="bg-[#1a1a1a] border-[#2a2e39]">
-            <CardHeader>
-              <CardTitle className="text-xl text-white">Data Sharing and Disclosure</CardTitle>
-            </CardHeader>
-            <CardContent className="text-gray-300 space-y-4">
-              <p>We do not sell your personal information. We may share your information with:</p>
-              <div>
-                <h3 className="text-lg font-semibold text-white mb-2">Service Providers</h3>
-                <ul className="list-disc list-inside space-y-2 text-sm">
-                  <li><strong>Stripe:</strong> Payment processing and subscription management</li>
-                  <li><strong>Clerk:</strong> Authentication services</li>
-                  <li><strong>xAI (Grok):</strong> AI-powered market analysis</li>
-                  <li><strong>Neon Database:</strong> Secure data storage</li>
-                  <li><strong>Binance/Exchange APIs:</strong> Real-time market data</li>
-                </ul>
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-white mb-2">Legal Requirements</h3>
-                <p className="text-sm">
-                  We may disclose your information if required by law, court order, or government regulation, or to protect our rights, property, or safety.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+      <Section title="8. Your rights">
+        <p>You have the right to access your data, correct it, have it erased, restrict or object to its use (including to direct marketing at any time), and receive it in a portable format. Where we rely on consent, you can withdraw it at any time. To use these rights, email {mail}; we will reply within one month. You can also complain to the Information Commissioner's Office (<a href="https://ico.org.uk" className="text-[#00c4b4] hover:underline" target="_blank" rel="noopener noreferrer">ico.org.uk</a>, 0303 123 1113), but please contact us first so we can try to help.</p>
+      </Section>
 
-          {/* Data Security */}
-          <Card className="bg-[#1a1a1a] border-[#2a2e39]">
-            <CardHeader>
-              <CardTitle className="text-xl text-white">Data Security</CardTitle>
-            </CardHeader>
-            <CardContent className="text-gray-300 space-y-3">
-              <p>We implement industry-standard security measures to protect your data:</p>
-              <ul className="list-disc list-inside space-y-2 text-sm">
-                <li>Encrypted data transmission (HTTPS/TLS)</li>
-                <li>Secure session management with encrypted cookies</li>
-                <li>OAuth 2.0 authentication protocols</li>
-                <li>Regular security audits and updates</li>
-                <li>Access controls and authentication requirements</li>
-              </ul>
-              <p className="text-sm text-yellow-400 mt-4">
-                However, no method of transmission over the internet is 100% secure. While we strive to protect your data, we cannot guarantee absolute security.
-              </p>
-            </CardContent>
-          </Card>
+      <Section title="9. Cookies and similar technologies">
+        <p>We use only storage that is strictly necessary to provide the service: sign-in session cookies set by Clerk, a cookie that remembers whether the sidebar is open, and browser local storage for your chart settings. These do not need consent. We do not use advertising or analytics cookies. If we add any, we will ask for your consent first.</p>
+      </Section>
 
-          {/* Data Retention */}
-          <Card className="bg-[#1a1a1a] border-[#2a2e39]">
-            <CardHeader>
-              <CardTitle className="text-xl text-white">Data Retention</CardTitle>
-            </CardHeader>
-            <CardContent className="text-gray-300 space-y-3">
-              <p>We retain your personal information for as long as necessary to:</p>
-              <ul className="list-disc list-inside space-y-2 text-sm">
-                <li>Provide our services and maintain your account</li>
-                <li>Comply with legal, tax, or accounting requirements</li>
-                <li>Resolve disputes and enforce our agreements</li>
-              </ul>
-              <p className="text-sm mt-3">
-                When you delete your account, we will delete or anonymize your personal information within 30 days, except where retention is required by law.
-              </p>
-            </CardContent>
-          </Card>
+      <Section title="10. Security">
+        <p>We use encrypted connections (HTTPS), managed sign-in with session checks on every request, access controls and least-privilege keys for our providers. No system is completely secure. If a breach is likely to put you at high risk, we will tell you without undue delay and report it to the ICO where required.</p>
+      </Section>
 
-          {/* Your Rights */}
-          <Card className="bg-[#1a1a1a] border-[#2a2e39]">
-            <CardHeader>
-              <CardTitle className="text-xl text-white">Your Privacy Rights</CardTitle>
-            </CardHeader>
-            <CardContent className="text-gray-300 space-y-3">
-              <p>Depending on your location, you may have the following rights:</p>
-              <ul className="list-disc list-inside space-y-2 text-sm">
-                <li><strong>Access:</strong> Request a copy of your personal data</li>
-                <li><strong>Correction:</strong> Update or correct inaccurate information</li>
-                <li><strong>Deletion:</strong> Request deletion of your personal data</li>
-                <li><strong>Portability:</strong> Receive your data in a structured, machine-readable format</li>
-                <li><strong>Opt-out:</strong> Unsubscribe from marketing communications</li>
-                <li><strong>Withdraw consent:</strong> Revoke consent for data processing</li>
-              </ul>
-              <p className="text-sm mt-3">
-                To exercise these rights, contact us at beartec@beartec.uk
-              </p>
-            </CardContent>
-          </Card>
+      <Section title="11. Children">
+        <p>BearTec Crypto is for adults aged 18 and over. We do not knowingly collect data from children.</p>
+      </Section>
 
-          {/* Cookies and Tracking */}
-          <Card className="bg-[#1a1a1a] border-[#2a2e39]">
-            <CardHeader>
-              <CardTitle className="text-xl text-white">Cookies and Tracking Technologies</CardTitle>
-            </CardHeader>
-            <CardContent className="text-gray-300 space-y-3">
-              <p>We use cookies and similar technologies to:</p>
-              <ul className="list-disc list-inside space-y-2 text-sm">
-                <li>Maintain your login session</li>
-                <li>Remember your preferences and settings</li>
-                <li>Analyze usage patterns and improve our services</li>
-              </ul>
-              <p className="text-sm mt-3">
-                You can control cookies through your browser settings, but disabling cookies may affect your ability to use certain features.
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Third-Party Services */}
-          <Card className="bg-[#1a1a1a] border-[#2a2e39]">
-            <CardHeader>
-              <CardTitle className="text-xl text-white">Third-Party Services</CardTitle>
-            </CardHeader>
-            <CardContent className="text-gray-300 space-y-3">
-              <p>Our platform integrates with third-party services that have their own privacy policies:</p>
-              <ul className="list-disc list-inside space-y-2 text-sm">
-                <li><strong>Stripe:</strong> stripe.com/privacy</li>
-                <li><strong>Google:</strong> policies.google.com/privacy</li>
-                <li><strong>Clerk:</strong> clerk.com/legal/privacy</li>
-                <li><strong>xAI:</strong> x.ai/legal/privacy-policy</li>
-              </ul>
-              <p className="text-sm mt-3">
-                We are not responsible for the privacy practices of these third-party services.
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Children's Privacy */}
-          <Card className="bg-[#1a1a1a] border-[#2a2e39]">
-            <CardHeader>
-              <CardTitle className="text-xl text-white">Children's Privacy</CardTitle>
-            </CardHeader>
-            <CardContent className="text-gray-300 space-y-3">
-              <p>
-                Our services are not intended for users under 18 years of age. We do not knowingly collect personal information from children. If you become aware that a child has provided us with personal data, please contact us immediately.
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Changes to This Policy */}
-          <Card className="bg-[#1a1a1a] border-[#2a2e39]">
-            <CardHeader>
-              <CardTitle className="text-xl text-white">Changes to This Privacy Policy</CardTitle>
-            </CardHeader>
-            <CardContent className="text-gray-300 space-y-3">
-              <p>
-                We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new policy on this page and updating the "Last Updated" date.
-              </p>
-              <p>
-                Significant changes will be communicated via email or prominent notice on our platform.
-              </p>
-            </CardContent>
-          </Card>
-
-          {/* Contact Us */}
-          <Card className="bg-[#1a1a1a] border-[#2a2e39]">
-            <CardHeader>
-              <CardTitle className="text-xl text-white">Contact Us</CardTitle>
-            </CardHeader>
-            <CardContent className="text-gray-300 space-y-3">
-              <p>If you have questions about this Privacy Policy or our data practices, contact us:</p>
-              <ul className="list-none space-y-2 text-sm">
-                <li><strong>Email:</strong> beartec@beartec.uk</li>
-              </ul>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Footer Navigation */}
-        <div className="border-t border-[#2a2e39] mt-8 pt-6">
-          <div className="flex flex-wrap items-center justify-center gap-6 text-sm">
-            <Link href="/terms">
-              <Button variant="ghost" className="text-gray-400 hover:text-white hover:bg-[#1a1a1a]">
-                Terms of Service
-              </Button>
-            </Link>
-            <Link href="/pricing">
-              <Button variant="ghost" className="text-gray-400 hover:text-white hover:bg-[#1a1a1a]">
-                Subscriptions
-              </Button>
-            </Link>
-            <Link href="/contact">
-              <Button variant="ghost" className="text-gray-400 hover:text-white hover:bg-[#1a1a1a]">
-                Contact
-              </Button>
-            </Link>
-          </div>
-          <div className="text-center text-sm text-gray-500 mt-4">
-            © 2026 BEARTEC LTD (17166952). For educational and informational purposes only.
-          </div>
-        </div>
-      </div>
-    </div>
+      <Section title="12. Changes">
+        <p>We will post any changes here with a new date, and tell you by email or in the app if a change is significant.</p>
+      </Section>
+    </LegalPageLayout>
   );
 }
