@@ -340,7 +340,6 @@ export function FullscreenOscillatorPanel({
     { id: 'cci', name: 'CCI', enabled: showCCI, setter: setShowCCI },
     { id: 'williamsr', name: 'Williams %R', enabled: showWilliamsR, setter: setShowWilliamsR },
     { id: 'tideZone', name: 'Tide Zone', enabled: showTideZone, setter: setShowTideZone },
-    { id: 'tetherDivergence', name: 'Tether Divergence', enabled: false, setter: (_v: boolean) => undefined },
   ];
 
   const hasAnyEnabled = showRSI || showMACD || showStochRSI || showCCI || showWilliamsR || showTideZone;

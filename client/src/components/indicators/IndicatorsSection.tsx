@@ -8,6 +8,7 @@ interface IndicatorsSectionProps {
   cvdData: CVDDataItem[];
   externalMetrics?: GDSExternalMetrics;
   symbol?: string;
+  timeframe?: string;
   showPatternBacktest?: boolean;
   activeOscillators?: string[];
   onActiveOscillatorsChange?: (oscillators: string[]) => void;
@@ -20,6 +21,7 @@ export function IndicatorsSection({
   cvdData,
   externalMetrics,
   symbol,
+  timeframe,
   showPatternBacktest = true,
   activeOscillators,
   onActiveOscillatorsChange,
@@ -36,6 +38,8 @@ export function IndicatorsSection({
             candles={candles}
             activeOscillators={activeOscillators}
             onActiveOscillatorsChange={onActiveOscillatorsChange}
+            symbol={symbol}
+            timeframe={timeframe}
           />
         </div>
       )}

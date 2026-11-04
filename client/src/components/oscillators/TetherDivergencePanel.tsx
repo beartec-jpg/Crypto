@@ -26,6 +26,8 @@ interface TetherDivergencePanelProps {
   mainChartVisibleRange?: MainChartVisibleRange;
   height?: number;
   showHud?: boolean;
+  /** Overrides the empty-state text (loading / unavailable / stablecoin). */
+  statusText?: string;
 }
 
 function hexAlpha(hex: string, alpha: number): string {
@@ -45,6 +47,7 @@ export function TetherDivergencePanel({
   mainChartVisibleRange,
   height = 200,
   showHud = true,
+  statusText,
 }: TetherDivergencePanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -233,7 +236,7 @@ export function TetherDivergencePanel({
       <div className="relative h-full min-h-0 w-full bg-[#1e293b]">
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="flex items-center gap-2 text-[11px] text-slate-400">
-            <span>Tether Divergence: waiting on daily data</span>
+            <span>{statusText ?? 'Tether Divergence: waiting on daily data'}</span>
             <button type="button" onClick={openSettings} className="text-slate-400 hover:text-white" aria-label="Tether Divergence settings">
               <Settings className="h-3.5 w-3.5" />
             </button>
