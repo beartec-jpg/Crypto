@@ -1,5 +1,5 @@
 // Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   createChart,
   createSeriesMarkers,
@@ -15,8 +15,6 @@ import type { TideZonePoint } from '@/lib/indicators/tideZone';
 import { emaTideScore, tideZoneColor } from '@/lib/indicators/tideZone';
 import { computeTideV2, inferTideTimeframe, type TideCandle, type TideTimeframe } from '@/lib/indicators/tideSignals';
 import { TideZoneHud } from '@/components/indicators/TideZoneHud';
-import { TideHistEmaControl } from '@/components/indicators/TideHistEmaControl';
-import { ConnectedTideZoneSettingsModal } from '@/components/modals/TideZoneSettingsModal';
 import { useTideZoneSettings } from '@/hooks/useTideZoneSettings';
 import { summarizeTide } from '@/hooks/useTideV2';
 import { buildTideDescriptor } from '@/lib/tideDescriptor';
@@ -75,7 +73,6 @@ export function TideZonePanel({
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const { settings } = useTideZoneSettings();
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const tf = tideTimeframe !== undefined ? tideTimeframe : inferTideTimeframe(candles);
   const params = tf ? settings.byTimeframe[tf] : null;
   const active = Boolean(tf && params && data.length);
@@ -270,14 +267,6 @@ export function TideZonePanel({
       )
     : null;
 
-  const settingsModal = (
-    <ConnectedTideZoneSettingsModal
-      isOpen={settingsOpen}
-      onClose={() => setSettingsOpen(false)}
-      timeframe={tf ?? undefined}
-    />
-  );
-
   const descriptorBlock = descriptor ? (
     <div className="mt-2 min-w-0 space-y-1.5 border-t border-slate-700/80 pt-2">
       <div className={`break-words text-[11px] font-semibold ${descriptor.color}`}>{descriptor.headline}</div>
@@ -298,11 +287,9 @@ export function TideZonePanel({
         <div className="flex w-full min-w-0 flex-col">
           <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
             <span className="min-w-0 break-words">Tide: 1h/4h only</span>
-            <TideHistEmaControl timeframe={null} onOpenSettings={() => setSettingsOpen(true)} />
           </div>
           <div className="relative w-full min-w-0 bg-[#1e293b]" style={{ height }} />
           {descriptorBlock}
-          {settingsModal}
         </div>
       );
     }
@@ -311,10 +298,8 @@ export function TideZonePanel({
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] text-slate-400">
             <span>Tide: 1h/4h only</span>
-            <TideHistEmaControl timeframe={null} onOpenSettings={() => setSettingsOpen(true)} />
           </div>
         </div>
-        {settingsModal}
       </div>
     );
   }
@@ -337,18 +322,12 @@ export function TideZonePanel({
     return (
       <div className="flex w-full min-w-0 flex-col">
         <div className="mb-1.5 flex min-w-0 flex-wrap items-start gap-1.5">
-          {hud ? <div className="min-w-0 flex-1 basis-full sm:basis-0">{hud}</div> : null}
-          <TideHistEmaControl
-            className="shrink-0"
-            timeframe={tf}
-            onOpenSettings={() => setSettingsOpen(true)}
-          />
+          {hud ? <div className="min-w-0 flex-1 basis-full">{hud}</div> : null}
         </div>
         <div className="relative w-full min-w-0 bg-[#1e293b]" style={{ height }}>
           <div ref={containerRef} className="absolute inset-0" />
         </div>
         {descriptorBlock}
-        {settingsModal}
       </div>
     );
   }
@@ -356,11 +335,7 @@ export function TideZonePanel({
   return (
     <div className="relative h-full min-h-0 w-full">
       <div ref={containerRef} className="absolute inset-0" />
-      <div className="absolute top-1 right-12 z-20">
-        <TideHistEmaControl timeframe={tf} onOpenSettings={() => setSettingsOpen(true)} />
-      </div>
-      {settingsModal}
-      {hud ? <div className="absolute top-1 left-1 right-36 z-20">{hud}</div> : null}
+      {hud ? <div className="absolute top-1 left-1 right-16 z-20">{hud}</div> : null}
     </div>
   );
 }

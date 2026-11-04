@@ -56,10 +56,10 @@ Adding a 1.5R target on 1h gives holdout PF 1.87 (n 67). It is not drawn.
   - timeframe helpers
 - `client/src/lib/indicators/tideTimeframe.ts`: 1h/4h gating for the score.
 - `client/src/hooks/useTideV2.ts`: per-chart computation plus the ledger, the overlay builder and the HUD status.
-- `client/src/types/tideZoneSettings.ts`: `TIDE_PRESETS`, v2 settings, normalisation.
+- `client/src/types/tideZoneSettings.ts`: `TIDE_PRESETS` and the fixed `TIDE_ZONE_SETTINGS` (no user settings).
 - `client/src/lib/chartPrimitives/TideAccumPrimitive.ts`: draws the markers and stop lines.
 - UI: `TideAccumRenderer`, `TideZonePanel` (EMA lines, `out`/`in` markers, blank note),
-  `TideZoneHud` (`Tide out(+)` / `Tide in` / `Stop hit` badge, `SL` price), `TideZoneSettingsModal` (tabs).
+  `TideZoneHud` (`Tide out(+)` / `Tide in` / `Stop hit` badge, `SL` price). No settings UI: fixed 1h/4h presets (issue #609).
 - **Parity:** `scripts/tide_live_core.py` is the Python research detector.
   `scripts/tide_v2_parity_fixture.py` writes `client/src/__tests__/lib/fixtures/tide_btc_{4h,1h}.json`
   from real BTC perp bars. `tideSignals.test.ts` checks, bar for bar:

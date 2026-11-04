@@ -3,8 +3,6 @@ import { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { TideZonePoint } from '@/lib/indicators/tideZone';
 import { tideZoneLabel } from '@/lib/indicators/tideZone';
-import { TideHistEmaControl } from '@/components/indicators/TideHistEmaControl';
-import { ConnectedTideZoneSettingsModal } from '@/components/modals/TideZoneSettingsModal';
 import type { TideStatus } from '@/hooks/useTideV2';
 import type { TideTimeframe } from '@/types/tideZoneSettings';
 
@@ -58,7 +56,6 @@ function fmtPrice(p: number): string {
 
 /** Shown instead of the HUD on timeframes where Tide does not run. */
 export function TideOffNote({ className }: { className?: string }) {
-  const [settingsOpen, setSettingsOpen] = useState(false);
   return (
     <div
       className={`pointer-events-auto inline-flex items-center gap-2 rounded-lg border border-slate-600/60 bg-slate-900/85 px-2 py-1 text-[11px] text-slate-300 backdrop-blur-sm ${className ?? ''}`}
@@ -66,8 +63,6 @@ export function TideOffNote({ className }: { className?: string }) {
       onPointerDown={(e) => e.stopPropagation()}
     >
       <span className="font-semibold">Tide: 1h/4h only</span>
-      <TideHistEmaControl timeframe={null} onOpenSettings={() => setSettingsOpen(true)} className="border-0 bg-transparent px-0" />
-      <ConnectedTideZoneSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }
@@ -85,7 +80,6 @@ export function TideZoneHud({
   variant = 'overlay',
 }: TideZoneHudProps) {
   const [open, setOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const pct = (v: number) => Math.round(v * 100);
   const showAbsorb = absorb || last.tell === 'absorb';
   const showDistro = !showAbsorb && (distro || last.tell === 'distro');
@@ -164,9 +158,6 @@ export function TideZoneHud({
 
       {open && (
         <div className="border-t border-white/10 px-2 py-2 space-y-2">
-          {!inline && (
-            <TideHistEmaControl timeframe={timeframe} onOpenSettings={() => setSettingsOpen(true)} />
-          )}
           {COMPONENTS.map((c) => (
             <div key={c.key}>
               <div className="text-[10px] font-semibold uppercase tracking-wide">
@@ -209,7 +200,6 @@ export function TideZoneHud({
           </p>
         </div>
       )}
-      <ConnectedTideZoneSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} timeframe={timeframe} />
     </div>
   );
 }

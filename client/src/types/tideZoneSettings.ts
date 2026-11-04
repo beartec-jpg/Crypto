@@ -28,7 +28,12 @@ export interface TideZoneSettings {
 }
 
 /**
- * Validated presets from the live-accurate (non-repainting) re-search, BTC/ETH/XRP/SOL/BNB/DOGE,
+ * Fixed presets. Re-checked by the 205k-config grid in issue #609 (train 2019-2023, out-of-sample
+ * 2024 to Nov 2026, 8 majors, fees included): nothing tuned beat these out of sample, and the
+ * flip-flop guards, Pull exit and trend-EMA filters did not earn a place, so there are no settings.
+ * Tide runs on 1h and 4h charts only (other intervals show "Tide: 1h/4h only").
+ *
+ * Original validation: presets from the live-accurate (non-repainting) re-search, BTC/ETH/XRP/SOL/BNB/DOGE,
  * train < 2024, holdout 2024+, fees included, Tide-in exit only.
  *  4h: 8/3/−20, exit EMA8 peak N5, stop pivot − 0.5 ATR → train PF 1.32 (n 206), holdout PF 1.92 (n 117, +1.44%/trade)
  *  1h: 21/8/−40, exit EMA8 peak N8, stop pivot − 0.5%  → train PF 2.00 (n 112), holdout PF 1.78 (n 66, +0.58%/trade)
@@ -59,7 +64,7 @@ export const TIDE_PRESETS: Record<TideTimeframe, TideTimeframeSettings> = {
   },
 };
 
-export const DEFAULT_TIDE_ZONE_SETTINGS: TideZoneSettings = {
+export const TIDE_ZONE_SETTINGS: TideZoneSettings = {
   byTimeframe: { '1h': { ...TIDE_PRESETS['1h'] }, '4h': { ...TIDE_PRESETS['4h'] } },
   showTideOut: true,
   showTideIn: true,
@@ -73,105 +78,8 @@ export const DEFAULT_TIDE_ZONE_SETTINGS: TideZoneSettings = {
   keep: 8,
 };
 
-function clamp(n: unknown, min: number, max: number, fallback: number): number {
-  const x = typeof n === 'number' ? n : Number(n);
-  if (!Number.isFinite(x)) return fallback;
-  return Math.min(max, Math.max(min, x));
-}
-
-function round1(n: number): number {
-  const r = Math.round(n * 10) / 10;
-  return r === 0 ? 0 : r;
-}
-
-/** Preset default when the stored score is missing or not a finite number. */
-function presetExitMinScore(preset: TideTimeframeSettings): number {
-  return round1(clamp(preset.exitMinScore, -100, 100, 0));
-}
-
-/**
- * null stays disabled. Missing, undefined, or non-finite falls back to the preset (0).
- * Anything else is clamped to [-100, 100] and rounded to 1 decimal.
- */
-function resolveExitMinScore(
-  raw: Partial<TideTimeframeSettings> | null | undefined,
-  preset: TideTimeframeSettings,
-): number | null {
-  const fallback = presetExitMinScore(preset);
-  if (raw == null || !Object.prototype.hasOwnProperty.call(raw, 'exitMinScore')) return fallback;
-  const v = raw.exitMinScore;
-  if (v === null) return null;
-  if (typeof v !== 'number' || !Number.isFinite(v)) return fallback;
-  return round1(clamp(v, -100, 100, fallback));
-}
-
-function color(v: unknown, fallback: string): string {
-  return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v : fallback;
-}
-
-export function normalizeTideTimeframeSettings(
-  raw: Partial<TideTimeframeSettings> | null | undefined,
-  preset: TideTimeframeSettings,
-): TideTimeframeSettings {
-  const s = { ...preset, ...(raw || {}) };
-  const stopKind: TideStopKind = s.stopKind === 'pct' || s.stopKind === 'atr' ? s.stopKind : preset.stopKind;
-  // Other flip-flop guards: the key is stored only when it is not the default, so a stock preset
-  // stays equal to TIDE_PRESETS. exitMinScore is first-class and always stored (number or null).
-  const guards: {
-    exitPeakAfterEntry?: true;
-    minHoldBars?: number;
-    cooldownBars?: number;
-  } = {};
-  if (s.exitPeakAfterEntry === true) guards.exitPeakAfterEntry = true;
-  const minHold = Math.round(clamp(s.minHoldBars, 0, 48, 0));
-  if (minHold > 0) guards.minHoldBars = minHold;
-  const cooldown = Math.round(clamp(s.cooldownBars, 0, 96, 0));
-  if (cooldown > 0) guards.cooldownBars = cooldown;
-  return {
-    ...guards,
-    emaPeriod: Math.round(clamp(s.emaPeriod, 2, 34, preset.emaPeriod)),
-    pivotN: Math.round(clamp(s.pivotN, 2, 21, preset.pivotN)),
-    belowScore: clamp(s.belowScore, -80, 0, preset.belowScore),
-    exitEmaPeriod: Math.round(clamp(s.exitEmaPeriod, 2, 34, preset.exitEmaPeriod)),
-    exitPivotN: Math.round(clamp(s.exitPivotN, 2, 21, preset.exitPivotN)),
-    exitMinScore: resolveExitMinScore(raw, preset),
-    stopKind,
-    stopAtrMult: clamp(s.stopAtrMult, 0, 5, preset.stopAtrMult),
-    stopPct: clamp(s.stopPct, 0, 0.1, preset.stopPct),
-  };
-}
-
-/** Dirty or partial timeframe values (persisted settings, including ones that predate exitMinScore). */
-export type TideTimeframeSettingsInput = Partial<Omit<TideTimeframeSettings, 'exitMinScore'>> & {
-  /** null = disabled. Missing or undefined = preset default. A number is clamped. */
-  exitMinScore?: number | null;
-};
-
-export function normalizeTideZoneSettings(
-  raw: (Partial<Omit<TideZoneSettings, 'byTimeframe'>> & {
-    byTimeframe?: Partial<Record<TideTimeframe, TideTimeframeSettingsInput>>;
-  }) | null | undefined,
-): TideZoneSettings {
-  const d = DEFAULT_TIDE_ZONE_SETTINGS;
-  const s = { ...d, ...(raw || {}) };
-  const by = raw?.byTimeframe ?? {};
-  return {
-    byTimeframe: {
-      '1h': normalizeTideTimeframeSettings(by['1h'], TIDE_PRESETS['1h']),
-      '4h': normalizeTideTimeframeSettings(by['4h'], TIDE_PRESETS['4h']),
-    },
-    showTideOut: s.showTideOut !== false,
-    showTideIn: s.showTideIn !== false,
-    showStops: s.showStops !== false,
-    showAbsorb: s.showAbsorb === true,
-    tideOutColor: color(s.tideOutColor, d.tideOutColor),
-    tideOutPlusColor: color(s.tideOutPlusColor, d.tideOutPlusColor),
-    tideInColor: color(s.tideInColor, d.tideInColor),
-    stopColor: color(s.stopColor, d.stopColor),
-    absorbColor: color(s.absorbColor, d.absorbColor),
-    keep: Math.round(clamp(s.keep, 2, 24, d.keep)),
-  };
-}
+/** Kept as an alias for existing imports. */
+export const DEFAULT_TIDE_ZONE_SETTINGS = TIDE_ZONE_SETTINGS;
 
 /** Settings for the chart timeframe; null when Tide does not run on it. */
 export function tideParamsFor(
@@ -179,9 +87,4 @@ export function tideParamsFor(
   timeframe: TideTimeframe | null,
 ): TideTimeframeSettings | null {
   return timeframe ? settings.byTimeframe[timeframe] : null;
-}
-
-export function isTidePreset(values: TideTimeframeSettings, timeframe: TideTimeframe): boolean {
-  const p = TIDE_PRESETS[timeframe];
-  return (Object.keys(p) as (keyof TideTimeframeSettings)[]).every((k) => values[k] === p[k]);
 }
