@@ -1,6 +1,7 @@
 // Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ManualTrade } from '@/lib/chartPrimitives/TradePrimitive';
+import { scanManualTrade, candlesApplyToTrade } from '@/lib/manualTradeScan';
 
 const STORAGE_KEY = 'manual_trades_v1';
 
@@ -22,99 +23,51 @@ function saveTrades(trades: ManualTrade[]) {
   }
 }
 
-/**
- * Scan a single open trade against candles starting at startIdx.
- * Returns [updatedTrade, lastScannedIndex].
- */
-function scanTrade(
-  trade: ManualTrade,
+export function useManualTrades(
+  symbol: string,
+  timeframe: string,
   candles: Array<{ time: number; high: number; low: number; close: number }>,
-  startIdx: number,
-): [ManualTrade, number] {
-  if (candles.length === 0) return [trade, 0];
-
-  // Track whether entry has been filled.  For backward-compat, trades that
-  // were persisted before the entryHit field existed are treated as filled.
-  let entryFilled = trade.entryHit ?? true;
-
-  for (let i = startIdx; i < candles.length; i++) {
-    const c = candles[i];
-
-    // For historical/manual trades with a pre-set closeTime: allow the exact
-    // closeTime candle through to the TP/SL checks below first.  Only stop
-    // (mark as manual) when we step *past* that candle.
-    if (trade.closeTime && c.time > trade.closeTime) {
-      return [{ ...trade, entryHit: entryFilled, outcome: 'manual' as const }, i];
-    }
-
-    // Before checking SL/TP, verify that the entry price has actually been
-    // reached.  A LONG entry is filled when price dips to or below the entry;
-    // a SHORT entry is filled when price rises to or above the entry.
-    if (!entryFilled) {
-      if (trade.direction === 'LONG') {
-        if (c.low <= trade.entryPrice) entryFilled = true;
-      } else {
-        if (c.high >= trade.entryPrice) entryFilled = true;
-      }
-      // If still not filled after this candle, skip SL/TP checks
-      if (!entryFilled) continue;
-    }
-
-    if (trade.direction === 'LONG') {
-      if (c.low <= trade.slPrice) return [{ ...trade, entryHit: true, outcome: 'loss' as const, closeTime: c.time }, i];
-      if (c.high >= trade.tpPrice) return [{ ...trade, entryHit: true, outcome: 'win' as const, closeTime: c.time }, i];
-    } else {
-      if (c.high >= trade.slPrice) return [{ ...trade, entryHit: true, outcome: 'loss' as const, closeTime: c.time }, i];
-      if (c.low <= trade.tpPrice) return [{ ...trade, entryHit: true, outcome: 'win' as const, closeTime: c.time }, i];
-    }
-  }
-  // Persist whether entry was hit so far (even if trade is still open)
-  if (entryFilled && !trade.entryHit) {
-    return [{ ...trade, entryHit: true }, candles.length - 1];
-  }
-  return [trade, candles.length - 1];
-}
-
-export function useManualTrades(symbol: string, timeframe: string, candles: Array<{ time: number; high: number; low: number; close: number }>) {
+  /** `${symbol}_${timeframe}` of the data in `candles`; skips scans while stale data from a previous chart is still mounted. */
+  candlesKey?: string,
+) {
   const [trades, setTrades] = useState<ManualTrade[]>(() => loadTrades());
 
-  // Track the last candle index checked per trade to avoid rescanning already-processed candles.
-  const lastCheckedCandleRef = useRef<Map<string, number>>(new Map());
+  // Time of the last candle evaluated per trade. Time-based (not array index)
+  // so a refresh, history prepend or rewind never skips or mis-reads candles.
+  // The last candle is re-evaluated each tick because it may still be forming.
+  const lastCheckedTimeRef = useRef<Map<string, number>>(new Map());
 
   // Keep a stable ref to the latest candles so addTrade can access them without
   // being listed as a dependency (which would recreate the callback on every tick).
   const candlesRef = useRef(candles);
   useEffect(() => { candlesRef.current = candles; }, [candles]);
+  const candlesKeyRef = useRef(candlesKey);
+  useEffect(() => { candlesKeyRef.current = candlesKey; }, [candlesKey]);
 
   // Persist on change
   useEffect(() => {
     saveTrades(trades);
   }, [trades]);
 
-  // Check open trades against new candles only (from last checked index onward)
+  // Check open trades for this chart's symbol/timeframe against its candles.
   useEffect(() => {
     if (candles.length === 0) return;
+    const lastTime = candles[candles.length - 1].time;
 
     setTrades(prev => {
       let changed = false;
       const updated = prev.map(trade => {
         if (trade.outcome) return trade; // already closed
-
-        // Start scanning from after the last checked candle (or from entry, if first check)
-        const lastIdx = lastCheckedCandleRef.current.get(trade.id) ?? -1;
-        const startIdx = lastIdx >= 0
-          ? lastIdx + 1
-          : candles.findIndex(c => c.time >= trade.entryTime);
-        if (startIdx < 0) return trade;
-
-        const [scannedTrade, lastScanned] = scanTrade(trade, candles, startIdx);
-        lastCheckedCandleRef.current.set(trade.id, lastScanned);
-        if (scannedTrade !== trade) changed = true;
-        return scannedTrade;
+        if (!candlesApplyToTrade(trade, symbol, timeframe, candlesKey)) return trade;
+        const from = lastCheckedTimeRef.current.get(trade.id) ?? trade.entryTime;
+        const scanned = scanManualTrade(trade, candles, from);
+        lastCheckedTimeRef.current.set(trade.id, Math.max(from, lastTime));
+        if (scanned !== trade) changed = true;
+        return scanned;
       });
       return changed ? updated : prev;
     });
-  }, [candles]);
+  }, [candles, symbol, timeframe, candlesKey]);
 
   const addTrade = useCallback((
     direction: 'LONG' | 'SHORT',
@@ -139,13 +92,9 @@ export function useManualTrades(symbol: string, timeframe: string, candles: Arra
     // trades added while candles are already loaded get a win/loss outcome right
     // away (the candle-change effect won't fire in that situation).
     const currentCandles = candlesRef.current;
-    if (currentCandles.length > 0) {
-      const startIdx = currentCandles.findIndex(c => c.time >= trade.entryTime);
-      if (startIdx >= 0) {
-        const [scannedTrade, lastIdx] = scanTrade(trade, currentCandles, startIdx);
-        trade = scannedTrade;
-        lastCheckedCandleRef.current.set(trade.id, lastIdx);
-      }
+    if (currentCandles.length > 0 && candlesApplyToTrade(trade, symbol, timeframe, candlesKeyRef.current)) {
+      trade = scanManualTrade(trade, currentCandles);
+      lastCheckedTimeRef.current.set(trade.id, Math.max(trade.entryTime, currentCandles[currentCandles.length - 1].time));
     }
     setTrades(prev => [...prev, trade]);
   }, [symbol, timeframe]);
@@ -159,7 +108,7 @@ export function useManualTrades(symbol: string, timeframe: string, candles: Arra
   }, []);
 
   const deleteTrade = useCallback((id: string) => {
-    lastCheckedCandleRef.current.delete(id);
+    lastCheckedTimeRef.current.delete(id);
     setTrades(prev => prev.filter(t => t.id !== id));
   }, []);
 
@@ -168,7 +117,7 @@ export function useManualTrades(symbol: string, timeframe: string, candles: Arra
       if (t.id !== id || t.outcome) return t;
       const updated = { ...t, ...updates };
       // Re-scan from the entry candle with the new SL/TP levels
-      lastCheckedCandleRef.current.delete(id);
+      lastCheckedTimeRef.current.delete(id);
       return updated;
     }));
   }, []);
