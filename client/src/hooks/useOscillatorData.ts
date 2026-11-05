@@ -117,13 +117,6 @@ export function useOscillatorData(
 ): OscillatorData {
   return useMemo(() => {
     const resolved = { ...DEFAULT_SETTINGS, ...settings };
-    const oi = (extras.oiHistory || [])
-      .map((p) => ({
-        time: p.timestamp > 1e12 ? Math.floor(p.timestamp / 1000) : p.timestamp,
-        value: p.value,
-      }))
-      .filter((p) => p.time > 0 && Number.isFinite(p.value));
-
     if (candles.length === 0) {
       return {
         rsi: [],
@@ -161,7 +154,7 @@ export function useOscillatorData(
       color: c.close >= c.open ? '#26a69a' : '#ef5350',
     }));
 
-    const tide = calculateTideZoneForTimeframe(candles, extras.timeframe, { oi });
+    const tide = calculateTideZoneForTimeframe(candles, extras.timeframe);
 
     return {
       rsi: rsiData,
@@ -181,5 +174,5 @@ export function useOscillatorData(
       tideZone: tide.data,
       tideTimeframe: tide.timeframe,
     };
-  }, [candles, settings, extras.oiHistory, extras.timeframe]);
+  }, [candles, settings, extras.timeframe]);
 }

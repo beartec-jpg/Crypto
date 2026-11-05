@@ -37,10 +37,8 @@ import { FullscreenChartIndicatorLayer } from '@/components/chart/FullscreenChar
 import { FullscreenChartModals } from '@/components/chart/FullscreenChartModals';
 import { FullscreenChartViewportLayer } from '@/components/chart/FullscreenChartViewportLayer';
 import { FullscreenOscillatorLayout } from '@/components/oscillators/FullscreenOscillatorLayout';
-import { TideAccumRenderer } from '@/components/indicators/TideAccumRenderer';
+import { TideCrossMarkers } from '@/components/indicators/TideCrossMarkers';
 import { TetherDivergenceOverlay } from '@/components/indicators/TetherDivergenceOverlay';
-import { useTideZoneSettings } from '@/hooks/useTideZoneSettings';
-import { useTideV2 } from '@/hooks/useTideV2';
 import { useTetherDivergenceSettings } from '@/hooks/useTetherDivergenceSettings';
 import { useTetherDivergence } from '@/hooks/useTetherDivergence';
 
@@ -475,7 +473,6 @@ export function ChartFullscreenPage({
 
   // Hooks - Oscillator panel (needed first for totalHeight)
   const oscillatorPanel = useOscillatorPanel();
-  const tideZoneSettings = useTideZoneSettings();
   const tetherSettings = useTetherDivergenceSettings();
 
   // Hooks - Chart instance
@@ -678,15 +675,6 @@ export function ChartFullscreenPage({
     () => ({ ...oscillatorDataBase, tetherDivergence: tetherDivergence.result }),
     [oscillatorDataBase, tetherDivergence.result],
   );
-  const tideV2 = useTideV2({
-    candles: effectiveCandles,
-    tideZone: oscillatorData.tideZone,
-    timeframe: oscillatorData.tideTimeframe,
-    settings: tideZoneSettings.settings,
-    seriesKey: candlesKey,
-    enabled: oscillatorPanel.selectedOscillators.has('tideZone'),
-  });
-
   const oscillatorModalConfigs = useMemo<Record<string, OscillatorModalConfig>>(
     () => ({
       rsi: { enabled: oscillatorPanel.selectedOscillators.has('rsi'), period: indicators.rsi.period },
@@ -3123,7 +3111,6 @@ export function ChartFullscreenPage({
           selectedOscillators={oscillatorPanel.selectedOscillators}
           oscillatorData={oscillatorData}
           candles={effectiveCandles}
-          tide={tideV2}
           onCycleMiniMode={oscillatorPanel.cycleMode}
           smartMoneyPanelData={smartMoneyPanelData}
           smcTrendEnginePanelData={smcTrendEnginePanelData}
@@ -3300,14 +3287,10 @@ export function ChartFullscreenPage({
           timeframe={timeframe}
         />
 
-        <TideAccumRenderer
-          chart={chartRef.current}
+        <TideCrossMarkers
           candleSeries={candleSeriesRef.current}
-          candles={effectiveCandles}
           tideZone={oscillatorData.tideZone}
           timeframe={oscillatorData.tideTimeframe}
-          tide={tideV2}
-          settings={tideZoneSettings.settings}
           enabled={oscillatorPanel.selectedOscillators.has('tideZone')}
         />
 

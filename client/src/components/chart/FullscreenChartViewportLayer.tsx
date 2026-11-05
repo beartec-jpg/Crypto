@@ -1,5 +1,5 @@
 // Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
-import type { RefObject } from 'react';
+import { useMemo, type RefObject } from 'react';
 import { MiniOscillatorSection } from '@/components/oscillators/MiniOscillatorSection';
 import { HTFBiasPanel } from '@/components/indicators/HTFBiasPanel';
 import { ChartLoadingOverlay } from '@/components/chart/ChartLoadingOverlay';
@@ -9,18 +9,14 @@ import type { ScoringInput } from '@/lib/tradingSystemScoring';
 import type { SystemEvaluation } from '@/types/systemScoring';
 import type { SMCTrendEnginePanelData } from '@/components/trading/SMCTrendEngine/types';
 import { TideOffNote, TideZoneHud } from '@/components/indicators/TideZoneHud';
-import { emaTideScore } from '@/lib/indicators/tideZone';
-import type { TideV2Result } from '@/lib/indicators/tideSignals';
+import { computeTideCross, freshTideCross } from '@/lib/indicators/tideSignals';
 import { useTideZoneSettings } from '@/hooks/useTideZoneSettings';
-import { summarizeTide } from '@/hooks/useTideV2';
 
 interface FullscreenChartViewportLayerProps {
   miniOscillators: Set<string>;
   selectedOscillators?: Set<string>;
   oscillatorData: OscillatorData;
   candles?: { time: number; low: number }[];
-  /** Point-in-time Tide v2 result for the main chart (null off 1h/4h). */
-  tide?: TideV2Result | null;
   onCycleMiniMode: (oscillatorId: string) => void;
   showHtfBiasPanel: boolean;
   htfBiasEntries: any[];
@@ -41,7 +37,6 @@ export function FullscreenChartViewportLayer({
   selectedOscillators,
   oscillatorData,
   candles = [],
-  tide = null,
   onCycleMiniMode,
   showHtfBiasPanel,
   htfBiasEntries,
@@ -56,10 +51,14 @@ export function FullscreenChartViewportLayer({
   const { settings: tideSettings } = useTideZoneSettings();
   const tideOn = Boolean(selectedOscillators?.has('tideZone'));
   const tideTf = oscillatorData.tideTimeframe;
-  const tideEmaPeriod = tideTf ? tideSettings.byTimeframe[tideTf].emaPeriod : undefined;
-  const tideEma = tideOn && tideEmaPeriod ? emaTideScore(oscillatorData.tideZone, tideEmaPeriod) : [];
-  const tideEmaLast = tideEma.length ? tideEma[tideEma.length - 1].value : undefined;
-  const tideStatus = tideOn ? summarizeTide(tide, candles) : undefined;
+  const tideCross = useMemo(
+    () => (tideOn && tideTf && oscillatorData.tideZone.length ? computeTideCross(oscillatorData.tideZone, tideSettings) : null),
+    [tideOn, tideTf, oscillatorData.tideZone, tideSettings],
+  );
+  const lastOf = (xs: { value: number }[]) => (xs.length ? xs[xs.length - 1].value : undefined);
+  const shortLast = tideCross ? lastOf(tideCross.emaShort) : undefined;
+  const longLast = tideCross ? lastOf(tideCross.emaLong) : undefined;
+  const tideFresh = tideCross ? freshTideCross(tideCross.signals, oscillatorData.tideZone)?.kind ?? null : null;
 
   return (
     <>
@@ -78,12 +77,10 @@ export function FullscreenChartViewportLayer({
           <TideZoneHud
             last={oscillatorData.tideZone[oscillatorData.tideZone.length - 1]}
             timeframe={tideTf}
-            status={tideStatus}
-            absorb={oscillatorData.tideZone.slice(-3).some((d) => d.tell === 'absorb')}
-            distro={oscillatorData.tideZone.slice(-3).some((d) => d.tell === 'distro')}
-            reacc={oscillatorData.tideZone.slice(-3).some((d) => d.tell === 'reacc')}
-            emaPeriod={tideEmaPeriod}
-            emaValue={tideEmaLast}
+            fresh={tideFresh}
+            emaShort={shortLast != null ? { period: tideSettings.emaShort, value: shortLast } : undefined}
+            emaLong={longLast != null ? { period: tideSettings.emaLong, value: longLast } : undefined}
+            crossEma={tideSettings.crossEma}
           />
         </div>
       )}
