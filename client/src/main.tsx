@@ -7,23 +7,18 @@ import './index.css'
 import { setupPerformanceMonitoring } from '@/lib/monitoring'
 import { setupErrorTracking } from '@/lib/errorTracking'
 import { AuthQueryIsolation } from '@/components/AuthQueryIsolation'
+import { recoverFromChunkError } from '@/lib/chunkRecovery'
 
 // Initialize monitoring
 setupPerformanceMonitoring();
 setupErrorTracking();
 
-// Auto-reload on chunk load failures (stale cache after deploy)
-window.addEventListener('unhandledrejection', (event) => {
-  const msg = event?.reason?.message || '';
-  if (msg.includes('Failed to fetch dynamically imported module') || msg.includes('Importing a module script failed')) {
-    const reloadKey = '__chunk_reload_at__';
-    const last = Number(sessionStorage.getItem(reloadKey) || 0);
-    if (Date.now() - last > 10_000) {
-      sessionStorage.setItem(reloadKey, String(Date.now()));
-      window.location.reload();
-    }
-  }
-});
+// Auto-recover from chunk load failures (stale/poisoned cache after deploy)
+const handleChunkFailure = (reason: unknown) => {
+  void recoverFromChunkError(reason);
+};
+window.addEventListener('unhandledrejection', (event) => handleChunkFailure(event?.reason));
+window.addEventListener('vite:preloadError' as any, (event: any) => handleChunkFailure(event?.payload));
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 

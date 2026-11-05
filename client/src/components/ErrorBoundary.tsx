@@ -1,6 +1,7 @@
 // Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { Component, ReactNode } from 'react';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { recoverFromChunkError } from '@/lib/chunkRecovery';
 
 interface Props {
   children: ReactNode;
@@ -26,7 +27,10 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: any) {
     const { onError } = this.props;
-    
+
+    // Stale/poisoned chunk after a deploy: repair the cache and reload once
+    void recoverFromChunkError(error);
+
     // Log to error handler
     ErrorHandler.logError(
       'rendering',
