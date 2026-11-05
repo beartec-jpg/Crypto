@@ -82,9 +82,9 @@ const MANUAL: Record<string, OscillatorManual> = {
     levels: 'DIV = price zigzag lower low vs Tide-EMA zigzag higher low (below the below-score line). Absorb = price flat/down between two price zigzag lows while Tide EMA is rising. Distro/Reacc need open interest. Exit longs toward 0, not −40.',
   },
   tetherDivergence: {
-    title: 'Tether Divergence',
-    how: 'Daily score of how stretched USDT dominance is (RSI, distance above its 20-day EMA, upper Bollinger) versus how oversold the coin is (100 − coin RSI). High score = USDT.D stretched high while the coin is washed out — historically coincident with BTC/XRP daily bottoms, not a leading signal.',
-    levels: '80+ = Bottom zone (validated out-of-sample, ~3x lift on BTC/XRP). 60–80 = Watch. Below 60 is grey. Gap shade = USDT.D RSI ≥ 65 while coin RSI ≤ 35. Top-zone mirror is off by default and unvalidated — do not trade it as a top call.',
+    title: 'Tether Stretch',
+    how: 'Daily score of how stretched USDT dominance is (RSI, distance above its 20-day EMA, upper Bollinger) versus how oversold the coin is (100 − coin RSI). High score = USDT.D stretched high while the coin is washed out. Fixed settings, no panel. Stretch + / Stretch - arrows mark the signal; the +1/+2/+3 and -1/-2/-3 markers count the coin’s daily RSI divergences after it.',
+    levels: 'Stretch + = score crosses up through 80 (USDT.D stretched, coin washed out). Stretch - = the mirrored score crosses up through 80 (research: this behaved like momentum, not a reliable top call). 60–80 = Watch. Gap shade = USDT.D RSI ≥ 65 while coin RSI ≤ 35. Divergence markers (daily RSI, confirmed 5 bars after the pivot): green/red circle = regular, teal/orange square = hidden; +1..+3 count bullish ones after a Stretch +, -1..-3 bearish ones after a Stretch -, reset by the next signal. They describe the structure; they are not a proven edge.',
   },
   smartMoney: {
     title: 'Smart Money Tracker',
@@ -275,8 +275,8 @@ export function getOscillatorLiveReport(
         color:
           zone === 'bottom' ? 'text-emerald-400' : zone === 'watch' ? 'text-amber-400' : 'text-slate-400',
         text: '',
-        meaning: `Score ${score.toFixed(0)} from USDT.D stretch vs coin oversold. Bottoms were validated out-of-sample (~3x lift, BTC/XRP, coincident not leading). Tops were not.`,
-        lookFor: 'Bottom zone (80+) with gap shade (USDT.D RSI high, coin RSI low). Do not treat the optional top-zone mirror as a signal.',
+        meaning: `Score ${score.toFixed(0)} from USDT.D stretch vs coin oversold. Coincident with, not leading, daily lows; Stretch - has not held up as a top signal.`,
+        lookFor: 'Stretch + with gap shade (USDT.D RSI high, coin RSI low), then +1/+2/+3 divergence markers. Treat Stretch - as momentum, not a top call.',
       };
     }
     case 'smartMoney':

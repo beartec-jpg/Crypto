@@ -1,11 +1,16 @@
 /**
- * Tether Divergence — USDT.D stretch vs coin oversold (daily / weekly).
+ * Tether Stretch (internal id `tetherDivergence`) — USDT.D stretch vs coin oversold, plus the token's
+ * daily-RSI divergence ladder.
  * Pure math: no React, no fetch. Causal: bar i depends only on bars <= i.
  * Forming (unclosed) bars are dropped before any indicator is computed.
+ *
+ * Signals: "Stretch +" (score crosses up through Bottom 80) and "Stretch -" (topScore crosses up
+ * through Top 80). After a Stretch +/- the token's daily RSI divergences are counted +1/+2/+3 (bullish)
+ * or -1/-2/-3 (bearish), regular and hidden, until the opposite/new signal resets the ladder.
  */
 
 import {
-  DEFAULT_TETHER_DIVERGENCE_SETTINGS,
+  TETHER_STRETCH_SETTINGS,
   normalizeTetherDivergenceSettings,
   type TetherDivergenceSettings,
   type TetherMarkerOnCross,
@@ -33,6 +38,17 @@ export interface TetherCross {
   kind: TetherMarkerOnCross;
 }
 
+export type TetherDivergenceType = 'regular' | 'hidden';
+
+/** One rung of the ladder. `time` is the bar the divergence is CONFIRMED on (pivot + k), never earlier. */
+export interface TetherLadderMarker {
+  time: number;
+  side: 'bull' | 'bear';
+  /** 1..3 (rendered +1..+3 for bull, -1..-3 for bear). */
+  n: 1 | 2 | 3;
+  type: TetherDivergenceType;
+}
+
 export interface TetherDivergenceComputeResult {
   times: number[];
   usdtRsi: Array<number | null>;
@@ -46,6 +62,10 @@ export interface TetherDivergenceComputeResult {
   zone: Array<TetherZone | null>;
   gap: boolean[];
   crosses: TetherCross[];
+  /** Stretch - signals (topScore crossing up through the Top threshold). */
+  topCrosses: TetherCross[];
+  /** Daily RSI divergence ladder markers (+1..+3 after Stretch +, -1..-3 after Stretch -). */
+  ladder: TetherLadderMarker[];
   periodSeconds: number;
   approximate?: boolean;
   source?: string | null;
@@ -56,6 +76,18 @@ export interface TetherPriceMarker {
   kind: TetherMarkerOnCross;
   text: string;
   color: string;
+}
+
+export interface TetherLadderPriceMarker {
+  time: number;
+  position: 'belowBar' | 'aboveBar';
+  /** regular = circle, hidden = square. */
+  shape: 'circle' | 'square';
+  color: string;
+  /** +1..+3 / -1..-3 */
+  text: string;
+  type: TetherDivergenceType;
+  side: 'bull' | 'bear';
 }
 
 export const DAY_SECONDS = 86400;
@@ -287,7 +319,7 @@ export function zoneFromScore(
 
 export function tetherZoneColor(
   zone: TetherZone | null,
-  settings: Pick<TetherDivergenceSettings, 'bottomColor' | 'watchColor' | 'neutralColor'> = DEFAULT_TETHER_DIVERGENCE_SETTINGS,
+  settings: Pick<TetherDivergenceSettings, 'bottomColor' | 'watchColor' | 'neutralColor'> = TETHER_STRETCH_SETTINGS,
 ): string {
   if (zone === 'bottom') return settings.bottomColor;
   if (zone === 'watch') return settings.watchColor;
@@ -295,7 +327,7 @@ export function tetherZoneColor(
 }
 
 export function tetherZoneLabel(zone: TetherZone | null): string {
-  if (zone === 'bottom') return 'Bottom zone';
+  if (zone === 'bottom') return 'Stretch +';
   if (zone === 'watch') return 'Watch';
   if (zone === 'neutral') return '—';
   return '—';
@@ -326,6 +358,136 @@ function detectCrosses(
   return crosses;
 }
 
+/** Strict pivot (k bars each side) indices of `values`; `dir` -1 = pivot lows, +1 = pivot highs. */
+export function findPivots(values: number[], k: number, dir: -1 | 1): number[] {
+  const out: number[] = [];
+  const n = values.length;
+  for (let j = k; j < n - k; j++) {
+    const v = values[j];
+    if (!Number.isFinite(v)) continue;
+    let ok = true;
+    for (let m = 1; m <= k && ok; m++) {
+      const a = values[j - m];
+      const b = values[j + m];
+      if (!Number.isFinite(a) || !Number.isFinite(b)) ok = false;
+      else if (dir < 0 ? !(v < a && v < b) : !(v > a && v > b)) ok = false;
+    }
+    if (ok) out.push(j);
+  }
+  return out;
+}
+
+interface RawDivergence {
+  confirmIdx: number;
+  side: 'bull' | 'bear';
+  type: TetherDivergenceType;
+}
+
+/**
+ * Daily-RSI divergences between consecutive price pivots (no look-ahead: a pivot at j is only known
+ * at j + k, which is the bar the divergence is stamped on).
+ *  - bull regular: price lower low,  RSI higher low
+ *  - bull hidden:  price higher low, RSI lower low
+ *  - bear regular: price higher high, RSI lower high
+ *  - bear hidden:  price lower high,  RSI higher high
+ */
+export function detectRsiDivergences(
+  low: number[],
+  high: number[],
+  rsi: Array<number | null>,
+  k: number,
+  maxGap: number,
+): RawDivergence[] {
+  const out: RawDivergence[] = [];
+  const scan = (values: number[], dir: -1 | 1) => {
+    const piv = findPivots(values, k, dir);
+    for (let q = 1; q < piv.length; q++) {
+      const a = piv[q - 1];
+      const b = piv[q];
+      if (b - a > maxGap) continue;
+      const ra = rsi[a];
+      const rb = rsi[b];
+      if (ra == null || rb == null) continue;
+      const priceUp = values[b] > values[a];
+      const priceDown = values[b] < values[a];
+      const rsiUp = rb > ra;
+      const rsiDown = rb < ra;
+      if (dir < 0) {
+        if (priceDown && rsiUp) out.push({ confirmIdx: b + k, side: 'bull', type: 'regular' });
+        else if (priceUp && rsiDown) out.push({ confirmIdx: b + k, side: 'bull', type: 'hidden' });
+      } else if (priceUp && rsiDown) {
+        out.push({ confirmIdx: b + k, side: 'bear', type: 'regular' });
+      } else if (priceDown && rsiUp) {
+        out.push({ confirmIdx: b + k, side: 'bear', type: 'hidden' });
+      }
+    }
+  };
+  scan(low, -1);
+  scan(high, 1);
+  return out.sort((x, y) => x.confirmIdx - y.confirmIdx);
+}
+
+/**
+ * Ladder: after a Stretch + (bottom cross) count successive bullish divergences +1, +2, +3; after a
+ * Stretch - (top cross) count bearish ones -1, -2, -3. A new Stretch + / - starts a fresh count and
+ * ends the opposite ladder. A ladder also ends after `ladderZoneBars` bars or when price runs
+ * `ladderExpiryPct` beyond the Stretch bar's extreme (the call failed). Only the first 3 rungs are shown.
+ */
+export function buildTetherLadder({
+  times,
+  low,
+  high,
+  rsi,
+  bottomCrosses,
+  topCrosses,
+  settings,
+}: {
+  times: number[];
+  low: number[];
+  high: number[];
+  rsi: Array<number | null>;
+  bottomCrosses: TetherCross[];
+  topCrosses: TetherCross[];
+  settings?: Partial<TetherDivergenceSettings> | null;
+}): TetherLadderMarker[] {
+  const s = normalizeTetherDivergenceSettings(settings);
+  const divs = detectRsiDivergences(low, high, rsi, s.divPivotBars, s.divMaxGapBars);
+  const bottomAt = new Set(bottomCrosses.map((c) => c.time));
+  const topAt = new Set(topCrosses.map((c) => c.time));
+  const byIdx = new Map<number, RawDivergence[]>();
+  for (const d of divs) {
+    const arr = byIdx.get(d.confirmIdx);
+    if (arr) arr.push(d);
+    else byIdx.set(d.confirmIdx, [d]);
+  }
+  let bull: { start: number; ref: number; n: number } | null = null;
+  let bear: { start: number; ref: number; n: number } | null = null;
+  const out: TetherLadderMarker[] = [];
+  for (let i = 0; i < times.length; i++) {
+    if (bottomAt.has(times[i])) {
+      bull = { start: i, ref: low[i], n: 0 };
+      bear = null;
+    }
+    if (topAt.has(times[i])) {
+      bear = { start: i, ref: high[i], n: 0 };
+      bull = null;
+    }
+    if (bull && i > bull.start && (i - bull.start > s.ladderZoneBars || low[i] < bull.ref * (1 - s.ladderExpiryPct))) {
+      bull = null;
+    }
+    if (bear && i > bear.start && (i - bear.start > s.ladderZoneBars || high[i] > bear.ref * (1 + s.ladderExpiryPct))) {
+      bear = null;
+    }
+    for (const d of byIdx.get(i) ?? []) {
+      const z = d.side === 'bull' ? bull : bear;
+      if (!z || z.n >= 3) continue;
+      z.n += 1;
+      out.push({ time: times[i], side: d.side, n: z.n as 1 | 2 | 3, type: d.type });
+    }
+  }
+  return out;
+}
+
 export function computeTetherDivergence({
   coinCandles,
   usdtd,
@@ -352,6 +514,8 @@ export function computeTetherDivergence({
     zone: [],
     gap: [],
     crosses: [],
+    topCrosses: [],
+    ladder: [],
     periodSeconds,
   };
 
@@ -416,8 +580,17 @@ export function computeTetherDivergence({
       (coinRsi[i] as number) <= s.gapCoinMax;
   }
 
-  const threshold = s.markerOnCross === 'watch' ? s.watchThreshold : s.bottomThreshold;
-  const crosses = detectCrosses(times, score, threshold, s.markerOnCross);
+  const crosses = detectCrosses(times, score, s.bottomThreshold, 'bottom');
+  const topCrosses = detectCrosses(times, topScore, s.topThreshold, 'top');
+  const ladder = buildTetherLadder({
+    times,
+    low: joined.map((b) => b.coin.low),
+    high: joined.map((b) => b.coin.high),
+    rsi: coinRsi,
+    bottomCrosses: crosses,
+    topCrosses,
+    settings: s,
+  });
 
   return {
     times,
@@ -432,6 +605,8 @@ export function computeTetherDivergence({
     zone,
     gap,
     crosses,
+    topCrosses,
+    ladder,
     periodSeconds,
   };
 }
@@ -499,6 +674,30 @@ export function alignCrossesToChart(
   return out;
 }
 
+export function alignLadderToChart(
+  ladder: TetherLadderMarker[],
+  chartBars: Array<{ time: number }> | number[],
+  chartBarSeconds: number,
+  periodSeconds: number,
+): TetherLadderMarker[] {
+  const times = chartBars.map((b) => (typeof b === 'number' ? b : b.time));
+  const out: TetherLadderMarker[] = [];
+  const seen = new Set<string>();
+  for (const m of ladder) {
+    for (const t of times) {
+      if (m.time + periodSeconds <= t + chartBarSeconds) {
+        const key = `${t}:${m.side}:${m.n}`;
+        if (!seen.has(key)) {
+          out.push({ ...m, time: t });
+          seen.add(key);
+        }
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 export function alignTetherDivergenceToChart(
   computed: TetherDivergenceComputeResult,
   chartBars: Array<{ time: number }>,
@@ -529,6 +728,8 @@ export function alignTetherDivergenceToChart(
     zone,
     gap: gapAligned,
     crosses: alignCrossesToChart(computed.crosses, chartBars, chartBarSeconds, period),
+    topCrosses: alignCrossesToChart(computed.topCrosses, chartBars, chartBarSeconds, period),
+    ladder: alignLadderToChart(computed.ladder, chartBars, chartBarSeconds, period),
     periodSeconds: period,
   };
 }
@@ -543,13 +744,40 @@ export function lastDefined<T>(arr: Array<T | null | undefined>): T | null {
 
 export function buildTetherMarkers(
   crosses: TetherCross[],
-  settings: Pick<TetherDivergenceSettings, 'showMarkers' | 'bottomColor' | 'watchColor'> = DEFAULT_TETHER_DIVERGENCE_SETTINGS,
+  settings: Pick<TetherDivergenceSettings, 'bottomColor' | 'watchColor' | 'topColor'> = TETHER_STRETCH_SETTINGS,
 ): TetherPriceMarker[] {
-  if (settings.showMarkers === false) return [];
   return crosses.map((c) => ({
     time: c.time,
     kind: c.kind,
-    text: c.kind === 'watch' ? 'Watch' : 'Bottom',
-    color: c.kind === 'watch' ? settings.watchColor : settings.bottomColor,
+    text: c.kind === 'watch' ? 'Watch' : c.kind === 'top' ? 'Stretch -' : 'Stretch +',
+    color: c.kind === 'watch' ? settings.watchColor : c.kind === 'top' ? settings.topColor : settings.bottomColor,
   }));
+}
+
+/**
+ * Separate divergence markers: +1..+3 under the bar (bullish), -1..-3 over the bar (bearish).
+ * Regular = circle, hidden = square (and a different colour), so the two can be told apart on the chart.
+ */
+export function buildTetherLadderMarkers(
+  ladder: TetherLadderMarker[],
+  settings: Pick<
+    TetherDivergenceSettings,
+    'bullDivColor' | 'bullHiddenColor' | 'bearDivColor' | 'bearHiddenColor'
+  > = TETHER_STRETCH_SETTINGS,
+): TetherLadderPriceMarker[] {
+  return ladder.map((m) => {
+    const bull = m.side === 'bull';
+    const hidden = m.type === 'hidden';
+    return {
+      time: m.time,
+      side: m.side,
+      type: m.type,
+      position: bull ? 'belowBar' : 'aboveBar',
+      shape: hidden ? 'square' : 'circle',
+      color: bull
+        ? hidden ? settings.bullHiddenColor : settings.bullDivColor
+        : hidden ? settings.bearHiddenColor : settings.bearDivColor,
+      text: `${bull ? '+' : '-'}${m.n}`,
+    };
+  });
 }

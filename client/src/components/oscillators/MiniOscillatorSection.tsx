@@ -458,8 +458,8 @@ export function MiniOscillatorSection({
           extra={
             <>
               <TetherSpark values={tetherSpark} color={tetherColor} />
-              {tetherSettings.topMirror && tetherTop != null && tetherTop >= tetherSettings.topThreshold && (
-                <div className="text-[9px] text-red-400/40 leading-tight">Top zone (unvalidated)</div>
+              {tetherTop != null && tetherTop >= tetherSettings.topThreshold && (
+                <div className="text-[9px] leading-tight" style={{ color: tetherSettings.topColor }}>Stretch -</div>
               )}
             </>
           }

@@ -31,7 +31,7 @@ const OSCILLATORS = [
   { id: 'cci', name: 'CCI', description: 'Commodity Channel Index (20)' },
   { id: 'adx', name: 'ADX', description: 'Average Directional Index (14)' },
   { id: 'tideZone', name: 'Tide Zone', description: '4h tide + local energy/tape zones' },
-  { id: 'tetherDivergence', name: 'Tether Divergence', description: 'USDT.D stretch vs coin oversold — daily bottom-zone score' },
+  { id: 'tetherDivergence', name: 'Tether Stretch', description: 'USDT.D stretch (Stretch + / Stretch -) with daily RSI divergence markers +1..+3 / -1..-3' },
 ];
 
 interface IndicatorMenuProps {

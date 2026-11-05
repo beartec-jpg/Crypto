@@ -280,7 +280,7 @@ export function DockedOscillatorSection({
 
         {showTetherDivergence && !poppedOutOscillators.has('tetherDivergence') && !miniOscillators?.has('tetherDivergence') && (
           <div style={{ height: usePercentage ? `${perOscillatorPercentage}vh` : `${OSCILLATOR_PANEL_HEIGHT_PER}px` }} className="p-2 flex flex-col">
-            <OscillatorDockHeader id="tetherDivergence" title="Tether Divergence" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
+            <OscillatorDockHeader id="tetherDivergence" title="Tether Stretch" onCycle={onCycleMode} oscillatorData={oscillatorData} candles={candles} />
             <div className="min-h-0 flex-1">
               <TetherDivergencePanel data={oscillatorData.tetherDivergence} candles={candles} approximate={oscillatorData.tetherDivergence?.approximate} mainChartVisibleRange={mainChartVisibleRange} showHud={false} />
             </div>

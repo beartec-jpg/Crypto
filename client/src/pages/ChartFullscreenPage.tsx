@@ -671,8 +671,7 @@ export function ChartFullscreenPage({
     chartCandles: effectiveCandles,
     chartTimeframe: renderedTimeframe,
     settings: tetherSettings.settings,
-    enabled:
-      oscillatorPanel.selectedOscillators.has('tetherDivergence') || tetherSettings.isModalOpen,
+    enabled: oscillatorPanel.selectedOscillators.has('tetherDivergence'),
   });
   const oscillatorData = useMemo(
     () => ({ ...oscillatorDataBase, tetherDivergence: tetherDivergence.result }),
@@ -3316,10 +3315,7 @@ export function ChartFullscreenPage({
           candles={effectiveCandles}
           result={tetherDivergence.result}
           settings={tetherSettings.settings}
-          enabled={
-            oscillatorPanel.selectedOscillators.has('tetherDivergence') &&
-            tetherSettings.settings.showMarkers
-          }
+          enabled={oscillatorPanel.selectedOscillators.has('tetherDivergence')}
         />
 
         {/* Trade panel popup */}

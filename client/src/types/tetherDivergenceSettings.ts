@@ -1,5 +1,6 @@
 export type TetherDivergenceTimeframe = '1D' | '1W';
-export type TetherMarkerOnCross = 'bottom' | 'watch';
+/** Signal kinds drawn on the price chart: bottom = "Stretch +", top = "Stretch -". */
+export type TetherMarkerOnCross = 'bottom' | 'watch' | 'top';
 
 export interface TetherDivergenceSettings {
   timeframe: TetherDivergenceTimeframe;
@@ -25,13 +26,27 @@ export interface TetherDivergenceSettings {
   topColor: string;
   gapUsdtMin: number;
   gapCoinMax: number;
-  showMarkers: boolean;
-  markerOnCross: TetherMarkerOnCross;
-  topMirror: boolean;
   topThreshold: number;
+  /** Divergence ladder (daily coin RSI vs price) pivot half-width, bars. */
+  divPivotBars: number;
+  /** Max bars between the two pivots of one divergence. */
+  divMaxGapBars: number;
+  /** Ladder zone lifetime after a Stretch signal, bars. */
+  ladderZoneBars: number;
+  /** Ladder zone ends when price runs this fraction beyond the Stretch bar extreme. */
+  ladderExpiryPct: number;
+  bullDivColor: string;
+  bullHiddenColor: string;
+  bearDivColor: string;
+  bearHiddenColor: string;
 }
 
-export const DEFAULT_TETHER_DIVERGENCE_SETTINGS: TetherDivergenceSettings = {
+/**
+ * Tether Stretch runs on fixed values (Scott 2026-11-05, backtest in issue #612: 10 of 13 settings were
+ * flat, none held up out of sample), so there is no settings panel. Old
+ * `tether-divergence-settings-v1` localStorage values are never read.
+ */
+export const TETHER_STRETCH_SETTINGS: TetherDivergenceSettings = {
   timeframe: '1D',
   usdtRsiLen: 14,
   coinRsiLen: 14,
@@ -55,11 +70,19 @@ export const DEFAULT_TETHER_DIVERGENCE_SETTINGS: TetherDivergenceSettings = {
   topColor: '#ef4444',
   gapUsdtMin: 65,
   gapCoinMax: 35,
-  showMarkers: true,
-  markerOnCross: 'bottom',
-  topMirror: false,
   topThreshold: 80,
+  divPivotBars: 5,
+  divMaxGapBars: 60,
+  ladderZoneBars: 40,
+  ladderExpiryPct: 0.2,
+  bullDivColor: '#22c55e',
+  bullHiddenColor: '#2dd4bf',
+  bearDivColor: '#ef4444',
+  bearHiddenColor: '#fb923c',
 };
+
+/** @deprecated alias kept for older imports/tests. */
+export const DEFAULT_TETHER_DIVERGENCE_SETTINGS = TETHER_STRETCH_SETTINGS;
 
 function clamp(n: unknown, min: number, max: number, fallback: number): number {
   const x = typeof n === 'number' ? n : Number(n);
@@ -77,7 +100,6 @@ export function normalizeTetherDivergenceSettings(
   const d = DEFAULT_TETHER_DIVERGENCE_SETTINGS;
   const s = { ...d, ...(raw || {}) };
   const timeframe: TetherDivergenceTimeframe = s.timeframe === '1W' ? '1W' : '1D';
-  const markerOnCross: TetherMarkerOnCross = s.markerOnCross === 'watch' ? 'watch' : 'bottom';
   const bottomThreshold = clamp(s.bottomThreshold, 50, 100, d.bottomThreshold);
   let watchThreshold = clamp(s.watchThreshold, 0, 100, d.watchThreshold);
   if (watchThreshold > bottomThreshold) watchThreshold = bottomThreshold;
@@ -110,9 +132,14 @@ export function normalizeTetherDivergenceSettings(
     topColor: color(s.topColor, d.topColor),
     gapUsdtMin: clamp(s.gapUsdtMin, 50, 100, d.gapUsdtMin),
     gapCoinMax: clamp(s.gapCoinMax, 0, 50, d.gapCoinMax),
-    showMarkers: s.showMarkers !== false,
-    markerOnCross,
-    topMirror: s.topMirror === true,
     topThreshold: clamp(s.topThreshold, 50, 100, d.topThreshold),
+    divPivotBars: Math.round(clamp(s.divPivotBars, 1, 20, d.divPivotBars)),
+    divMaxGapBars: Math.round(clamp(s.divMaxGapBars, 2, 365, d.divMaxGapBars)),
+    ladderZoneBars: Math.round(clamp(s.ladderZoneBars, 1, 365, d.ladderZoneBars)),
+    ladderExpiryPct: clamp(s.ladderExpiryPct, 0.01, 1, d.ladderExpiryPct),
+    bullDivColor: color(s.bullDivColor, d.bullDivColor),
+    bullHiddenColor: color(s.bullHiddenColor, d.bullHiddenColor),
+    bearDivColor: color(s.bearDivColor, d.bearDivColor),
+    bearHiddenColor: color(s.bearHiddenColor, d.bearHiddenColor),
   };
 }

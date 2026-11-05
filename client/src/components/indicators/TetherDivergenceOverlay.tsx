@@ -8,7 +8,11 @@ import {
   type SeriesMarker,
   type Time,
 } from 'lightweight-charts';
-import { buildTetherMarkers, type TetherDivergenceComputeResult } from '@/lib/indicators/tetherDivergence';
+import {
+  buildTetherLadderMarkers,
+  buildTetherMarkers,
+  type TetherDivergenceComputeResult,
+} from '@/lib/indicators/tetherDivergence';
 import type { TetherDivergenceSettings } from '@/types/tetherDivergenceSettings';
 
 interface TetherDivergenceOverlayProps {
@@ -79,17 +83,30 @@ export function TetherDivergenceOverlay({
       seriesRef.current.setData(
         candles.map((c) => ({ time: c.time as Time, value: c.close ?? 0 })),
       );
-      if (!settings.showMarkers || !result) {
+      if (!result) {
         markersRef.current?.setMarkers([]);
         return;
       }
-      const marks: SeriesMarker<Time>[] = buildTetherMarkers(result.crosses, settings).map((m) => ({
+      const stretch: SeriesMarker<Time>[] = buildTetherMarkers(
+        [...result.crosses, ...result.topCrosses],
+        settings,
+      ).map((m) => ({
         time: m.time as Time,
-        position: 'belowBar',
-        shape: 'arrowUp',
+        position: m.kind === 'top' ? 'aboveBar' : 'belowBar',
+        shape: m.kind === 'top' ? 'arrowDown' : 'arrowUp',
         color: m.color,
         text: m.text,
       }));
+      // Separate divergence markers: circle = regular, square = hidden.
+      const divs: SeriesMarker<Time>[] = buildTetherLadderMarkers(result.ladder, settings).map((m) => ({
+        time: m.time as Time,
+        position: m.position,
+        shape: m.shape,
+        color: m.color,
+        text: m.text,
+        id: `tsd-${m.time}-${m.text}-${m.type}`,
+      }));
+      const marks = [...stretch, ...divs];
       marks.sort((a, b) => (a.time as number) - (b.time as number));
       markersRef.current?.setMarkers(marks);
     } catch {
