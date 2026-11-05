@@ -3,21 +3,20 @@ import { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { TideZonePoint } from '@/lib/indicators/tideZone';
 import { tideZoneLabel } from '@/lib/indicators/tideZone';
-import type { TideStatus } from '@/hooks/useTideV2';
+import type { TideCrossDriver, TideCrossKind } from '@/lib/indicators/tideSignals';
 import type { TideTimeframe } from '@/types/tideZoneSettings';
 
 interface TideZoneHudProps {
   last: TideZonePoint;
   /** Chart timeframe ('1h' | '4h'). */
   timeframe: TideTimeframe;
-  /** Point-in-time Tide v2 status (fresh print, open stop). */
-  status?: TideStatus;
-  absorb?: boolean;
-  distro?: boolean;
-  reacc?: boolean;
+  /** A Tide in / Tide out printed on one of the last few closed bars. */
+  fresh?: TideCrossKind | null;
   className?: string;
-  emaPeriod?: number;
-  emaValue?: number;
+  emaShort?: { period: number; value: number };
+  emaLong?: { period: number; value: number };
+  /** Which EMA drives Tide in / Tide out (shown in bold). */
+  crossEma?: TideCrossDriver;
   /**
    * overlay (default): floating card on the plot (fullscreen).
    * inline: wrapping row outside the plot (main indicators card).
@@ -50,10 +49,6 @@ function kindClass(kind: TideZonePoint['kind']): string {
   return 'text-slate-300 border-slate-600/60 bg-slate-900/85';
 }
 
-function fmtPrice(p: number): string {
-  return p >= 100 ? p.toFixed(1) : p.toPrecision(5);
-}
-
 /** Shown instead of the HUD on timeframes where Tide does not run. */
 export function TideOffNote({ className }: { className?: string }) {
   return (
@@ -70,21 +65,15 @@ export function TideOffNote({ className }: { className?: string }) {
 export function TideZoneHud({
   last,
   timeframe,
-  status,
-  absorb = false,
-  distro = false,
-  reacc = false,
+  fresh = null,
   className,
-  emaPeriod,
-  emaValue,
+  emaShort,
+  emaLong,
+  crossEma = 'short',
   variant = 'overlay',
 }: TideZoneHudProps) {
   const [open, setOpen] = useState(false);
   const pct = (v: number) => Math.round(v * 100);
-  const showAbsorb = absorb || last.tell === 'absorb';
-  const showDistro = !showAbsorb && (distro || last.tell === 'distro');
-  const showReacc = !showAbsorb && !showDistro && (reacc || last.tell === 'reacc');
-  const fresh = status?.fresh ?? null;
   const inline = variant === 'inline';
 
   return (
@@ -105,38 +94,14 @@ export function TideZoneHud({
       >
         <div className="min-w-0 flex-1">
           <div className="text-[11px] font-semibold leading-tight break-words">
-            {showAbsorb && (
-              <span className="mr-1 rounded bg-cyan-500/30 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-cyan-200">
-                Absorb
-              </span>
-            )}
-            {showDistro && (
-              <span className="mr-1 rounded bg-orange-500/30 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-orange-200">
-                Distro
-              </span>
-            )}
-            {showReacc && (
-              <span className="mr-1 rounded bg-sky-500/25 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-sky-200">
-                Reacc
-              </span>
-            )}
-            {(fresh === 'out' || fresh === 'out_plus') && (
-              <span
-                className={`mr-1 rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
-                  fresh === 'out_plus' ? 'bg-emerald-500/30 text-emerald-200' : 'bg-violet-500/30 text-violet-200'
-                }`}
-              >
-                {fresh === 'out_plus' ? 'Tide out +' : 'Tide out'}
-              </span>
-            )}
             {fresh === 'in' && (
-              <span className="mr-1 rounded bg-amber-500/30 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-200">
+              <span className="mr-1 rounded bg-cyan-500/30 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-cyan-200">
                 Tide in
               </span>
             )}
-            {fresh === 'stop' && (
-              <span className="mr-1 rounded bg-red-500/30 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-red-200">
-                Stop hit
+            {fresh === 'out' && (
+              <span className="mr-1 rounded bg-pink-500/30 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-pink-200">
+                Tide out
               </span>
             )}
             {tideZoneLabel(last.kind)}
@@ -144,11 +109,18 @@ export function TideZoneHud({
           </div>
           <div className="text-[10px] opacity-90 tabular-nums leading-tight break-words">
             T {pct(last.tide)} · E {pct(last.energy)} · Tp {pct(last.tape)}
-            {emaPeriod != null && emaValue != null && Number.isFinite(emaValue) && (
-              <span className="text-sky-200"> · EMA{emaPeriod} {emaValue.toFixed(0)}</span>
-            )}
-            {status?.activeStop != null && (
-              <span className="text-red-200"> · SL {fmtPrice(status.activeStop)}</span>
+            {[
+              { k: 'short' as const, e: emaShort },
+              { k: 'long' as const, e: emaLong },
+            ].map(({ k, e }) =>
+              e && Number.isFinite(e.value) ? (
+                <span key={k} className={k === 'short' ? 'text-sky-200' : 'text-amber-200'}>
+                  {' · '}
+                  <span className={crossEma === k ? 'font-bold' : ''}>
+                    EMA{e.period} {e.value.toFixed(0)}
+                  </span>
+                </span>
+              ) : null,
             )}
             <span className="opacity-60"> · {timeframe}</span>
           </div>
@@ -169,34 +141,13 @@ export function TideZoneHud({
               <p className="text-[10px] leading-snug text-slate-200/90">{c.blurb}</p>
             </div>
           ))}
-          {showAbsorb && (
-            <p className="text-[10px] leading-snug text-cyan-200">
-              Absorb: price flat or down between two price zigzag lows while the Tide EMA is
-              rising. Demand under the candles — not a breakout.
-            </p>
-          )}
-          {showDistro && (
-            <p className="text-[10px] leading-snug text-orange-200">
-              Distro watch (stage 1): 16-bar high and 24h OI ≤ −3% while price is still hanging there.
-              Looks like leverage leaving the high — not a confirmed short. Stop chasing; fine to bank a
-              long from absorb.
-            </p>
-          )}
-          {showReacc && (
-            <p className="text-[10px] leading-snug text-sky-200">
-              Reacc watch: high in an up-tide and OI is not flushing. Pause in trend, not OI-leave distro.
-            </p>
-          )}
-          <p className="text-[10px] leading-snug text-violet-200">
-            Tide out: price lower low vs Tide-EMA higher low (both under the threshold), printed on the
-            bar it confirms and never removed. Tide out + (green) = RSI(14) under 30 between the low and
-            that bar. Dashed red line = stop under the low; it ends at the Tide in exit or when hit.
+          <p className="text-[10px] leading-snug text-cyan-200">
+            Tide in: the EMA crosses below the histogram, at or under the Tide-in level. Tide out: the
+            EMA crosses above it, at or over the Tide-out level. Closed bars only; a print never moves.
           </p>
           <p className="text-[10px] leading-snug text-slate-400">
-            Green +40 = 4h tide is up (where you are, not a buy). Amber = bounce vs down tide.
-            Red −40 = 4h tide is down. Sky line is an EMA of the hist — use it to ignore 1–2 bar
-            early flips. Exit on Tide in (amber). Distro/Reacc need OI; they stay off if the
-            book feed is missing.
+            Green +40 = 4h tide is up (where you are, not a buy). Amber = bounce vs down tide. Red −40 =
+            4h tide is down. The gear sets the two EMAs, the two levels and which EMA drives the cross.
           </p>
         </div>
       )}

@@ -78,8 +78,8 @@ const MANUAL: Record<string, OscillatorManual> = {
   },
   tideZone: {
     title: 'Tide Zone',
-    how: 'Tide Zone is a location score from 4h RSI/EMA50 (the tide), local energy (ATR/BB), and tape (signed volume). Green +40 is “with the 4h,” not a buy for the whole trend. The sky line is an EMA of the hist to ignore 1–2 bar flips.',
-    levels: 'DIV = price zigzag lower low vs Tide-EMA zigzag higher low (below the below-score line). Absorb = price flat/down between two price zigzag lows while Tide EMA is rising. Distro/Reacc need open interest. Exit longs toward 0, not −40.',
+    how: 'Tide Zone is a location score from 4h RSI/EMA50 (the tide), local energy (ATR/BB), and tape (signed volume). Green +40 is “with the 4h,” not a buy for the whole trend. Two EMAs of the score are drawn on the histogram (blue short, amber long).',
+    levels: 'Tide in = the EMA crosses below the histogram (score crosses up through it) at or under the Tide-in level (0 to −80). Tide out = the EMA crosses above the histogram at or over the Tide-out level (0 to 80). Short or Long EMA drives the cross (gear menu). Closed bars only; a print never moves.',
   },
   tetherDivergence: {
     title: 'Tether Divergence',
@@ -258,10 +258,8 @@ export function getOscillatorLiveReport(
                 ? 'text-red-400'
                 : 'text-slate-400',
         text: '',
-        meaning: `Score ${last.score.toFixed(0)}. Tide ${Math.round(last.tide * 100)} · Energy ${Math.round(last.energy * 100)} · Tape ${Math.round(last.tape * 100)}. ${
-          last.tell ? `Tell: ${last.tell}.` : 'No absorb/distro/reacc tell on this bar.'
-        }`,
-        lookFor: 'DIV = price LL vs EMA HL. Absorb = price flat/down, Tide EMA up. Distro needs OI flush at a high. Location is not a buy.',
+        meaning: `Score ${last.score.toFixed(0)}. Tide ${Math.round(last.tide * 100)} · Energy ${Math.round(last.energy * 100)} · Tape ${Math.round(last.tape * 100)}.`,
+        lookFor: 'Tide in = EMA crosses below the histogram (low zone). Tide out = EMA crosses above it (high zone). Location is not a buy.',
       };
     }
     case 'tetherDivergence': {

@@ -1,214 +1,189 @@
 // Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
-import { describe, it, expect } from 'vitest';
-import { calculateTideZone, type TideZoneCandle } from '@/lib/indicators/tideZone';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { calculateTideZone, emaTideScore, type TideZoneCandle, type TideZonePoint } from '@/lib/indicators/tideZone';
 import {
-  alignTideScores,
-  buildTideTrades,
-  computeTideV2,
-  detectTideInPeaks,
-  detectTideOutSignals,
-  emaCarry,
+  computeTideCross,
+  freshTideCross,
   inferTideTimeframe,
-  mergeTideSignals,
   resolveTideTimeframe,
-  tideStopLevel,
-  tradeSignals,
   tideTimeframeOf,
-  type TideOutSignal,
-  type TideSignalParams,
+  type TideCrossParams,
 } from '@/lib/indicators/tideSignals';
 import { calculateTideZoneForTimeframe } from '@/lib/indicators/tideTimeframe';
 import {
   DEFAULT_TIDE_ZONE_SETTINGS,
-  TIDE_PRESETS,
   TIDE_ZONE_SETTINGS,
-  tideParamsFor,
+  normalizeTideZoneSettings,
 } from '@/types/tideZoneSettings';
+import {
+  TIDE_SETTINGS_KEY,
+  resetTideZoneSettingsCache,
+  saveTideZoneSettings,
+} from '@/hooks/useTideZoneSettings';
 import fx4h from './fixtures/tide_btc_4h.json';
 import fx1h from './fixtures/tide_btc_1h.json';
-import { useTideZoneSettings } from '@/hooks/useTideZoneSettings';
 
-/**
- * Fixtures: real BTCUSDT perp bars from the research warehouse, with the expected output of
- * the Python live-accurate detector (tl_core.causal_divs / causal_ema_peaks / atr_series)
- * computed on exactly these bars. Regenerate with scripts/tide_v2_parity_fixture.py.
- */
-interface Fixture {
-  interval: '1h' | '4h';
-  preset: {
-    emaPeriod: number;
-    pivotN: number;
-    belowScore: number;
-    exitEmaPeriod: number;
-    exitPivotN: number;
-    stop: { kind: 'atr'; mult: number } | { kind: 'pct'; pct: number };
-  };
-  candles: number[][];
-  score: (number | null)[];
-  emaOut: (number | null)[];
-  emaIn: (number | null)[];
-  signals: {
-    confirmTime: number;
-    pivotTime: number;
-    pivotPrice: number;
-    pivot1Time: number;
-    pivot1Price: number;
-    minRsi: number | null;
-    rsiPlus: boolean;
-  }[];
-  alt: { params: { emaPeriod: number; pivotN: number; belowScore: number }; signals: { confirmTime: number; pivotTime: number; pivot1Time: number }[] };
-  peaks: number[];
-  trades: { confirmTime: number; entryPrice: number | null; stop: number; outcome: string; exitTime: number | null; tideInTime: number | null }[];
+const HOUR = 3600;
+const T0 = 1_700_000_000 - (1_700_000_000 % HOUR);
+const FAR_FUTURE = 4_102_444_800; // every synthetic bar is closed
+
+function pts(scores: number[]): TideZonePoint[] {
+  return scores.map((score, i) => ({
+    time: T0 + i * HOUR,
+    score,
+    tide: 0.5,
+    energy: 0.5,
+    tape: 0.5,
+    kind: 'neutral',
+  }));
 }
 
-const FAR_FUTURE = 4_102_444_800; // 2100 — every fixture bar is closed
-const ALL = { nowSec: FAR_FUTURE, warmupBars: 0 };
+const P: TideCrossParams = { emaShort: 3, emaLong: 10, tideInLevel: -40, tideOutLevel: 40, crossEma: 'short' };
+const run = (scores: number[], over: Partial<TideCrossParams> = {}) =>
+  computeTideCross(pts(scores), { ...P, ...over }, { nowSec: FAR_FUTURE });
 
-function candlesOf(fx: Fixture): TideZoneCandle[] {
-  return fx.candles.map(([time, open, high, low, close, volume]) => ({ time, open, high, low, close, volume }));
-}
+// Down to a deep low, then back up through the EMA: score crosses ABOVE the EMA (Tide in).
+const DIP = [0, 0, 0, 0, -20, -50, -70, -75, -60, -30, 10];
+// Up to a high, then fall through the EMA: score crosses BELOW the EMA (Tide out).
+const SPIKE = [0, 0, 0, 0, 20, 50, 70, 75, 60, 30, -10];
 
-function paramsOf(fx: Fixture): TideSignalParams {
-  const p = fx.preset;
-  return {
-    emaPeriod: p.emaPeriod,
-    pivotN: p.pivotN,
-    belowScore: p.belowScore,
-    exitEmaPeriod: p.exitEmaPeriod,
-    exitPivotN: p.exitPivotN,
-    stopKind: p.stop.kind,
-    stopAtrMult: p.stop.kind === 'atr' ? p.stop.mult : 0.5,
-    stopPct: p.stop.kind === 'pct' ? p.stop.pct : 0.005,
-  };
-}
-
-const sigKey = (s: Pick<TideOutSignal, 'confirmTime' | 'pivotTime'>) => `${s.confirmTime}:${s.pivotTime}`;
-
-describe.each([
-  ['4h', fx4h as unknown as Fixture],
-  ['1h', fx1h as unknown as Fixture],
-])('Python ↔ TS parity on real BTC %s bars', (_tf, fx) => {
-  const candles = candlesOf(fx);
-  const data = calculateTideZone(candles);
-  const params = paramsOf(fx);
-  const res = computeTideV2(candles, data, params, ALL);
-  const lastTime = candles[candles.length - 1].time;
-
-  it('uses the validated preset for this timeframe', () => {
-    // Fixtures are the research detector (no score filter). The product preset adds exitMinScore 0.
-    expect({ ...params, exitMinScore: 0 }).toEqual(TIDE_PRESETS[fx.interval]);
+describe('Tide in / Tide out cross', () => {
+  it('Tide in fires when the EMA crosses below the histogram, only at or under the Tide-in level', () => {
+    const deep = run(DIP, { tideInLevel: -40 });
+    // the cross happens as score recovers; with level -40 the cross bar score must be <= -40
+    for (const s of deep.signals.filter((x) => x.kind === 'in')) expect(s.score).toBeLessThanOrEqual(-40);
+    const lax = run(DIP, { tideInLevel: 0 });
+    expect(lax.signals.filter((x) => x.kind === 'in').length).toBeGreaterThan(0);
+    // a level of -80 is stricter than the dip allows at the cross bar: no signal
+    const strict = run(DIP, { tideInLevel: -80 });
+    expect(strict.signals.filter((x) => x.kind === 'in')).toHaveLength(0);
   });
 
-  it('Tide score matches bar for bar', () => {
-    const scores = alignTideScores(candles, data);
-    expect(scores).toHaveLength(fx.score.length);
-    fx.score.forEach((want, i) => {
-      if (want === null) expect(Number.isNaN(scores[i])).toBe(true);
-      else expect(scores[i]).toBeCloseTo(want, 6);
-    });
+  it('Tide in marks the bar where score moves from at/below the EMA to above it', () => {
+    const r = run(DIP, { tideInLevel: 0 });
+    const ema = emaTideScore(pts(DIP), 3);
+    const sg = r.signals.find((x) => x.kind === 'in')!;
+    const i = (sg.time - T0) / HOUR;
+    expect(DIP[i - 1] - ema[i - 1].value).toBeLessThanOrEqual(0);
+    expect(DIP[i] - ema[i].value).toBeGreaterThan(0);
+    expect(sg.ema).toBeCloseTo(ema[i].value, 9);
   });
 
-  it('smoothing EMA and Tide-in EMA match', () => {
-    const scores = alignTideScores(candles, data);
-    const eo = emaCarry(scores, params.emaPeriod);
-    const ei = emaCarry(scores, params.exitEmaPeriod);
-    fx.emaOut.forEach((want, i) => {
-      if (want === null) expect(Number.isNaN(eo[i])).toBe(true);
-      else expect(eo[i]).toBeCloseTo(want, 6);
-    });
-    fx.emaIn.forEach((want, i) => {
-      if (want === null) expect(Number.isNaN(ei[i])).toBe(true);
-      else expect(ei[i]).toBeCloseTo(want, 6);
-    });
+  it('Tide out fires when the EMA crosses above the histogram, only at or over the Tide-out level', () => {
+    const lax = run(SPIKE, { tideOutLevel: 0 });
+    const outs = lax.signals.filter((x) => x.kind === 'out');
+    expect(outs.length).toBeGreaterThan(0);
+    const ema = emaTideScore(pts(SPIKE), 3);
+    const i = (outs[0].time - T0) / HOUR;
+    expect(SPIKE[i - 1] - ema[i - 1].value).toBeGreaterThanOrEqual(0);
+    expect(SPIKE[i] - ema[i].value).toBeLessThan(0);
+    for (const s of run(SPIKE, { tideOutLevel: 40 }).signals.filter((x) => x.kind === 'out')) {
+      expect(s.score).toBeGreaterThanOrEqual(40);
+    }
+    // level 80 is above every score in the series: nothing fires
+    expect(run(SPIKE, { tideOutLevel: 80 }).signals.filter((x) => x.kind === 'out')).toHaveLength(0);
   });
 
-  it('Tide-out signals (bars, prices, RSI+) match', () => {
-    // Python skips a signal on the final bar (no next bar to fill); the chart shows it.
-    const got = res.signals.filter((s) => s.confirmTime < lastTime);
-    expect(fx.signals.length).toBeGreaterThan(0);
-    expect(got.map((s) => [s.confirmTime, s.pivotTime, s.pivot1Time])).toEqual(
-      fx.signals.map((s) => [s.confirmTime, s.pivotTime, s.pivot1Time]),
-    );
-    got.forEach((s, k) => {
-      const want = fx.signals[k];
-      expect(s.pivotPrice).toBe(want.pivotPrice);
-      expect(s.pivot1Price).toBe(want.pivot1Price);
-      expect(s.rsiPlus).toBe(want.rsiPlus);
-      if (want.minRsi !== null) expect(s.minRsi).toBeCloseTo(want.minRsi, 4);
-    });
-    expect(got.some((s) => s.rsiPlus)).toBe(true);
-    expect(got.some((s) => !s.rsiPlus)).toBe(true);
+  it('a Tide-out gate never lets a Tide in through, and vice versa', () => {
+    expect(run(DIP, { tideInLevel: 0 }).signals.every((s) => s.kind === 'in')).toBe(true);
+    expect(run(SPIKE, { tideOutLevel: 0 }).signals.every((s) => s.kind === 'out')).toBe(true);
   });
 
-  it('alternate thresholds match too (detector is parameter-true)', () => {
-    const scores = alignTideScores(candles, data);
-    const a = fx.alt.params;
-    const got = detectTideOutSignals(candles, emaCarry(scores, a.emaPeriod), a).filter(
-      (s) => s.confirmTime < lastTime,
-    );
-    expect(got.map((s) => [s.confirmTime, s.pivotTime, s.pivot1Time])).toEqual(
-      fx.alt.signals.map((s) => [s.confirmTime, s.pivotTime, s.pivot1Time]),
-    );
+  it('level 0 / 0 allows crosses at any non-positive / non-negative score', () => {
+    const wave = Array.from({ length: 80 }, (_, i) => Math.sin(i / 4) * 60);
+    const r = run(wave, { tideInLevel: 0, tideOutLevel: 0 });
+    expect(r.signals.some((s) => s.kind === 'in')).toBe(true);
+    expect(r.signals.some((s) => s.kind === 'out')).toBe(true);
+  });
+});
+
+describe('Short / Long driver toggle', () => {
+  const wave = Array.from({ length: 160 }, (_, i) => Math.sin(i / 5) * 70 + Math.sin(i / 1.7) * 15);
+  const loose = { tideInLevel: 0, tideOutLevel: 0, emaShort: 4, emaLong: 25 };
+
+  it('short mode crosses the short EMA, long mode crosses the long EMA', () => {
+    const data = pts(wave);
+    const s = computeTideCross(data, { ...P, ...loose, crossEma: 'short' }, { nowSec: FAR_FUTURE });
+    const l = computeTideCross(data, { ...P, ...loose, crossEma: 'long' }, { nowSec: FAR_FUTURE });
+    expect(s.signals.length).toBeGreaterThan(0);
+    expect(l.signals.length).toBeGreaterThan(0);
+    expect(s.signals.map((x) => x.time)).not.toEqual(l.signals.map((x) => x.time));
+    const eShort = emaTideScore(data, 4);
+    const eLong = emaTideScore(data, 25);
+    for (const x of s.signals) expect(x.ema).toBeCloseTo(eShort[(x.time - T0) / HOUR].value, 9);
+    for (const x of l.signals) expect(x.ema).toBeCloseTo(eLong[(x.time - T0) / HOUR].value, 9);
   });
 
-  it('Tide-in peaks match', () => {
-    expect(res.peaks.filter((p) => p.confirmTime < lastTime).map((p) => p.confirmTime)).toEqual(fx.peaks);
+  it('the toggle follows the label, not which period is larger', () => {
+    const data = pts(wave);
+    // "short" has the LARGER period here: still the one that drives the cross when selected
+    const swapped = { ...P, tideInLevel: 0, tideOutLevel: 0, emaShort: 25, emaLong: 4 };
+    const s = computeTideCross(data, { ...swapped, crossEma: 'short' }, { nowSec: FAR_FUTURE });
+    const e = emaTideScore(data, 25);
+    for (const x of s.signals) expect(x.ema).toBeCloseTo(e[(x.time - T0) / HOUR].value, 9);
   });
 
-  it('stop levels and outcomes match', () => {
-    const got = res.trades.filter((t) => t.signal.confirmTime < lastTime);
-    expect(got).toHaveLength(fx.trades.length);
-    got.forEach((t, k) => {
-      const want = fx.trades[k];
-      expect(t.signal.confirmTime).toBe(want.confirmTime);
-      expect(t.entryPrice).toBe(want.entryPrice);
-      expect(t.stop).toBeCloseTo(want.stop, 6);
-      expect(t.outcome).toBe(want.outcome);
-      expect(t.exitTime).toBe(want.exitTime);
-      expect(t.tideInTime).toBe(want.tideInTime);
-    });
-    expect(got.some((t) => t.outcome === 'stop')).toBe(true);
-    expect(got.some((t) => t.outcome === 'tide_in')).toBe(true);
+  it('both EMAs are always returned for drawing', () => {
+    const r = computeTideCross(pts(wave), { ...P, ...loose, crossEma: 'long' }, { nowSec: FAR_FUTURE });
+    expect(r.emaShort).toHaveLength(wave.length);
+    expect(r.emaLong).toHaveLength(wave.length);
   });
+});
 
-  it('signals never disappear or change as bars are appended', () => {
-    const final = new Map(res.signals.map((s) => [sigKey(s), s]));
-    const finalPeaks = res.peaks.map((p) => p.confirmTime);
-    const finalScores = alignTideScores(candles, data);
-    const start = 300;
-    for (let k = start; k <= candles.length; k += 5) {
-      const prefix = candles.slice(0, k);
-      const prefixData = calculateTideZone(prefix);
-      const r = computeTideV2(prefix, prefixData, params, ALL);
-      const tEnd = prefix[prefix.length - 1].time;
-      // the score itself is point-in-time (incl. the newest bar mid-4h-bucket on 1h)
-      const ps = alignTideScores(prefix, prefixData);
-      ps.forEach((v, i) => {
-        if (Number.isNaN(finalScores[i])) expect(Number.isNaN(v)).toBe(true);
-        else expect(v).toBe(finalScores[i]);
-      });
-      // point-in-time: exactly the final signals already confirmed by this bar, unchanged
-      const expected = res.signals.filter((s) => s.confirmTime <= tEnd).map(sigKey);
-      expect(r.signals.map(sigKey)).toEqual(expected);
-      for (const s of r.signals) expect(s).toEqual(final.get(sigKey(s)));
-      expect(r.peaks.map((p) => p.confirmTime)).toEqual(finalPeaks.filter((t) => t <= tEnd));
+describe('no repaint', () => {
+  const wave = Array.from({ length: 200 }, (_, i) => Math.sin(i / 5) * 70 + Math.sin(i / 1.7) * 15);
+  const params: TideCrossParams = { emaShort: 5, emaLong: 20, tideInLevel: -10, tideOutLevel: 10, crossEma: 'short' };
+
+  it.each(['short', 'long'] as const)('signals never change as bars are appended (%s)', (crossEma) => {
+    const full = computeTideCross(pts(wave), { ...params, crossEma }, { nowSec: FAR_FUTURE }).signals;
+    for (const n of [60, 100, 150, 199]) {
+      const prefix = computeTideCross(pts(wave.slice(0, n)), { ...params, crossEma }, { nowSec: FAR_FUTURE }).signals;
+      expect(prefix.length).toBeGreaterThan(0);
+      expect(full.slice(0, prefix.length)).toEqual(prefix);
     }
   });
 
-  it('hides signals inside the warm-up bars by default', () => {
-    const def = computeTideV2(candles, data, params, { nowSec: FAR_FUTURE });
-    const cutoff = candles[400].time;
-    expect(def.signals.map(sigKey)).toEqual(res.signals.filter((s) => s.confirmTime >= cutoff).map(sigKey));
+  it('ignores the still-forming last bar', () => {
+    const data = pts(wave);
+    const lastTime = data[data.length - 1].time;
+    const open = computeTideCross(data, params, { nowSec: lastTime + 60 });
+    expect(open.lastBarOpen).toBe(true);
+    const closed = computeTideCross(data.slice(0, -1), params, { nowSec: FAR_FUTURE });
+    expect(open.signals).toEqual(closed.signals);
+    expect(computeTideCross(data, params, { nowSec: lastTime + HOUR }).lastBarOpen).toBe(false);
   });
 
-  it('ignores the still-forming last bar', () => {
-    const last = candles[candles.length - 1];
-    const bar = candles[1].time - candles[0].time;
-    const live = computeTideV2(candles, data, params, { nowSec: last.time + bar / 2, warmupBars: 0 });
-    const closed = computeTideV2(candles.slice(0, -1), calculateTideZone(candles.slice(0, -1)), params, ALL);
-    expect(live.lastBarOpen).toBe(true);
-    expect(live.signals.map(sigKey)).toEqual(closed.signals.map(sigKey));
-    expect(live.peaks).toEqual(closed.peaks);
+  it('freshTideCross only returns a print from the last few bars', () => {
+    const data = pts(SPIKE);
+    const r = computeTideCross(data, { ...P, tideOutLevel: 0 }, { nowSec: FAR_FUTURE });
+    const last = r.signals[r.signals.length - 1];
+    const idx = (last.time - T0) / HOUR;
+    expect(freshTideCross(r.signals, data.slice(0, idx + 1))).toEqual(last);
+    expect(freshTideCross(r.signals, pts([...SPIKE, -20, -20, -20, -20]))).toBeNull();
+    expect(freshTideCross([], data)).toBeNull();
+  });
+});
+
+describe('Tide score is unchanged (real BTC bars)', () => {
+  it.each([
+    ['4h', fx4h],
+    ['1h', fx1h],
+  ])('matches the stored %s score bar for bar', (_tf, fx) => {
+    const candles: TideZoneCandle[] = (fx.candles as number[][]).map(([time, open, high, low, close, volume]) => ({
+      time,
+      open,
+      high,
+      low,
+      close,
+      volume,
+    }));
+    const data = calculateTideZone(candles);
+    const byTime = new Map(data.map((d) => [d.time, d.score]));
+    (fx.score as (number | null)[]).forEach((want, i) => {
+      const got = byTime.get(candles[i].time);
+      if (want === null) expect(got).toBeUndefined();
+      else expect(got).toBeCloseTo(want, 6);
+    });
   });
 });
 
@@ -247,261 +222,43 @@ describe('timeframe gating', () => {
   });
 });
 
-describe('presets and settings', () => {
-  it('ships the validated per-timeframe presets', () => {
-    expect(TIDE_PRESETS['4h']).toMatchObject({ emaPeriod: 8, pivotN: 3, belowScore: -20, exitEmaPeriod: 8, exitPivotN: 5, stopKind: 'atr', stopAtrMult: 0.5 });
-    expect(TIDE_PRESETS['1h']).toMatchObject({ emaPeriod: 21, pivotN: 8, belowScore: -40, exitEmaPeriod: 8, exitPivotN: 8, stopKind: 'pct', stopPct: 0.005 });
+describe('settings', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetTideZoneSettingsCache();
   });
 
-  it('selects the fixed preset by timeframe and none elsewhere', () => {
-    const s = TIDE_ZONE_SETTINGS;
-    expect(tideParamsFor(s, '4h')).toEqual(TIDE_PRESETS['4h']);
-    expect(tideParamsFor(s, '1h')).toEqual(TIDE_PRESETS['1h']);
-    expect(tideParamsFor(s, null)).toBeNull();
+  it('defaults: short 8, long 21, in -40, out 40, Short drives the cross', () => {
+    expect(TIDE_ZONE_SETTINGS).toEqual({ emaShort: 8, emaLong: 21, tideInLevel: -40, tideOutLevel: 40, crossEma: 'short' });
     expect(DEFAULT_TIDE_ZONE_SETTINGS).toBe(TIDE_ZONE_SETTINGS);
   });
 
-  it('ignores stored customisations: the hook always returns the fixed presets', () => {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(
-        'tide-zone-settings-v2',
-        JSON.stringify({ byTimeframe: { '1h': { emaPeriod: 5, cooldownBars: 24 } }, showStops: false }),
-      );
-    }
-    const { settings } = useTideZoneSettings();
-    expect(settings.byTimeframe).toEqual(TIDE_PRESETS);
-    expect(settings.showStops).toBe(true);
-    expect('cooldownBars' in settings.byTimeframe['1h']).toBe(false);
-    expect('exitPeakAfterEntry' in settings.byTimeframe['4h']).toBe(false);
-    expect('minHoldBars' in settings.byTimeframe['4h']).toBe(false);
-  });
-
-  it('defaults hide nothing validated and keep absorb off', () => {
-    expect(DEFAULT_TIDE_ZONE_SETTINGS.showTideOut && DEFAULT_TIDE_ZONE_SETTINGS.showTideIn && DEFAULT_TIDE_ZONE_SETTINGS.showStops).toBe(true);
-    expect(DEFAULT_TIDE_ZONE_SETTINGS.showAbsorb).toBe(false);
-    expect('minGap' in DEFAULT_TIDE_ZONE_SETTINGS).toBe(false);
-  });
-});
-
-describe('RSI +, stops and Tide-in (synthetic)', () => {
-  // Two-leg dip: price LL at bar 26 vs Tide-EMA HL, both troughs well below the threshold.
-  function scenario() {
-    const n = 60;
-    const candles = [];
-    const ema: number[] = [];
-    for (let i = 0; i < n; i++) {
-      let v: number;
-      if (i <= 10) v = -5 * i;
-      else if (i <= 18) v = -50 + 6 * (i - 10);
-      else if (i <= 26) v = -2 - 3 * (i - 18);
-      else if (i <= 40) v = -26 + 5 * (i - 26);
-      else v = 44 - 4 * (i - 40);
-      ema.push(v);
-      let low = 100;
-      if (i === 10) low = 50;
-      else if (i === 26) low = 40;
-      else if (i > 26) low = 60 + (i - 26);
-      candles.push({ time: 1000 + i * 3600, open: low + 5, high: low + 10, low, close: low + 5 });
-    }
-    return { candles, ema };
-  }
-
-  it('flags RSI < 30 between pivot and confirmation as Tide out +', () => {
-    const { candles, ema } = scenario();
-    const rsiLow = candles.map((_, i) => (i === 27 ? 25 : 45));
-    const rsiHigh = candles.map(() => 45);
-    const plus = detectTideOutSignals(candles, ema, { pivotN: 3, belowScore: -20 }, rsiLow);
-    const plain = detectTideOutSignals(candles, ema, { pivotN: 3, belowScore: -20 }, rsiHigh);
-    expect(plus).toHaveLength(1);
-    expect(plus[0].pivotTime).toBe(candles[26].time);
-    expect(plus[0].confirmTime).toBe(candles[29].time);
-    expect(plus[0].rsiPlus).toBe(true);
-    expect(plus[0].minRsi).toBe(25);
-    expect(plain[0].rsiPlus).toBe(false);
-    // RSI < 30 before the pivot bar does not count
-    const early = detectTideOutSignals(candles, ema, { pivotN: 3, belowScore: -20 }, candles.map((_, i) => (i === 25 ? 20 : 45)));
-    expect(early[0].rsiPlus).toBe(false);
-  });
-
-  it('stop level: 4h pivot − 0.5 ATR, 1h pivot − 0.5%', () => {
-    expect(tideStopLevel(100, 4, TIDE_PRESETS['4h'])).toBe(98);
-    expect(tideStopLevel(100, 4, TIDE_PRESETS['1h'])).toBeCloseTo(99.5, 10);
-    // never above the fill
-    expect(tideStopLevel(100, 4, TIDE_PRESETS['1h'], 99)).toBeCloseTo(98.505, 10);
-  });
-
-  it('Tide-in peak closes the trade at the next open; stop line runs to it', () => {
-    const { candles, ema } = scenario();
-    const signals = detectTideOutSignals(candles, ema, { pivotN: 3, belowScore: -20 });
-    const peaks = detectTideInPeaks(candles, ema, 3);
-    expect(peaks.map((p) => p.peakTime)).toContain(candles[40].time);
-    const pk = peaks.find((p) => p.peakTime === candles[40].time)!;
-    expect(pk.confirmTime).toBe(candles[43].time);
-    const [t] = buildTideTrades(candles, signals, peaks, TIDE_PRESETS['1h']);
-    expect(t.entryPrice).toBe(candles[30].open);
-    expect(t.stop).toBeCloseTo(40 * 0.995, 10);
-    expect(t.outcome).toBe('tide_in');
-    expect(t.tideInTime).toBe(candles[43].time);
-    expect(t.exitTime).toBe(candles[44].time);
-    expect(t.endTime).toBe(candles[44].time);
-  });
-
-  it('stop hit ends the line on the hit bar', () => {
-    const { candles, ema } = scenario();
-    candles[33] = { ...candles[33], low: 30 };
-    const signals = detectTideOutSignals(candles, ema, { pivotN: 3, belowScore: -20 });
-    const [t] = buildTideTrades(candles, signals, detectTideInPeaks(candles, ema, 3), TIDE_PRESETS['1h']);
-    expect(t.outcome).toBe('stop');
-    expect(t.exitTime).toBe(candles[33].time);
-    expect(t.endTime).toBe(candles[33].time);
-  });
-
-  it('open trade runs to the newest bar', () => {
-    const { candles, ema } = scenario();
-    const cut = candles.slice(0, 36);
-    const signals = detectTideOutSignals(cut, ema.slice(0, 36), { pivotN: 3, belowScore: -20 });
-    const [t] = buildTideTrades(cut, signals, [], TIDE_PRESETS['1h']);
-    expect(t.outcome).toBe('open');
-    expect(t.endTime).toBe(cut[35].time);
-  });
-});
-
-describe('mergeTideSignals', () => {
-  const s = (c: number, p: number, rsiPlus = false): TideOutSignal => ({
-    confirmTime: c,
-    pivotTime: p,
-    pivotPrice: 1,
-    pivot1Time: p - 10,
-    pivot1Price: 2,
-    ema1: -50,
-    ema2: -40,
-    minRsi: null,
-    rsiPlus,
-  });
-  it('never drops a signal that was already shown and keeps its first version', () => {
-    const merged = mergeTideSignals([s(10, 5, true), s(20, 15)], [s(20, 15, true), s(30, 25)]);
-    expect(merged.map((x) => x.confirmTime)).toEqual([10, 20, 30]);
-    expect(merged[1].rsiPlus).toBe(false);
-  });
-});
-
-describe('Tide exit guards (flip-flop options; all off = current behaviour)', () => {
-  const T0 = 1_700_000_000;
-  const STEP = 3600;
-  const bars: TideZoneCandle[] = Array.from({ length: 50 }, (_, i) => ({
-    time: T0 + i * STEP,
-    open: 100,
-    high: 101,
-    low: 99,
-    close: 100,
-    volume: 1,
-  }));
-  const t = (i: number) => bars[i].time;
-  const sig = (ci: number): TideOutSignal => ({
-    confirmTime: t(ci),
-    pivotTime: t(ci - 3),
-    pivotPrice: 90,
-    pivot1Time: t(Math.max(0, ci - 12)),
-    pivot1Price: 95,
-    ema1: -40,
-    ema2: -30,
-    minRsi: null,
-    rsiPlus: false,
-  });
-  const peak = (confirmIdx: number, peakIdx: number, value: number) => ({
-    confirmTime: t(confirmIdx),
-    peakTime: t(peakIdx),
-    value,
-  });
-  const base = { stopKind: 'pct' as const, stopAtrMult: 0.5, stopPct: 0.005 };
-  // Peak A formed BEFORE the entry (idx 7) but is only confirmed right after it (idx 11), deep in a down tide.
-  const peaks = [peak(11, 7, -50), peak(20, 15, 10), peak(35, 30, 20)];
-
-  it('off (absent or null) is identical to the current exit rule', () => {
-    const cur = buildTideTrades(bars, [sig(10)], peaks, base);
-    expect(cur[0].tideInTime).toBe(t(11));
-    const absent = buildTideTrades(bars, [sig(10)], peaks, {
-      ...base,
-      exitPeakAfterEntry: false,
-      minHoldBars: 0,
-      cooldownBars: 0,
+  it('clamps to the slider ranges and rejects garbage', () => {
+    expect(normalizeTideZoneSettings({ emaShort: 0, emaLong: 500, tideInLevel: -200, tideOutLevel: 200 })).toMatchObject({
+      emaShort: 1,
+      emaLong: 100,
+      tideInLevel: -80,
+      tideOutLevel: 80,
     });
-    const disabled = buildTideTrades(bars, [sig(10)], peaks, {
-      ...base,
-      exitPeakAfterEntry: false,
-      minHoldBars: 0,
-      exitMinScore: null,
-      cooldownBars: 0,
-    });
-    expect(absent).toEqual(cur);
-    expect(disabled).toEqual(cur);
+    expect(normalizeTideZoneSettings({ tideInLevel: 25, tideOutLevel: -25 })).toMatchObject({ tideInLevel: 0, tideOutLevel: 0 });
+    expect(normalizeTideZoneSettings({ emaShort: 'x', crossEma: 'weird' })).toEqual(TIDE_ZONE_SETTINGS);
+    expect(normalizeTideZoneSettings(null)).toEqual(TIDE_ZONE_SETTINGS);
+    expect(normalizeTideZoneSettings({ emaShort: 7.6 }).emaShort).toBe(8);
   });
 
-  it('exitPeakAfterEntry skips a peak that formed before the entry', () => {
-    const r = buildTideTrades(bars, [sig(10)], peaks, { ...base, exitPeakAfterEntry: true });
-    expect(r[0].tideInTime).toBe(t(20));
+  it('persists every field including the Short/Long toggle', () => {
+    saveTideZoneSettings({ emaShort: 5, emaLong: 34, tideInLevel: -55, tideOutLevel: 25, crossEma: 'long' });
+    const stored = JSON.parse(localStorage.getItem(TIDE_SETTINGS_KEY)!);
+    expect(stored).toEqual({ emaShort: 5, emaLong: 34, tideInLevel: -55, tideOutLevel: 25, crossEma: 'long' });
+    resetTideZoneSettingsCache();
+    // re-read from storage
+    saveTideZoneSettings({});
+    expect(JSON.parse(localStorage.getItem(TIDE_SETTINGS_KEY)!).crossEma).toBe('long');
   });
 
-  it('minHoldBars ignores an early Tide in', () => {
-    expect(buildTideTrades(bars, [sig(10)], peaks, { ...base, minHoldBars: 3 })[0].tideInTime).toBe(t(20));
-    expect(buildTideTrades(bars, [sig(10)], peaks, { ...base, minHoldBars: 1 })[0].tideInTime).toBe(t(20));
-  });
-
-  it('exitMinScore ignores shallow peaks', () => {
-    expect(buildTideTrades(bars, [sig(10)], peaks, { ...base, exitMinScore: -20 })[0].tideInTime).toBe(t(20));
-    expect(buildTideTrades(bars, [sig(10)], peaks, { ...base, exitMinScore: 15 })[0].tideInTime).toBe(t(35));
-    expect(buildTideTrades(bars, [sig(10)], peaks, { ...base, exitMinScore: -60 })[0].tideInTime).toBe(t(11));
-  });
-
-  it('default score 0 ignores a -5 peak, null counts it, and exactly 0 counts', () => {
-    const neg = [peak(11, 8, -5), peak(20, 15, 10)];
-    expect(buildTideTrades(bars, [sig(10)], neg, { ...base, exitMinScore: 0 })[0].tideInTime).toBe(t(20));
-    expect(buildTideTrades(bars, [sig(10)], neg, TIDE_PRESETS['1h'])[0].tideInTime).toBe(t(20));
-    expect(buildTideTrades(bars, [sig(10)], neg, { ...base, exitMinScore: null })[0].tideInTime).toBe(t(11));
-    const exact = [peak(11, 8, 0), peak(20, 15, 40)];
-    expect(buildTideTrades(bars, [sig(10)], exact, { ...base, exitMinScore: 0 })[0].tideInTime).toBe(t(11));
-  });
-
-  it('cooldownBars drops a Tide out that follows an exit too closely (and its marker)', () => {
-    const sigs = [sig(10), sig(22), sig(30)];
-    const none = buildTideTrades(bars, sigs, peaks, { ...base, exitPeakAfterEntry: true });
-    expect(none).toHaveLength(3);
-    const g = { ...base, exitPeakAfterEntry: true, cooldownBars: 5 };
-    const trades = buildTideTrades(bars, sigs, peaks, g);
-    // A exits via the peak confirmed at idx 20 (exit bar 21); idx 22 is 1 bar later → dropped; idx 30 kept.
-    expect(trades.map((x) => x.signal.confirmTime)).toEqual([t(10), t(30)]);
-    expect(tradeSignals(sigs, trades, g).map((s) => s.confirmTime)).toEqual([t(10), t(30)]);
-    expect(tradeSignals(sigs, none, {})).toBe(sigs);
-  });
-
-  it('an open trade does not start a cooldown (stacked entries stay as today)', () => {
-    const r = buildTideTrades(bars, [sig(10), sig(12)], [], { ...base, cooldownBars: 10 });
-    expect(r).toHaveLength(2);
-  });
-
-  it('default presets have exitMinScore 0', () => {
-    expect(TIDE_PRESETS['1h'].exitMinScore).toBe(0);
-    expect(TIDE_PRESETS['4h'].exitMinScore).toBe(0);
-  });
-
-  it.each([
-    ['4h', fx4h as unknown as Fixture],
-    ['1h', fx1h as unknown as Fixture],
-  ])('guards off leave computeTideV2 on real %s bars untouched', (_tf, fx) => {
-    const candles = candlesOf(fx);
-    const data = calculateTideZone(candles);
-    const legacy = paramsOf(fx);
-    const p = { ...legacy, exitMinScore: null as number | null };
-    const a = computeTideV2(candles, data, p, ALL);
-    const b = computeTideV2(
-      candles,
-      data,
-      { ...p, exitPeakAfterEntry: false, minHoldBars: 0, exitMinScore: null, cooldownBars: 0 },
-      ALL,
-    );
-    expect(a.signals).toEqual(computeTideV2(candles, data, legacy, ALL).signals);
-    expect(a.trades).toEqual(computeTideV2(candles, data, legacy, ALL).trades);
-    expect(b.signals).toEqual(a.signals);
-    expect(b.trades).toEqual(a.trades);
+  it('ignores the old v2 storage key', () => {
+    localStorage.setItem('tide-zone-settings-v2', JSON.stringify({ emaShort: 99 }));
+    resetTideZoneSettingsCache();
+    expect(saveTideZoneSettings({}).emaShort).toBe(8);
   });
 });

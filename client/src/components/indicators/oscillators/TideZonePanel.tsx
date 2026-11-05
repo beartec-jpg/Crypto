@@ -1,5 +1,5 @@
 // Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   createChart,
   createSeriesMarkers,
@@ -10,13 +10,20 @@ import {
   type SeriesMarker,
   type Time,
 } from 'lightweight-charts';
+import { Settings } from 'lucide-react';
 import { applyMainChartVisibleRange, type MainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
 import type { TideZonePoint } from '@/lib/indicators/tideZone';
-import { emaTideScore, tideZoneColor } from '@/lib/indicators/tideZone';
-import { computeTideV2, inferTideTimeframe, type TideCandle, type TideTimeframe } from '@/lib/indicators/tideSignals';
+import { tideZoneColor } from '@/lib/indicators/tideZone';
+import {
+  computeTideCross,
+  freshTideCross,
+  inferTideTimeframe,
+  type TideTimeframe,
+} from '@/lib/indicators/tideSignals';
 import { TideZoneHud } from '@/components/indicators/TideZoneHud';
+import { TideZoneSettingsModal } from '@/components/modals/TideZoneSettingsModal';
 import { useTideZoneSettings } from '@/hooks/useTideZoneSettings';
-import { summarizeTide } from '@/hooks/useTideV2';
+import { TIDE_IN_COLOR, TIDE_OUT_COLOR, TIDE_SHORT_COLOR, TIDE_LONG_COLOR } from '@/lib/indicators/tideColors';
 import { buildTideDescriptor } from '@/lib/tideDescriptor';
 
 interface PanelCandle {
@@ -50,15 +57,6 @@ interface TideZonePanelProps {
   showDescriptor?: boolean;
 }
 
-function toTideCandles(candles: PanelCandle[]): TideCandle[] | null {
-  const out: TideCandle[] = [];
-  for (const c of candles) {
-    if (c.open == null || c.high == null || c.low == null || c.close == null) return null;
-    out.push({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close });
-  }
-  return out;
-}
-
 export function TideZonePanel({
   data,
   candles,
@@ -73,16 +71,13 @@ export function TideZonePanel({
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const { settings } = useTideZoneSettings();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const tf = tideTimeframe !== undefined ? tideTimeframe : inferTideTimeframe(candles);
-  const params = tf ? settings.byTimeframe[tf] : null;
-  const active = Boolean(tf && params && data.length);
-  const emaPeriod = params?.emaPeriod ?? 8;
-  const exitEmaPeriod = params?.exitEmaPeriod ?? 8;
+  const active = Boolean(tf && data.length);
 
-  const tideCandles = useMemo(() => toTideCandles(candles), [candles]);
-  const v2 = useMemo(
-    () => (active && params && tideCandles ? computeTideV2(tideCandles, data, params) : null),
-    [active, params, tideCandles, data],
+  const cross = useMemo(
+    () => (active ? computeTideCross(data, settings) : null),
+    [active, data, settings],
   );
 
   useEffect(() => {
@@ -132,61 +127,37 @@ export function TideZonePanel({
     );
 
     const mkLine = (value: number, color: string) => {
-      chart.addSeries(LineSeries, { color, lineStyle: 1, lineWidth: 1 }).setData(
+      chart.addSeries(LineSeries, { color, lineStyle: 1, lineWidth: 1, priceLineVisible: false, lastValueVisible: false }).setData(
         candles.map((c) => ({ time: c.time as Time, value })),
       );
     };
     mkLine(40, '#22c55e66');
     mkLine(-40, '#ef444466');
     mkLine(0, '#475569');
-    if (params && params.belowScore < 0 && params.belowScore !== -40) mkLine(params.belowScore, '#c084fc55');
 
-    const ema = emaTideScore(data, emaPeriod);
-    const emaLine = chart.addSeries(LineSeries, {
-      color: '#38bdf8',
-      lineWidth: 2,
-      priceLineVisible: false,
-      lastValueVisible: true,
-    });
-    emaLine.setData(ema.map((d) => ({ time: d.time as Time, value: d.value })));
-    let exitLine = emaLine;
-    if (exitEmaPeriod !== emaPeriod) {
-      exitLine = chart.addSeries(LineSeries, {
-        color: '#f59e0b',
-        lineWidth: 1,
-        priceLineVisible: false,
-        lastValueVisible: false,
-      });
-      exitLine.setData(emaTideScore(data, exitEmaPeriod).map((d) => ({ time: d.time as Time, value: d.value })));
-    }
+    if (cross) {
+      const line = (color: string, w: 1 | 2, pts: { time: number; value: number }[], label: boolean) => {
+        const l = chart.addSeries(LineSeries, {
+          color,
+          lineWidth: w,
+          priceLineVisible: false,
+          lastValueVisible: label,
+        });
+        l.setData(pts.map((d) => ({ time: d.time as Time, value: d.value })));
+        return l;
+      };
+      const shortDrives = settings.crossEma === 'short';
+      const shortLine = line(TIDE_SHORT_COLOR, shortDrives ? 2 : 1, cross.emaShort, shortDrives);
+      const longLine = line(TIDE_LONG_COLOR, shortDrives ? 1 : 2, cross.emaLong, !shortDrives);
+      const driverLine = shortDrives ? shortLine : longLine;
 
-    if (v2) {
-      const outMarks: SeriesMarker<Time>[] = settings.showTideOut
-        ? v2.signals.map((s) => ({
-            time: s.confirmTime as Time,
-            position: 'belowBar',
-            shape: 'arrowUp',
-            color: s.rsiPlus ? settings.tideOutPlusColor : settings.tideOutColor,
-            text: s.rsiPlus ? 'out+' : 'out',
-          }))
-        : [];
-      const inTimes = [...new Set(v2.trades.flatMap((t) => (t.tideInTime != null ? [t.tideInTime] : [])))];
-      const inMarks: SeriesMarker<Time>[] = settings.showTideIn
-        ? inTimes.map((time) => ({
-            time: time as Time,
-            position: 'aboveBar',
-            shape: 'arrowDown',
-            color: settings.tideInColor,
-            text: 'in',
-          }))
-        : [];
-      const byTime = (a: SeriesMarker<Time>, b: SeriesMarker<Time>) => (a.time as number) - (b.time as number);
-      if (exitLine === emaLine) {
-        createSeriesMarkers(emaLine, [...outMarks, ...inMarks].sort(byTime));
-      } else {
-        createSeriesMarkers(emaLine, outMarks.sort(byTime));
-        createSeriesMarkers(exitLine, inMarks.sort(byTime));
-      }
+      const marks: SeriesMarker<Time>[] = cross.signals.map((sg) =>
+        sg.kind === 'in'
+          ? { time: sg.time as Time, position: 'belowBar', shape: 'arrowUp', color: TIDE_IN_COLOR, text: 'in' }
+          : { time: sg.time as Time, position: 'aboveBar', shape: 'arrowDown', color: TIDE_OUT_COLOR, text: 'out' },
+      );
+      // Markers sit on the driving EMA line, so they land on the cross itself.
+      createSeriesMarkers(driverLine, marks);
     }
 
     chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.08, bottom: 0.08 } });
@@ -212,22 +183,7 @@ export function TideZonePanel({
     };
     // mainChartVisibleRange is applied by the effect below
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    active,
-    candles,
-    data,
-    height,
-    onChartCreated,
-    emaPeriod,
-    exitEmaPeriod,
-    params,
-    v2,
-    settings.showTideOut,
-    settings.showTideIn,
-    settings.tideOutColor,
-    settings.tideOutPlusColor,
-    settings.tideInColor,
-  ]);
+  }, [active, candles, data, height, onChartCreated, cross, settings.crossEma]);
 
   useEffect(() => {
     if (chartRef.current && mainChartVisibleRange) {
@@ -241,28 +197,14 @@ export function TideZonePanel({
 
   const stacked = chrome === 'stack';
   const last = data.length ? data[data.length - 1] : undefined;
-  const emaSeries = active ? emaTideScore(data, emaPeriod) : [];
-  const emaLast = emaSeries.length ? emaSeries[emaSeries.length - 1].value : undefined;
-  const recent = data.slice(-3);
-  const absorb = recent.some((d) => d.tell === 'absorb');
-  const distro = recent.some((d) => d.tell === 'distro');
-  const reacc = recent.some((d) => d.tell === 'reacc');
-  const status = summarizeTide(v2, candles);
+  const drivingSeries = cross ? (settings.crossEma === 'long' ? cross.emaLong : cross.emaShort) : [];
+  const emaLast = drivingSeries.length ? drivingSeries[drivingSeries.length - 1].value : undefined;
+  const emaPeriod = settings.crossEma === 'long' ? settings.emaLong : settings.emaShort;
+  const fresh = cross ? freshTideCross(cross.signals, data)?.kind ?? null : null;
   const descriptor = showDescriptor
     ? buildTideDescriptor(
         active && tf
-          ? {
-              last: last ?? null,
-              timeframe: tf,
-              emaPeriod,
-              emaValue: emaLast,
-              fresh: status.fresh,
-              activeStop: status.activeStop,
-              openCount: status.openCount,
-              absorb,
-              distro,
-              reacc,
-            }
+          ? { last: last ?? null, timeframe: tf, crossEma: settings.crossEma, emaPeriod, emaValue: emaLast, fresh }
           : { last: null, timeframe: tf },
       )
     : null;
@@ -308,26 +250,43 @@ export function TideZonePanel({
     <TideZoneHud
       last={last}
       timeframe={tf}
-      status={status}
-      absorb={absorb}
-      distro={distro}
-      reacc={reacc}
-      emaPeriod={emaPeriod}
-      emaValue={emaLast}
+      fresh={fresh}
+      emaShort={cross?.emaShort.length ? { period: settings.emaShort, value: cross.emaShort[cross.emaShort.length - 1].value } : undefined}
+      emaLong={cross?.emaLong.length ? { period: settings.emaLong, value: cross.emaLong[cross.emaLong.length - 1].value } : undefined}
+      crossEma={settings.crossEma}
       variant={stacked ? 'inline' : 'overlay'}
     />
   ) : null;
+
+  const gear = (
+    <button
+      type="button"
+      aria-label="Tide Zone settings"
+      title="Tide Zone settings"
+      onClick={(e) => {
+        e.stopPropagation();
+        setSettingsOpen(true);
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      className="pointer-events-auto flex h-6 w-6 items-center justify-center rounded border border-slate-600/70 bg-slate-900/85 text-slate-300 hover:text-white"
+    >
+      <Settings className="h-3.5 w-3.5" />
+    </button>
+  );
+  const modal = <TideZoneSettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />;
 
   if (stacked) {
     return (
       <div className="flex w-full min-w-0 flex-col">
         <div className="mb-1.5 flex min-w-0 flex-wrap items-start gap-1.5">
-          {hud ? <div className="min-w-0 flex-1 basis-full">{hud}</div> : null}
+          {hud ? <div className="min-w-0 flex-1">{hud}</div> : null}
+          {gear}
         </div>
         <div className="relative w-full min-w-0 bg-[#1e293b]" style={{ height }}>
           <div ref={containerRef} className="absolute inset-0" />
         </div>
         {descriptorBlock}
+        {modal}
       </div>
     );
   }
@@ -335,7 +294,9 @@ export function TideZonePanel({
   return (
     <div className="relative h-full min-h-0 w-full">
       <div ref={containerRef} className="absolute inset-0" />
-      {hud ? <div className="absolute top-1 left-1 right-16 z-20">{hud}</div> : null}
+      {hud ? <div className="absolute top-1 left-1 right-24 z-20">{hud}</div> : null}
+      <div className="absolute top-1 right-14 z-20">{gear}</div>
+      {modal}
     </div>
   );
 }

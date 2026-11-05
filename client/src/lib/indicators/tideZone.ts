@@ -13,6 +13,8 @@
  *   > +40  up tide (4h location — not a buy signal)
  *   bounce when tide is low and energy is high
  *   < -40  down tide
+ *
+ * This file is only the score. Tide in / Tide out (EMA-of-score crosses) live in tideSignals.ts.
  */
 
 export interface TideZoneCandle {
@@ -26,8 +28,6 @@ export interface TideZoneCandle {
 
 export type TideZoneKind = 'follow_buy' | 'bounce_buy' | 'sell' | 'neutral';
 
-export type TideZoneTell = 'absorb' | 'distro' | 'reacc' | null;
-
 export interface TideZonePoint {
   time: number;
   score: number;
@@ -35,23 +35,7 @@ export interface TideZonePoint {
   energy: number;
   tape: number;
   kind: TideZoneKind;
-  /** absorb = demand at a low; distro = OI leaving a high (watch); reacc = high in uptide, book not leaving. */
-  tell: TideZoneTell;
 }
-
-export interface TideZoneOiPoint {
-  time: number;
-  value: number;
-}
-
-export interface TideZoneOptions {
-  /** Open-interest marks (unix seconds). 24h change used for distro/reacc. */
-  oi?: TideZoneOiPoint[];
-}
-
-const OI_FLUSH = -0.03;
-const NEAR_PIVOT = 0.003;
-const SWING = 16;
 
 const HTF_SECONDS = 4 * 3600;
 const PCT_WIN = 200;
@@ -233,15 +217,7 @@ function kindOf(score: number, tide: number, energy: number): TideZoneKind {
   return 'neutral';
 }
 
-function oiChange24h(oi: TideZoneOiPoint[] | undefined, t: number): number | null {
-  if (!oi?.length) return null;
-  const now = lastLe(oi, t);
-  const prev = lastLe(oi, t - 86400);
-  if (!now || !prev || !(prev.value > 0)) return null;
-  return now.value / prev.value - 1;
-}
-
-export function calculateTideZone(candles: TideZoneCandle[], options: TideZoneOptions = {}): TideZonePoint[] {
+export function calculateTideZone(candles: TideZoneCandle[]): TideZonePoint[] {
   if (candles.length < 80) return [];
   const barSec = medianDt(candles);
   const factor = Math.max(1, Math.round(HTF_SECONDS / barSec));
@@ -301,39 +277,6 @@ export function calculateTideZone(candles: TideZoneCandle[], options: TideZoneOp
       0.35 * (2 * energy - 1) * (1 - tide) +
       0.25 * (2 * tape - 1);
     const score = 100 * Math.tanh(raw);
-    let tell: TideZoneTell = null;
-    const prev = out.length ? out[out.length - 1] : null;
-    const from = Math.max(0, i - (SWING - 1));
-    let lo16 = candles[i].low;
-    let hi16 = candles[i].high;
-    for (let j = from; j <= i; j++) {
-      lo16 = Math.min(lo16, candles[j].low);
-      hi16 = Math.max(hi16, candles[j].high);
-    }
-    const atHigh = candles[i].high === hi16;
-    const nearHigh = hi16 > 0 && candles[i].close >= hi16 * (1 - NEAR_PIVOT);
-    const nearLow = lo16 > 0 && candles[i].close <= lo16 * (1 + NEAR_PIVOT);
-    const oiChg = oiChange24h(options.oi, candles[i].time);
-
-    if (prev && i > 0 && prev.time === candles[i - 1].time) {
-      const pxDownOrFlat = candles[i].close <= candles[i - 1].close;
-      const tapeUp = tape > prev.tape;
-      const scoreUp = score > prev.score;
-      const zeroCross = prev.score < 0 && score >= 0;
-      if (pxDownOrFlat && tapeUp && (zeroCross || (scoreUp && nearLow))) {
-        tell = 'absorb';
-      }
-    }
-    // Stage-1 distro: OI leaving a local high. Watch only — not a short trigger.
-    // Skip if tape is still lifting through the high (more likely short-cover squeeze).
-    if (!tell && atHigh && nearHigh && oiChg !== null && oiChg <= OI_FLUSH) {
-      const squeeze = tape > 0.65 && i > 0 && candles[i].close > candles[i - 1].close;
-      if (!squeeze) tell = 'distro';
-    }
-    // Reaccumulation watch: still in up-tide at a high, book is not leaving.
-    if (!tell && atHigh && nearHigh && tide >= 0.55 && oiChg !== null && oiChg > OI_FLUSH) {
-      tell = 'reacc';
-    }
     out.push({
       time: candles[i].time,
       score,
@@ -341,7 +284,6 @@ export function calculateTideZone(candles: TideZoneCandle[], options: TideZoneOp
       energy,
       tape,
       kind: kindOf(score, tide, energy),
-      tell,
     });
   }
   return out;
@@ -361,298 +303,6 @@ export function emaTideScore(
     out.push({ time: data[i].time, value: prev });
   }
   return out;
-}
-
-export type TidePrintKind = 'div' | 'absorb';
-
-export interface TidePrintZone {
-  kind: TidePrintKind;
-  t1: number;
-  t2: number;
-  price1: number;
-  price2: number;
-  ema1?: number;
-  ema2?: number;
-  /** forming = second low is still printing; confirmed = trough is in. */
-  status: 'forming' | 'confirmed';
-}
-
-/** @deprecated use TidePrintZone */
-export type TideAccumZone = TidePrintZone;
-
-export interface TideDivParams {
-  emaPeriod: number;
-  confirmBars: number;
-  belowScore: number;
-  keep: number;
-}
-
-const DEFAULT_DIV: TideDivParams = {
-  emaPeriod: 8,
-  confirmBars: 5,
-  belowScore: -10,
-  keep: 8,
-};
-
-interface ZigZagPivot {
-  index: number;
-  time: number;
-  value: number;
-  type: 'high' | 'low';
-}
-
-/**
- * Zigzag of length N: n-bar fractal, then collapse to alternating H-L-H-L
- * (consecutive same-type keeps the more extreme). Same idea as Swoop swings.
- */
-export function zigzagByLength(
-  series: { time: number; value: number }[],
-  n: number,
-): ZigZagPivot[] {
-  const len = Math.max(2, Math.round(n));
-  const raw: ZigZagPivot[] = [];
-  if (series.length < len * 2 + 1) return [];
-  for (let i = len; i < series.length - len; i++) {
-    const v = series[i].value;
-    if (!Number.isFinite(v)) continue;
-    let isHigh = true;
-    let isLow = true;
-    for (let j = i - len; j <= i + len; j++) {
-      if (j === i) continue;
-      const x = series[j].value;
-      if (!Number.isFinite(x)) {
-        isHigh = false;
-        isLow = false;
-        break;
-      }
-      if (x > v) isHigh = false;
-      if (x < v) isLow = false;
-    }
-    if (isHigh === isLow) continue;
-    raw.push({
-      index: i,
-      time: series[i].time,
-      value: v,
-      type: isHigh ? 'high' : 'low',
-    });
-  }
-  const zz: ZigZagPivot[] = [];
-  for (const s of raw) {
-    if (!zz.length) {
-      zz.push(s);
-      continue;
-    }
-    const last = zz[zz.length - 1];
-    if (s.type === last.type) {
-      const more = s.type === 'high' ? s.value >= last.value : s.value <= last.value;
-      if (more) zz[zz.length - 1] = s;
-      continue;
-    }
-    zz.push(s);
-  }
-  return zz;
-}
-
-/** Price zigzag of length N: highs from wicks, lows from wicks. */
-export function zigzagPrice(
-  candles: { time: number; low: number; high?: number }[],
-  n: number,
-): ZigZagPivot[] {
-  const len = Math.max(2, Math.round(n));
-  const raw: ZigZagPivot[] = [];
-  if (candles.length < len * 2 + 1) return [];
-  for (let i = len; i < candles.length - len; i++) {
-    const hi = candles[i].high ?? candles[i].low;
-    const lo = candles[i].low;
-    let isHigh = true;
-    let isLow = true;
-    let highTied = false;
-    let lowTied = false;
-    for (let j = i - len; j <= i + len; j++) {
-      if (j === i) continue;
-      const jh = candles[j].high ?? candles[j].low;
-      const jl = candles[j].low;
-      if (jh > hi) isHigh = false;
-      else if (jh === hi) highTied = true;
-      if (jl < lo) isLow = false;
-      else if (jl === lo) lowTied = true;
-    }
-    // Unique wick on one side + a tie on the other is still that unique pivot.
-    if (isHigh && isLow) {
-      if (!lowTied && highTied) isHigh = false;
-      else if (!highTied && lowTied) isLow = false;
-    }
-    if (isHigh === isLow) continue;
-    raw.push({
-      index: i,
-      time: candles[i].time,
-      value: isHigh ? hi : lo,
-      type: isHigh ? 'high' : 'low',
-    });
-  }
-  const zz: ZigZagPivot[] = [];
-  for (const s of raw) {
-    if (!zz.length) {
-      zz.push(s);
-      continue;
-    }
-    const last = zz[zz.length - 1];
-    if (s.type === last.type) {
-      const more = s.type === 'high' ? s.value >= last.value : s.value <= last.value;
-      if (more) zz[zz.length - 1] = s;
-      continue;
-    }
-    zz.push(s);
-  }
-  return zz;
-}
-
-function nearestLow(lows: ZigZagPivot[], time: number, maxDt: number): ZigZagPivot | null {
-  let best: ZigZagPivot | null = null;
-  let bestD = Infinity;
-  for (const L of lows) {
-    const d = Math.abs(L.time - time);
-    if (d < bestD) {
-      bestD = d;
-      best = L;
-    }
-  }
-  if (best && bestD <= maxDt) return best;
-  return null;
-}
-
-function emaAt(ema: { time: number; value: number }[], time: number): number | null {
-  let best: { time: number; value: number } | null = null;
-  let bestD = Infinity;
-  for (const p of ema) {
-    const d = Math.abs(p.time - time);
-    if (d < bestD) {
-      bestD = d;
-      best = p;
-    }
-  }
-  return best && Number.isFinite(best.value) ? best.value : null;
-}
-
-/**
- * @deprecated Repaints: the zigzag collapse drops a DIV once a lower low replaces its pivot, and
- * the "forming" box moves. The chart uses the point-in-time `computeTideV2` (tideSignals.ts).
- * Kept for the legacy absorb helpers/tests only.
- *
- * DIV = price zigzag lower low vs Tide-EMA zigzag higher low.
- * Absorb = same two price pivots, price flat/down and Tide EMA rising.
- * No min-gap / EMA-lift / % filters — N is the only structure size.
- */
-export function findTideDivZones(
-  candles: { time: number; low: number; high?: number }[],
-  data: TideZonePoint[],
-  params: Partial<TideDivParams> = {},
-): TidePrintZone[] {
-  const p = { ...DEFAULT_DIV, ...params };
-  const n = p.confirmBars;
-  const ema = emaTideScore(data, p.emaPeriod);
-  if (ema.length < n * 2 + 3 || candles.length < n * 2 + 3) return [];
-  const priceLows = zigzagPrice(candles, n).filter((z) => z.type === 'low');
-  const emaLows = zigzagByLength(ema, n).filter((z) => z.type === 'low');
-  if (priceLows.length < 2 || emaLows.length < 2) return [];
-  const bar = candles.length > 1 ? Math.max(1, candles[1].time - candles[0].time) : 3600;
-  const maxDt = bar * n * 2;
-  const out: TidePrintZone[] = [];
-  for (let k = 1; k < priceLows.length; k++) {
-    const a = priceLows[k - 1];
-    const b = priceLows[k];
-    const e1 = nearestLow(emaLows, a.time, maxDt);
-    const e2 = nearestLow(emaLows, b.time, maxDt);
-    if (!e1 || !e2 || e2.time <= e1.time) continue;
-    if (e1.value >= p.belowScore || e2.value >= p.belowScore) continue;
-    if (!(b.value < a.value) || !(e2.value > e1.value)) continue;
-    out.push({
-      kind: 'div',
-      t1: a.time,
-      t2: b.time,
-      price1: a.value,
-      price2: b.value,
-      ema1: e1.value,
-      ema2: e2.value,
-      status: 'confirmed',
-    });
-  }
-  const lastP = priceLows[priceLows.length - 1];
-  const lastE = emaLows[emaLows.length - 1];
-  const lastC = candles[candles.length - 1];
-  const lastEma = ema[ema.length - 1];
-  if (lastP && lastE && lastC.time > lastP.time) {
-    if (
-      lastC.low < lastP.value &&
-      lastE.value < p.belowScore &&
-      lastEma.value > lastE.value &&
-      lastEma.value < p.belowScore
-    ) {
-      const already = out.some((z) => z.t1 === lastP.time && z.status === 'confirmed');
-      if (!already) {
-        out.push({
-          kind: 'div',
-          t1: lastP.time,
-          t2: lastC.time,
-          price1: lastP.value,
-          price2: lastC.low,
-          ema1: lastE.value,
-          ema2: lastEma.value,
-          status: 'forming',
-        });
-      }
-    }
-  }
-  const forming = out.filter((z) => z.status === 'forming');
-  const confirmed = out.filter((z) => z.status === 'confirmed').slice(-p.keep);
-  return [...confirmed, ...forming];
-}
-
-/** @deprecated use findTideDivZones */
-export function findTideAccumZones(
-  candles: { time: number; low: number }[],
-  data: TideZonePoint[],
-  emaPeriod: number,
-  confirmBars?: number,
-): TidePrintZone[] {
-  return findTideDivZones(candles, data, {
-    emaPeriod,
-    confirmBars: confirmBars ?? DEFAULT_DIV.confirmBars,
-  });
-}
-
-/** Price flat/down across a price-zigzag leg, Tide EMA rising. */
-export function findTideAbsorbZones(
-  candles: { time: number; low: number; high?: number }[],
-  data: TideZonePoint[],
-  params: Partial<TideDivParams> = {},
-): TidePrintZone[] {
-  const p = { ...DEFAULT_DIV, ...params };
-  const n = p.confirmBars;
-  if (!candles.length || !data.length) return [];
-  const ema = emaTideScore(data, p.emaPeriod);
-  const priceLows = zigzagPrice(candles, n).filter((z) => z.type === 'low');
-  if (priceLows.length < 2 || ema.length < 2) return [];
-  const out: TidePrintZone[] = [];
-  for (let k = 1; k < priceLows.length; k++) {
-    const a = priceLows[k - 1];
-    const b = priceLows[k];
-    if (b.value > a.value) continue;
-    const e1 = emaAt(ema, a.time);
-    const e2 = emaAt(ema, b.time);
-    if (e1 == null || e2 == null || !(e2 > e1)) continue;
-    out.push({
-      kind: 'absorb',
-      t1: a.time,
-      t2: b.time,
-      price1: a.value,
-      price2: b.value,
-      ema1: e1,
-      ema2: e2,
-      status: 'confirmed',
-    });
-  }
-  return out.slice(-p.keep);
 }
 
 export function tideZoneColor(kind: TideZoneKind, score: number): string {
