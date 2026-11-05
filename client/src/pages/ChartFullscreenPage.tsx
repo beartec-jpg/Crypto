@@ -596,7 +596,7 @@ export function ChartFullscreenPage({
     })),
     [effectiveCandles],
   );
-  const { trades: manualTrades, addTrade: addManualTrade, exitTrade: exitManualTrade, deleteTrade: deleteManualTrade, updateTrade: updateManualTrade } = useManualTrades(symbol, timeframe, tradeCandleData);
+  const { trades: manualTrades, addTrade: addManualTrade, exitTrade: exitManualTrade, deleteTrade: deleteManualTrade, updateTrade: updateManualTrade } = useManualTrades(symbol, timeframe, tradeCandleData, candlesKey);
   const latestTradeCandle = tradeCandleData[tradeCandleData.length - 1];
   const currentTradePrice = latestTradeCandle?.close ?? 0;
   const currentTradeTime = latestTradeCandle?.time ?? 0;
