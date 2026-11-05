@@ -55,6 +55,7 @@ import {
 import { queryClient } from '@/lib/queryClient';
 import { formatTickerDisplay } from '@/lib/chart/priceUtils';
 import { AiScenarioDisclaimer } from '@/components/ai/AiScenarioDisclaimer';
+import { TechnicalScenarioDisclaimer } from '@/components/TechnicalScenarioDisclaimer';
 import { DEFAULT_AI_TRADER_MODE, ENABLED_AI_TRADER_MODES, isAiTraderModeId, type AiTraderModeId } from '@shared/aiTraderModes';
 import type { CryptoPreferences } from '@shared/schema';
 import {
@@ -1246,6 +1247,8 @@ export default function CryptoAI() {
                                       <div className="text-sm text-muted-foreground">{trade.reasoning ?? '—'}</div>
                                     </div>
                                   </div>
+
+                                  <TechnicalScenarioDisclaimer className="mt-3" />
 
                                   {trade.confluenceSignals?.length ? (
                                     <div className="mt-3 flex flex-wrap gap-2">

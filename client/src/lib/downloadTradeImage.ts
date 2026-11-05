@@ -391,7 +391,7 @@ export async function downloadAnalysisImage(options: DownloadAnalysisImageOption
     )
     : wrapText(
       mctx,
-      `${tradeCount} trade idea${tradeCount === 1 ? '' : 's'} found — download individual trades for entry/SL/TP cards.`,
+      `${tradeCount} technical scenario${tradeCount === 1 ? '' : 's'} found — download individual chart setups for entry/SL/TP cards.`,
       contentWidth,
     );
 

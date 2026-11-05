@@ -1808,7 +1808,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await pool.end();
       return res.status(403).json({ 
         error: 'Upgrade required',
-        message: 'AI Analysis is on Core, Pro, and Elite. Charts and indicators stay free — upgrade only if you want AI trade ideas.',
+        message: 'AI Analysis is on Core, Pro, and Elite. Charts and indicators stay free — upgrade only if you want AI technical scenarios.',
         requireUpgrade: true
       });
     }
