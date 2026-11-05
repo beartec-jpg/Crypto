@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   createChart,
   ColorType,
@@ -8,8 +8,6 @@ import {
   type Time,
 } from 'lightweight-charts';
 import { applyMainChartVisibleRange, type MainChartVisibleRange } from '@/lib/chart/syncOscillatorTimeScale';
-import { Settings } from 'lucide-react';
-import { ConnectedTetherDivergenceSettingsModal } from '@/components/modals/TetherDivergenceSettingsModal';
 import { useTetherDivergenceSettings } from '@/hooks/useTetherDivergenceSettings';
 import {
   lastDefined,
@@ -51,8 +49,7 @@ export function TetherDivergencePanel({
 }: TetherDivergencePanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const { settings, setModalOpen } = useTetherDivergenceSettings();
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const { settings } = useTetherDivergenceSettings();
   const active = Boolean(data && data.times.length && candles.length);
 
   useEffect(() => {
@@ -164,21 +161,19 @@ export function TetherDivergencePanel({
       visible: false,
     });
 
-    if (settings.topMirror) {
-      const top = chart.addSeries(LineSeries, {
-        color: hexAlpha(settings.topColor, 0.35),
-        lineWidth: 1,
-        priceLineVisible: false,
-        lastValueVisible: true,
-        title: 'Top zone (unvalidated)',
-        priceScaleId: 'score',
-      });
-      top.setData(
-        data.times.flatMap((t, i) =>
-          data.topScore[i] == null ? [] : [{ time: t as Time, value: data.topScore[i] as number }],
-        ),
-      );
-    }
+    const top = chart.addSeries(LineSeries, {
+      color: hexAlpha(settings.topColor, 0.45),
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      title: 'Stretch - score',
+      priceScaleId: 'score',
+    });
+    top.setData(
+      data.times.flatMap((t, i) =>
+        data.topScore[i] == null ? [] : [{ time: t as Time, value: data.topScore[i] as number }],
+      ),
+    );
 
     if (mainChartVisibleRange) {
       applyMainChartVisibleRange(chart, mainChartVisibleRange);
@@ -213,7 +208,6 @@ export function TetherDivergencePanel({
     settings.watchColor,
     settings.neutralColor,
     settings.topColor,
-    settings.topMirror,
   ]);
 
   useEffect(() => {
@@ -226,23 +220,12 @@ export function TetherDivergencePanel({
     }
   }, [mainChartVisibleRange]);
 
-  const openSettings = () => {
-    setSettingsOpen(true);
-    setModalOpen(true);
-  };
-
   if (!active || !data) {
     return (
       <div className="relative h-full min-h-0 w-full bg-[#1e293b]">
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="flex items-center gap-2 text-[11px] text-slate-400">
-            <span>{statusText ?? 'Tether Divergence: waiting on daily data'}</span>
-            <button type="button" onClick={openSettings} className="text-slate-400 hover:text-white" aria-label="Tether Divergence settings">
-              <Settings className="h-3.5 w-3.5" />
-            </button>
-          </div>
+          <span className="text-[11px] text-slate-400">{statusText ?? 'Tether Stretch: waiting on daily data'}</span>
         </div>
-        <ConnectedTetherDivergenceSettingsModal isOpen={settingsOpen} onClose={() => { setSettingsOpen(false); setModalOpen(false); }} />
       </div>
     );
   }
@@ -254,21 +237,6 @@ export function TetherDivergencePanel({
   return (
     <div className="relative h-full min-h-0 w-full">
       <div ref={containerRef} className="absolute inset-0" />
-      <button
-        type="button"
-        onClick={openSettings}
-        className="absolute top-1 right-2 z-20 text-slate-400 hover:text-white"
-        aria-label="Tether Divergence settings"
-      >
-        <Settings className="h-3.5 w-3.5" />
-      </button>
-      <ConnectedTetherDivergenceSettingsModal
-        isOpen={settingsOpen}
-        onClose={() => {
-          setSettingsOpen(false);
-          setModalOpen(false);
-        }}
-      />
       {showHud && lastScore != null && (
         <div className="absolute top-1 left-1 right-10 z-20 pointer-events-none">
           <div className="flex items-center gap-2 text-[11px]">
@@ -276,9 +244,13 @@ export function TetherDivergencePanel({
               {approximate ? '≈ ' : ''}
               {lastScore.toFixed(0)} {tetherZoneLabel(lastZone)}
             </span>
-            {settings.topMirror && lastTop != null && lastTop >= settings.topThreshold && (
-              <span className="text-[10px] text-red-400/50">Top zone (unvalidated)</span>
+            {lastTop != null && lastTop >= settings.topThreshold && (
+              <span className="text-[10px]" style={{ color: settings.topColor }}>Stretch -</span>
             )}
+            <span className="text-[10px] text-slate-400">
+              Daily RSI div: <span style={{ color: settings.bullDivColor }}>●</span>/<span style={{ color: settings.bearDivColor }}>●</span> regular{' '}
+              <span style={{ color: settings.bullHiddenColor }}>■</span>/<span style={{ color: settings.bearHiddenColor }}>■</span> hidden
+            </span>
           </div>
         </div>
       )}

@@ -3,6 +3,8 @@ import {
   buildProxyDominance,
   dropFormingUtcDay,
   exactDominanceFromCaps,
+  historyToPoints,
+  mergeHistoryWithLive,
   mergeBasketByUtcDay,
   PIN_RELATIVE_TOLERANCE,
   snapMarketChartToUtcDays,
@@ -10,6 +12,11 @@ import {
   utcDayOpenSec,
   type BasketRow,
 } from '../../../../api/_lib/usdtDominance';
+import {
+  USDT_D_HISTORY_START_SEC,
+  USDT_D_HISTORY_STEP_SEC,
+  USDT_D_HISTORY_VALUES,
+} from '../../../../api/_lib/usdtDominanceHistory';
 
 const DAY = Date.UTC(2024, 5, 1); // 2024-06-01 00:00 UTC in ms
 const DAY_SEC = DAY / 1000;
@@ -125,5 +132,47 @@ describe('exactDominanceFromCaps', () => {
       { time: DAY_SEC, value: 10 },
       { time: DAY_SEC + 86400, value: 6 },
     ]);
+  });
+});
+
+describe('mergeHistoryWithLive', () => {
+  const T0 = DAY_SEC;
+  const hist = historyToPoints(T0, Array.from({ length: 100 }, (_, i) => 10 + i * 0.01));
+  const liveFrom = 60;
+  const live = Array.from({ length: 40 }, (_, i) => ({
+    time: T0 + (liveFrom + i) * 86400,
+    value: (10 + (liveFrom + i) * 0.01) * 0.9,
+  }));
+
+  it('prepends only bars before the first live bar, live wins, join is continuous', () => {
+    const { series, prepended } = mergeHistoryWithLive(hist, live);
+    expect(prepended).toBe(liveFrom);
+    expect(series).toHaveLength(liveFrom + live.length);
+    expect(series.slice(liveFrom)).toEqual(live);
+    const times = series.map((p) => p.time);
+    expect(times).toEqual([...times].sort((a, b) => a - b));
+    expect(new Set(times).size).toBe(times.length);
+    expect(series[liveFrom - 1].value).toBeCloseTo((10 + 59 * 0.01) * 0.9, 9);
+  });
+
+  it('is a no-op when history adds nothing or does not overlap / is wildly different', () => {
+    expect(mergeHistoryWithLive(hist, []).prepended).toBe(0);
+    expect(mergeHistoryWithLive(hist.slice(60), live).prepended).toBe(0);
+    const far = live.map((p) => ({ ...p, time: p.time + 1000 * 86400 }));
+    expect(mergeHistoryWithLive(hist, far).series).toEqual(far);
+    const huge = live.map((p) => ({ ...p, value: p.value * 10 }));
+    expect(mergeHistoryWithLive(hist, huge).series).toEqual(huge);
+  });
+});
+
+describe('static USDT.D history', () => {
+  it('is contiguous UTC daily bars starting in 2018 and reaches 2019+ with sane values', () => {
+    expect(USDT_D_HISTORY_STEP_SEC).toBe(86400);
+    expect(USDT_D_HISTORY_START_SEC % 86400).toBe(0);
+    expect(USDT_D_HISTORY_START_SEC).toBeLessThanOrEqual(Date.UTC(2019, 0, 1) / 1000);
+    expect(USDT_D_HISTORY_VALUES.length).toBeGreaterThan(2800);
+    expect(USDT_D_HISTORY_VALUES.every((v) => Number.isFinite(v) && v > 0 && v < 30)).toBe(true);
+    const last = USDT_D_HISTORY_START_SEC + (USDT_D_HISTORY_VALUES.length - 1) * 86400;
+    expect(last).toBeGreaterThan(Date.UTC(2026, 0, 1) / 1000);
   });
 });

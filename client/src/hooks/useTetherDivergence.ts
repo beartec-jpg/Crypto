@@ -42,7 +42,7 @@ async function fetchUsdtDominance(): Promise<UsdtDominanceResponse> {
 
 async function fetchDailyCandles(symbol: string): Promise<TetherCoinCandle[]> {
   const res = await fetch(
-    `/api/crypto/extended-history?symbol=${encodeURIComponent(symbol)}&timeframe=1d&limit=500`,
+    `/api/crypto/extended-history?symbol=${encodeURIComponent(symbol)}&timeframe=1d&limit=3200`,
   );
   if (!res.ok) throw new Error(`daily candles ${res.status}`);
   const data = await res.json();

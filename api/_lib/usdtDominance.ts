@@ -159,3 +159,43 @@ export function exactDominanceFromCaps(
     value: r.b > 0 ? (r.a / r.b) * 100 : 0,
   }));
 }
+
+export const HISTORY_SCALE_WINDOW_DAYS = 30;
+
+/** Expand a contiguous daily array into points (bar time = UTC day open). */
+export function historyToPoints(startSec: number, values: readonly number[], stepSec = 86400): DominancePoint[] {
+  return values.map((value, i) => ({ time: startSec + i * stepSec, value }));
+}
+
+/**
+ * Prepend a long static history to the live series. Live wins on overlap: history is only used for
+ * bars strictly before the first live bar. The history is multiplied by one constant (median
+ * live/history ratio over the first HISTORY_SCALE_WINDOW_DAYS overlapping days) so the join is
+ * continuous. A constant factor does not change RSI, EMA-distance % or %B.
+ * With no usable overlap (or a wild ratio) the history is not used at all: never splice two
+ * unrelated levels.
+ */
+export function mergeHistoryWithLive(
+  history: DominancePoint[],
+  live: DominancePoint[],
+): { series: DominancePoint[]; prepended: number } {
+  if (!live.length) return { series: live, prepended: 0 };
+  const firstLive = live[0].time;
+  const older = history.filter((p) => p.time < firstLive && Number.isFinite(p.value));
+  if (!older.length) return { series: live, prepended: 0 };
+  const hMap = new Map(history.map((p) => [p.time, p.value]));
+  const ratios: number[] = [];
+  for (const p of live) {
+    if (ratios.length >= HISTORY_SCALE_WINDOW_DAYS) break;
+    const h = hMap.get(p.time);
+    if (h != null && h > 0 && p.value > 0) ratios.push(p.value / h);
+  }
+  if (!ratios.length) return { series: live, prepended: 0 };
+  ratios.sort((a, b) => a - b);
+  const mid = Math.floor(ratios.length / 2);
+  const scale = ratios.length % 2 ? ratios[mid] : (ratios[mid - 1] + ratios[mid]) / 2;
+  // Sanity: the proxy tracks live within ~15%; a wild ratio means the two series are not the same thing.
+  if (!(scale > 0.5 && scale < 2)) return { series: live, prepended: 0 };
+  const scaled = older.map((p) => ({ time: p.time, value: p.value * scale }));
+  return { series: [...scaled, ...live], prepended: scaled.length };
+}

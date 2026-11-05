@@ -4,10 +4,17 @@ import {
   buildProxyDominance,
   dropFormingUtcDay,
   exactDominanceFromCaps,
+  historyToPoints,
   mergeBasketByUtcDay,
+  mergeHistoryWithLive,
   snapshotsToBarDays,
   type DominancePoint,
 } from '../_lib/usdtDominance.js';
+import {
+  USDT_D_HISTORY_START_SEC,
+  USDT_D_HISTORY_STEP_SEC,
+  USDT_D_HISTORY_VALUES,
+} from '../_lib/usdtDominanceHistory.js';
 
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const CACHE_CONTROL = 'public, s-maxage=21600, stale-while-revalidate=86400';
@@ -23,6 +30,8 @@ interface CachedPayload {
   count: number;
   series: DominancePoint[];
   stale?: boolean;
+  /** Bars prepended from the static history (CoinGecko Demo only serves 365 days). */
+  historyBars?: number;
 }
 
 let cache: { at: number; payload: CachedPayload } | null = null;
@@ -106,6 +115,16 @@ async function fetchFreeBasketProxy(demoKey?: string): Promise<CachedPayload> {
   };
 }
 
+/** Prepend the static 2018+ history to the live points (live wins on overlap). */
+function withHistory(payload: CachedPayload): CachedPayload {
+  const { series, prepended } = mergeHistoryWithLive(
+    historyToPoints(USDT_D_HISTORY_START_SEC, USDT_D_HISTORY_VALUES, USDT_D_HISTORY_STEP_SEC),
+    payload.series,
+  );
+  if (!prepended) return payload;
+  return { ...payload, approximate: true, count: series.length, series, historyBars: prepended };
+}
+
 function sendJson(res: VercelResponse, status: number, body: unknown, extraHeaders?: Record<string, string>) {
   res.setHeader('Cache-Control', CACHE_CONTROL);
   if (extraHeaders) {
@@ -134,7 +153,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const proKey = process.env.COINGECKO_PRO_API_KEY;
     const demoKey = process.env.COINGECKO_DEMO_API_KEY;
-    const payload = proKey ? await fetchProSeries(proKey) : await fetchFreeBasketProxy(demoKey);
+    const payload = withHistory(
+      proKey ? await fetchProSeries(proKey) : await fetchFreeBasketProxy(demoKey),
+    );
     cache = { at: now, payload };
     return sendJson(res, 200, payload);
   } catch (err) {

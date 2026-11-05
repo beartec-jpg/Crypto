@@ -3,7 +3,11 @@ import {
   alignToChart,
   bbCompFromPctB,
   bollingerPctB,
+  buildTetherLadder,
+  buildTetherLadderMarkers,
   buildTetherMarkers,
+  detectRsiDivergences,
+  findPivots,
   computeTetherDivergence,
   DAY_SECONDS,
   emaCompFromDist,
@@ -18,7 +22,7 @@ import {
   type DailyPoint,
 } from '@/lib/indicators/tetherDivergence';
 import {
-  DEFAULT_TETHER_DIVERGENCE_SETTINGS,
+  TETHER_STRETCH_SETTINGS,
   normalizeTetherDivergenceSettings,
 } from '@/types/tetherDivergenceSettings';
 
@@ -155,7 +159,7 @@ describe('computeTetherDivergence', () => {
     expect(res.score[i]).toBeCloseTo(expected, 8);
   });
 
-  it('computes the unvalidated top-mirror formula', () => {
+  it('computes the Stretch - (top) score formula', () => {
     const n = 80;
     const usdtd = series(n, DAY0, DAY_SECONDS, (i) => 6 + Math.sin(i / 7));
     const coinCandles = coins(n, DAY0, DAY_SECONDS, (i) => 50 + i);
@@ -163,7 +167,7 @@ describe('computeTetherDivergence', () => {
       coinCandles,
       usdtd,
       nowSec: FAR,
-      settings: { topMirror: true, wStretch: 1, wCoin: 1 },
+      settings: { wStretch: 1, wCoin: 1 },
     });
     const i = res.score.length - 1;
     const expected =
@@ -199,7 +203,7 @@ describe('computeTetherDivergence', () => {
       coinCandles,
       usdtd,
       nowSec: FAR,
-      settings: { markerOnCross: 'watch', watchThreshold: 60, bottomThreshold: 80 },
+      settings: { watchThreshold: 55, bottomThreshold: 60 },
     });
     expect(res.crosses.length).toBeGreaterThanOrEqual(2);
     const times = res.crosses.map((c) => c.time);
@@ -209,6 +213,7 @@ describe('computeTetherDivergence', () => {
       expect(idx).toBeGreaterThan(0);
       expect(res.score[idx] as number).toBeGreaterThanOrEqual(60);
       expect(res.score[idx - 1] as number).toBeLessThan(60);
+      expect(c.kind).toBe('bottom');
     }
   });
 
@@ -308,18 +313,168 @@ describe('alignToChart', () => {
 });
 
 describe('buildTetherMarkers / labels', () => {
-  it('builds one marker per cross and respects showMarkers', () => {
+  it('names the signals Stretch + / Stretch - and keeps Watch', () => {
     const crosses = [
       { time: DAY0, kind: 'bottom' as const },
       { time: DAY0 + DAY_SECONDS, kind: 'watch' as const },
+      { time: DAY0 + 2 * DAY_SECONDS, kind: 'top' as const },
     ];
     const marks = buildTetherMarkers(crosses);
-    expect(marks).toHaveLength(2);
-    expect(buildTetherMarkers(crosses, { ...DEFAULT_TETHER_DIVERGENCE_SETTINGS, showMarkers: false })).toEqual([]);
-    expect(tetherZoneLabel('bottom')).toBe('Bottom zone');
+    expect(marks.map((m) => m.text)).toEqual(['Stretch +', 'Watch', 'Stretch -']);
+    expect(marks[2].color).toBe(TETHER_STRETCH_SETTINGS.topColor);
+    expect(tetherZoneLabel('bottom')).toBe('Stretch +');
     expect(tetherZoneLabel('watch')).toBe('Watch');
     expect(tetherZoneLabel('neutral')).toBe('—');
     expect(tetherZoneColor('bottom')).toBe('#22c55e');
+  });
+});
+
+describe('fixed Tether Stretch settings', () => {
+  it('uses the agreed constants', () => {
+    const s = TETHER_STRETCH_SETTINGS;
+    expect([s.usdtRsiLen, s.coinRsiLen, s.emaLen, s.bbLen, s.bbMult, s.emaDistFullPct]).toEqual([14, 14, 20, 20, 2, 4]);
+    expect([s.wRsi, s.wEma, s.wBb, s.wStretch, s.wCoin]).toEqual([1, 1, 1, 1, 1]);
+    expect([s.bottomThreshold, s.watchThreshold, s.topThreshold]).toEqual([80, 60, 80]);
+  });
+});
+
+// Build a coin path with explicit lows/highs for divergence tests.
+function ohlc(lows: number[], highs: number[], start = DAY0): TetherCoinCandle[] {
+  return lows.map((l, i) => ({
+    time: start + i * DAY_SECONDS,
+    open: (l + highs[i]) / 2,
+    high: highs[i],
+    low: l,
+    close: (l + highs[i]) / 2,
+    volume: 1,
+  }));
+}
+
+describe('findPivots', () => {
+  it('finds strict pivots only and never at the edges', () => {
+    const v = [5, 4, 3, 4, 5, 4, 4, 6, 7];
+    expect(findPivots(v, 2, -1)).toEqual([2]);
+    expect(findPivots(v, 2, 1)).toEqual([4]);
+    expect(findPivots([1, 3, 1, 3, 1], 1, 1)).toEqual([1, 3]);
+    expect(findPivots([3, 3, 1, 3, 3], 1, -1)).toEqual([2]);
+    expect(findPivots([1, 1, 1, 1, 1], 1, -1)).toEqual([]);
+  });
+});
+
+describe('detectRsiDivergences', () => {
+  // pivot lows at 2 and 8 (k=2)
+  const lowsLL = [9, 8, 5, 8, 9, 9, 8, 7, 4, 7, 8, 9, 9];
+  const highs = lowsLL.map((l) => l + 5);
+  it('bullish regular: lower low in price, higher low in RSI, stamped at pivot + k', () => {
+    const rsi = lowsLL.map((_, i) => (i === 2 ? 20 : i === 8 ? 30 : 50));
+    const d = detectRsiDivergences(lowsLL, highs, rsi, 2, 60).filter((x) => x.side === 'bull');
+    expect(d).toEqual([{ confirmIdx: 10, side: 'bull', type: 'regular' }]);
+  });
+  it('bullish hidden: higher low in price, lower low in RSI', () => {
+    const lows = [9, 8, 5, 8, 9, 9, 8, 7, 6, 7, 8, 9, 9];
+    const rsi = lows.map((_, i) => (i === 2 ? 30 : i === 8 ? 20 : 50));
+    const d = detectRsiDivergences(lows, lows.map((l) => l + 5), rsi, 2, 60).filter((x) => x.side === 'bull');
+    expect(d).toEqual([{ confirmIdx: 10, side: 'bull', type: 'hidden' }]);
+  });
+  it('bearish regular and hidden mirror the bullish rules', () => {
+    const hi = [1, 2, 5, 2, 1, 1, 2, 3, 6, 3, 2, 1, 1]; // higher high at 8
+    const lo = hi.map((h) => h - 1);
+    let rsi = hi.map((_, i) => (i === 2 ? 80 : i === 8 ? 70 : 50));
+    expect(detectRsiDivergences(lo, hi, rsi, 2, 60).filter((x) => x.side === 'bear')).toEqual([
+      { confirmIdx: 10, side: 'bear', type: 'regular' },
+    ]);
+    const hi2 = [1, 2, 6, 2, 1, 1, 2, 3, 5, 3, 2, 1, 1]; // lower high at 8
+    rsi = hi2.map((_, i) => (i === 2 ? 70 : i === 8 ? 80 : 50));
+    expect(detectRsiDivergences(hi2.map((h) => h - 1), hi2, rsi, 2, 60).filter((x) => x.side === 'bear')).toEqual([
+      { confirmIdx: 10, side: 'bear', type: 'hidden' },
+    ]);
+  });
+  it('ignores pivots further apart than the max gap, and null RSI', () => {
+    const rsi = lowsLL.map((_, i) => (i === 2 ? 20 : i === 8 ? 30 : 50));
+    expect(detectRsiDivergences(lowsLL, highs, rsi, 2, 5).filter((x) => x.side === 'bull')).toEqual([]);
+    const rsiNull = lowsLL.map((_, i) => (i === 2 ? null : 50));
+    expect(detectRsiDivergences(lowsLL, highs, rsiNull, 2, 60).filter((x) => x.side === 'bull')).toEqual([]);
+  });
+  it('does not use bars after the confirmation bar (truncating the future keeps the same result)', () => {
+    const rsi = lowsLL.map((_, i) => (i === 2 ? 20 : i === 8 ? 30 : 50));
+    const full = detectRsiDivergences(lowsLL, highs, rsi, 2, 60);
+    const cut = detectRsiDivergences(lowsLL.slice(0, 11), highs.slice(0, 11), rsi.slice(0, 11), 2, 60);
+    expect(cut.filter((x) => x.side === 'bull')).toEqual(full.filter((x) => x.side === 'bull' && x.confirmIdx <= 10));
+  });
+});
+
+describe('buildTetherLadder', () => {
+  // Zig-zag lows with progressively lower price and higher RSI: pivot lows every 6 bars from idx 3.
+  const n = 60;
+  const times = Array.from({ length: n }, (_, i) => DAY0 + i * DAY_SECONDS);
+  const low = Array.from({ length: n }, (_, i) => {
+    const phase = i % 6;
+    const cycle = Math.floor(i / 6);
+    const dip = 100 - cycle * 2; // lower lows
+    return phase === 3 ? dip : dip + Math.min(Math.abs(phase - 3), 3) * 3;
+  });
+  const high = low.map((l) => l + 10);
+  const rsi: Array<number | null> = low.map((_, i) => (i % 6 === 3 ? 20 + Math.floor(i / 6) * 2 : 50));
+  const at = (i: number) => times[i];
+  const bull = (i: number) => ({ time: at(i), kind: 'bottom' as const });
+
+  it('counts +1, +2, +3 after Stretch + and caps at 3', () => {
+    const l = buildTetherLadder({ times, low, high, rsi, bottomCrosses: [bull(0)], topCrosses: [] });
+    const bulls = l.filter((m) => m.side === 'bull');
+    expect(bulls.map((m) => m.n)).toEqual([1, 2, 3]);
+    expect(bulls.every((m) => m.type === 'regular')).toBe(true);
+    // first pair of pivots is (9, 15), confirmed at 15 + k(5)
+    expect(bulls[0].time).toBe(at(20));
+  });
+
+  it('only counts divergences after the signal, and a new Stretch + restarts the count', () => {
+    const l = buildTetherLadder({ times, low, high, rsi, bottomCrosses: [bull(12), bull(30)], topCrosses: [] });
+    const n1 = l.filter((m) => m.time < at(30)).map((m) => m.n);
+    expect(n1[0]).toBe(1);
+    const afterSecond = l.filter((m) => m.time >= at(30));
+    expect(afterSecond[0].n).toBe(1);
+  });
+
+  it('a Stretch - ends the bullish ladder', () => {
+    const l = buildTetherLadder({
+      times, low, high, rsi, bottomCrosses: [bull(0)], topCrosses: [{ time: at(20), kind: 'top' }],
+    });
+    expect(l.filter((m) => m.side === 'bull' && m.time > at(20))).toEqual([]);
+  });
+
+  it('expires after the zone window', () => {
+    const l = buildTetherLadder({
+      times, low, high, rsi, bottomCrosses: [bull(0)], topCrosses: [],
+      settings: { ladderZoneBars: 10 },
+    });
+    expect(l.filter((m) => m.time > at(10)).length).toBe(0);
+  });
+
+  it('expires when price runs more than 20% beyond the signal bar low', () => {
+    const crash = low.map((v, i) => (i >= 8 ? v * 0.5 : v));
+    const l = buildTetherLadder({
+      times, low: crash, high: crash.map((v) => v + 10), rsi, bottomCrosses: [bull(0)], topCrosses: [],
+    });
+    expect(l.length).toBe(0);
+  });
+
+  it('produces no markers without a signal', () => {
+    expect(buildTetherLadder({ times, low, high, rsi, bottomCrosses: [], topCrosses: [] })).toEqual([]);
+  });
+});
+
+describe('buildTetherLadderMarkers', () => {
+  it('uses +n below bar for bullish and -n above bar for bearish; circle = regular, square = hidden', () => {
+    const m = buildTetherLadderMarkers([
+      { time: DAY0, side: 'bull', n: 1, type: 'regular' },
+      { time: DAY0, side: 'bull', n: 2, type: 'hidden' },
+      { time: DAY0, side: 'bear', n: 1, type: 'regular' },
+      { time: DAY0, side: 'bear', n: 3, type: 'hidden' },
+    ]);
+    expect(m.map((x) => x.text)).toEqual(['+1', '+2', '-1', '-3']);
+    expect(m.map((x) => x.position)).toEqual(['belowBar', 'belowBar', 'aboveBar', 'aboveBar']);
+    expect(m.map((x) => x.shape)).toEqual(['circle', 'square', 'circle', 'square']);
+    expect(new Set(m.map((x) => x.color)).size).toBe(4);
   });
 });
 
@@ -341,8 +496,8 @@ describe('normalizeTetherDivergenceSettings', () => {
       watchThreshold: 90,
       bottomColor: 'green',
       timeframe: '4h' as unknown as '1D',
-      markerOnCross: 'nope' as unknown as 'bottom',
-      topMirror: 'yes' as unknown as boolean,
+      divPivotBars: 99,
+      ladderExpiryPct: -3,
     });
     expect(n.usdtRsiLen).toBe(50);
     expect(n.coinRsiLen).toBe(2);
@@ -357,10 +512,9 @@ describe('normalizeTetherDivergenceSettings', () => {
     expect(n.wCoin).toBe(1);
     expect(n.bottomThreshold).toBe(50);
     expect(n.watchThreshold).toBeLessThanOrEqual(n.bottomThreshold);
-    expect(n.bottomColor).toBe(DEFAULT_TETHER_DIVERGENCE_SETTINGS.bottomColor);
+    expect(n.bottomColor).toBe(TETHER_STRETCH_SETTINGS.bottomColor);
     expect(n.timeframe).toBe('1D');
-    expect(n.markerOnCross).toBe('bottom');
-    expect(n.topMirror).toBe(false);
-    expect(n.showMarkers).toBe(true);
+    expect(n.divPivotBars).toBe(20);
+    expect(n.ladderExpiryPct).toBeGreaterThan(0);
   });
 });

@@ -69,9 +69,9 @@ interface OscillatorsPanelProps {
   candles: Candle[];
   activeOscillators?: string[];
   onActiveOscillatorsChange?: (oscillators: string[]) => void;
-  /** Chart symbol — required for Tether Divergence (fetches daily candles + USDT.D). */
+  /** Chart symbol — required for Tether Stretch (fetches daily candles + USDT.D). */
   symbol?: string;
-  /** Chart timeframe — used to align the daily Tether Divergence score to chart bars. */
+  /** Chart timeframe — used to align the daily Tether Stretch score to chart bars. */
   timeframe?: string;
 }
 
@@ -85,7 +85,7 @@ export const OSCILLATOR_OPTIONS = [
   { id: 'cci', label: 'CCI' },
   { id: 'adx', label: 'ADX' },
   { id: 'tideZone', label: 'Tide Zone' },
-  { id: 'tetherDivergence', label: 'Tether Divergence' },
+  { id: 'tetherDivergence', label: 'Tether Stretch' },
 ] as const;
 
 // Divergence meter constants
@@ -121,13 +121,13 @@ export function OscillatorsPanel({
     enabled: tetherEnabled,
   });
   const tetherStatusText = !symbol
-    ? 'Tether Divergence: select a ticker'
+    ? 'Tether Stretch: select a ticker'
     : isStablecoinSymbol(symbol)
-      ? 'Tether Divergence: n/a for stablecoins'
+      ? 'Tether Stretch: n/a for stablecoins'
       : tetherDivergence.error
-        ? 'Tether Divergence: data unavailable'
+        ? 'Tether Stretch: data unavailable'
         : tetherDivergence.loading
-          ? 'Tether Divergence: loading daily data…'
+          ? 'Tether Stretch: loading daily data…'
           : undefined;
 
   // Tide only runs on 1h/4h candles (interval inferred from bar spacing here).
@@ -585,8 +585,8 @@ export function OscillatorsPanel({
             <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
                 <div>
-                  <h4 className="text-sm font-semibold text-white">Tether Divergence</h4>
-                  <p className="text-xs text-slate-400">USDT.D stretch vs coin oversold — daily bottom-zone score</p>
+                  <h4 className="text-sm font-semibold text-white">Tether Stretch</h4>
+                  <p className="text-xs text-slate-400">USDT.D stretch (Stretch + / Stretch -) with daily RSI divergence markers</p>
                 </div>
                 <button
                   onClick={() => toggleOscillator('tetherDivergence')}

@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { useMemo, useState } from 'react';
 import { useShowOwnerOnlyTools } from '@/hooks/useShowOwnerOnlyTools';
 import { OWNER_ONLY_OSCILLATOR_IDS } from '@/constants/ownerOnlyFeatures';
-import { ConnectedTetherDivergenceSettingsModal } from '@/components/modals/TetherDivergenceSettingsModal';
 
 export interface OscillatorModalConfig {
   enabled?: boolean;
@@ -42,7 +41,7 @@ const OSCILLATORS = [
   { id: 'mfi', name: 'MFI', description: 'Money Flow Index (14)' },
   { id: 'klinger', name: 'Klinger', description: 'Klinger Oscillator (34,55,13)' },
   { id: 'tideZone', name: 'Tide Zone', description: '4h tide + local energy/tape buy-sell zones' },
-  { id: 'tetherDivergence', name: 'Tether Divergence', description: 'USDT.D stretch vs coin oversold — daily bottom-zone score' },
+  { id: 'tetherDivergence', name: 'Tether Stretch', description: 'USDT.D stretch (Stretch + / Stretch -) with daily RSI divergence markers +1..+3 / -1..-3' },
   { id: 'smartMoney', name: 'Smart Money Tracker', description: 'Standalone SMC system score and debug panel' },
   { id: 'smcTrendEngine', name: 'SMC Trend Engine', description: 'Trend-focused SMC score and debug panel' },
 ];
@@ -57,7 +56,6 @@ export function OscillatorSelectorModal({
 }: OscillatorSelectorModalProps) {
   const [editingOscillator, setEditingOscillator] = useState<string | null>(null);
   const [draftConfig, setDraftConfig] = useState<OscillatorModalConfig>({});
-  const [tetherSettingsOpen, setTetherSettingsOpen] = useState(false);
   const showOwnerOnlyTools = useShowOwnerOnlyTools();
   const visibleOscillators = useMemo(
     () =>
@@ -76,7 +74,8 @@ export function OscillatorSelectorModal({
 
   const openSettings = (oscillatorId: string) => {
     if (oscillatorId === 'tetherDivergence') {
-      setTetherSettingsOpen(true);
+      // Fixed settings, no panel: the row just toggles the indicator.
+      onToggleOscillator(oscillatorId, !selectedOscillators.has(oscillatorId));
       return;
     }
     const existing = oscillatorConfigs?.[oscillatorId] ?? {};
@@ -153,7 +152,7 @@ export function OscillatorSelectorModal({
                   >
                     <div className="text-sm font-medium text-white flex items-center gap-2">
                       {osc.name}
-                      <Settings className="h-3.5 w-3.5 text-slate-400" />
+                      {osc.id !== 'tetherDivergence' && <Settings className="h-3.5 w-3.5 text-slate-400" />}
                     </div>
                     <p className="text-xs text-slate-400">{osc.description}</p>
                   </button>
@@ -279,11 +278,6 @@ export function OscillatorSelectorModal({
           </div>
         </DialogContent>
       </Dialog>
-
-      <ConnectedTetherDivergenceSettingsModal
-        isOpen={tetherSettingsOpen}
-        onClose={() => setTetherSettingsOpen(false)}
-      />
     </>
   );
 }

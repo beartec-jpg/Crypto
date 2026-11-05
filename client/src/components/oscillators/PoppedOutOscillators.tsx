@@ -70,7 +70,7 @@ const OSCILLATOR_CONFIG = [
   { id: 'mfi', title: 'MFI (14)', storageKey: 'oscillator-mfi' },
   { id: 'klinger', title: 'Klinger (34,55,13)', storageKey: 'oscillator-klinger' },
   { id: 'tideZone', title: 'Tide Zone', storageKey: 'oscillator-tide-zone' },
-  { id: 'tetherDivergence', title: 'Tether Divergence', storageKey: 'oscillator-tether-divergence' },
+  { id: 'tetherDivergence', title: 'Tether Stretch', storageKey: 'oscillator-tether-divergence' },
   { id: 'smartMoney', title: 'Smart Money Tracker', storageKey: 'oscillator-smart-money' },
   { id: 'smcTrendEngine', title: 'SMC Trend Engine', storageKey: 'oscillator-smc-trend-engine' },
 ];

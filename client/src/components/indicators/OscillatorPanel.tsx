@@ -57,7 +57,7 @@ export function OscillatorPanel({
     { name: 'CCI', key: 'cci', free: false },
     { name: 'ADX', key: 'adx', free: false },
     { name: 'Tide Zone', key: 'tideZone', free: false },
-    { name: 'Tether Divergence', key: 'tetherDivergence', free: false },
+    { name: 'Tether Stretch', key: 'tetherDivergence', free: false },
   ] as const;
 
   return (
