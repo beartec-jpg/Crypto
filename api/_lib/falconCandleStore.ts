@@ -22,6 +22,10 @@ export interface FalconCoverageMeta {
   gaps: Array<{ fromTime: number; toTime: number; reason: string }>;
   ringLimitNote: string;
   timeSource: string;
+  timeQuality?: 'canonical_sealed' | 'unavailable' | 'estimated_observation';
+  emptyReasonHint?: string | null;
+  canonicalTipsStored?: number;
+  observationOnlyTipsStored?: number;
 }
 
 let ready: Promise<void> | null = null;
@@ -113,9 +117,10 @@ export async function readCandles(
   }));
   let emptyReason: string | null = null;
   if (!candles.length) {
-    emptyReason = coverage
-      ? 'no_timed_candles_yet'
-      : 'no_ingest_yet';
+    emptyReason = coverage?.emptyReasonHint
+      || (coverage
+        ? (coverage.timeQuality === 'unavailable' ? 'no_canonical_block_time' : 'no_timed_candles_yet')
+        : 'no_ingest_yet');
   }
   return { candles, coverage, emptyReason };
 }

@@ -38,11 +38,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         volume: c.volume,
       })),
       count: candles.length,
-      emptyReason,
+      emptyReason: emptyReason || coverage?.emptyReasonHint || null,
       coverage,
+      timeQuality: coverage?.timeQuality || (candles.length ? 'canonical_sealed' : 'unavailable'),
       quote: 'FPL',
       priceUnit: 'FPL per 1 whole base',
-      note: 'OHLCV built only from fills with explorer-resolved block times. Latest RPC ring is ≤200 fills — not full history.',
+      note:
+        'OHLCV uses explorer.sealed_at only (node tip_sealed_at_ms|last_pack_at_ms). ' +
+        'explorer.observed_at is indexer Date.now() at tip-remember and is NOT used for candles. ' +
+        'Latest RPC ring is ≤200 fills — not full history. No verified timestamps without sealed_at.',
     });
   } catch (err: any) {
     return res.status(502).json({ error: err?.message || 'candle read failed' });

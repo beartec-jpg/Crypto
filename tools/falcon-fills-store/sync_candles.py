@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
-"""Enrich fills with explorer block times, build OHLCV, push to BearTec ingest.
+"""Enrich fills with explorer *canonical* block times, build OHLCV, push ingest.
 
-Time source: https://falcon-fpl.com/api/v1/explorer/blocks (sealed_at preferred,
-else observed_at). Never uses ingestion time as candle time.
+Time provenance (Falcon-faucet-wallet `src/lib/explorer-api/node.ts` + `mappers.ts`):
+  - observed_at = Date.now() when the explorer API first remembered the tip
+    (indexer observation). Retention: "recent tips observed by this API instance".
+  - sealed_at   = node `tip_sealed_at_ms` else `last_pack_at_ms` when > 0 (nullable).
+
+OHLCV uses sealed_at only. observed_at is stored for diagnostics and must never
+silently become candle time. Falcon Cloud `fpl_status` currently exposes neither
+tip_sealed_at_ms nor last_pack_at_ms, so sealed_at is typically null and candles
+remain unavailable until a legitimate seal/pack wall time appears.
 """
 from __future__ import annotations
 
@@ -16,11 +23,13 @@ import urllib.request
 from pathlib import Path
 
 from candle_lib import (
-    INTERVAL_SEC,
+    CANONICAL_OHLCV_SOURCE,
+    OBSERVATION_ONLY_SOURCE,
     TimedFill,
     build_candles,
     coverage_gaps,
-    resolve_block_unix,
+    resolve_observation_unix,
+    resolve_ohlcv_block_unix,
 )
 
 DEFAULT_DB = "/var/lib/falcon-fills-store/fills.sqlite"
@@ -32,12 +41,16 @@ INGEST_URL = os.environ.get(
     "FALCON_BRAIN_INGEST_URL",
     "https://www.beartec.uk/api/crypto/falcon/ingest",
 )
-# Chain-validated scales (fpl_orderBook / explorer Amount.decimals)
 MARKETS = {
     "BTC4": {"pair": "BTC4-FPL", "base_decimals": 8, "price_scale": 100_000_000},
     "USDC": {"pair": "USDC-FPL", "base_decimals": 6, "price_scale": 1_000_000},
 }
 TIMEFRAMES = ("1m", "5m", "15m", "1h")
+
+TIME_SOURCE_NOTE = (
+    "OHLCV uses explorer.sealed_at only (node tip_sealed_at_ms|last_pack_at_ms). "
+    "explorer.observed_at is indexer Date.now() at tip-remember and is NOT used for candles."
+)
 
 
 def connect(db: Path) -> sqlite3.Connection:
@@ -61,7 +74,6 @@ def migrate(conn: sqlite3.Connection) -> None:
         );
         """
     )
-    # additive columns on fills
     cols = {r[1] for r in conn.execute("PRAGMA table_info(fills)").fetchall()}
     if "dup_seq" not in cols:
         conn.execute("ALTER TABLE fills ADD COLUMN dup_seq INTEGER NOT NULL DEFAULT 0")
@@ -69,7 +81,6 @@ def migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE fills ADD COLUMN block_time_source TEXT")
     if "time_status" not in cols:
         conn.execute("ALTER TABLE fills ADD COLUMN time_status TEXT NOT NULL DEFAULT 'untimed'")
-    # Rebuild unique index to include dup_seq (preserve multiplicity)
     conn.execute("DROP INDEX IF EXISTS fills_natural_uid")
     conn.execute(
         """
@@ -80,6 +91,27 @@ def migrate(conn: sqlite3.Connection) -> None:
           dup_seq
         )
         """
+    )
+    # Demote any rows previously timed from observation alone.
+    conn.execute(
+        """
+        UPDATE block_times
+        SET block_unix=NULL,
+            time_source=?
+        WHERE time_source != ? OR (sealed_at IS NULL AND block_unix IS NOT NULL)
+        """,
+        (OBSERVATION_ONLY_SOURCE, CANONICAL_OHLCV_SOURCE),
+    )
+    conn.execute(
+        """
+        UPDATE fills
+        SET block_time_unix=NULL,
+            block_time_source=NULL,
+            time_status='untimed'
+        WHERE time_status='timed'
+          AND (block_time_source IS NULL OR block_time_source != ?)
+        """,
+        (CANONICAL_OHLCV_SOURCE,),
     )
     conn.commit()
 
@@ -92,18 +124,25 @@ def fetch_explorer_blocks() -> list[dict]:
     return list(items or [])
 
 
-def upsert_block_times(conn: sqlite3.Connection, items: list[dict]) -> int:
+def upsert_block_times(conn: sqlite3.Connection, items: list[dict]) -> dict:
     from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    n = 0
+    stored = 0
+    canonical = 0
+    observation_only = 0
     for b in items:
         height = int(b["height"])
         sealed = b.get("sealed_at")
         observed = b.get("observed_at")
-        unix, src = resolve_block_unix(sealed, observed)
-        if unix is None or src is None:
-            continue
+        unix, src = resolve_ohlcv_block_unix(sealed if isinstance(sealed, str) else None)
+        if unix is None:
+            # Persist observation for diagnostics; do not set block_unix for OHLCV.
+            _ou, _ = resolve_observation_unix(observed if isinstance(observed, str) else None)
+            src = OBSERVATION_ONLY_SOURCE
+            observation_only += 1
+        else:
+            canonical += 1
         conn.execute(
             """
             INSERT INTO block_times(height, hash, sealed_at, observed_at, block_unix, time_source, recorded_at)
@@ -112,17 +151,38 @@ def upsert_block_times(conn: sqlite3.Connection, items: list[dict]) -> int:
               hash=excluded.hash,
               sealed_at=COALESCE(excluded.sealed_at, block_times.sealed_at),
               observed_at=COALESCE(excluded.observed_at, block_times.observed_at),
-              block_unix=excluded.block_unix,
+              block_unix=CASE
+                WHEN excluded.time_source=? THEN excluded.block_unix
+                WHEN block_times.time_source=? THEN block_times.block_unix
+                ELSE NULL
+              END,
               time_source=CASE
-                WHEN excluded.time_source='explorer.sealed_at' THEN excluded.time_source
-                ELSE block_times.time_source
+                WHEN excluded.time_source=? THEN excluded.time_source
+                WHEN block_times.time_source=? THEN block_times.time_source
+                ELSE excluded.time_source
               END
             """,
-            (height, b.get("hash"), sealed, observed, unix, src, now),
+            (
+                height,
+                b.get("hash"),
+                sealed,
+                observed,
+                unix,  # may be None for observation-only
+                src,
+                now,
+                CANONICAL_OHLCV_SOURCE,
+                CANONICAL_OHLCV_SOURCE,
+                CANONICAL_OHLCV_SOURCE,
+                CANONICAL_OHLCV_SOURCE,
+            ),
         )
-        n += 1
+        stored += 1
     conn.commit()
-    return n
+    return {
+        "stored": stored,
+        "canonical_sealed": canonical,
+        "observation_only": observation_only,
+    }
 
 
 def enrich_fills(conn: sqlite3.Connection) -> dict:
@@ -131,8 +191,12 @@ def enrich_fills(conn: sqlite3.Connection) -> dict:
         SELECT f.id, f.height, bt.block_unix, bt.time_source
         FROM fills f
         JOIN block_times bt ON bt.height = f.height
-        WHERE f.block_time_unix IS NULL OR f.time_status != 'timed'
-        """
+        WHERE bt.time_source = ?
+          AND bt.block_unix IS NOT NULL
+          AND (f.block_time_unix IS NULL OR f.time_status != 'timed'
+               OR ifnull(f.block_time_source,'') != ?)
+        """,
+        (CANONICAL_OHLCV_SOURCE, CANONICAL_OHLCV_SOURCE),
     ).fetchall()
     for r in rows:
         conn.execute(
@@ -157,9 +221,10 @@ def load_timed_fills(conn: sqlite3.Connection, asset: str) -> list[TimedFill]:
                taker, maker, taker_order, maker_order, ifnull(dup_seq,0) AS dup_seq
         FROM fills
         WHERE asset=? AND time_status='timed' AND block_time_unix IS NOT NULL
+          AND block_time_source=?
         ORDER BY block_time_unix ASC, height ASC, dup_seq ASC
         """,
-        (asset,),
+        (asset, CANONICAL_OHLCV_SOURCE),
     ).fetchall()
     out: list[TimedFill] = []
     for r in rows:
@@ -183,7 +248,7 @@ def load_timed_fills(conn: sqlite3.Connection, asset: str) -> list[TimedFill]:
                 base_units=base_units,
                 side=str(r["side"]),
                 unix=int(r["block_time_unix"]),
-                time_source=str(r["block_time_source"] or "explorer.observed_at"),
+                time_source=CANONICAL_OHLCV_SOURCE,
                 natural_key=nat,
                 dup_seq=int(r["dup_seq"] or 0),
             )
@@ -220,17 +285,28 @@ def main() -> int:
     token = os.environ.get("FALCON_BRAIN_INGEST_TOKEN", "").strip()
     conn = connect(db)
     migrate(conn)
-    summary: dict = {"blocks": 0, "enriched": 0, "pushes": []}
+    summary: dict = {"blocks": {}, "enriched": 0, "pushes": []}
     try:
         items = fetch_explorer_blocks()
         summary["blocks"] = upsert_block_times(conn, items)
         summary["enriched"] = enrich_fills(conn)["enriched"]
+        tip_stats = conn.execute(
+            """
+            SELECT
+              SUM(CASE WHEN time_source=? THEN 1 ELSE 0 END) AS canonical,
+              SUM(CASE WHEN time_source=? THEN 1 ELSE 0 END) AS observation_only,
+              COUNT(*) AS total
+            FROM block_times
+            """,
+            (CANONICAL_OHLCV_SOURCE, OBSERVATION_ONLY_SOURCE),
+        ).fetchone()
         for asset, meta in MARKETS.items():
             timed = load_timed_fills(conn, asset)
             untimed = conn.execute(
                 "SELECT COUNT(*) c FROM fills WHERE asset=? AND time_status!='timed'",
                 (asset,),
             ).fetchone()["c"]
+            time_quality = "canonical_sealed" if timed else "unavailable"
             for tf in TIMEFRAMES:
                 candles = build_candles(timed, tf)
                 gaps = coverage_gaps(candles, tf)
@@ -244,9 +320,18 @@ def main() -> int:
                     "lastTime": candles[-1]["time"] if candles else None,
                     "gaps": gaps,
                     "ringLimitNote": "RPC fpl_fills returns at most RECENT_FILLS=200; not full history",
-                    "timeSource": "explorer.sealed_at|explorer.observed_at (no ingestion-time)",
+                    "timeSource": TIME_SOURCE_NOTE,
+                    "timeQuality": time_quality,
+                    "canonicalTipsStored": int(tip_stats["canonical"] or 0),
+                    "observationOnlyTipsStored": int(tip_stats["observation_only"] or 0),
+                    "emptyReasonHint": None
+                    if candles
+                    else (
+                        "no_canonical_block_time"
+                        if int(tip_stats["canonical"] or 0) == 0
+                        else "no_timed_candles_yet"
+                    ),
                 }
-                # Always save coverage locally
                 conn.execute(
                     """
                     CREATE TABLE IF NOT EXISTS candle_export_meta (
@@ -273,14 +358,17 @@ def main() -> int:
                 )
                 conn.commit()
                 if not token:
-                    summary["pushes"].append({"pair": meta["pair"], "tf": tf, "skipped": "no_token", "candles": len(candles)})
+                    summary["pushes"].append(
+                        {"pair": meta["pair"], "tf": tf, "skipped": "no_token", "candles": len(candles)}
+                    )
                     continue
                 result = push_candles(meta["pair"], tf, candles, coverage, token)
-                summary["pushes"].append({"pair": meta["pair"], "tf": tf, "candles": len(candles), **result})
+                summary["pushes"].append(
+                    {"pair": meta["pair"], "tf": tf, "candles": len(candles), "timeQuality": time_quality, **result}
+                )
     finally:
         conn.close()
     print(json.dumps(summary, separators=(",", ":")))
-    # Soft-fail ingest (404 until BearTec PR is deployed). Collector must stay healthy.
     return 0
 
 

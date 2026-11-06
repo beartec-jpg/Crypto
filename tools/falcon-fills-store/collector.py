@@ -13,8 +13,9 @@ Notes:
   - If two legitimate fills ever share every field including both order ids, they would collapse;
     raw poll snapshots are retained (bounded) so that case can be audited. No synthetic IDs.
 
-Block timestamps: fpl_fills has no time field. block_time_unix is left NULL until a validated
-height→time source exists. first_seen_at is ingestion time only — never use it as candle time.
+Block timestamps: fpl_fills has no time field. block_time_unix is left NULL until explorer
+sealed_at (node tip_sealed_at_ms|last_pack_at_ms) exists — see sync_candles.py.
+first_seen_at and explorer observed_at are observation/ingestion only — never candle time.
 """
 from __future__ import annotations
 

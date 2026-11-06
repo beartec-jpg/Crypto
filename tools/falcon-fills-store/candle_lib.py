@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
-"""OHLCV from timed Falcon fills + explorer block-time helpers."""
+"""OHLCV from timed Falcon fills + explorer block-time helpers.
+
+Provenance (Falcon-faucet-wallet explorer-api):
+  observed_at = Date.now() when the explorer API instance first remembered the tip
+                (indexer observation / arrival). NOT a chain header timestamp.
+  sealed_at   = node status tip_sealed_at_ms, else last_pack_at_ms, when > 0
+                (nullable). Closest public seal/pack wall time the explorer exposes.
+
+OHLCV bucketing uses sealed_at only. observed_at may be stored for diagnostics
+but must never silently drive candle times.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Iterable
-
 
 INTERVAL_SEC = {
     "1m": 60,
@@ -16,6 +25,10 @@ INTERVAL_SEC = {
     "4h": 14400,
     "1d": 86400,
 }
+
+# Only this source may drive OHLCV / time_status=timed.
+CANONICAL_OHLCV_SOURCE = "explorer.sealed_at"
+OBSERVATION_ONLY_SOURCE = "explorer.observed_at"
 
 
 def parse_iso_to_unix(iso: str | None) -> int | None:
@@ -33,15 +46,30 @@ def parse_iso_to_unix(iso: str | None) -> int | None:
     return int(dt.timestamp())
 
 
-def resolve_block_unix(sealed_at: str | None, observed_at: str | None) -> tuple[int | None, str | None]:
-    """Prefer explorer sealed_at; else observed_at. Never invent."""
+def resolve_ohlcv_block_unix(sealed_at: str | None) -> tuple[int | None, str | None]:
+    """Canonical OHLCV time: explorer sealed_at only. Never observed_at."""
     u = parse_iso_to_unix(sealed_at)
     if u is not None:
-        return u, "explorer.sealed_at"
+        return u, CANONICAL_OHLCV_SOURCE
+    return None, None
+
+
+def resolve_observation_unix(observed_at: str | None) -> tuple[int | None, str | None]:
+    """Indexer observation time (diagnostics only — not for OHLCV)."""
     u = parse_iso_to_unix(observed_at)
     if u is not None:
-        return u, "explorer.observed_at"
+        return u, OBSERVATION_ONLY_SOURCE
     return None, None
+
+
+def resolve_block_unix(sealed_at: str | None, observed_at: str | None) -> tuple[int | None, str | None]:
+    """Backward-compatible name: OHLCV resolution = sealed_at only.
+
+    observed_at is intentionally ignored for return values (kept in signature so
+    callers that still pass it do not accidentally regain observation timing).
+    """
+    _ = observed_at
+    return resolve_ohlcv_block_unix(sealed_at)
 
 
 def bucket_start(unix_sec: int, interval: str) -> int:
@@ -76,8 +104,10 @@ def assign_dup_seq(fills: list[dict[str, Any]], key_fn) -> list[tuple[dict[str, 
 def build_candles(fills: Iterable[TimedFill], interval: str) -> list[dict[str, Any]]:
     if interval not in INTERVAL_SEC:
         raise ValueError(f"unsupported interval {interval}")
+    # Refuse observation-timed fills even if a caller mis-tags them.
+    safe = [f for f in fills if f.time_source == CANONICAL_OHLCV_SOURCE]
     buckets: dict[int, list[TimedFill]] = {}
-    for f in fills:
+    for f in safe:
         b = bucket_start(f.unix, interval)
         buckets.setdefault(b, []).append(f)
     candles: list[dict[str, Any]] = []
