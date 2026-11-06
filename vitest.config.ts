@@ -49,6 +49,7 @@ export default defineConfig({
         'client/src/lib/cryptoAiDeepJob.ts',
         'api/_lib/deepDiveJobBudget.ts',
         'api/_lib/deepDiveJobs.ts',
+        'api/_lib/falconCloudClient.ts',
         'client/src/lib/watchlistHints.ts',
       ],
       // Exclude patterns
@@ -61,7 +62,7 @@ export default defineConfig({
     },
     
     // Test file patterns
-    include: ['client/src/**/*.{test,spec}.{ts,tsx}'],
+    include: ['client/src/**/*.{test,spec}.{ts,tsx}', 'api/_lib/**/*.test.ts'],
     
     // Exclude patterns
     exclude: ['node_modules', 'dist', 'client/dist', '.git'],

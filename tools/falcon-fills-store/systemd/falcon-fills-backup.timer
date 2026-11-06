@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily backup timer for Falcon fills SQLite
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+Unit=falcon-fills-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,33 @@
+[Unit]
+Description=Falcon Cloud fills collector (SQLite on beartec-brain)
+Documentation=file:///usr/local/share/falcon-fills-store/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=falcon-fills
+Group=falcon-fills
+WorkingDirectory=/var/lib/falcon-fills-store
+EnvironmentFile=-/etc/falcon-fills-store/env
+ExecStart=/usr/bin/python3 /usr/local/lib/falcon-fills-store/collector.py --db /var/lib/falcon-fills-store/fills.sqlite
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/falcon-fills-store
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictRealtime=true
+LockPersonality=true
+MemoryMax=128M
+CPUQuota=10%
+# Do not expose any listen socket
+
+[Install]
+WantedBy=multi-user.target

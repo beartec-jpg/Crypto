@@ -2880,6 +2880,32 @@ const requireCryptoAuth: RequestHandler = async (req: Request, res: Response, ne
     }
   });
 
+  // Falcon Cloud (server-only; requires FALCON_CLOUD_API_KEY)
+  app.get("/api/crypto/falcon/status", async (req, res) => {
+    const handler = (await import("../api/crypto/falcon/status")).default;
+    await handler(req as any, res as any);
+  });
+  app.options("/api/crypto/falcon/status", async (req, res) => {
+    const handler = (await import("../api/crypto/falcon/status")).default;
+    await handler(req as any, res as any);
+  });
+  app.get("/api/crypto/falcon/orderbook", async (req, res) => {
+    const handler = (await import("../api/crypto/falcon/orderbook")).default;
+    await handler(req as any, res as any);
+  });
+  app.options("/api/crypto/falcon/orderbook", async (req, res) => {
+    const handler = (await import("../api/crypto/falcon/orderbook")).default;
+    await handler(req as any, res as any);
+  });
+  app.get("/api/crypto/falcon/fills", async (req, res) => {
+    const handler = (await import("../api/crypto/falcon/fills")).default;
+    await handler(req as any, res as any);
+  });
+  app.options("/api/crypto/falcon/fills", async (req, res) => {
+    const handler = (await import("../api/crypto/falcon/fills")).default;
+    await handler(req as any, res as any);
+  });
+
   app.get("/api/crypto/usdt-dominance", async (req, res) => {
     const handler = (await import("../api/crypto/usdt-dominance")).default;
     await handler(req as any, res as any);

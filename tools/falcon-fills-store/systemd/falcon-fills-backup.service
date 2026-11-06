@@ -1,0 +1,16 @@
+[Unit]
+Description=SQLite backup for Falcon fills store
+After=falcon-fills-store.service
+
+[Service]
+Type=oneshot
+User=falcon-fills
+Group=falcon-fills
+EnvironmentFile=-/etc/falcon-fills-store/env
+ExecStart=/usr/local/lib/falcon-fills-store/backup.sh
+Nice=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/falcon-fills-store
