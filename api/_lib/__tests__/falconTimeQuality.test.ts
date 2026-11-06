@@ -7,6 +7,7 @@ import {
   decideCandleIngest,
   normalizeTimeQuality,
   normalizeTimeSource,
+  parseFalconTimeframe,
   presentFalconCandles,
   type FalconCandleRow,
   type FalconCoverageMeta,
@@ -200,5 +201,21 @@ describe('falcon time honesty', () => {
     expect(body.timeQuality).toBe('unavailable');
     expect(body.emptyReason).toBe('verified_utc_unavailable');
     expect(body.coverage?.untimedFills).toBe(8);
+  });
+});
+
+describe('parseFalconTimeframe', () => {
+  it('defaults a missing value and rejects 1M and other unsupported tokens', () => {
+    expect(parseFalconTimeframe(undefined)).toBe('5m');
+    expect(parseFalconTimeframe('')).toBe('5m');
+    expect(parseFalconTimeframe('1m')).toBe('1m');
+    expect(parseFalconTimeframe('5m')).toBe('5m');
+    expect(parseFalconTimeframe('15m')).toBe('15m');
+    expect(parseFalconTimeframe('1h')).toBe('1h');
+    expect(parseFalconTimeframe('1M')).toBeNull();
+    expect(parseFalconTimeframe('1H')).toBeNull();
+    expect(parseFalconTimeframe('4h')).toBeNull();
+    expect(parseFalconTimeframe('1d')).toBeNull();
+    expect(parseFalconTimeframe('1w')).toBeNull();
   });
 });

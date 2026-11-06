@@ -16,6 +16,9 @@ Notes:
 Block timestamps: fpl_fills has no time field. block_time_unix stays NULL.
 Physics ms (tip_sealed_at_ms|last_pack_at_ms|sealed_at_ms) is not wall-clock UTC.
 first_seen_at and explorer observed_at are observation only — never candle time.
+Live RPC windows are newest-first. collect_pos is first-seen collector order
+after reversing that window — not protocol in-block chronology. dup_seq is
+multiplicity of identical natural keys, not trade order.
 See sync_candles.py. Verified UTC candles are not enabled.
 """
 from __future__ import annotations
@@ -32,7 +35,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from candle_lib import assign_dup_seq
+from candle_lib import assign_window_positions
 
 RPC_URL = os.environ.get("FALCON_CLOUD_RPC_URL", "https://rpc.falcon-fpl.com/v1/rpc")
 DEFAULT_PAIRS = ("BTC4", "USDC")  # allowlisted known markets only
@@ -187,6 +190,8 @@ def migrate(conn: sqlite3.Connection) -> None:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(fills)").fetchall()}
     if "dup_seq" not in cols:
         conn.execute("ALTER TABLE fills ADD COLUMN dup_seq INTEGER NOT NULL DEFAULT 0")
+    if "collect_pos" not in cols:
+        conn.execute("ALTER TABLE fills ADD COLUMN collect_pos INTEGER NOT NULL DEFAULT 0")
     if "block_time_source" not in cols:
         conn.execute("ALTER TABLE fills ADD COLUMN block_time_source TEXT")
     if "time_status" not in cols:
@@ -407,16 +412,23 @@ def poll_pair(
                 raw.get("taker"), raw.get("maker"),
                 raw.get("taker_order"), raw.get("maker_order"),
             )
-        sequenced = assign_dup_seq([r for r in fills if isinstance(r, dict)], nat_key)
-        for raw, dup_seq in sequenced:
+        window = [r for r in fills if isinstance(r, dict)]
+        sequenced = assign_window_positions(window, nat_key)
+        next_pos_row = conn.execute(
+            "SELECT ifnull(MAX(collect_pos), -1) AS m FROM fills"
+        ).fetchone()
+        next_pos = int(next_pos_row["m"]) + 1
+        for raw, dup_seq, window_pos in sequenced:
             f = normalize_fill(raw)
             heights.append(int(f["height"]))
+            collect_pos = next_pos + window_pos
             cur = conn.execute(
                 """
                 INSERT OR IGNORE INTO fills(
                   height, asset, side, price, base, quote, taker, maker,
-                  taker_order, maker_order, raw_json, first_seen_at, block_time_unix, dup_seq
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+                  taker_order, maker_order, raw_json, first_seen_at, block_time_unix,
+                  dup_seq, collect_pos
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
                 """,
                 (
                     f["height"],
@@ -432,6 +444,7 @@ def poll_pair(
                     f["raw_json"],
                     started,
                     dup_seq,
+                    collect_pos,
                 ),
             )
             if cur.rowcount == 1:

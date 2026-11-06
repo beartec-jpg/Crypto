@@ -24,6 +24,7 @@ import { useHTFDataCache } from '@/hooks/useHTFDataCache';
 
 // Existing hooks
 import { useCandleData } from '@/hooks/useCandleData';
+import { falconSafeTimeframe, isFalconCandleTimeframe, isFalconTicker } from '@/lib/tickerUtils';
 import { useOscillatorData } from '@/hooks/useOscillatorData';
 import { useDrawingsPersistence } from '@/hooks/useDrawingsPersistence';
 import { useIndicatorState } from '@/hooks/useIndicatorState';
@@ -239,6 +240,11 @@ export function ChartFullscreenPage({
   // Core state
   const [symbol, setSymbol] = useState(initialSymbol);
   const [timeframe, setTimeframe] = useState(initialTimeframe);
+  useEffect(() => {
+    if (isFalconTicker(symbol) && !isFalconCandleTimeframe(timeframe)) {
+      setTimeframe(falconSafeTimeframe(timeframe));
+    }
+  }, [symbol, timeframe]);
 
   // Keep the URL + local last-view in sync so refresh stays on BTC/1D (not the ticker
   // you originally opened the chart with).

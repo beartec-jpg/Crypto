@@ -16,6 +16,24 @@ import { normalizeFalconSymbol } from './falconMarkets.js';
 
 export const VERIFIED_UTC_CANDLES_ENABLED = false;
 
+/** Exact tokens accepted by GET/POST candle routes. Do not lowercase first: Elliott sends 1M for 1 Month. */
+export const FALCON_CANDLE_TIMEFRAMES = ['1m', '5m', '15m', '1h'] as const;
+export type FalconCandleTimeframe = (typeof FALCON_CANDLE_TIMEFRAMES)[number];
+
+export function parseFalconTimeframe(
+  raw: unknown,
+  fallback: FalconCandleTimeframe | null = '5m',
+): FalconCandleTimeframe | null {
+  if (raw === undefined || raw === null || raw === '') {
+    return fallback;
+  }
+  const token = String(raw).trim();
+  if (!token) return fallback;
+  return (FALCON_CANDLE_TIMEFRAMES as readonly string[]).includes(token)
+    ? (token as FalconCandleTimeframe)
+    : null;
+}
+
 export const HONEST_CANDLE_NOTE =
   'Verified UTC candles are not enabled. Chart mode has not been selected. ' +
   'sealed_at_ms / tip_sealed_at_ms are chain physics and are never presented as wall-clock UTC. ' +
@@ -49,6 +67,7 @@ export interface FalconCandleRow {
 
 export interface FalconCoverageMeta {
   pair: string;
+  timeframe?: string;
   timedFills: number;
   untimedFills: number;
   firstTimedHeight: number | null;

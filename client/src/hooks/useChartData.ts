@@ -230,6 +230,33 @@ export function useChartData({ symbol, interval, useMultiExchange }: UseChartDat
     fetchInitialData();
   }, [fetchInitialData]);
 
+  useEffect(() => {
+    if (!isFalconTicker(symbol)) return undefined;
+    const id = window.setInterval(() => {
+      void (async () => {
+        try {
+          const resp = await fetch(
+            `/api/crypto/falcon/candles?pair=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(interval)}&limit=1000`,
+          );
+          if (!resp.ok) return;
+          const payload = await resp.json();
+          const list = Array.isArray(payload.candles) ? payload.candles : [];
+          setCandles(list.map((c: any) => ({
+            time: Number(c.time),
+            open: Number(c.open),
+            high: Number(c.high),
+            low: Number(c.low),
+            close: Number(c.close),
+            volume: Number(c.volume ?? 0),
+          })));
+        } catch {
+          /* keep the last Falcon bars */
+        }
+      })();
+    }, 10000);
+    return () => window.clearInterval(id);
+  }, [symbol, interval]);
+
   return {
     candles,
     setCandles,

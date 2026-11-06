@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from collector import migrate as migrate_fills
-from sync_candles import connect, enrich_fills, exports_for_asset, migrate, upsert_block_times
+from sync_candles import connect, enrich_fills, exports_for_asset, migrate, split_ingest_candle_batches, upsert_block_times
 
 
 def _insert_fill(conn, asset: str, height: int) -> None:
@@ -179,6 +179,45 @@ class TestSyncHonesty(unittest.TestCase):
         self.assertEqual(btc["candles"], [])
         self.assertNotEqual(usdc["coverage"]["timeQuality"], btc["coverage"]["timeQuality"])
         self.assertEqual(self.conn.execute("SELECT COUNT(*) c FROM fills").fetchone()["c"], 2)
+
+    def test_observed_refresh_keeps_stored_physics_and_reclassifies(self):
+        upsert_block_times(
+            self.conn,
+            [{
+                "height": 30,
+                "hash": "abc",
+                "sealed_at_ms": 42,
+                "sealed_at_quality": "chain_physics",
+                "sealed_utc_quality": "unavailable",
+                "sealed_utc_source": "none",
+                "sealed_at": None,
+                "observed_at": None,
+            }],
+        )
+        upsert_block_times(
+            self.conn,
+            [{
+                "height": 30,
+                "hash": "abc",
+                "sealed_at": None,
+                "observed_at": "2026-11-06T02:00:00Z",
+            }],
+        )
+        row = self.conn.execute("SELECT * FROM block_times WHERE height=30").fetchone()
+        self.assertEqual(row["sealed_at_ms"], 42)
+        self.assertEqual(row["time_quality"], "chain_physics")
+        self.assertEqual(row["time_source"], "chain_physics")
+        self.assertEqual(row["observed_at"], "2026-11-06T02:00:00Z")
+        self.assertIsNone(row["block_unix"])
+        self.assertEqual(row["verified_utc"], 0)
+
+    def test_ingest_batches_keep_empty_coverage_only(self):
+        self.assertEqual(split_ingest_candle_batches([]), [[]])
+        self.assertEqual(len(split_ingest_candle_batches([{"time": 1}] * 5000)), 1)
+        batches = split_ingest_candle_batches([{"time": i} for i in range(5001)])
+        self.assertEqual(len(batches), 2)
+        self.assertEqual(len(batches[0]), 5000)
+        self.assertEqual(len(batches[1]), 1)
 
 
 if __name__ == "__main__":

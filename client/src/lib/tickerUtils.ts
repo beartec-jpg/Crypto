@@ -116,3 +116,15 @@ export function getSortedTickers(): Ticker[] {
 }
 
 export const ALL_TICKERS = DEFAULT_TICKERS;
+
+/** Exact Falcon candle intervals. Do not lowercase first: Elliott uses 1M for 1 Month. */
+export const FALCON_CANDLE_TIMEFRAMES = ['1m', '5m', '15m', '1h'] as const;
+export type FalconCandleTimeframe = (typeof FALCON_CANDLE_TIMEFRAMES)[number];
+
+export function isFalconCandleTimeframe(value: string): value is FalconCandleTimeframe {
+  return (FALCON_CANDLE_TIMEFRAMES as readonly string[]).includes(value);
+}
+
+export function falconSafeTimeframe(value: string, fallback: FalconCandleTimeframe = '15m'): FalconCandleTimeframe {
+  return isFalconCandleTimeframe(value) ? value : fallback;
+}

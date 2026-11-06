@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { Bias } from '@/types/candle';
 import { useIndicatorsData } from '@/hooks/useIndicatorsData';
+import { falconSafeTimeframe, isFalconTicker } from '@/lib/tickerUtils';
 import { useOscillatorPreferences, type OscillatorId, VALID_OSCILLATOR_IDS } from '@/hooks/useOscillatorPreferences';
 import { Link, useLocation } from 'wouter';
 
@@ -84,7 +85,9 @@ export default function CryptoIndicatorsClean() {
     watchlist: string[];
   }) => {
     setSelectedSymbol(context.symbol);
-    setSelectedTimeframe(context.timeframe);
+    setSelectedTimeframe(
+      isFalconTicker(context.symbol) ? falconSafeTimeframe(context.timeframe) : context.timeframe,
+    );
     setWatchlistTickers(context.watchlist.filter(Boolean));
   }, []);
 

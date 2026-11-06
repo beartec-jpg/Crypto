@@ -22,6 +22,7 @@ from candle_lib import (
     resolve_observation_unix,
     resolve_ohlcv_block_unix,
     assign_dup_seq,
+    assign_window_positions,
 )
 
 FIXTURE = json.loads((Path(__file__).parent / "fixtures" / "time_honesty.json").read_text())
@@ -166,6 +167,26 @@ class TestCandles(unittest.TestCase):
 
     def test_untimed_excluded(self):
         self.assertEqual(build_candles([], "5m"), [])
+
+
+class TestCollectPos(unittest.TestCase):
+    def test_newest_first_window_is_reversed(self):
+        window = [{"id": "newest"}, {"id": "mid"}, {"id": "oldest"}]
+        out = assign_window_positions(window, lambda fill: fill["id"])
+        self.assertEqual([fill["id"] for fill, _, _ in out], ["oldest", "mid", "newest"])
+        self.assertEqual([pos for _, _, pos in out], [0, 1, 2])
+
+    def test_ohlc_uses_collect_pos_not_dup_seq(self):
+        fills = [
+            TimedFill(1, 12.0, 1.0, "buy", 120, TIME_SOURCE_VERIFIED_UTC, (1,), 0, collect_pos=1),
+            TimedFill(1, 10.0, 1.0, "buy", 120, TIME_SOURCE_VERIFIED_UTC, (2,), 0, collect_pos=0),
+        ]
+        candles = aggregate_timed_fills(fills, "1m")
+        self.assertEqual(len(candles), 1)
+        self.assertEqual(candles[0]["open"], 10.0)
+        self.assertEqual(candles[0]["close"], 12.0)
+        self.assertEqual(candles[0]["high"], 12.0)
+        self.assertEqual(candles[0]["low"], 10.0)
 
 
 if __name__ == "__main__":

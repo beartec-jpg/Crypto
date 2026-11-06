@@ -57,6 +57,7 @@ MARKETS = {
     "BTC4": {"pair": "BTC4-FPL", "base_decimals": 8, "price_scale": 100_000_000},
 }
 TIMEFRAMES = ("1m", "5m", "15m", "1h")
+INGEST_CANDLE_LIMIT = 5000
 RING_LIMIT_NOTE = (
     "RPC fpl_fills returns at most RECENT_FILLS=200; not full history. "
     "Fills without admitted verified UTC stay untimed and are not placed on a UTC axis."
@@ -110,6 +111,8 @@ def migrate(conn: sqlite3.Connection) -> None:
     fill_cols = _table_cols(conn, "fills")
     if "dup_seq" not in fill_cols:
         conn.execute("ALTER TABLE fills ADD COLUMN dup_seq INTEGER NOT NULL DEFAULT 0")
+    if "collect_pos" not in fill_cols:
+        conn.execute("ALTER TABLE fills ADD COLUMN collect_pos INTEGER NOT NULL DEFAULT 0")
     if "block_time_source" not in fill_cols:
         conn.execute("ALTER TABLE fills ADD COLUMN block_time_source TEXT")
     if "time_status" not in fill_cols:
@@ -126,6 +129,11 @@ def migrate(conn: sqlite3.Connection) -> None:
         """
     )
     _reclassify_block_times(conn)
+    _untimed_non_verified_fills(conn)
+    conn.commit()
+
+
+def _untimed_non_verified_fills(conn: sqlite3.Connection) -> None:
     # Anything not admitted as verified_utc loses its candle clock, including
     # rows previously timed from explorer.sealed_at.
     conn.execute(
@@ -139,7 +147,6 @@ def migrate(conn: sqlite3.Connection) -> None:
         """,
         (TIME_SOURCE_VERIFIED_UTC,),
     )
-    conn.commit()
 
 
 def _row_to_raw(row: sqlite3.Row) -> dict[str, Any]:
@@ -224,8 +231,10 @@ def upsert_block_times(conn: sqlite3.Connection, items: list[dict]) -> dict[str,
         counts[classified.time_quality] = counts.get(classified.time_quality, 0) + 1
         sealed = block.get("sealed_at") if isinstance(block.get("sealed_at"), str) else None
         observed = block.get("observed_at") if isinstance(block.get("observed_at"), str) else None
-        # Incoming values replace the previous row, including NULL sealed_at.
-        # Do not COALESCE a legacy physics ISO back over an honest null.
+        # sealed_at ISO takes the incoming value, including NULL (honest null
+        # over a leftover physics ISO). Diagnostic ms/utc fields COALESCE so an
+        # observer-only refresh cannot wipe stored physics or utc candidates.
+        # Labels are then reclassified from the merged stored row.
         conn.execute(
             """
             INSERT INTO block_times(
@@ -236,23 +245,23 @@ def upsert_block_times(conn: sqlite3.Connection, items: list[dict]) -> dict[str,
             )
             VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
             ON CONFLICT(height) DO UPDATE SET
-              hash=excluded.hash,
+              hash=COALESCE(excluded.hash, block_times.hash),
               sealed_at=excluded.sealed_at,
-              observed_at=excluded.observed_at,
+              observed_at=COALESCE(excluded.observed_at, block_times.observed_at),
               block_unix=NULL,
               time_source=excluded.time_source,
               recorded_at=excluded.recorded_at,
-              sealed_at_ms=excluded.sealed_at_ms,
-              sealed_at_quality=excluded.sealed_at_quality,
-              sealed_utc=excluded.sealed_utc,
-              sealed_utc_ms=excluded.sealed_utc_ms,
-              sealed_utc_quality=excluded.sealed_utc_quality,
-              sealed_utc_source=excluded.sealed_utc_source,
+              sealed_at_ms=COALESCE(excluded.sealed_at_ms, block_times.sealed_at_ms),
+              sealed_at_quality=COALESCE(excluded.sealed_at_quality, block_times.sealed_at_quality),
+              sealed_utc=COALESCE(excluded.sealed_utc, block_times.sealed_utc),
+              sealed_utc_ms=COALESCE(excluded.sealed_utc_ms, block_times.sealed_utc_ms),
+              sealed_utc_quality=COALESCE(excluded.sealed_utc_quality, block_times.sealed_utc_quality),
+              sealed_utc_source=COALESCE(excluded.sealed_utc_source, block_times.sealed_utc_source),
               time_quality=excluded.time_quality,
               verified_utc=0,
               pre_activation=excluded.pre_activation,
               classify_reason=excluded.classify_reason,
-              observed_unix=excluded.observed_unix
+              observed_unix=COALESCE(excluded.observed_unix, block_times.observed_unix)
             """,
             (
                 height,
@@ -273,7 +282,13 @@ def upsert_block_times(conn: sqlite3.Connection, items: list[dict]) -> dict[str,
                 classified.observer_unix,
             ),
         )
+        stored_row = conn.execute(
+            "SELECT * FROM block_times WHERE height=?", (height,)
+        ).fetchone()
+        if stored_row:
+            _apply_classification(conn, height, classify_seal_time(_row_to_raw(stored_row)))
         stored += 1
+    _untimed_non_verified_fills(conn)
     conn.commit()
     return {
         "stored": stored,
@@ -364,11 +379,12 @@ def load_timed_fills(conn: sqlite3.Connection, asset: str) -> list[TimedFill]:
     rows = conn.execute(
         """
         SELECT height, price, base, side, block_time_unix, block_time_source,
-               taker, maker, taker_order, maker_order, ifnull(dup_seq, 0) AS dup_seq
+               taker, maker, taker_order, maker_order, ifnull(dup_seq, 0) AS dup_seq,
+               ifnull(collect_pos, 0) AS collect_pos
         FROM fills
         WHERE asset=? AND time_status='timed' AND block_time_unix IS NOT NULL
           AND block_time_source=?
-        ORDER BY block_time_unix ASC, height ASC, dup_seq ASC
+        ORDER BY block_time_unix ASC, height ASC, collect_pos ASC, dup_seq ASC
         """,
         (asset, TIME_SOURCE_VERIFIED_UTC),
     ).fetchall()
@@ -397,6 +413,7 @@ def load_timed_fills(conn: sqlite3.Connection, asset: str) -> list[TimedFill]:
                 time_source=TIME_SOURCE_VERIFIED_UTC,
                 natural_key=natural,
                 dup_seq=int(row["dup_seq"] or 0),
+                collect_pos=int(row["collect_pos"] or 0),
             )
         )
     return out
@@ -422,6 +439,7 @@ def exports_for_asset(conn: sqlite3.Connection, asset: str) -> list[dict[str, An
         gaps = coverage_gaps(candles, timeframe) if candles else []
         coverage = {
             "pair": meta["pair"],
+            "timeframe": timeframe,
             "timedFills": len(timed),
             "untimedFills": int(untimed),
             "firstTimedHeight": timed[0].height if timed else None,
@@ -446,28 +464,51 @@ def exports_for_asset(conn: sqlite3.Connection, asset: str) -> list[dict[str, An
     return payloads
 
 
+def split_ingest_candle_batches(
+    candles: list[dict],
+    limit: int = INGEST_CANDLE_LIMIT,
+) -> list[list[dict]]:
+    """Split candle exports into ingest-sized batches. Empty stays coverage-only."""
+    if limit <= 0:
+        raise ValueError("limit must be positive")
+    rows = list(candles or [])
+    if not rows:
+        return [[]]
+    return [rows[i : i + limit] for i in range(0, len(rows), limit)]
+
+
 def push_candles(pair: str, timeframe: str, candles: list[dict], coverage: dict, token: str) -> dict:
-    body = json.dumps(
-        {"pair": pair, "timeframe": timeframe, "candles": candles, "coverage": coverage}
-    ).encode()
-    req = urllib.request.Request(
-        INGEST_URL,
-        data=body,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return {"ok": True, "status": resp.status, "body": json.loads(resp.read().decode())}
-    except urllib.error.HTTPError as err:
-        raw = err.read().decode()[:200]
-        return {"ok": False, "status": err.code, "error": raw}
-    except Exception as err:
-        return {"ok": False, "status": None, "error": f"{type(err).__name__}:{err}"}
+    last: dict = {"ok": True, "status": None, "batches": 0}
+    stamped = dict(coverage)
+    stamped["timeframe"] = timeframe
+    for batch in split_ingest_candle_batches(list(candles or [])):
+        body = json.dumps(
+            {"pair": pair, "timeframe": timeframe, "candles": batch, "coverage": stamped}
+        ).encode()
+        req = urllib.request.Request(
+            INGEST_URL,
+            data=body,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                last = {
+                    "ok": True,
+                    "status": resp.status,
+                    "body": json.loads(resp.read().decode()),
+                    "batches": int(last.get("batches") or 0) + 1,
+                }
+        except urllib.error.HTTPError as err:
+            raw = err.read().decode()[:200]
+            return {"ok": False, "status": err.code, "error": raw, "batches": int(last.get("batches") or 0)}
+        except Exception as err:
+            return {"ok": False, "status": None, "error": f"{type(err).__name__}:{err}", "batches": int(last.get("batches") or 0)}
+    return last
 
 
 def _store_export_meta(conn: sqlite3.Connection, coverage: dict, candle_count: int) -> None:
@@ -526,7 +567,7 @@ def main() -> int:
                     )
                     continue
                 result = push_candles(
-                    meta["pair"], payload["timeframe"], payload["candles"], payload["coverage"], token
+                    meta["pair"], payload["timeframe"], payload["candles"], coverage, token
                 )
                 summary["pushes"].append(
                     {

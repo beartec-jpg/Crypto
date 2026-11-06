@@ -1,5 +1,6 @@
 // Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useMemo } from 'react';
+import { isFalconTicker } from '@/lib/tickerUtils';
 import { useCandleData } from './useCandleData';
 import { generateMockCVDData } from '@/utils/mockCVDData';
 import { useGDSMarketMetrics } from '@/hooks/indicators/useGDSMarketMetrics';
@@ -40,7 +41,7 @@ export function useIndicatorsData({
   } = useGDSMarketMetrics({
     symbol,
     timeframe,
-    enabled: hasSymbol,
+    enabled: hasSymbol && !isFalconTicker(symbol),
   });
 
   // Generate mock CVD data when candles update

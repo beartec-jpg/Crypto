@@ -508,6 +508,7 @@ class TimedFill:
     time_source: str
     natural_key: tuple
     dup_seq: int
+    collect_pos: int = 0
 
 
 def assign_dup_seq(fills: list[dict[str, Any]], key_fn) -> list[tuple[dict[str, Any], int]]:
@@ -520,6 +521,22 @@ def assign_dup_seq(fills: list[dict[str, Any]], key_fn) -> list[tuple[dict[str, 
         counts[key] = seq + 1
         out.append((fill, seq))
     return out
+
+
+def assign_window_positions(
+    fills_newest_first: list[dict[str, Any]],
+    key_fn,
+) -> list[tuple[dict[str, Any], int, int]]:
+    """Assign collector-observed positions for a newest-first RPC window.
+
+    Live fpl_fills returns newest first and has no protocol timestamp or
+    stable in-block trade id. Reverse the window so lower collect_pos is
+    earlier in this poll. That is collector order, not chain chronology.
+    dup_seq stays multiplicity only.
+    """
+    oldest_first = list(reversed(fills_newest_first))
+    sequenced = assign_dup_seq(oldest_first, key_fn)
+    return [(fill, dup_seq, i) for i, (fill, dup_seq) in enumerate(sequenced)]
 
 
 def aggregate_timed_fills(fills: Iterable[TimedFill], interval: str) -> list[dict[str, Any]]:
@@ -537,7 +554,7 @@ def aggregate_timed_fills(fills: Iterable[TimedFill], interval: str) -> list[dic
         buckets.setdefault(start, []).append(fill)
     candles: list[dict[str, Any]] = []
     for start in sorted(buckets):
-        rows = sorted(buckets[start], key=lambda f: (f.unix, f.height, f.dup_seq))
+        rows = sorted(buckets[start], key=lambda f: (f.unix, f.height, f.collect_pos, f.dup_seq))
         candles.append(
             {
                 "time": start,

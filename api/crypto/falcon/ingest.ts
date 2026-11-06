@@ -7,7 +7,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { saveCoverage, upsertCandles, type FalconCandleRow } from '../../_lib/falconCandleStore.js';
 import { normalizeFalconSymbol } from '../../_lib/falconMarkets.js';
-import { decideCandleIngest } from '../../_lib/falconTimeQuality.js';
+import { decideCandleIngest, FALCON_CANDLE_TIMEFRAMES, parseFalconTimeframe } from '../../_lib/falconTimeQuality.js';
 import crypto from 'crypto';
 
 function timingSafeEqualStr(a: string, b: string): boolean {
@@ -37,7 +37,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
   const pair = normalizeFalconSymbol(body.pair || '');
   if (!pair) return res.status(400).json({ error: 'invalid pair' });
-  const timeframe = String(body.timeframe || '5m').toLowerCase();
+  const timeframe = parseFalconTimeframe(body.timeframe ?? '');
+  if (!timeframe) {
+    return res.status(400).json({
+      error: 'unsupported_timeframe',
+      supported: FALCON_CANDLE_TIMEFRAMES,
+    });
+  }
+  const coverageTf = body.coverage && typeof body.coverage.timeframe === 'string'
+    ? body.coverage.timeframe.trim()
+    : '';
+  if (coverageTf && coverageTf !== timeframe) {
+    return res.status(400).json({ error: 'coverage_timeframe_mismatch' });
+  }
   const candlesIn = Array.isArray(body.candles) ? body.candles : [];
   if (candlesIn.length > 5000) return res.status(413).json({ error: 'too many candles' });
 
@@ -64,7 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const n = await upsertCandles(pair, timeframe, decision.candles);
     if (decision.coverage) {
-      await saveCoverage(pair, decision.coverage);
+      await saveCoverage(pair, timeframe, { ...decision.coverage, timeframe });
     }
     return res.status(200).json({
       ok: true,

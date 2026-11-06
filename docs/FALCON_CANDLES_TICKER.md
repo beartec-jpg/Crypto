@@ -81,3 +81,24 @@ Brain → HTTPS POST `/api/crypto/falcon/ingest` with `FALCON_BRAIN_INGEST_TOKEN
 The body may include `coverage` (`timeQuality`, `timeSource`, `untimedFills`, `quote: "FPL"`). Non-empty `candles` are rejected with `candles_rejected_not_verified_utc` while verified UTC is off. A coverage `pair` that normalizes to a different market is `coverage_pair_mismatch`. Quote USD/USDT is `quote_must_be_fpl`.
 
 No public brain port. No production deploy is part of this change.
+
+## Supported intervals
+
+Exact tokens: `1m`, `5m`, `15m`, `1h`. GET and ingest do not lowercase the value first. Elliott's `1M` (1 Month) is rejected, not mapped to `1m`. `4h`, `1d`, `1w`, and `1H` are not accepted while verified UTC is off. Falcon chart views only offer those four intervals.
+
+## Store and ingest
+
+- `falcon_candles` is keyed by `(pair, timeframe, bucket_time)`.
+- `falcon_candle_coverage` is keyed by `(pair, timeframe)`. An older pair-only table is migrated if it already exists.
+- GET returns the newest `limit` buckets, then ordered oldest to newest.
+- Ingest upserts candles in multi-row batches. More than 5000 candles in one request is `413`.
+- Sync splits larger exports into batches of 5000. An empty candle list is still one coverage-only POST.
+- A coverage `timeframe` that does not match the request timeframe is `coverage_timeframe_mismatch`.
+
+## Charts
+
+Falcon symbols poll `/api/crypto/falcon/candles`. They do not subscribe to Binance WebSocket streams or Binance kline fallbacks.
+
+## Collector order
+
+Live `fpl_fills` returns a newest-first ring and has no protocol timestamp or stable in-block trade id. `dup_seq` is multiplicity of identical natural keys, not trade order. `collect_pos` is first-seen collector window position after reversing that newest-first ring. It is not chain chronology.

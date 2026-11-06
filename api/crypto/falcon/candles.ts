@@ -2,7 +2,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { readCandles } from '../../_lib/falconCandleStore.js';
 import { normalizeFalconSymbol } from '../../_lib/falconMarkets.js';
-import { presentFalconCandles } from '../../_lib/falconTimeQuality.js';
+import { FALCON_CANDLE_TIMEFRAMES, parseFalconTimeframe, presentFalconCandles } from '../../_lib/falconTimeQuality.js';
 
 function q(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
@@ -19,7 +19,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!pair) {
     return res.status(400).json({ error: 'pair must be USDC-FPL or BTC4-FPL' });
   }
-  const timeframe = (q(req.query.timeframe) || q(req.query.interval) || '5m').toLowerCase();
+  const timeframe = parseFalconTimeframe(q(req.query.timeframe) ?? q(req.query.interval) ?? '');
+  if (!timeframe) {
+    return res.status(400).json({
+      error: 'unsupported_timeframe',
+      supported: FALCON_CANDLE_TIMEFRAMES,
+    });
+  }
   const limit = Math.min(Number(q(req.query.limit) || 500) || 500, 5000);
 
   try {

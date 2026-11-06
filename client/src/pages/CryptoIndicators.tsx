@@ -45,7 +45,7 @@ import bearTecLogoNew from '@assets/beartec logo_1763645889028.png';
 import grokLogo from '@assets/Grok_Full_Logomark_Light_1763287603908.png';
 import aiButtonVideo from '@assets/grok_video_2025-11-20-02-22-16_1763605488674.mp4';
 import { AlertSettingsDialog } from '@/components/AlertSettingsDialog';
-import { incrementTickerClick } from '@/lib/tickerUtils';
+import { incrementTickerClick, falconSafeTimeframe, isFalconCandleTimeframe, isFalconTicker } from '@/lib/tickerUtils';
 import { TickerSearch } from '@/components/TickerSearch';
 import { TickerTable } from '@/components/TickerTable';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
@@ -880,6 +880,23 @@ const handleAIMarketReview = () => {
     setFullscreenInterval(newInterval);
     
     try {
+      if (isFalconTicker(fullscreenSymbol)) {
+        if (!isFalconCandleTimeframe(newInterval)) return;
+        const response = await fetch(`/api/crypto/falcon/candles?pair=${encodeURIComponent(fullscreenSymbol)}&timeframe=${encodeURIComponent(newInterval)}&limit=500`);
+        if (response.ok) {
+          const data = await response.json();
+          const list = Array.isArray(data.candles) ? data.candles : [];
+          setFullscreenCandles(list.map((c: any) => ({
+            time: Number(c.time),
+            open: Number(c.open),
+            high: Number(c.high),
+            low: Number(c.low),
+            close: Number(c.close),
+            volume: Number(c.volume ?? 0),
+          })));
+        }
+        return;
+      }
       const response = await fetch(`/api/binance/klines?symbol=${fullscreenSymbol}&interval=${newInterval}&limit=500`);
       if (response.ok) {
         const data = await response.json();
@@ -1069,7 +1086,7 @@ const handleAIMarketReview = () => {
   }, []);
 
   const futureWhitespaceConfig = useMemo(() => ({
-    enabled: true,
+    enabled: !isFalconTicker(symbol),
     getFutureBarCount,
     getInitialVisibleFutureBarCount,
     generateFutureWhitespace
@@ -1399,7 +1416,7 @@ const handleAIMarketReview = () => {
   }, [candles.length, aiAnalysisState.analysis, fetchAIAnalysis]);
 
   const fetchMultiExchangeData = useCallback(async () => {
-    if (!useMultiExchange) return;
+    if (!useMultiExchange || isFalconTicker(symbol)) return;
     
     // Capture current generation to check if response is still relevant
     const currentGeneration = fetchGenerationRef.current;
@@ -2976,7 +2993,9 @@ const handleAIMarketReview = () => {
       // Load saved default timeframe for the new symbol
       const savedTimeframe = localStorage.getItem(`defaultTimeframe_${symbol}`);
       if (savedTimeframe) {
-        setTimeframeInterval(savedTimeframe);
+        setTimeframeInterval(
+          isFalconTicker(symbol) ? falconSafeTimeframe(savedTimeframe) : savedTimeframe,
+        );
         console.log(`📂 Loaded saved timeframe for ${symbol}: ${savedTimeframe}`);
       }
     }
@@ -2996,6 +3015,7 @@ const handleAIMarketReview = () => {
         if (emaHTFDataCache.current[cacheKey]) continue; // Already cached
         
         try {
+          if (isFalconTicker(symbol)) continue;
           const response = await fetch(`/api/binance/klines?symbol=${symbol}&interval=${tf}&limit=500`);
           if (response.ok) {
             const data = await response.json();
@@ -3039,6 +3059,7 @@ const handleAIMarketReview = () => {
         if (smaHTFDataCache.current[cacheKey]) continue;
         
         try {
+          if (isFalconTicker(symbol)) continue;
           const response = await fetch(`/api/binance/klines?symbol=${symbol}&interval=${tf}&limit=500`);
           if (response.ok) {
             const data = await response.json();
