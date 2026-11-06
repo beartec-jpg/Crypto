@@ -1,32 +1,8 @@
 // Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { getPool } from './db.js';
+import type { FalconCandleRow, FalconCoverageMeta } from './falconTimeQuality.js';
 
-export interface FalconCandleRow {
-  time: number; // unix seconds bucket open
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-  fillCount: number;
-}
-
-export interface FalconCoverageMeta {
-  pair: string;
-  timedFills: number;
-  untimedFills: number;
-  firstTimedHeight: number | null;
-  lastTimedHeight: number | null;
-  firstTime: number | null;
-  lastTime: number | null;
-  gaps: Array<{ fromTime: number; toTime: number; reason: string }>;
-  ringLimitNote: string;
-  timeSource: string;
-  timeQuality?: 'canonical_sealed' | 'unavailable' | 'estimated_observation';
-  emptyReasonHint?: string | null;
-  canonicalTipsStored?: number;
-  observationOnlyTipsStored?: number;
-}
+export type { FalconCandleRow, FalconCoverageMeta };
 
 let ready: Promise<void> | null = null;
 
@@ -117,10 +93,10 @@ export async function readCandles(
   }));
   let emptyReason: string | null = null;
   if (!candles.length) {
-    emptyReason = coverage?.emptyReasonHint
-      || (coverage
-        ? (coverage.timeQuality === 'unavailable' ? 'no_canonical_block_time' : 'no_timed_candles_yet')
-        : 'no_ingest_yet');
+    const hint = coverage?.emptyReasonHint;
+    emptyReason = hint && hint !== 'no_canonical_block_time'
+      ? hint
+      : (coverage ? 'verified_utc_unavailable' : 'no_ingest_yet');
   }
   return { candles, coverage, emptyReason };
 }

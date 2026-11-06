@@ -2,6 +2,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { readCandles } from '../../_lib/falconCandleStore.js';
 import { normalizeFalconSymbol } from '../../_lib/falconMarkets.js';
+import { presentFalconCandles } from '../../_lib/falconTimeQuality.js';
 
 function q(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
@@ -24,30 +25,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { candles, coverage, emptyReason } = await readCandles(pair, timeframe, limit);
     res.setHeader('Cache-Control', 'public, s-maxage=5, stale-while-revalidate=30');
-    return res.status(200).json({
-      source: 'falcon-pl-testnet',
-      networkId: 2300,
-      pair,
-      timeframe,
-      candles: candles.map((c) => ({
-        time: c.time,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-        volume: c.volume,
-      })),
-      count: candles.length,
-      emptyReason: emptyReason || coverage?.emptyReasonHint || null,
-      coverage,
-      timeQuality: coverage?.timeQuality || (candles.length ? 'canonical_sealed' : 'unavailable'),
-      quote: 'FPL',
-      priceUnit: 'FPL per 1 whole base',
-      note:
-        'OHLCV uses explorer.sealed_at only (node tip_sealed_at_ms|last_pack_at_ms). ' +
-        'explorer.observed_at is indexer Date.now() at tip-remember and is NOT used for candles. ' +
-        'Latest RPC ring is ≤200 fills — not full history. No verified timestamps without sealed_at.',
-    });
+    return res.status(200).json(presentFalconCandles({ pair, timeframe, candles, coverage, emptyReason }));
   } catch (err: any) {
     return res.status(502).json({ error: err?.message || 'candle read failed' });
   }

@@ -1,35 +1,45 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
-"""Enrich fills with explorer *canonical* block times, build OHLCV, push ingest.
+"""Store explorer tip times, keep fills untimed unless verified UTC is admitted.
 
-Time provenance (Falcon-faucet-wallet `src/lib/explorer-api/node.ts` + `mappers.ts`):
-  - observed_at = Date.now() when the explorer API first remembered the tip
-    (indexer observation). Retention: "recent tips observed by this API instance".
-  - sealed_at   = node `tip_sealed_at_ms` else `last_pack_at_ms` when > 0 (nullable).
+Wallet #187 honestSealTimes (not the older "canonical sealed_at" reading):
+  - observed_at is explorer arrival (Date.now at tip-remember). Not trade time.
+  - sealed_at ISO is set only for utc_committed signed UTC. Otherwise null.
+  - sealed_at_ms / tip_sealed_at_ms / last_pack_at_ms are chain physics.
+    Never convert them to a UTC date.
 
-OHLCV uses sealed_at only. observed_at is stored for diagnostics and must never
-silently become candle time. Falcon Cloud `fpl_status` currently exposes neither
-tip_sealed_at_ms nor last_pack_at_ms, so sealed_at is typically null and candles
-remain unavailable until a legitimate seal/pack wall time appears.
+block_times is still keyed by height. That join is not a hash-bound
+identity→time source, so it does not assign candle buckets. Verified UTC
+candles are not enabled (chart mode is not selected; network 2300 UTC
+activation is disabled). Untimed fills stay untimed.
+
+This process can POST ingest when FALCON_BRAIN_INGEST_TOKEN is set. Package A
+does not run it against production.
 """
 from __future__ import annotations
 
 import json
 import os
 import sqlite3
-import sys
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from candle_lib import (
-    CANONICAL_OHLCV_SOURCE,
-    OBSERVATION_ONLY_SOURCE,
+    TIME_QUALITY_CHAIN_PHYSICS,
+    TIME_QUALITY_OBSERVER,
+    TIME_QUALITY_UTC_COMMITTED,
+    TIME_SOURCE_VERIFIED_UTC,
+    SealClassification,
     TimedFill,
     build_candles,
+    classify_seal_time,
     coverage_gaps,
-    resolve_observation_unix,
-    resolve_ohlcv_block_unix,
+    normalize_time_quality,
+    normalize_time_source,
+    summarize_classifications,
 )
 
 DEFAULT_DB = "/var/lib/falcon-fills-store/fills.sqlite"
@@ -41,15 +51,30 @@ INGEST_URL = os.environ.get(
     "FALCON_BRAIN_INGEST_URL",
     "https://www.beartec.uk/api/crypto/falcon/ingest",
 )
+# USDC-FPL is the default market. BTC4 is selectable. Never copy one into the other.
 MARKETS = {
-    "BTC4": {"pair": "BTC4-FPL", "base_decimals": 8, "price_scale": 100_000_000},
     "USDC": {"pair": "USDC-FPL", "base_decimals": 6, "price_scale": 1_000_000},
+    "BTC4": {"pair": "BTC4-FPL", "base_decimals": 8, "price_scale": 100_000_000},
 }
 TIMEFRAMES = ("1m", "5m", "15m", "1h")
+RING_LIMIT_NOTE = (
+    "RPC fpl_fills returns at most RECENT_FILLS=200; not full history. "
+    "Fills without admitted verified UTC stay untimed and are not placed on a UTC axis."
+)
+EMPTY_REASON = "verified_utc_unavailable"
 
-TIME_SOURCE_NOTE = (
-    "OHLCV uses explorer.sealed_at only (node tip_sealed_at_ms|last_pack_at_ms). "
-    "explorer.observed_at is indexer Date.now() at tip-remember and is NOT used for candles."
+BLOCK_TIME_COLUMNS = (
+    ("sealed_at_ms", "INTEGER"),
+    ("sealed_at_quality", "TEXT"),
+    ("sealed_utc", "TEXT"),
+    ("sealed_utc_ms", "INTEGER"),
+    ("sealed_utc_quality", "TEXT"),
+    ("sealed_utc_source", "TEXT"),
+    ("time_quality", "TEXT"),
+    ("verified_utc", "INTEGER NOT NULL DEFAULT 0"),
+    ("pre_activation", "INTEGER NOT NULL DEFAULT 1"),
+    ("classify_reason", "TEXT"),
+    ("observed_unix", "INTEGER"),
 )
 
 
@@ -58,6 +83,10 @@ def connect(db: Path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
+
+
+def _table_cols(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
 
 
 def migrate(conn: sqlite3.Connection) -> None:
@@ -74,12 +103,16 @@ def migrate(conn: sqlite3.Connection) -> None:
         );
         """
     )
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(fills)").fetchall()}
-    if "dup_seq" not in cols:
+    cols = _table_cols(conn, "block_times")
+    for name, decl in BLOCK_TIME_COLUMNS:
+        if name not in cols:
+            conn.execute(f"ALTER TABLE block_times ADD COLUMN {name} {decl}")
+    fill_cols = _table_cols(conn, "fills")
+    if "dup_seq" not in fill_cols:
         conn.execute("ALTER TABLE fills ADD COLUMN dup_seq INTEGER NOT NULL DEFAULT 0")
-    if "block_time_source" not in cols:
+    if "block_time_source" not in fill_cols:
         conn.execute("ALTER TABLE fills ADD COLUMN block_time_source TEXT")
-    if "time_status" not in cols:
+    if "time_status" not in fill_cols:
         conn.execute("ALTER TABLE fills ADD COLUMN time_status TEXT NOT NULL DEFAULT 'untimed'")
     conn.execute("DROP INDEX IF EXISTS fills_natural_uid")
     conn.execute(
@@ -92,16 +125,9 @@ def migrate(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    # Demote any rows previously timed from observation alone.
-    conn.execute(
-        """
-        UPDATE block_times
-        SET block_unix=NULL,
-            time_source=?
-        WHERE time_source != ? OR (sealed_at IS NULL AND block_unix IS NOT NULL)
-        """,
-        (OBSERVATION_ONLY_SOURCE, CANONICAL_OHLCV_SOURCE),
-    )
+    _reclassify_block_times(conn)
+    # Anything not admitted as verified_utc loses its candle clock, including
+    # rows previously timed from explorer.sealed_at.
     conn.execute(
         """
         UPDATE fills
@@ -109,11 +135,60 @@ def migrate(conn: sqlite3.Connection) -> None:
             block_time_source=NULL,
             time_status='untimed'
         WHERE time_status='timed'
-          AND (block_time_source IS NULL OR block_time_source != ?)
+          AND ifnull(block_time_source, '') != ?
         """,
-        (CANONICAL_OHLCV_SOURCE,),
+        (TIME_SOURCE_VERIFIED_UTC,),
     )
     conn.commit()
+
+
+def _row_to_raw(row: sqlite3.Row) -> dict[str, Any]:
+    keys = set(row.keys())
+
+    def pick(name: str) -> Any:
+        return row[name] if name in keys else None
+
+    return {
+        "sealed_at": pick("sealed_at"),
+        "sealed_at_ms": pick("sealed_at_ms"),
+        "sealed_at_quality": pick("sealed_at_quality"),
+        "sealed_utc": pick("sealed_utc"),
+        "sealed_utc_ms": pick("sealed_utc_ms"),
+        "sealed_utc_quality": pick("sealed_utc_quality"),
+        "sealed_utc_source": pick("sealed_utc_source"),
+        "observed_at": pick("observed_at"),
+        "network_id": 2300,
+    }
+
+
+def _apply_classification(conn: sqlite3.Connection, height: int, classified: SealClassification) -> None:
+    conn.execute(
+        """
+        UPDATE block_times
+        SET block_unix=NULL,
+            verified_utc=0,
+            time_quality=?,
+            time_source=?,
+            pre_activation=?,
+            classify_reason=?,
+            observed_unix=?
+        WHERE height=?
+        """,
+        (
+            classified.time_quality,
+            classified.time_source,
+            1 if classified.pre_activation else 0,
+            classified.reason,
+            classified.observer_unix,
+            height,
+        ),
+    )
+
+
+def _reclassify_block_times(conn: sqlite3.Connection) -> None:
+    rows = conn.execute("SELECT * FROM block_times").fetchall()
+    for row in rows:
+        _apply_classification(conn, int(row["height"]), classify_seal_time(_row_to_raw(row)))
 
 
 def fetch_explorer_blocks() -> list[dict]:
@@ -124,136 +199,251 @@ def fetch_explorer_blocks() -> list[dict]:
     return list(items or [])
 
 
-def upsert_block_times(conn: sqlite3.Connection, items: list[dict]) -> dict:
-    from datetime import datetime, timezone
+def _stored_ms(block: dict, keys: tuple[str, ...]) -> int | None:
+    """Persist a positive integer ms field. Never invent one from an ISO string."""
+    for key in keys:
+        value = block.get(key)
+        if isinstance(value, bool) or value is None:
+            continue
+        if isinstance(value, int) and value > 0:
+            return value
+        if isinstance(value, float) and value > 0 and value.is_integer():
+            return int(value)
+        return None
+    return None
 
+
+def upsert_block_times(conn: sqlite3.Connection, items: list[dict]) -> dict[str, Any]:
+    """Persist honest labels. block_unix stays NULL (verified UTC is not admitted)."""
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     stored = 0
-    canonical = 0
-    observation_only = 0
-    for b in items:
-        height = int(b["height"])
-        sealed = b.get("sealed_at")
-        observed = b.get("observed_at")
-        unix, src = resolve_ohlcv_block_unix(sealed if isinstance(sealed, str) else None)
-        if unix is None:
-            # Persist observation for diagnostics; do not set block_unix for OHLCV.
-            _ou, _ = resolve_observation_unix(observed if isinstance(observed, str) else None)
-            src = OBSERVATION_ONLY_SOURCE
-            observation_only += 1
-        else:
-            canonical += 1
+    counts = {TIME_QUALITY_CHAIN_PHYSICS: 0, TIME_QUALITY_OBSERVER: 0, TIME_QUALITY_UTC_COMMITTED: 0, "unavailable": 0}
+    for block in items:
+        height = int(block["height"])
+        classified = classify_seal_time(block)
+        counts[classified.time_quality] = counts.get(classified.time_quality, 0) + 1
+        sealed = block.get("sealed_at") if isinstance(block.get("sealed_at"), str) else None
+        observed = block.get("observed_at") if isinstance(block.get("observed_at"), str) else None
+        # Incoming values replace the previous row, including NULL sealed_at.
+        # Do not COALESCE a legacy physics ISO back over an honest null.
         conn.execute(
             """
-            INSERT INTO block_times(height, hash, sealed_at, observed_at, block_unix, time_source, recorded_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO block_times(
+              height, hash, sealed_at, observed_at, block_unix, time_source, recorded_at,
+              sealed_at_ms, sealed_at_quality, sealed_utc, sealed_utc_ms, sealed_utc_quality,
+              sealed_utc_source, time_quality, verified_utc, pre_activation, classify_reason,
+              observed_unix
+            )
+            VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
             ON CONFLICT(height) DO UPDATE SET
               hash=excluded.hash,
-              sealed_at=COALESCE(excluded.sealed_at, block_times.sealed_at),
-              observed_at=COALESCE(excluded.observed_at, block_times.observed_at),
-              block_unix=CASE
-                WHEN excluded.time_source=? THEN excluded.block_unix
-                WHEN block_times.time_source=? THEN block_times.block_unix
-                ELSE NULL
-              END,
-              time_source=CASE
-                WHEN excluded.time_source=? THEN excluded.time_source
-                WHEN block_times.time_source=? THEN block_times.time_source
-                ELSE excluded.time_source
-              END
+              sealed_at=excluded.sealed_at,
+              observed_at=excluded.observed_at,
+              block_unix=NULL,
+              time_source=excluded.time_source,
+              recorded_at=excluded.recorded_at,
+              sealed_at_ms=excluded.sealed_at_ms,
+              sealed_at_quality=excluded.sealed_at_quality,
+              sealed_utc=excluded.sealed_utc,
+              sealed_utc_ms=excluded.sealed_utc_ms,
+              sealed_utc_quality=excluded.sealed_utc_quality,
+              sealed_utc_source=excluded.sealed_utc_source,
+              time_quality=excluded.time_quality,
+              verified_utc=0,
+              pre_activation=excluded.pre_activation,
+              classify_reason=excluded.classify_reason,
+              observed_unix=excluded.observed_unix
             """,
             (
                 height,
-                b.get("hash"),
+                block.get("hash"),
                 sealed,
                 observed,
-                unix,  # may be None for observation-only
-                src,
+                classified.time_source,
                 now,
-                CANONICAL_OHLCV_SOURCE,
-                CANONICAL_OHLCV_SOURCE,
-                CANONICAL_OHLCV_SOURCE,
-                CANONICAL_OHLCV_SOURCE,
+                _stored_ms(block, ("sealed_at_ms", "tip_sealed_at_ms", "last_pack_at_ms")),
+                block.get("sealed_at_quality") if isinstance(block.get("sealed_at_quality"), str) else None,
+                block.get("sealed_utc") if isinstance(block.get("sealed_utc"), str) else None,
+                _stored_ms(block, ("sealed_utc_ms", "tip_sealed_utc_ms")),
+                block.get("sealed_utc_quality") if isinstance(block.get("sealed_utc_quality"), str) else None,
+                block.get("sealed_utc_source") if isinstance(block.get("sealed_utc_source"), str) else None,
+                classified.time_quality,
+                1 if classified.pre_activation else 0,
+                classified.reason,
+                classified.observer_unix,
             ),
         )
         stored += 1
     conn.commit()
     return {
         "stored": stored,
-        "canonical_sealed": canonical,
-        "observation_only": observation_only,
+        "verifiedUtc": 0,
+        "byQuality": counts,
+        # Retired counter. Always zero so it cannot be read as verified tips.
+        "canonical_sealed": 0,
+        "observation_only": counts.get(TIME_QUALITY_OBSERVER, 0),
     }
 
 
-def enrich_fills(conn: sqlite3.Connection) -> dict:
+def enrich_fills(conn: sqlite3.Connection) -> dict[str, int]:
+    """Copy block time onto fills only for admitted verified UTC.
+
+    Admission is off, and the height join is not hash identity. This updates
+    nothing on the current contract. Previously timed non-verified rows are
+    cleared by migrate().
+    """
     rows = conn.execute(
         """
-        SELECT f.id, f.height, bt.block_unix, bt.time_source
+        SELECT f.id, bt.block_unix, bt.time_source
         FROM fills f
         JOIN block_times bt ON bt.height = f.height
-        WHERE bt.time_source = ?
+        WHERE bt.verified_utc = 1
+          AND bt.time_source = ?
           AND bt.block_unix IS NOT NULL
           AND (f.block_time_unix IS NULL OR f.time_status != 'timed'
-               OR ifnull(f.block_time_source,'') != ?)
+               OR ifnull(f.block_time_source, '') != ?)
         """,
-        (CANONICAL_OHLCV_SOURCE, CANONICAL_OHLCV_SOURCE),
+        (TIME_SOURCE_VERIFIED_UTC, TIME_SOURCE_VERIFIED_UTC),
     ).fetchall()
-    for r in rows:
+    for row in rows:
         conn.execute(
             """
             UPDATE fills
             SET block_time_unix=?, block_time_source=?, time_status='timed'
             WHERE id=?
             """,
-            (r["block_unix"], r["time_source"], r["id"]),
+            (row["block_unix"], row["time_source"], row["id"]),
         )
     conn.commit()
     return {"enriched": len(rows)}
 
 
+def _classifications_for_asset(conn: sqlite3.Connection, asset: str) -> list[SealClassification]:
+    rows = conn.execute(
+        """
+        SELECT DISTINCT bt.*
+        FROM fills f
+        JOIN block_times bt ON bt.height = f.height
+        WHERE f.asset=?
+        """,
+        (asset,),
+    ).fetchall()
+    out: list[SealClassification] = []
+    for row in rows:
+        classified = classify_seal_time(_row_to_raw(row))
+        # Prefer the stored public label when it is still an honest token.
+        stored_q = normalize_time_quality(row["time_quality"])
+        stored_s = normalize_time_source(row["time_source"])
+        if row["time_quality"]:
+            out.append(
+                SealClassification(
+                    time_quality=stored_q,
+                    time_source=stored_s,
+                    verified_utc=False,
+                    bucket_unix=None,
+                    pre_activation=bool(row["pre_activation"]) if "pre_activation" in row.keys() else classified.pre_activation,
+                    reason=row["classify_reason"] or classified.reason,
+                    reported_utc_quality=classified.reported_utc_quality,
+                    physics_ms=classified.physics_ms,
+                    observer_unix=classified.observer_unix,
+                    utc_candidate_unix=None,
+                    identity_bound=False,
+                    emitted_iso=None,
+                )
+            )
+        else:
+            out.append(classified)
+    return out
+
+
 def load_timed_fills(conn: sqlite3.Connection, asset: str) -> list[TimedFill]:
-    m = MARKETS[asset]
-    scale = m["price_scale"]
-    bdec = m["base_decimals"]
+    """Fills admitted to verified UTC. Empty while admission is disabled."""
+    meta = MARKETS[asset]
+    scale = meta["price_scale"]
+    base_decimals = meta["base_decimals"]
     rows = conn.execute(
         """
         SELECT height, price, base, side, block_time_unix, block_time_source,
-               taker, maker, taker_order, maker_order, ifnull(dup_seq,0) AS dup_seq
+               taker, maker, taker_order, maker_order, ifnull(dup_seq, 0) AS dup_seq
         FROM fills
         WHERE asset=? AND time_status='timed' AND block_time_unix IS NOT NULL
           AND block_time_source=?
         ORDER BY block_time_unix ASC, height ASC, dup_seq ASC
         """,
-        (asset, CANONICAL_OHLCV_SOURCE),
+        (asset, TIME_SOURCE_VERIFIED_UTC),
     ).fetchall()
     out: list[TimedFill] = []
-    for r in rows:
-        price = int(r["price"]) / scale
-        base_units = int(r["base"]) / (10**bdec)
-        nat = (
-            r["height"],
+    for row in rows:
+        price = int(row["price"]) / scale
+        base_units = int(row["base"]) / (10**base_decimals)
+        natural = (
+            row["height"],
             asset,
-            r["side"],
-            r["price"],
-            r["base"],
-            r["taker"],
-            r["maker"],
-            r["taker_order"],
-            r["maker_order"],
+            row["side"],
+            row["price"],
+            row["base"],
+            row["taker"],
+            row["maker"],
+            row["taker_order"],
+            row["maker_order"],
         )
         out.append(
             TimedFill(
-                height=int(r["height"]),
+                height=int(row["height"]),
                 price=price,
                 base_units=base_units,
-                side=str(r["side"]),
-                unix=int(r["block_time_unix"]),
-                time_source=CANONICAL_OHLCV_SOURCE,
-                natural_key=nat,
-                dup_seq=int(r["dup_seq"] or 0),
+                side=str(row["side"]),
+                unix=int(row["block_time_unix"]),
+                time_source=TIME_SOURCE_VERIFIED_UTC,
+                natural_key=natural,
+                dup_seq=int(row["dup_seq"] or 0),
             )
         )
     return out
+
+
+def exports_for_asset(conn: sqlite3.Connection, asset: str) -> list[dict[str, Any]]:
+    """Per-timeframe payloads. Candles are empty unless verified UTC is admitted.
+
+    An empty USDC book is returned as USDC-FPL with its own untimed count.
+    BTC4 rows are never substituted.
+    """
+    meta = MARKETS[asset]
+    timed = load_timed_fills(conn, asset)
+    untimed = conn.execute(
+        "SELECT COUNT(*) c FROM fills WHERE asset=? AND time_status!='timed'",
+        (asset,),
+    ).fetchone()["c"]
+    summary = summarize_classifications(_classifications_for_asset(conn, asset))
+    evidence = summary["evidenceCounts"]
+    payloads: list[dict[str, Any]] = []
+    for timeframe in TIMEFRAMES:
+        candles = build_candles(timed, timeframe)
+        gaps = coverage_gaps(candles, timeframe) if candles else []
+        coverage = {
+            "pair": meta["pair"],
+            "timedFills": len(timed),
+            "untimedFills": int(untimed),
+            "firstTimedHeight": timed[0].height if timed else None,
+            "lastTimedHeight": timed[-1].height if timed else None,
+            "firstTime": candles[0]["time"] if candles else None,
+            "lastTime": candles[-1]["time"] if candles else None,
+            "gaps": gaps,
+            "ringLimitNote": RING_LIMIT_NOTE,
+            "timeQuality": summary["timeQuality"],
+            "timeSource": summary["timeSource"],
+            "verifiedUtc": False,
+            "chartMode": "not_selected",
+            "quote": "FPL",
+            "evidenceCounts": evidence,
+            "emptyReasonHint": None if candles else EMPTY_REASON,
+            "canonicalTipsStored": 0,
+            "observationOnlyTipsStored": int(evidence.get(TIME_QUALITY_OBSERVER, 0)),
+            "physicsTipsStored": int(evidence.get(TIME_QUALITY_CHAIN_PHYSICS, 0)),
+            "utcCommittedCandidates": int(evidence.get(TIME_QUALITY_UTC_COMMITTED, 0)),
+        }
+        payloads.append({"pair": meta["pair"], "timeframe": timeframe, "candles": candles, "coverage": coverage})
+    return payloads
 
 
 def push_candles(pair: str, timeframe: str, candles: list[dict], coverage: dict, token: str) -> dict:
@@ -273,11 +463,38 @@ def push_candles(pair: str, timeframe: str, candles: list[dict], coverage: dict,
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return {"ok": True, "status": resp.status, "body": json.loads(resp.read().decode())}
-    except urllib.error.HTTPError as e:
-        raw = e.read().decode()[:200]
-        return {"ok": False, "status": e.code, "error": raw}
-    except Exception as e:
-        return {"ok": False, "status": None, "error": f"{type(e).__name__}:{e}"}
+    except urllib.error.HTTPError as err:
+        raw = err.read().decode()[:200]
+        return {"ok": False, "status": err.code, "error": raw}
+    except Exception as err:
+        return {"ok": False, "status": None, "error": f"{type(err).__name__}:{err}"}
+
+
+def _store_export_meta(conn: sqlite3.Connection, coverage: dict, candle_count: int) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS candle_export_meta (
+          pair TEXT NOT NULL,
+          timeframe TEXT NOT NULL,
+          meta_json TEXT NOT NULL,
+          candle_count INTEGER NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY(pair, timeframe)
+        )
+        """
+    )
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    conn.execute(
+        """
+        INSERT INTO candle_export_meta(pair, timeframe, meta_json, candle_count, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(pair, timeframe) DO UPDATE SET
+          meta_json=excluded.meta_json,
+          candle_count=excluded.candle_count,
+          updated_at=excluded.updated_at
+        """,
+        (coverage["pair"], coverage.get("timeframe") or "", json.dumps(coverage), candle_count, now),
+    )
 
 
 def main() -> int:
@@ -285,86 +502,41 @@ def main() -> int:
     token = os.environ.get("FALCON_BRAIN_INGEST_TOKEN", "").strip()
     conn = connect(db)
     migrate(conn)
-    summary: dict = {"blocks": {}, "enriched": 0, "pushes": []}
+    summary: dict[str, Any] = {"blocks": {}, "enriched": 0, "pushes": []}
     try:
         items = fetch_explorer_blocks()
         summary["blocks"] = upsert_block_times(conn, items)
         summary["enriched"] = enrich_fills(conn)["enriched"]
-        tip_stats = conn.execute(
-            """
-            SELECT
-              SUM(CASE WHEN time_source=? THEN 1 ELSE 0 END) AS canonical,
-              SUM(CASE WHEN time_source=? THEN 1 ELSE 0 END) AS observation_only,
-              COUNT(*) AS total
-            FROM block_times
-            """,
-            (CANONICAL_OHLCV_SOURCE, OBSERVATION_ONLY_SOURCE),
-        ).fetchone()
         for asset, meta in MARKETS.items():
-            timed = load_timed_fills(conn, asset)
-            untimed = conn.execute(
-                "SELECT COUNT(*) c FROM fills WHERE asset=? AND time_status!='timed'",
-                (asset,),
-            ).fetchone()["c"]
-            time_quality = "canonical_sealed" if timed else "unavailable"
-            for tf in TIMEFRAMES:
-                candles = build_candles(timed, tf)
-                gaps = coverage_gaps(candles, tf)
-                coverage = {
-                    "pair": meta["pair"],
-                    "timedFills": len(timed),
-                    "untimedFills": int(untimed),
-                    "firstTimedHeight": timed[0].height if timed else None,
-                    "lastTimedHeight": timed[-1].height if timed else None,
-                    "firstTime": candles[0]["time"] if candles else None,
-                    "lastTime": candles[-1]["time"] if candles else None,
-                    "gaps": gaps,
-                    "ringLimitNote": "RPC fpl_fills returns at most RECENT_FILLS=200; not full history",
-                    "timeSource": TIME_SOURCE_NOTE,
-                    "timeQuality": time_quality,
-                    "canonicalTipsStored": int(tip_stats["canonical"] or 0),
-                    "observationOnlyTipsStored": int(tip_stats["observation_only"] or 0),
-                    "emptyReasonHint": None
-                    if candles
-                    else (
-                        "no_canonical_block_time"
-                        if int(tip_stats["canonical"] or 0) == 0
-                        else "no_timed_candles_yet"
-                    ),
-                }
-                conn.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS candle_export_meta (
-                      pair TEXT NOT NULL,
-                      timeframe TEXT NOT NULL,
-                      meta_json TEXT NOT NULL,
-                      candle_count INTEGER NOT NULL,
-                      updated_at TEXT NOT NULL,
-                      PRIMARY KEY(pair, timeframe)
-                    )
-                    """
-                )
-                from datetime import datetime, timezone
-
-                now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-                conn.execute(
-                    """
-                    INSERT INTO candle_export_meta(pair, timeframe, meta_json, candle_count, updated_at)
-                    VALUES (?,?,?,?,?)
-                    ON CONFLICT(pair, timeframe) DO UPDATE SET
-                      meta_json=excluded.meta_json, candle_count=excluded.candle_count, updated_at=excluded.updated_at
-                    """,
-                    (meta["pair"], tf, json.dumps(coverage), len(candles), now),
-                )
+            for payload in exports_for_asset(conn, asset):
+                coverage = dict(payload["coverage"])
+                coverage["timeframe"] = payload["timeframe"]
+                _store_export_meta(conn, coverage, len(payload["candles"]))
                 conn.commit()
                 if not token:
                     summary["pushes"].append(
-                        {"pair": meta["pair"], "tf": tf, "skipped": "no_token", "candles": len(candles)}
+                        {
+                            "pair": meta["pair"],
+                            "tf": payload["timeframe"],
+                            "skipped": "no_token",
+                            "candles": len(payload["candles"]),
+                            "timeQuality": coverage["timeQuality"],
+                            "verifiedUtc": False,
+                        }
                     )
                     continue
-                result = push_candles(meta["pair"], tf, candles, coverage, token)
+                result = push_candles(
+                    meta["pair"], payload["timeframe"], payload["candles"], payload["coverage"], token
+                )
                 summary["pushes"].append(
-                    {"pair": meta["pair"], "tf": tf, "candles": len(candles), "timeQuality": time_quality, **result}
+                    {
+                        "pair": meta["pair"],
+                        "tf": payload["timeframe"],
+                        "candles": len(payload["candles"]),
+                        "timeQuality": coverage["timeQuality"],
+                        "verifiedUtc": False,
+                        **result,
+                    }
                 )
     finally:
         conn.close()

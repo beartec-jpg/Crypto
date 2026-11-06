@@ -51,6 +51,7 @@ export default defineConfig({
         'api/_lib/deepDiveJobs.ts',
         'api/_lib/falconCloudClient.ts',
         'api/_lib/falconMarkets.ts',
+        'api/_lib/falconTimeQuality.ts',
         'client/src/lib/watchlistHints.ts',
       ],
       // Exclude patterns

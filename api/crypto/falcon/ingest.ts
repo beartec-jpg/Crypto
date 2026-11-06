@@ -5,8 +5,9 @@
  * No public brain port; brain pushes outbound to this route.
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { saveCoverage, upsertCandles, type FalconCandleRow, type FalconCoverageMeta } from '../../_lib/falconCandleStore.js';
+import { saveCoverage, upsertCandles, type FalconCandleRow } from '../../_lib/falconCandleStore.js';
 import { normalizeFalconSymbol } from '../../_lib/falconMarkets.js';
+import { decideCandleIngest } from '../../_lib/falconTimeQuality.js';
 import crypto from 'crypto';
 
 function timingSafeEqualStr(a: string, b: string): boolean {
@@ -56,13 +57,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     candles.push({ time, open, high, low, close, volume, fillCount });
   }
 
-  const coverage = body.coverage as FalconCoverageMeta | undefined;
+  const decision = decideCandleIngest(pair, candles, body.coverage);
+  if (!decision.ok) {
+    return res.status(decision.status).json({ error: decision.error });
+  }
   try {
-    const n = await upsertCandles(pair, timeframe, candles);
-    if (coverage && coverage.pair) {
-      await saveCoverage(pair, coverage);
+    const n = await upsertCandles(pair, timeframe, decision.candles);
+    if (decision.coverage) {
+      await saveCoverage(pair, decision.coverage);
     }
-    return res.status(200).json({ ok: true, pair, timeframe, upserted: n });
+    return res.status(200).json({
+      ok: true,
+      pair,
+      timeframe,
+      upserted: n,
+      timeQuality: decision.coverage?.timeQuality ?? 'unavailable',
+      timeSource: decision.coverage?.timeSource ?? 'none',
+      verifiedUtc: false,
+    });
   } catch (err: any) {
     console.error('falcon ingest failed', err?.message || err);
     return res.status(500).json({ error: 'ingest failed' });
