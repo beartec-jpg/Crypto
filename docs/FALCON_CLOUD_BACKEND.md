@@ -40,3 +40,23 @@ Safe next steps after merge: poll `fpl_fills` + `fpl_orderBook` into storage, de
 - Key never returned by API routes.
 - Usage `key_id` is replaced with `<present>` in responses.
 - Do not log Authorization headers or env values.
+
+## Persistent fills store (beartec-brain)
+
+Ops chose **existing beartec-brain** over a new Vercel/hosted DB to avoid a new bill.
+Collector sources live under `tools/falcon-fills-store/` (deployed to brain; not required for Vercel runtime).
+
+| Item | Value |
+|------|-------|
+| Host | `beartec-brain` (Tailscale) |
+| Service | `falcon-fills-store.timer` → oneshot every 60s |
+| DB | `/var/lib/falcon-fills-store/fills.sqlite` (WAL) |
+| Config | `/etc/falcon-fills-store/env` (`FALCON_CLOUD_API_KEY`, mode 640) |
+| User | `falcon-fills` (nologin, least privilege) |
+| Pairs | allowlisted `BTC4`, `USDC` |
+| Dedup | natural Fill key incl. `ifnull(taker_order/maker_order,-1)` |
+| Block time | **NULL** until validated height→time source (candle follow-up) |
+| BearTec HTTP read | **Pending** — no public/Funnel port opened |
+
+Quota estimate ≈ 2 fills RPC/min + status every 10 cycles ≈ **~90k units/month** (Free 300k).
+Backups: `falcon-fills-backup.timer` daily, keep 7 under `/var/lib/falcon-fills-store/backups/`.
