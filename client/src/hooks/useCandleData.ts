@@ -1,6 +1,7 @@
 // Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Candle } from '@/types/chart';
+import { isFalconTicker } from '@/lib/tickerUtils';
 
 interface UseCandleDataOptions {
   symbol: string;
@@ -39,8 +40,11 @@ export function useCandleData({
       setIsLoading(true);
       setError(null);
 
+      const falcon = isFalconTicker(symbol);
       const response = await fetch(
-        `/api/crypto/extended-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`,
+        falcon
+          ? `/api/crypto/falcon/candles?pair=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=1000`
+          : `/api/crypto/extended-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}`,
         { signal },
       );
 

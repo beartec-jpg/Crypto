@@ -3118,7 +3118,12 @@ export default function CryptoElliottWave() {
     queryKey: ['/api/crypto/extended-history', symbol, timeframe],
     queryFn: async () => {
       console.log('📊 Fetching 1000 candles for', symbol, timeframe);
-      const response = await fetch(`/api/crypto/extended-history?symbol=${symbol}&timeframe=${timeframe}&limit=1000`);
+      const falcon = symbol === 'USDC-FPL' || symbol === 'BTC4-FPL';
+      const response = await fetch(
+        falcon
+          ? `/api/crypto/falcon/candles?pair=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=1000`
+          : `/api/crypto/extended-history?symbol=${symbol}&timeframe=${timeframe}&limit=1000`
+      );
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
         throw new Error(error.error || `Failed to fetch history (${response.status})`);

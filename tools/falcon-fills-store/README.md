@@ -46,3 +46,9 @@ journalctl -u falcon-fills-store.service -n 50 --no-pager
 sudo -u falcon-fills sqlite3 /var/lib/falcon-fills-store/fills.sqlite 'SELECT COUNT(*) FROM fills;'
 sudo systemctl start falcon-fills-backup.service
 ```
+
+## Timestamps & candles (phase 2)
+- Tip times from public explorer `GET /api/v1/explorer/blocks` (`sealed_at` preferred, else `observed_at`).
+- Fills without a matching observed height stay `time_status=untimed` and are excluded from OHLCV.
+- `sync_candles.py` builds 1m/5m/15m/1h candles and POSTs to BearTec `/api/crypto/falcon/ingest` with `FALCON_BRAIN_INGEST_TOKEN`.
+- Dedup unique key includes `dup_seq` so identical full-field fills in one ring snapshot are preserved; raw snapshots remain evidence.

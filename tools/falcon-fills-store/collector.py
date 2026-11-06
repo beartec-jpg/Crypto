@@ -30,6 +30,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from candle_lib import assign_dup_seq
+
 RPC_URL = os.environ.get("FALCON_CLOUD_RPC_URL", "https://rpc.falcon-fpl.com/v1/rpc")
 DEFAULT_PAIRS = ("BTC4", "USDC")  # allowlisted known markets only
 MAX_LIMIT = 200
@@ -177,6 +179,25 @@ def migrate(conn: sqlite3.Connection) -> None:
           payload_json TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS raw_poll_snapshots_polled ON raw_poll_snapshots (polled_at DESC);
+        """
+    )
+    # Additive columns for timestamp/candle phase
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(fills)").fetchall()}
+    if "dup_seq" not in cols:
+        conn.execute("ALTER TABLE fills ADD COLUMN dup_seq INTEGER NOT NULL DEFAULT 0")
+    if "block_time_source" not in cols:
+        conn.execute("ALTER TABLE fills ADD COLUMN block_time_source TEXT")
+    if "time_status" not in cols:
+        conn.execute("ALTER TABLE fills ADD COLUMN time_status TEXT NOT NULL DEFAULT 'untimed'")
+    conn.execute("DROP INDEX IF EXISTS fills_natural_uid")
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS fills_natural_uid ON fills (
+          height, asset, side, price, base, quote, taker, maker,
+          ifnull(taker_order, -1),
+          ifnull(maker_order, -1),
+          dup_seq
+        )
         """
     )
     cur = conn.execute("SELECT value FROM meta WHERE key='schema_version'")
@@ -377,17 +398,23 @@ def poll_pair(
         heights: list[int] = []
         inserted = 0
         skipped = 0
-        for raw in fills:
-            if not isinstance(raw, dict):
-                continue
+        def nat_key(raw: dict) -> tuple:
+            return (
+                raw.get("height"), raw.get("asset"), raw.get("side"),
+                raw.get("price"), raw.get("base"), raw.get("quote"),
+                raw.get("taker"), raw.get("maker"),
+                raw.get("taker_order"), raw.get("maker_order"),
+            )
+        sequenced = assign_dup_seq([r for r in fills if isinstance(r, dict)], nat_key)
+        for raw, dup_seq in sequenced:
             f = normalize_fill(raw)
             heights.append(int(f["height"]))
             cur = conn.execute(
                 """
                 INSERT OR IGNORE INTO fills(
                   height, asset, side, price, base, quote, taker, maker,
-                  taker_order, maker_order, raw_json, first_seen_at, block_time_unix
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                  taker_order, maker_order, raw_json, first_seen_at, block_time_unix, dup_seq
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
                 """,
                 (
                     f["height"],
@@ -402,6 +429,7 @@ def poll_pair(
                     f["maker_order"],
                     f["raw_json"],
                     started,
+                    dup_seq,
                 ),
             )
             if cur.rowcount == 1:

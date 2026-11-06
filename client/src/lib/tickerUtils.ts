@@ -12,6 +12,21 @@ export const DEFAULT_TICKERS: Ticker[] = [
   { value: 'ADAUSDT', label: 'ADA/USDT' },
 ];
 
+
+/** Falcon PL testnet 2300 markets (not Binance). Quote is FPL. */
+export const FALCON_TICKERS: Ticker[] = [
+  { value: 'USDC-FPL', label: 'USDC/FPL (Falcon testnet 2300)' },
+  { value: 'BTC4-FPL', label: 'BTC4/FPL (Falcon testnet 2300)' },
+];
+
+export const FALCON_DEFAULT_TICKER = 'USDC-FPL';
+
+export function isFalconTicker(value: string): boolean {
+  const v = String(value || '').toUpperCase();
+  return v === 'USDC-FPL' || v === 'BTC4-FPL';
+}
+
+
 const FAVORITES_KEY = 'beartec_favorite_tickers';
 const TICKER_CLICKS_KEY = 'beartec_ticker_clicks';
 
