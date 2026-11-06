@@ -36,3 +36,17 @@ describe('falconMarkets', () => {
     }
   });
 });
+
+describe('falconMarkets edges', () => {
+  it('rejects non-falcon and empty symbols', () => {
+    expect(isFalconSymbol(null)).toBe(false);
+    expect(isFalconSymbol(undefined)).toBe(false);
+    expect(isFalconSymbol('')).toBe(false);
+    expect(normalizeFalconSymbol('ETHUSDT')).toBeNull();
+  });
+
+  it('throws on non-finite raw values', () => {
+    expect(() => priceRawToNumber('x', 1e8)).toThrow(/bad price/);
+    expect(() => baseRawToNumber(Number.NaN, 8)).toThrow(/bad base/);
+  });
+});
