@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025-2026 BEARTEC (Scott Reynolds). All rights reserved.
-"""Store explorer tip times, keep fills untimed unless verified UTC is admitted.
+"""Store explorer tip times and publish estimated observer-arrival candles.
 
 Wallet #187 honestSealTimes (not the older "canonical sealed_at" reading):
   - observed_at is explorer arrival (Date.now at tip-remember). Not trade time.
+  - first_seen_at is collector arrival. Also not trade time.
   - sealed_at ISO is set only for utc_committed signed UTC. Otherwise null.
   - sealed_at_ms / tip_sealed_at_ms / last_pack_at_ms are chain physics.
     Never convert them to a UTC date.
 
-block_times is still keyed by height. That join is not a hash-bound
-identity→time source, so it does not assign candle buckets. Verified UTC
-candles are not enabled (chart mode is not selected; network 2300 UTC
-activation is disabled). Untimed fills stay untimed.
+Chart mode is estimated_observer: fills are placed on a candle axis using
+block observed_unix when present, otherwise first_seen_at. Labels stay
+observer / not verified UTC. Physics ms is never a candle clock.
+block_times is still keyed by height; that join is not hash-bound identity
+and does not admit verified UTC. Network 2300 UTC activation is disabled.
 
-This process can POST ingest when FALCON_BRAIN_INGEST_TOKEN is set. Package A
-does not run it against production.
+This process can POST ingest when FALCON_BRAIN_INGEST_TOKEN is set.
 """
 from __future__ import annotations
 
@@ -28,9 +29,11 @@ from pathlib import Path
 from typing import Any
 
 from candle_lib import (
+    CHART_MODE,
     TIME_QUALITY_CHAIN_PHYSICS,
     TIME_QUALITY_OBSERVER,
     TIME_QUALITY_UTC_COMMITTED,
+    TIME_SOURCE_OBSERVER,
     TIME_SOURCE_VERIFIED_UTC,
     SealClassification,
     TimedFill,
@@ -39,6 +42,7 @@ from candle_lib import (
     coverage_gaps,
     normalize_time_quality,
     normalize_time_source,
+    parse_iso_to_unix,
     summarize_classifications,
 )
 
@@ -60,9 +64,10 @@ TIMEFRAMES = ("1m", "5m", "15m", "1h")
 INGEST_CANDLE_LIMIT = 5000
 RING_LIMIT_NOTE = (
     "RPC fpl_fills returns at most RECENT_FILLS=200; not full history. "
-    "Fills without admitted verified UTC stay untimed and are not placed on a UTC axis."
+    "Estimated candles use observer arrival (block observed_at or collector "
+    "first_seen_at), not trade time and not verified UTC."
 )
-EMPTY_REASON = "verified_utc_unavailable"
+EMPTY_REASON = "no_observer_arrival_times"
 
 BLOCK_TIME_COLUMNS = (
     ("sealed_at_ms", "INTEGER"),
@@ -143,9 +148,9 @@ def _untimed_non_verified_fills(conn: sqlite3.Connection) -> None:
             block_time_source=NULL,
             time_status='untimed'
         WHERE time_status='timed'
-          AND ifnull(block_time_source, '') != ?
+          AND ifnull(block_time_source, '') NOT IN (?, ?)
         """,
-        (TIME_SOURCE_VERIFIED_UTC,),
+        (TIME_SOURCE_OBSERVER, TIME_SOURCE_VERIFIED_UTC),
     )
 
 
@@ -300,37 +305,57 @@ def upsert_block_times(conn: sqlite3.Connection, items: list[dict]) -> dict[str,
     }
 
 
-def enrich_fills(conn: sqlite3.Connection) -> dict[str, int]:
-    """Copy block time onto fills only for admitted verified UTC.
+def _observer_unix_for_fill(row: sqlite3.Row) -> int | None:
+    keys = set(row.keys())
+    raw = row["observed_unix"] if "observed_unix" in keys else None
+    if raw is not None and not isinstance(raw, bool):
+        try:
+            unix = int(raw)
+        except (TypeError, ValueError):
+            unix = 0
+        if unix > 0:
+            return unix
+    seen = row["first_seen_at"] if "first_seen_at" in keys else None
+    return parse_iso_to_unix(seen if isinstance(seen, str) else None)
 
-    Admission is off, and the height join is not hash identity. This updates
-    nothing on the current contract. Previously timed non-verified rows are
-    cleared by migrate().
+
+def enrich_fills(conn: sqlite3.Connection) -> dict[str, int]:
+    """Stamp observer arrival onto fills for the estimated chart.
+
+    Prefer block observed_unix so fills in the same height share a time.
+    Fall back to collector first_seen_at. Never copy physics ms or unverified
+    sealed_at ISO onto the candle axis. block_unix stays NULL.
     """
     rows = conn.execute(
         """
-        SELECT f.id, bt.block_unix, bt.time_source
+        SELECT f.id, f.first_seen_at, f.block_time_unix, f.block_time_source,
+               f.time_status, bt.observed_unix
         FROM fills f
-        JOIN block_times bt ON bt.height = f.height
-        WHERE bt.verified_utc = 1
-          AND bt.time_source = ?
-          AND bt.block_unix IS NOT NULL
-          AND (f.block_time_unix IS NULL OR f.time_status != 'timed'
-               OR ifnull(f.block_time_source, '') != ?)
-        """,
-        (TIME_SOURCE_VERIFIED_UTC, TIME_SOURCE_VERIFIED_UTC),
+        LEFT JOIN block_times bt ON bt.height = f.height
+        """
     ).fetchall()
+    enriched = 0
     for row in rows:
+        unix = _observer_unix_for_fill(row)
+        if unix is None:
+            continue
+        if (
+            row["time_status"] == "timed"
+            and row["block_time_source"] == TIME_SOURCE_OBSERVER
+            and row["block_time_unix"] == unix
+        ):
+            continue
         conn.execute(
             """
             UPDATE fills
             SET block_time_unix=?, block_time_source=?, time_status='timed'
             WHERE id=?
             """,
-            (row["block_unix"], row["time_source"], row["id"]),
+            (unix, TIME_SOURCE_OBSERVER, row["id"]),
         )
+        enriched += 1
     conn.commit()
-    return {"enriched": len(rows)}
+    return {"enriched": enriched}
 
 
 def _classifications_for_asset(conn: sqlite3.Connection, asset: str) -> list[SealClassification]:
@@ -372,7 +397,7 @@ def _classifications_for_asset(conn: sqlite3.Connection, asset: str) -> list[Sea
 
 
 def load_timed_fills(conn: sqlite3.Connection, asset: str) -> list[TimedFill]:
-    """Fills admitted to verified UTC. Empty while admission is disabled."""
+    """Fills stamped with observer arrival for the estimated chart."""
     meta = MARKETS[asset]
     scale = meta["price_scale"]
     base_decimals = meta["base_decimals"]
@@ -386,7 +411,7 @@ def load_timed_fills(conn: sqlite3.Connection, asset: str) -> list[TimedFill]:
           AND block_time_source=?
         ORDER BY block_time_unix ASC, height ASC, collect_pos ASC, dup_seq ASC
         """,
-        (asset, TIME_SOURCE_VERIFIED_UTC),
+        (asset, TIME_SOURCE_OBSERVER),
     ).fetchall()
     out: list[TimedFill] = []
     for row in rows:
@@ -410,7 +435,7 @@ def load_timed_fills(conn: sqlite3.Connection, asset: str) -> list[TimedFill]:
                 base_units=base_units,
                 side=str(row["side"]),
                 unix=int(row["block_time_unix"]),
-                time_source=TIME_SOURCE_VERIFIED_UTC,
+                time_source=TIME_SOURCE_OBSERVER,
                 natural_key=natural,
                 dup_seq=int(row["dup_seq"] or 0),
                 collect_pos=int(row["collect_pos"] or 0),
@@ -420,7 +445,7 @@ def load_timed_fills(conn: sqlite3.Connection, asset: str) -> list[TimedFill]:
 
 
 def exports_for_asset(conn: sqlite3.Connection, asset: str) -> list[dict[str, Any]]:
-    """Per-timeframe payloads. Candles are empty unless verified UTC is admitted.
+    """Per-timeframe payloads. Estimated observer candles when fills have arrival times.
 
     An empty USDC book is returned as USDC-FPL with its own untimed count.
     BTC4 rows are never substituted.
@@ -448,10 +473,10 @@ def exports_for_asset(conn: sqlite3.Connection, asset: str) -> list[dict[str, An
             "lastTime": candles[-1]["time"] if candles else None,
             "gaps": gaps,
             "ringLimitNote": RING_LIMIT_NOTE,
-            "timeQuality": summary["timeQuality"],
-            "timeSource": summary["timeSource"],
+            "timeQuality": TIME_QUALITY_OBSERVER if candles else summary["timeQuality"],
+            "timeSource": TIME_SOURCE_OBSERVER if candles else summary["timeSource"],
             "verifiedUtc": False,
-            "chartMode": "not_selected",
+            "chartMode": CHART_MODE,
             "quote": "FPL",
             "evidenceCounts": evidence,
             "emptyReasonHint": None if candles else EMPTY_REASON,

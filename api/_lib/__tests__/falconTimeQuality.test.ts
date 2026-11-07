@@ -89,7 +89,7 @@ describe('falcon time honesty', () => {
       expect(stored.verifiedUtc, item.name).toBe(false);
       expect(stored.untimedFills, item.name).toBe(4);
       expect(stored.quote).toBe('FPL');
-      expect(stored.chartMode).toBe('not_selected');
+      expect(stored.chartMode).toBe('estimated_observer');
 
       const body = presentFalconCandles({
         pair: 'USDC-FPL',
@@ -100,24 +100,34 @@ describe('falcon time honesty', () => {
       expect(body.timeQuality, item.name).toBe(item.expect.timeQuality);
       expect(body.timeSource, item.name).toBe(item.expect.timeSource);
       expect(body.verifiedUtc).toBe(false);
-      expect(body.candles).toEqual([]);
-      expect(body.count).toBe(0);
-      expect(body.withheldCandleRows).toBe(1);
+      const publishObserver = item.expect.timeQuality === 'observer' && item.expect.timeSource === 'observer';
+      if (publishObserver) {
+        expect(body.candles, item.name).toEqual([
+          { time: 1_700_000_000, open: 1, high: 2, low: 0.5, close: 1.5, volume: 3 },
+        ]);
+        expect(body.count, item.name).toBe(1);
+        expect(body.withheldCandleRows, item.name).toBe(0);
+      } else {
+        expect(body.candles, item.name).toEqual([]);
+        expect(body.count, item.name).toBe(0);
+        expect(body.withheldCandleRows, item.name).toBe(1);
+      }
       expect(body.coverage?.untimedFills).toBe(4);
       expect(body.quote).toBe('FPL');
       expect(body.defaultMarket).toBe('USDC-FPL');
       expect(body.pair).toBe('USDC-FPL');
-      expect(body.chartMode).toBe('not_selected');
+      expect(body.chartMode).toBe('estimated_observer');
       expect(body.timeQuality).not.toBe('canonical_sealed');
       expect(body.timeQuality).not.toBe('verified_utc');
       expect(body.note).not.toMatch(/canonical_sealed/);
+      expect(body.note).toMatch(/not trade time/i);
       expect(body.note).toMatch(/not verified UTC/i);
       expect(body.note).toMatch(/USDC-FPL/);
     }
   });
 
-  it('rejects candle rows that would draw a UTC axis', () => {
-    for (const timeQuality of ['chain_physics', 'observer', 'unavailable', 'utc_committed', 'canonical_sealed', 'verified_utc']) {
+  it('rejects candle rows that would draw a UTC or physics axis', () => {
+    for (const timeQuality of ['chain_physics', 'unavailable', 'utc_committed', 'canonical_sealed', 'verified_utc']) {
       const decision = decideCandleIngest('USDC-FPL', [bar(1_700_000_000)], {
         pair: 'USDC-FPL',
         timeQuality,
@@ -130,6 +140,34 @@ describe('falcon time honesty', () => {
       expect(decision.candles).toEqual([]);
       expect(decision.coverage).toBeNull();
     }
+  });
+
+  it('accepts observer-estimate candles without claiming verified UTC', () => {
+    const decision = decideCandleIngest('USDC-FPL', [bar(1_700_000_000)], {
+      pair: 'USDC-FPL',
+      timeQuality: 'observer',
+      timeSource: 'observer',
+      timedFills: 1,
+      untimedFills: 2,
+      quote: 'FPL',
+    });
+    expect(decision.ok).toBe(true);
+    expect(decision.candles).toHaveLength(1);
+    expect(decision.coverage?.chartMode).toBe('estimated_observer');
+    expect(decision.coverage?.verifiedUtc).toBe(false);
+    expect(decision.coverage?.timeQuality).toBe('observer');
+    const body = presentFalconCandles({
+      pair: 'USDC-FPL',
+      timeframe: '5m',
+      candles: decision.candles,
+      coverage: decision.coverage,
+    });
+    expect(body.candles).toHaveLength(1);
+    expect(body.candles[0]?.time).toBe(1_700_000_000);
+    expect(body.withheldCandleRows).toBe(0);
+    expect(body.verifiedUtc).toBe(false);
+    expect(body.chartMode).toBe('estimated_observer');
+    expect(body.emptyReason).toBeNull();
   });
 
   it('does not substitute BTC4 when USDC coverage is empty', () => {

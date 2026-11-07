@@ -9,10 +9,12 @@ Aligned with Falcon-faucet-wallet #187 `honestSealTimes` (draft head 6c10e19):
   They are never converted with Date() and never treated as wall-clock UTC.
   observed_at / first_seen_at are observer arrival, not trade time.
 
-Chart mode is not selected. Verified UTC candles stay disabled until protocol
-activation is signed off and a hash-bound identity→committed-UTC source exists.
-Network 2300 cannot arm UTC. A parseable sealed_at is not verified UTC.
-Height-only matching is not that identity source.
+Chart mode is estimated_observer: published candles are bucketed by observer
+arrival (observed_at / first_seen_at), labelled observer, and are not trade time.
+Verified UTC candles stay disabled until protocol activation is signed off and a
+hash-bound identity→committed-UTC source exists. Network 2300 cannot arm UTC.
+A parseable sealed_at is not verified UTC. Height-only matching is not that
+identity source. Physics ms is never a candle clock.
 """
 from __future__ import annotations
 
@@ -71,8 +73,8 @@ PUBLIC_TIME_SOURCES = frozenset(
     }
 )
 
-# Package A gate. Do not flip this to publish candles. Admission also requires
-# activation and hash-bound identity, which this package does not claim.
+# Verified UTC admission stays off. Estimated observer bars are a separate chart.
+CHART_MODE = "estimated_observer"
 VERIFIED_UTC_BUCKETS_ENABLED = False
 NETWORK_UTC_ACTIVATION_DISABLED = 2300
 
@@ -539,15 +541,10 @@ def assign_window_positions(
     return [(fill, dup_seq, i) for i, (fill, dup_seq) in enumerate(sequenced)]
 
 
-def aggregate_timed_fills(fills: Iterable[TimedFill], interval: str) -> list[dict[str, Any]]:
-    """OHLC fold for fills already tagged verified_utc.
-
-    Not used for published candles while VERIFIED_UTC_BUCKETS_ENABLED is false.
-    Physics, observer, and retired explorer.sealed_at rows are excluded.
-    """
+def _fold_fills(fills: Iterable[TimedFill], interval: str, wanted: str, quality: str, source: str) -> list[dict[str, Any]]:
     if interval not in INTERVAL_SEC:
         raise ValueError(f"unsupported interval {interval}")
-    safe = [f for f in fills if f.time_source == TIME_SOURCE_VERIFIED_UTC and f.unix > 0]
+    safe = [f for f in fills if f.time_source == wanted and f.unix > 0]
     buckets: dict[int, list[TimedFill]] = {}
     for fill in safe:
         start = bucket_start(fill.unix, interval)
@@ -564,20 +561,36 @@ def aggregate_timed_fills(fills: Iterable[TimedFill], interval: str) -> list[dic
                 "close": rows[-1].price,
                 "volume": sum(row.base_units for row in rows),
                 "fillCount": len(rows),
-                "timeQuality": TIME_QUALITY_VERIFIED_UTC,
-                "timeSource": TIME_SOURCE_VERIFIED_UTC,
+                "timeQuality": quality,
+                "timeSource": source,
             }
         )
     return candles
 
 
+def aggregate_timed_fills(fills: Iterable[TimedFill], interval: str) -> list[dict[str, Any]]:
+    """OHLC fold for fills already tagged verified_utc.
+
+    Physics, observer, and retired explorer.sealed_at rows are excluded.
+    Not used for published candles while VERIFIED_UTC_BUCKETS_ENABLED is false.
+    """
+    return _fold_fills(fills, interval, TIME_SOURCE_VERIFIED_UTC, TIME_QUALITY_VERIFIED_UTC, TIME_SOURCE_VERIFIED_UTC)
+
+
+def aggregate_observer_fills(fills: Iterable[TimedFill], interval: str) -> list[dict[str, Any]]:
+    """OHLC fold for observer-arrival fills. Not trade time and not verified UTC."""
+    return _fold_fills(fills, interval, TIME_SOURCE_OBSERVER, TIME_QUALITY_OBSERVER, TIME_SOURCE_OBSERVER)
+
+
 def build_candles(fills: Iterable[TimedFill], interval: str) -> list[dict[str, Any]]:
-    """Published candles. Empty until verified UTC admission is enabled."""
+    """Published candles. Estimated observer bars, or verified UTC if that gate is on."""
     if interval not in INTERVAL_SEC:
         raise ValueError(f"unsupported interval {interval}")
-    if not VERIFIED_UTC_BUCKETS_ENABLED:
-        return []
-    return aggregate_timed_fills(fills, interval)
+    if VERIFIED_UTC_BUCKETS_ENABLED:
+        return aggregate_timed_fills(fills, interval)
+    if CHART_MODE == "estimated_observer":
+        return aggregate_observer_fills(fills, interval)
+    return []
 
 
 def coverage_gaps(candles: list[dict[str, Any]], interval: str) -> list[dict[str, Any]]:

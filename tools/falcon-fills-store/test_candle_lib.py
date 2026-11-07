@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from candle_lib import (
+    TIME_QUALITY_OBSERVER,
     TIME_QUALITY_VERIFIED_UTC,
     TIME_SOURCE_CHAIN_PHYSICS,
     TIME_SOURCE_OBSERVER,
@@ -116,14 +117,20 @@ class TestCandles(unittest.TestCase):
         self.assertEqual(bucket_start(100, "1m"), 60)
         self.assertEqual(bucket_start(120, "1m"), 120)
 
-    def test_published_candles_empty_while_gate_off(self):
+    def test_published_candles_use_observer_not_physics_or_verified(self):
         fills = [
             TimedFill(1, 10.0, 1.0, "buy", 120, TIME_SOURCE_VERIFIED_UTC, (1,), 0),
             TimedFill(2, 12.0, 2.0, "sell", 130, "explorer.sealed_at", (2,), 0),
             TimedFill(3, 11.0, 1.5, "buy", 140, TIME_SOURCE_OBSERVER, (3,), 0),
             TimedFill(4, 9.0, 1.0, "buy", 150, TIME_SOURCE_CHAIN_PHYSICS, (4,), 0),
         ]
-        self.assertEqual(build_candles(fills, "1m"), [])
+        candles = build_candles(fills, "1m")
+        self.assertEqual(len(candles), 1)
+        self.assertEqual(candles[0]["time"], 120)
+        self.assertEqual(candles[0]["open"], 11.0)
+        self.assertEqual(candles[0]["close"], 11.0)
+        self.assertEqual(candles[0]["timeQuality"], TIME_QUALITY_OBSERVER)
+        self.assertEqual(candles[0]["timeSource"], TIME_SOURCE_OBSERVER)
         self.assertEqual(build_candles([], "5m"), [])
 
     def test_unwired_aggregate_rejects_non_verified_sources(self):
@@ -146,15 +153,21 @@ class TestCandles(unittest.TestCase):
         self.assertEqual(candles[0]["volume"], 4.5)
         self.assertEqual(candles[0]["fillCount"], 3)
         self.assertEqual(candles[0]["timeQuality"], TIME_QUALITY_VERIFIED_UTC)
-        # Published path still withholds the bar.
-        self.assertEqual(build_candles(fills, "1m"), [])
+        published = build_candles(fills, "1m")
+        self.assertEqual(len(published), 1)
+        self.assertEqual(published[0]["open"], 1.0)
+        self.assertEqual(published[0]["timeQuality"], TIME_QUALITY_OBSERVER)
 
-    def test_observation_source_excluded_from_candles(self):
+    def test_observation_source_builds_estimated_candles(self):
         fills = [
             TimedFill(1, 10.0, 1.0, "buy", 120, TIME_SOURCE_OBSERVER, (1,), 0),
             TimedFill(2, 12.0, 2.0, "sell", 130, TIME_SOURCE_OBSERVER, (2,), 0),
         ]
-        self.assertEqual(build_candles(fills, "1m"), [])
+        candles = build_candles(fills, "1m")
+        self.assertEqual(len(candles), 1)
+        self.assertEqual(candles[0]["open"], 10.0)
+        self.assertEqual(candles[0]["close"], 12.0)
+        self.assertEqual(candles[0]["timeQuality"], TIME_QUALITY_OBSERVER)
         self.assertEqual(aggregate_timed_fills(fills, "1m"), [])
 
     def test_empty_gap(self):

@@ -66,7 +66,7 @@ class TestSyncHonesty(unittest.TestCase):
         self.assertIsNone(fill["block_time_unix"])
         self.assertIsNone(fill["block_time_source"])
 
-    def test_physics_observed_and_preactivation_do_not_time_fills(self):
+    def test_observer_arrival_times_fills_physics_does_not_become_utc(self):
         blocks = [
             {
                 "height": 10,
@@ -109,45 +109,47 @@ class TestSyncHonesty(unittest.TestCase):
         for height, asset in ((10, "BTC4"), (11, "BTC4"), (12, "BTC4"), (13, "USDC"), (14, "USDC")):
             _insert_fill(self.conn, asset, height)
         self.conn.commit()
-        self.assertEqual(enrich_fills(self.conn)["enriched"], 0)
+        self.assertGreaterEqual(enrich_fills(self.conn)["enriched"], 1)
         timed = self.conn.execute("SELECT COUNT(*) c FROM fills WHERE time_status='timed'").fetchone()["c"]
-        self.assertEqual(timed, 0)
+        self.assertEqual(timed, 5)
+        observer = self.conn.execute(
+            "SELECT COUNT(*) c FROM fills WHERE time_status='timed' AND block_time_source='observer'"
+        ).fetchone()["c"]
+        self.assertEqual(observer, 5)
         rows = self.conn.execute("SELECT height, block_unix, verified_utc FROM block_times").fetchall()
         self.assertEqual(len(rows), 5)
         for row in rows:
             self.assertIsNone(row["block_unix"], row["height"])
             self.assertEqual(row["verified_utc"], 0, row["height"])
-        # Fills were not dropped.
         self.assertEqual(self.conn.execute("SELECT COUNT(*) c FROM fills").fetchone()["c"], 5)
 
         btc = exports_for_asset(self.conn, "BTC4")
         usdc = exports_for_asset(self.conn, "USDC")
-        self.assertTrue(all(item["candles"] == [] for item in btc))
-        self.assertTrue(all(item["candles"] == [] for item in usdc))
+        self.assertTrue(all(item["candles"] for item in btc))
+        self.assertTrue(all(item["candles"] for item in usdc))
         btc_cov = btc[0]["coverage"]
         usdc_cov = usdc[0]["coverage"]
         self.assertEqual(btc_cov["pair"], "BTC4-FPL")
         self.assertEqual(usdc_cov["pair"], "USDC-FPL")
         self.assertNotEqual(btc_cov["pair"], usdc_cov["pair"])
-        self.assertEqual(btc_cov["untimedFills"], 3)
-        self.assertEqual(usdc_cov["untimedFills"], 2)
-        self.assertEqual(btc_cov["timedFills"], 0)
-        self.assertEqual(usdc_cov["timedFills"], 0)
+        self.assertEqual(btc_cov["untimedFills"], 0)
+        self.assertEqual(usdc_cov["untimedFills"], 0)
+        self.assertEqual(btc_cov["timedFills"], 3)
+        self.assertEqual(usdc_cov["timedFills"], 2)
         self.assertFalse(btc_cov["verifiedUtc"])
         self.assertFalse(usdc_cov["verifiedUtc"])
         self.assertEqual(btc_cov["quote"], "FPL")
         self.assertEqual(usdc_cov["quote"], "FPL")
-        self.assertEqual(btc_cov["chartMode"], "not_selected")
+        self.assertEqual(btc_cov["chartMode"], "estimated_observer")
+        self.assertEqual(usdc_cov["chartMode"], "estimated_observer")
+        self.assertEqual(btc_cov["timeQuality"], "observer")
+        self.assertEqual(btc_cov["timeSource"], "observer")
+        self.assertEqual(usdc_cov["timeQuality"], "observer")
         self.assertNotEqual(btc_cov["timeQuality"], "canonical_sealed")
-        self.assertNotEqual(usdc_cov["timeQuality"], "canonical_sealed")
         self.assertNotEqual(btc_cov["timeQuality"], "verified_utc")
-        # Mixed physics + observer + pre-activation evidence must not be painted as UTC.
-        self.assertEqual(btc_cov["timeQuality"], "unavailable")
-        self.assertEqual(btc_cov["timeSource"], "none")
         self.assertGreaterEqual(btc_cov["evidenceCounts"].get("chain_physics", 0), 1)
         self.assertGreaterEqual(btc_cov["evidenceCounts"].get("observer", 0), 1)
-        self.assertEqual(usdc_cov["timeQuality"], "unavailable")
-        self.assertEqual(usdc_cov["emptyReasonHint"], "verified_utc_unavailable")
+        self.assertIsNone(btc_cov["emptyReasonHint"])
 
     def test_empty_usdc_is_not_replaced_with_btc4(self):
         upsert_block_times(
@@ -173,10 +175,13 @@ class TestSyncHonesty(unittest.TestCase):
         self.assertEqual(usdc["coverage"]["untimedFills"], 0)
         self.assertEqual(usdc["coverage"]["timedFills"], 0)
         self.assertEqual(usdc["coverage"]["timeQuality"], "unavailable")
-        self.assertEqual(btc["coverage"]["untimedFills"], 2)
-        self.assertEqual(btc["coverage"]["timeQuality"], "chain_physics")
-        self.assertEqual(btc["coverage"]["timeSource"], "chain_physics")
-        self.assertEqual(btc["candles"], [])
+        self.assertEqual(btc["coverage"]["untimedFills"], 0)
+        self.assertEqual(btc["coverage"]["timedFills"], 2)
+        self.assertEqual(btc["coverage"]["timeQuality"], "observer")
+        self.assertEqual(btc["coverage"]["timeSource"], "observer")
+        self.assertEqual(btc["coverage"]["chartMode"], "estimated_observer")
+        self.assertTrue(btc["candles"])
+        self.assertFalse(btc["coverage"]["verifiedUtc"])
         self.assertNotEqual(usdc["coverage"]["timeQuality"], btc["coverage"]["timeQuality"])
         self.assertEqual(self.conn.execute("SELECT COUNT(*) c FROM fills").fetchone()["c"], 2)
 

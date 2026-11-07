@@ -9,12 +9,14 @@
  *   utc_committed — signed UTC candidate only. Not a verified candle.
  *
  * `canonical_sealed` and `estimated_observation` are retired. A parseable
- * sealed_at is not verified UTC. Chart mode is not selected, so this module
- * does not publish verified UTC buckets.
+ * sealed_at is not verified UTC. Chart mode is estimated_observer: published
+ * bars use observer arrival and never claim verified UTC.
  */
 import { normalizeFalconSymbol } from './falconMarkets.js';
 
 export const VERIFIED_UTC_CANDLES_ENABLED = false;
+export const CHART_MODE = 'estimated_observer' as const;
+export type FalconChartMode = typeof CHART_MODE | 'not_selected';
 
 /** Exact tokens accepted by GET/POST candle routes. Do not lowercase first: Elliott sends 1M for 1 Month. */
 export const FALCON_CANDLE_TIMEFRAMES = ['1m', '5m', '15m', '1h'] as const;
@@ -35,9 +37,9 @@ export function parseFalconTimeframe(
 }
 
 export const HONEST_CANDLE_NOTE =
-  'Verified UTC candles are not enabled. Chart mode has not been selected. ' +
+  'These candles use observer arrival time (when the explorer or collector first saw the fill), not trade time. ' +
+  'Verified UTC candles are not enabled. ' +
   'sealed_at_ms / tip_sealed_at_ms are chain physics and are never presented as wall-clock UTC. ' +
-  'observed_at / first_seen_at are observer arrival, not trade time. ' +
   'A parseable sealed_at is not verified UTC. utc_committed is a candidate label only until ' +
   'protocol activation and a hash-bound identity→committed-UTC source exist. ' +
   'Network 2300 UTC activation is disabled. Quote is FPL, not USD or USDT. ' +
@@ -79,7 +81,7 @@ export interface FalconCoverageMeta {
   timeSource: FalconTimeSource;
   timeQuality: FalconTimeQuality;
   verifiedUtc: false;
-  chartMode: 'not_selected';
+  chartMode: FalconChartMode;
   quote: 'FPL';
   emptyReasonHint?: string | null;
   evidenceCounts?: Partial<Record<FalconTimeQuality, number>>;
@@ -103,7 +105,7 @@ export interface FalconCandlePayload {
   timeQuality: FalconTimeQuality;
   timeSource: FalconTimeSource;
   verifiedUtc: false;
-  chartMode: 'not_selected';
+  chartMode: FalconChartMode;
   withheldCandleRows: number;
   quote: 'FPL';
   priceUnit: 'FPL per 1 whole base';
@@ -174,23 +176,35 @@ function copyGaps(raw: unknown): FalconCoverageMeta['gaps'] {
   return gaps;
 }
 
+function observerEstimateCoverage(raw: Record<string, unknown>): boolean {
+  return (
+    CHART_MODE === 'estimated_observer' &&
+    normalizeTimeQuality(raw.timeQuality) === 'observer' &&
+    normalizeTimeSource(raw.timeSource) === 'observer'
+  );
+}
+
 /**
- * Accept coverage labels. Reject any candle axis while verified UTC is off,
- * including rows labelled canonical_sealed, physics, observer, or verified_utc.
+ * Accept coverage labels. Publish observer-estimate candles when chart mode
+ * is estimated_observer. Reject physics/UTC rows that would draw a fake
+ * verified axis. verifiedUtc stays false.
  */
 export function decideCandleIngest(
   pair: string,
   candles: FalconCandleRow[],
   coverage: unknown,
 ): IngestDecision {
-  if (!VERIFIED_UTC_CANDLES_ENABLED && candles.length > 0) {
-    return {
-      ok: false,
-      status: 400,
-      error: 'candles_rejected_not_verified_utc',
-      candles: [],
-      coverage: null,
-    };
+  const rawPreview = coverage && typeof coverage === 'object' ? (coverage as Record<string, unknown>) : null;
+  if (candles.length > 0 && !VERIFIED_UTC_CANDLES_ENABLED) {
+    if (!rawPreview || !observerEstimateCoverage(rawPreview)) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'candles_rejected_not_verified_utc',
+        candles: [],
+        coverage: null,
+      };
+    }
   }
   if (coverage == null) {
     return { ok: true, status: 200, candles: [], coverage: null };
@@ -216,7 +230,8 @@ export function decideCandleIngest(
   }
   const timedFills = raw.timedFills == null ? 0 : (wholeCount(raw.timedFills) as number);
   const untimedFills = raw.untimedFills == null ? 0 : (wholeCount(raw.untimedFills) as number);
-  if (!VERIFIED_UTC_CANDLES_ENABLED && timedFills > 0) {
+  const observerOk = observerEstimateCoverage(raw);
+  if (!VERIFIED_UTC_CANDLES_ENABLED && timedFills > 0 && !observerOk) {
     return { ok: false, status: 400, error: 'timed_fills_not_verified_utc', candles: [], coverage: null };
   }
   const stored: FalconCoverageMeta = {
@@ -232,16 +247,17 @@ export function decideCandleIngest(
     timeSource: normalizeTimeSource(raw.timeSource),
     timeQuality: normalizeTimeQuality(raw.timeQuality),
     verifiedUtc: false,
-    chartMode: 'not_selected',
+    chartMode: CHART_MODE,
     quote: 'FPL',
-    emptyReasonHint: mapEmptyReason(raw.emptyReasonHint, 'verified_utc_unavailable'),
+    emptyReasonHint: mapEmptyReason(raw.emptyReasonHint, observerOk ? 'no_observer_arrival_times' : 'verified_utc_unavailable'),
     evidenceCounts: copyEvidence(raw.evidenceCounts),
     canonicalTipsStored: 0,
     observationOnlyTipsStored: wholeCount(raw.observationOnlyTipsStored) ?? undefined,
     physicsTipsStored: wholeCount(raw.physicsTipsStored) ?? undefined,
     utcCommittedCandidates: wholeCount(raw.utcCommittedCandidates) ?? undefined,
   };
-  return { ok: true, status: 200, candles: [], coverage: stored };
+  const accepted = observerOk || VERIFIED_UTC_CANDLES_ENABLED ? candles : [];
+  return { ok: true, status: 200, candles: accepted, coverage: stored };
 }
 
 export function presentFalconCandles(input: {
@@ -253,11 +269,10 @@ export function presentFalconCandles(input: {
 }): FalconCandlePayload {
   const quality = normalizeTimeQuality(input.coverage?.timeQuality);
   const source = normalizeTimeSource(input.coverage?.timeSource);
-  // verifiedUtc on stored coverage is forced false at ingest. The flag stays
-  // off until chart mode, activation, and hash-bound identity are signed off.
   const publish =
-    VERIFIED_UTC_CANDLES_ENABLED &&
-    (input.coverage as { verifiedUtc?: boolean } | null)?.verifiedUtc === true;
+    (VERIFIED_UTC_CANDLES_ENABLED &&
+      (input.coverage as { verifiedUtc?: boolean } | null)?.verifiedUtc === true) ||
+    (CHART_MODE === 'estimated_observer' && quality === 'observer' && source === 'observer');
   const candles = publish
     ? input.candles.map((row) => ({
         time: row.time,
@@ -275,10 +290,13 @@ export function presentFalconCandles(input: {
         timeQuality: quality,
         timeSource: source,
         verifiedUtc: false as const,
-        chartMode: 'not_selected' as const,
+        chartMode: CHART_MODE,
         quote: 'FPL' as const,
         canonicalTipsStored: 0,
-        emptyReasonHint: mapEmptyReason(input.coverage.emptyReasonHint, 'verified_utc_unavailable'),
+        emptyReasonHint: mapEmptyReason(
+          input.coverage.emptyReasonHint,
+          publish ? 'no_observer_arrival_times' : 'verified_utc_unavailable',
+        ),
       }
     : null;
   let emptyReason: string | null = null;
@@ -300,7 +318,7 @@ export function presentFalconCandles(input: {
     timeQuality: coverage ? quality : 'unavailable',
     timeSource: coverage ? source : 'none',
     verifiedUtc: false,
-    chartMode: 'not_selected',
+    chartMode: CHART_MODE,
     withheldCandleRows: publish ? 0 : input.candles.length,
     quote: 'FPL',
     priceUnit: 'FPL per 1 whole base',

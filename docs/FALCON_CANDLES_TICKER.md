@@ -1,12 +1,12 @@
 # Falcon candles + ticker (follow-up to #617)
 
-Draft. Not a verified UTC chart and not merge-ready. Chart mode has not been selected.
+Draft. Chart mode is `estimated_observer`: bars use observer arrival, not verified UTC. Not merge-ready until you say Merge.
 
 ## What this adds
 - Ticker selector: `USDC-FPL` (default) and `BTC4-FPL` (selectable). An empty USDC book is not replaced with BTC4.
 - `GET /api/crypto/falcon/markets`, `GET /api/crypto/falcon/candles`, `POST /api/crypto/falcon/ingest`
 - Chart hooks can request Falcon candles for those symbols. Binance paths are unchanged for USDT pairs.
-- Brain `sync_candles.py` records explorer tip labels and pushes coverage. It does not publish verified UTC buckets.
+- Brain `sync_candles.py` records explorer tip labels and pushes estimated observer-arrival candles. It does not publish verified UTC buckets.
 
 Quote is **FPL**, not USD or USDT. Prices are FPL per 1 whole base. Both markets are Falcon testnet network 2300. Tokens have no monetary value.
 
@@ -18,7 +18,7 @@ Three clocks are not interchangeable. This matches Falcon-faucet-wallet #187 `ho
 | --- | --- | --- |
 | `sealed_at_ms`, `tip_sealed_at_ms`, `last_pack_at_ms` | Chain physics and reward time. Quality `chain_physics`. | **No.** Never convert these to a UTC `Date` or ISO. |
 | `sealed_utc_ms` + `sealed_utc_quality=utc_committed` + `sealed_utc_source=signed_utc_v5` | Proposed hash-bound v5 wall clock. #187 emits `sealed_at` / `sealed_utc` ISO **only** in this case. | **No, not in this package.** The label may be stored as `utc_committed`. It is not `verified_utc`. |
-| `observed_at`, `first_seen_at` | Observer or collector arrival. Quality `observer`. | **No.** Not trade time and not an estimate of trade time. |
+| `observed_at`, `first_seen_at` | Observer or collector arrival. Quality `observer`. | **No.** Used only for the selected `estimated_observer` chart, clearly labelled as arrival rather than trade time. |
 
 Rules:
 
@@ -27,7 +27,7 @@ Rules:
 - Missing UTC, zero UTC, and malformed time stay `unavailable`. They do not become a bucket.
 - Pre-activation stays off the verified axis. Network **2300** UTC activation is disabled; an explicit activation flag cannot arm it. A `utc_committed` payload on 2300 keeps that candidate label and still has `bucketUnix=null`, `verifiedUtc=false`, `preActivation=true`.
 - A field existing in Falcon-PL #27 is not activation and not a candle source.
-- Live Cloud `fpl_fills` have no timestamp. Fills that are not admitted stay `time_status=untimed` and are counted in `coverage.untimedFills`. They are not dropped and not placed on a candle time axis.
+- Live Cloud `fpl_fills` have no protocol timestamp. The estimated chart places a fill using block `observed_unix` when present, otherwise collector `first_seen_at`. Physics ms and a parseable `sealed_at` stay off that axis.
 - `block_times` is still keyed by height. That join is **not** a hash-bound identity→committed-UTC source. This package does not promote rows across a hash change. Identity binding is later work (Package D), not done here.
 
 Verified UTC candles require all of the following, and none of them is granted here:
@@ -36,7 +36,7 @@ Verified UTC candles require all of the following, and none of them is granted h
 2. Protocol UTC activation signed off (not true on network 2300).
 3. A validated block identity (height **and** hash) → committed UTC source.
 
-`VERIFIED_UTC_BUCKETS_ENABLED` is false in `candle_lib.py` and `api/_lib/falconTimeQuality.ts`. `build_candles` returns no bars. Ingest rejects a non-empty `candles` array. `GET /api/crypto/falcon/candles` withholds stored rows (`withheldCandleRows`) instead of drawing them as UTC.
+`VERIFIED_UTC_BUCKETS_ENABLED` is false in `candle_lib.py` and `api/_lib/falconTimeQuality.ts`. Chart mode is `estimated_observer`. `build_candles` publishes observer-arrival bars only. Ingest accepts a non-empty `candles` array when coverage is `observer`/`observer`. `GET /api/crypto/falcon/candles` returns those bars with `verifiedUtc: false` and withholds any other stored rows.
 
 ## Public time labels
 
@@ -78,7 +78,7 @@ Retired and never presented as verified time:
 ## Delivery path
 Brain → HTTPS POST `/api/crypto/falcon/ingest` with `FALCON_BRAIN_INGEST_TOKEN` (server-only).
 
-The body may include `coverage` (`timeQuality`, `timeSource`, `untimedFills`, `quote: "FPL"`). Non-empty `candles` are rejected with `candles_rejected_not_verified_utc` while verified UTC is off. A coverage `pair` that normalizes to a different market is `coverage_pair_mismatch`. Quote USD/USDT is `quote_must_be_fpl`.
+The body may include `coverage` (`timeQuality`, `timeSource`, `untimedFills`, `quote: "FPL"`). Non-empty `candles` are accepted when coverage is `observer`/`observer` for the estimated chart, and still rejected as `candles_rejected_not_verified_utc` if they claim another axis. A coverage `pair` that normalizes to a different market is `coverage_pair_mismatch`. Quote USD/USDT is `quote_must_be_fpl`.
 
 No public brain port. No production deploy is part of this change.
 
