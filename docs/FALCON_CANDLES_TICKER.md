@@ -99,6 +99,19 @@ Exact tokens: `1m`, `5m`, `15m`, `1h`. GET and ingest do not lowercase the value
 
 Falcon symbols poll `/api/crypto/falcon/candles`. They do not subscribe to Binance WebSocket streams or Binance kline fallbacks.
 
+`useCandleData` returns `falconMeta` for Falcon symbols (note, emptyReason, timeQuality, timeSource, chartMode, verifiedUtc=false, coverage timedFills/untimedFills/gaps, withheldCandleRows, source, networkId, quote, pair, count); it is `null` for Binance/extended-history symbols. Parsing and customer copy live in `client/src/lib/falconChartStatus.ts`.
+
+`FalconChartStatusBanner` shows one compact status line above the chart (never over it) on Indicators Clean, Chart Fullscreen, Elliott Wave and Indicators (non-fullscreen). States:
+
+- bars: arrival-time note (Falcon testnet 2300, FPL, collector/explorer first-seen time, not trade time, not verified UTC)
+- no trades yet (zero fills; USDC-FPL can genuinely be empty)
+- trades found but no arrival times
+- no data received yet (no ingest)
+- bars withheld (time unconfirmed)
+- load error / loading
+
+Each market only shows its own bars: an empty USDC-FPL never borrows BTC4-FPL candles. USDC-FPL stays the default Falcon market.
+
 ## Collector order
 
 Live `fpl_fills` returns a newest-first ring and has no protocol timestamp or stable in-block trade id. `dup_seq` is multiplicity of identical natural keys, not trade order. `collect_pos` is first-seen collector window position after reversing that newest-first ring. It is not chain chronology.

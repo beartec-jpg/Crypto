@@ -18,6 +18,9 @@ interface UseIndicatorsDataReturn {
   externalMetrics: GDSExternalMetrics;
   isLoading: boolean;
   error: Error | null;
+  candlesLoading: boolean;
+  candlesError: Error | null;
+  falconMeta: ReturnType<typeof useCandleData>['falconMeta'];
 }
 
 export function useIndicatorsData({
@@ -26,7 +29,7 @@ export function useIndicatorsData({
 }: UseIndicatorsDataOptions): UseIndicatorsDataReturn {
   const hasSymbol = Boolean(symbol && symbol.trim());
 
-  const { candles, isLoading, error } = useCandleData({
+  const { candles, isLoading, error, falconMeta } = useCandleData({
     symbol,
     timeframe,
     enabled: hasSymbol,
@@ -58,5 +61,8 @@ export function useIndicatorsData({
     externalMetrics,
     isLoading: isLoading || isMetricsLoading,
     error: error || metricsError,
+    candlesLoading: isLoading,
+    candlesError: error,
+    falconMeta,
   };
 }

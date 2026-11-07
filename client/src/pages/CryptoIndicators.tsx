@@ -46,6 +46,8 @@ import grokLogo from '@assets/Grok_Full_Logomark_Light_1763287603908.png';
 import aiButtonVideo from '@assets/grok_video_2025-11-20-02-22-16_1763605488674.mp4';
 import { AlertSettingsDialog } from '@/components/AlertSettingsDialog';
 import { incrementTickerClick, falconSafeTimeframe, isFalconCandleTimeframe, isFalconTicker } from '@/lib/tickerUtils';
+import { FalconChartStatusBanner } from '@/components/falcon/FalconChartStatusBanner';
+import { useCandleData } from '@/hooks/useCandleData';
 import { TickerSearch } from '@/components/TickerSearch';
 import { TickerTable } from '@/components/TickerTable';
 import { CryptoNavigation } from '@/components/CryptoNavigation';
@@ -464,6 +466,15 @@ const handleAIMarketReview = () => {
     // Independent fullscreen chart state
   const [fullscreenSymbol, setFullscreenSymbol] = useState(symbol);
   const [fullscreenInterval, setFullscreenInterval] = useState(interval);
+  // Falcon (testnet 2300) status only: note / empty reason / time quality for the banner.
+  const falconStatusSymbol = isFullscreen ? fullscreenSymbol : symbol;
+  const falconStatusTf = falconSafeTimeframe(isFullscreen ? fullscreenInterval : interval);
+  const falconStatus = useCandleData({
+    symbol: falconStatusSymbol,
+    timeframe: falconStatusTf,
+    enabled: isFalconTicker(falconStatusSymbol),
+    refreshInterval: 15000,
+  });
   const [fullscreenCandles, setFullscreenCandles] = useState<CandleData[]>([]);
   
   // Native primitives for high-performance drawing rendering
@@ -3917,6 +3928,16 @@ const handleAIMarketReview = () => {
       </div>
     ) : (
       <div className={`relative ${isFullscreen ? 'h-full' : ''}`}>
+        {isFalconTicker(falconStatusSymbol) && !isFullscreen && (
+          <FalconChartStatusBanner
+            className="mb-2"
+            pair={falconStatusSymbol}
+            candleCount={falconStatus.candles.length}
+            isLoading={falconStatus.isLoading}
+            error={falconStatus.error}
+            meta={falconStatus.falconMeta}
+          />
+        )}
         {/* Chart container with layered overlay structure */} 
  <div 
   className={`relative w-full bg-[#0f172a] overflow-hidden ${

@@ -21,6 +21,7 @@ import {
 import type { Bias } from '@/types/candle';
 import { useIndicatorsData } from '@/hooks/useIndicatorsData';
 import { falconSafeTimeframe, isFalconTicker } from '@/lib/tickerUtils';
+import { FalconChartStatusBanner } from '@/components/falcon/FalconChartStatusBanner';
 import { useOscillatorPreferences, type OscillatorId, VALID_OSCILLATOR_IDS } from '@/hooks/useOscillatorPreferences';
 import { Link, useLocation } from 'wouter';
 
@@ -74,7 +75,7 @@ export default function CryptoIndicatorsClean() {
   const watchlistHasTickers = watchlistTickers.length > 0;
 
   // Fetch candle/CVD only when the watchlist has at least one ticker
-  const { candles, cvdData, externalMetrics } = useIndicatorsData({
+  const { candles, cvdData, externalMetrics, candlesLoading, candlesError, falconMeta } = useIndicatorsData({
     symbol: watchlistHasTickers ? selectedSymbol : '',
     timeframe: selectedTimeframe,
   });
@@ -202,6 +203,17 @@ export default function CryptoIndicatorsClean() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+
+          {watchlistHasTickers && isFalconTicker(selectedSymbol) && (
+            <FalconChartStatusBanner
+              className="mb-2"
+              pair={selectedSymbol}
+              candleCount={candles.length}
+              isLoading={candlesLoading}
+              error={candlesError}
+              meta={falconMeta}
+            />
+          )}
 
           <IndicatorsSection
             candles={candles}

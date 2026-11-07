@@ -2,6 +2,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Candle } from '@/types/chart';
 import { isFalconTicker } from '@/lib/tickerUtils';
+import { parseFalconCandleMeta, type FalconCandleMeta } from '@/lib/falconChartStatus';
+
+export type { FalconCandleMeta };
 
 interface UseCandleDataOptions {
   symbol: string;
@@ -18,6 +21,8 @@ interface UseCandleDataReturn {
   isLoading: boolean;
   error: Error | null;
   refetch: () => Promise<void>;
+  /** Falcon (testnet 2300) metadata: note, emptyReason, timeQuality, coverage… null for non-Falcon symbols. */
+  falconMeta: FalconCandleMeta | null;
 }
 
 export function useCandleData({
@@ -31,6 +36,7 @@ export function useCandleData({
   const [candlesKey, setCandlesKey] = useState(`${symbol}_${timeframe}`);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [falconMeta, setFalconMeta] = useState<FalconCandleMeta | null>(null);
   const requestIdRef = useRef(0);
 
   const fetchCandles = useCallback(async (signal?: AbortSignal) => {
@@ -57,6 +63,7 @@ export function useCandleData({
 
       if (requestId === requestIdRef.current) {
         setCandles(candleData);
+        setFalconMeta(falcon ? parseFalconCandleMeta(data, symbol) : null);
         setCandlesKey(`${symbol}_${timeframe}`);
       }
     } catch (err) {
@@ -66,6 +73,7 @@ export function useCandleData({
       console.error('Failed to fetch candle data:', err);
       if (requestId === requestIdRef.current) {
         setCandles([]);
+        setFalconMeta(null);
         setCandlesKey(`${symbol}_${timeframe}`);
         setError(err instanceof Error ? err : new Error('Unknown error'));
       }
@@ -79,6 +87,7 @@ export function useCandleData({
   useEffect(() => {
     if (!enabled || !symbol?.trim()) {
       setCandles([]);
+      setFalconMeta(null);
       setIsLoading(false);
       setError(null);
       return;
@@ -91,6 +100,7 @@ export function useCandleData({
     // rendering stale candles at the wrong timeframe scale.
     setError(null);
     setIsLoading(true);
+    setFalconMeta(null);
 
     const initialController = new AbortController();
     fetchCandles(initialController.signal);
@@ -112,5 +122,6 @@ export function useCandleData({
     isLoading,
     error,
     refetch: fetchCandles,
+    falconMeta,
   };
 }

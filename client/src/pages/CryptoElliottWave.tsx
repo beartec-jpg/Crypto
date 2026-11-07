@@ -2593,6 +2593,8 @@ interface GrokWaveAnalysis {
 }
 
 import { incrementTickerClick, getFavorites, isFalconTicker, isFalconCandleTimeframe } from '@/lib/tickerUtils';
+import { FalconChartStatusBanner } from '@/components/falcon/FalconChartStatusBanner';
+import { parseFalconCandleMeta } from '@/lib/falconChartStatus';
 import { getFutureBarCount, getInitialVisibleFutureBarCount } from '@/lib/chart/timeUtils';
 import { FavoritesOnlySelector } from '@/components/TickerSelector';
 const TIMEFRAMES = [
@@ -7674,6 +7676,16 @@ const aiAnalyze = useMutation({
         {/* Chart */}
         <Card className="bg-slate-900/50 border-slate-800">
           <CardContent className="p-2">
+            {isFalconTicker(symbol) && (
+              <FalconChartStatusBanner
+                className="mb-2"
+                pair={symbol}
+                candleCount={Array.isArray(historyData?.candles) ? historyData!.candles.length : 0}
+                isLoading={historyLoading}
+                error={(historyError as Error | null) ?? null}
+                meta={historyData ? parseFalconCandleMeta(historyData, symbol) : null}
+              />
+            )}
             {historyLoading ? (
               <div className="h-[500px] flex items-center justify-center">
                 <div className="text-center">

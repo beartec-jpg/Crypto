@@ -25,6 +25,7 @@ import { useHTFDataCache } from '@/hooks/useHTFDataCache';
 // Existing hooks
 import { useCandleData } from '@/hooks/useCandleData';
 import { falconSafeTimeframe, isFalconCandleTimeframe, isFalconTicker } from '@/lib/tickerUtils';
+import { FalconChartStatusBanner } from '@/components/falcon/FalconChartStatusBanner';
 import { useOscillatorData } from '@/hooks/useOscillatorData';
 import { useDrawingsPersistence } from '@/hooks/useDrawingsPersistence';
 import { useIndicatorState } from '@/hooks/useIndicatorState';
@@ -491,7 +492,7 @@ export function ChartFullscreenPage({
   const [mainChartVisibleRange, setMainChartVisibleRange] = useState<any>(null);
 
   // Hooks - Data fetching
-  const { candles, candlesKey, isLoading, error } = useCandleData({
+  const { candles, candlesKey, isLoading, error, falconMeta } = useCandleData({
     symbol,
     timeframe,
     enabled: chartReady,
@@ -3108,6 +3109,17 @@ export function ChartFullscreenPage({
             maxOpportunityZones={maxOpportunityZones}
             onClearOpportunityZones={handleClearOpportunityZones}
             onJumpToZone={handleJumpToZone}
+          />
+        )}
+
+        {isFalconTicker(symbol) && (
+          <FalconChartStatusBanner
+            className="mx-2 my-1 shrink-0"
+            pair={symbol}
+            candleCount={candles.length}
+            isLoading={isLoading}
+            error={error}
+            meta={falconMeta}
           />
         )}
 
